@@ -48,7 +48,10 @@ export function GroupHead({
         {count !== undefined ? (
           <span className="ghead-count num">
             <span className="sr">, </span>
+            {/* In brackets, so a count after a date ("Sat 7 Nov (19)") never reads as part of it. */}
+            <span aria-hidden="true">(</span>
             {count.toLocaleString("en-US")}
+            <span aria-hidden="true">)</span>
             {noun ? <span className="sr"> {count === 1 ? noun : `${noun}s`}</span> : null}
           </span>
         ) : null}
