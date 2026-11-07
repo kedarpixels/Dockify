@@ -8,12 +8,9 @@ description = "Test fixtures and documented placeholders"
 paths = [
   '''\.test\.ts$''',
   '''\.test\.mjs$''',
-  '''link-keys\.fixture\.ts]
-regexes = [
-  '''dk_[a-z0-9]{4,}''',
-  '''JBSWY3DPEHPK3PXP''',
-]
-'',
+  '''link-keys\.fixture\.ts$''',
+  '''docker-calls\.fixture\.ts$''',
+  '''fixtures/minisign/''',
 ]
 regexes = [
   '''dk_[a-z0-9]{4,}''',
