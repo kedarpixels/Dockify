@@ -126,6 +126,23 @@ export function deployTemplate(input: DeployTemplateInput): Promise<NewAppRoute<
 
 const PREVIEW_TEMPLATES: TemplateRow[] = [
   {
+    id: "directus", name: "Directus", summary: "Headless CMS and data platform.", category: "Content", icon: "directus", license: "MSCL-1.0-GPL, free for internal use only", homepage: "https://directus.io", docs: "https://directus.io/docs/self-hosting/deploying",
+    firstRun: "Sign in with the email you typed and ADMIN_PASSWORD, which you can reveal on its Variables tab.", needsDomain: true,
+    inputs: [{ key: "ADMIN_EMAIL", label: "Admin email", hint: "The first account signs in with this.", type: "email" }],
+    apps: [
+      { service: "directus", kind: "backend", image: "directus/directus:12.6", managed: null, command: null, port: 8055, primary: true, volumes: [{ name: "uploads", path: "/directus/uploads" }, { name: "extensions", path: "/directus/extensions" }], memoryMb: 512, env: [{ key: "SECRET", shows: "generated secret", secret: true }, { key: "DB_CLIENT", shows: "pg", secret: false }, { key: "DB_PASSWORD", shows: "link to db: password", secret: true }, { key: "ADMIN_EMAIL", shows: "Admin email", secret: false }, { key: "PUBLIC_URL", shows: "https://your-domain", secret: false }] },
+      { service: "db", kind: "postgres", image: "", managed: "Postgres 17", command: null, port: null, primary: false, volumes: [], memoryMb: 512, env: [] },
+    ],
+  },
+  {
+    id: "n8n", name: "n8n", summary: "Workflow automation with a visual editor.", category: "Automation", icon: "n8n", license: "Sustainable Use License, not open source", homepage: "https://n8n.io", docs: "https://docs.n8n.io/hosting/installation/docker/",
+    firstRun: "It asks you to create the owner account. Do that before you share the address. Its license limits commercial use.", needsDomain: true, inputs: [],
+    apps: [
+      { service: "n8n", kind: "backend", image: "n8nio/n8n:2.46.6", managed: null, command: null, port: 5678, primary: true, volumes: [{ name: "data", path: "/home/node/.n8n" }], memoryMb: 512, env: [{ key: "N8N_ENCRYPTION_KEY", shows: "generated secret", secret: true }, { key: "WEBHOOK_URL", shows: "https://your-domain", secret: false }] },
+      { service: "db", kind: "postgres", image: "", managed: "Postgres 17", command: null, port: null, primary: false, volumes: [], memoryMb: 512, env: [] },
+    ],
+  },
+  {
     id: "uptime-kuma", name: "Uptime Kuma", summary: "Uptime monitoring with status pages.", category: "Monitoring", icon: "uptimekuma", license: "MIT", homepage: "https://uptime.kuma.pet", docs: "https://github.com/louislam/uptime-kuma/wiki/Environment-Variables",
     firstRun: "It asks you to create the admin account. Do that before you share the address, then turn on Trust Proxy under Settings, Reverse Proxy.", needsDomain: false, inputs: [],
     apps: [{ service: "kuma", kind: "backend", image: "louislam/uptime-kuma:2.5.9-rootless", managed: null, command: null, port: 3001, primary: true, volumes: [{ name: "data", path: "/app/data" }], memoryMb: 256, env: [{ key: "UPTIME_KUMA_DB_TYPE", shows: "sqlite", secret: false }] }],

@@ -89,7 +89,7 @@ const ROWS: Row[] = [
   },
   {
     feature: "Templates",
-    dockify: { tone: "part", text: "6 reviewed apps that ship with the release, plus any Docker image. No large catalog.", docs: "/docs/templates" },
+    dockify: { tone: "part", text: "23 reviewed apps that ship with the release, plus any Docker image. No large catalog.", docs: "/docs/templates" },
     coolify: { tone: "yes", text: "360+ one-click services.", src: [{ href: "https://coolify.io" }] },
     dokploy: { tone: "yes", text: "Templates included.", src: [{ href: "https://dokploy.com" }] },
     vercel: { tone: "yes", text: "Framework templates and a Marketplace.", src: [{ href: "https://vercel.com/templates" }] },

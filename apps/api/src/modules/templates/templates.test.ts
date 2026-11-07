@@ -216,8 +216,8 @@ describe("the routes", () => {
 });
 
 describe("the catalog", () => {
-  it("has at least 6 templates, each with its own id", () => {
-    expect(CATALOG.length).toBeGreaterThanOrEqual(6);
+  it("has at least 15 templates, each with its own id", () => {
+    expect(CATALOG.length).toBeGreaterThanOrEqual(15);
     expect(new Set(CATALOG.map((t) => t.id)).size).toBe(CATALOG.length);
   });
   for (const t of CATALOG) {
