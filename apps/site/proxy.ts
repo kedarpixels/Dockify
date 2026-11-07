@@ -69,6 +69,11 @@ function build(): Map<string, string> {
 function cspFor(pathname: string): string {
   if (process.env.NODE_ENV === "development") return policy(" 'unsafe-inline' 'unsafe-eval'");
   table ??= build();
+  // Hosts that do not ship the prerendered pages beside the proxy (Vercel runs it apart from the
+  // build output) leave nothing to hash. A hash-only policy there would block Next's own bootstrap
+  // and the page would never start, so inline scripts are allowed instead. The site takes no input
+  // and holds no session, so this costs little; a self-hosted server keeps the hash-only policy.
+  if (table.size === 0) return policy(" 'unsafe-inline'");
   const route = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   return table.get(route) ?? table.get("/_not-found") ?? policy("");
 }
