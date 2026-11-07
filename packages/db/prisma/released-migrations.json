@@ -1,6 +1,30 @@
 {
   "about": "Migrations a release has shipped, with the sha256 of their exact bytes. Installs keep the checksum of every migration they applied and never run one twice, so a listed file must never change: the next change goes in a new migration. A release adds its new migrations here (docs/RELEASING.md); packages/db/src/released-migrations.test.ts enforces it.",
   "released": [
-    { "name": "0001_init", "sha256": "1a3e285f9dc6d2af1c58f01d99533dcfaaf33e34be1e41ee988b9ece3899d74d" }
+    { "name": "0001_init", "sha256": "1a3e285f9dc6d2af1c58f01d99533dcfaaf33e34be1e41ee988b9ece3899d74d" },
+    { "name": "0002_drop_mfa_recovery_codes", "sha256": "06f3b8ae786ccbf1f3e7514ed98ae30257da5b977030d2b1e2527ec5c0bc4a3b" },
+    { "name": "0003_notification_webhooks", "sha256": "afa7d2a9df0b3df84bde65833dbd46a36f3ddafed51a1dacdccc683e4715af1d" },
+    { "name": "0004_vercel_deployment_mirror", "sha256": "a4bf5c887ff89faced5e72add811742e863f4864cda71d0a35d22316aa21b759" },
+    { "name": "0005_security_release_snooze", "sha256": "c232a909c5cfa84e00f1a0c7bb944896f274e7a94cdbb1ab75627b6b59cae57f" },
+    { "name": "0006_managed_services", "sha256": "0ebf49d47da083bf814acf098798cfba2bd49eeae8b030b55b424fb7bf828b8b" },
+    { "name": "0007_observed_app_state", "sha256": "0e409a30ededeb6507f6f645bc6ae5447299f34b6900b260a9e8747e72d5a8f4" },
+    { "name": "0008_domain_checks_and_worker_health", "sha256": "c1d429950dd4ed731db491a86952e55e9032657d0892402ab0b90e2fe2ef201c" },
+    { "name": "0009_backup_delete_and_primary_domains", "sha256": "dcd0d6a67a8d97f2087003fff94e1518641dc73691595debec2063b7482237a9" },
+    { "name": "0010_dashboard_domain", "sha256": "1d32c12405fb78a0180ac0ef7824530b767fe0b5a7de115d0d92fa4782884921" },
+    { "name": "0012_deployment_git_author_name", "sha256": "cf91674202a8cbea6833d6106628f2146575bd49eff49ea937648dd47e7bfeb5" },
+    { "name": "0013_vercel_follow_only", "sha256": "dc0bbde1c9333b0ae1144489174deb20c252107ee203c461a301abc2a3704f3f" },
+    { "name": "0014_test_domains", "sha256": "a1aa2eecf0b50a79ac5f54fbd5fdc2f4f539ffd6adce539ec11b65031941f776" },
+    { "name": "0015_preview_notify", "sha256": "5631d9462c831b6ae0cbcbcb033b1d92302124a70ce782b41722490438d9e8be" },
+    { "name": "0016_notify_events_and_invite_delivery", "sha256": "6465711c461ba77fdf96929e1df04d4157e0fb7d5cbc02a9964b9cc8560d6de0" },
+    { "name": "0017_builders_and_scheduled_jobs", "sha256": "195c8b4329934e0286c05531350255c1a0035ff5aae24bbb9153f4cdde68a7ae" },
+    { "name": "0018_terminal_and_preview_access", "sha256": "f37eec3b0c781f615dca5ccde819a212f0b21a04de312322ea88de355e0f9892" },
+    { "name": "0019_service_upgrade", "sha256": "864f6c939edb92c027081e6893fcc99a2507011cc6d23ab13e220f483dde2950" },
+    { "name": "0020_checks_match_contracts", "sha256": "159377df9887dd8fb3e1ce00ca6e96d6eee87c5f13c73462ab6590c3d51a1397" },
+    { "name": "0021_email_smtp", "sha256": "a3710e235b4dc693668728d8360ecaba53758e9118c4d7c08a946e3c6fa0f6e3" },
+    { "name": "0022_servers", "sha256": "a2acfeb488a4c212555e51885670bdc84e9919ab5391ee96006dbac4ee94845a" },
+    { "name": "0023_preview_production_access", "sha256": "b2c112f36cbd9fade669cbb398f865f08bcd315dde8e61ef9f06759a779a1cc3" },
+    { "name": "0024_drop_auto_rollback", "sha256": "6a3a5b50cdce388757c2f88266d7872e282df8b364bacac3ee94e75987278dd6" },
+    { "name": "0025_dashboard_cf_records", "sha256": "54ce2a61ba2ea2321e25e31a17b717d40da612bfc0b9426ad4dcc000e0b31bd4" },
+    { "name": "0026_app_display_name", "sha256": "762ea0f12e148167d090900ffdf19bab803cb72408279ea830026e1dc3dda55f" }
   ]
 }
