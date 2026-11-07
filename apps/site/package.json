@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "engines": {
-    "node": ">=22.18"
+    "node": "22.x"
   },
   "scripts": {
     "predev": "node scripts/publish-installer.mjs",
