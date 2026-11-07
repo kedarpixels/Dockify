@@ -15,7 +15,7 @@ import { useUtcAt } from "@/lib/time-prefs";
 import type { BackupConfig, BackupRun, BackupSchedule, StorageProvider } from "@/lib/pages/server-backups";
 import { useCan } from "@/lib/viewer";
 import { Countdown } from "./live";
-import { cronText, dbLabel, offServer, placeName } from "./util";
+import { cronText, dbLabel, dbName, offServer, placeName } from "./util";
 
 /** Where backup destinations are managed. */
 export const STORAGE_HREF = "/settings?section=integrations";
@@ -106,7 +106,7 @@ export function Schedules({
                 <span className="sb-sched-db two">
                   <span className="two-main">
                     <span>
-                      <span className="sb-muted">{s.database.projectSlug} /</span> {s.database.name}
+                      <span className="sb-muted">{s.database.projectSlug} /</span> {dbName(s.database)}
                     </span>
                     <EnvTag env={s.database.environment} compact quiet />
                   </span>

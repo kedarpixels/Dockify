@@ -9,7 +9,7 @@ import { GroupHead } from "@/components/ui/group-head";
 import { PendingButton } from "@/components/ui/pending";
 import { MaskDots } from "@/components/ui/secret";
 import { Switch } from "@/components/ui/switch";
-import { plural } from "@/lib/format";
+import { appTitle, plural } from "@/lib/format";
 import type { AppSummary, EnvChange, EnvState } from "@/lib/pages/project-detail";
 import { affectedApps, refViewOf, scopeId, summarize, TARGET_LABEL, varsOf } from "./env-model";
 import { fieldLabel } from "./env-refs";
@@ -91,7 +91,7 @@ export function ReviewDialog({
     for (const c of [...changes].sort((a, b) => a.key.localeCompare(b.key))) {
       const id = scopeId(c);
       const app = c.appId ? apps.find((a) => a.id === c.appId) : undefined;
-      const g = out.get(id) ?? { label: app ? `${app.name} override` : many ? `${envName(c.environment)}, shared` : "Shared variables", env: c.environment, app, rows: [] };
+      const g = out.get(id) ?? { label: app ? `${appTitle(app)} override` : many ? `${envName(c.environment)}, shared` : "Shared variables", env: c.environment, app, rows: [] };
       g.rows.push(c);
       out.set(id, g);
     }
@@ -172,7 +172,7 @@ export function ReviewDialog({
               <li key={a.app.id} className="soft-row px-reach-row">
                 <AppIcon id={a.app.id} kind={a.app.kind} size="md" />
                 <span className="two">
-                  <span className="two-main">{a.app.name}</span>
+                  <span className="two-main">{appTitle(a.app)}</span>
                   <span className="two-sub ellipsis" title={a.keys.join(", ")}>
                     {a.keys.join(", ")}
                   </span>

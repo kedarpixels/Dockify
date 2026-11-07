@@ -11,10 +11,10 @@ import { MetricsTab } from "@/components/app-detail/metrics-tab";
 import { SettingsTab } from "@/components/app-detail/settings-tab";
 import { TerminalTab } from "@/components/app-detail/terminal-tab";
 import { useAppTab } from "@/components/app-detail/use-tab";
+import { VercelDomainsTab, VercelEnvTab, VercelOverview } from "@/components/app-detail/vercel-tabs";
+import { variablesOnVercel } from "@/components/app-detail/vercel-view";
 import { CardTitle } from "@/components/card-title";
-import { hostOfUrl } from "@/components/deployments/vercel-links";
 import { VercelRuntimeLogs } from "@/components/deployments/vercel-runtime-logs";
-import { ExternalLink } from "@/components/ui/external-link";
 import { triggerLabel } from "@/components/deployments/actions";
 import { Icon, type IconName } from "@/components/icon";
 import { AppIcon, ProjectIcon } from "@/components/icons/app-icon";
@@ -36,7 +36,7 @@ import { SectionHead } from "@/components/ui/section-head";
 import { Skel } from "@/components/ui/skeleton";
 import { TabPanel, Tabs } from "@/components/ui/tabs";
 import { APP_STATUS_LABEL, APP_TONE, deriveNotices, notRunning } from "@/lib/derive";
-import { bytes, usagePct } from "@/lib/format";
+import { appTitle, bytes, usagePct } from "@/lib/format";
 import { withRepo } from "@/lib/git-links";
 import { projectsShowingEnvironments } from "@/lib/environments";
 import { useHydrated, useNow, useOverview } from "@/lib/hooks";
@@ -80,36 +80,9 @@ const hasTab = (kind: AppKind, t: AppTab) => TAB_KINDS[t]?.includes(kind) ?? tru
 
 const onVercel = (app: Pick<AppDetail, "target">) => app.target?.kind === "vercel";
 
-/* Nothing of a Vercel app runs on this server, so it has no container metrics, and a domain on it
-   would route nowhere: its domains stay on Vercel. One imported earlier is still on the Domains page. */
-const HOSTED_HIDES: ReadonlySet<AppTab> = new Set(["jobs", "metrics", "domains", "terminal"]);
-
-/** The app's latest deployment on Vercel and where it lives there, in place of the container facts. */
-function VercelFacts({ app }: { app: AppDetail }) {
-  const latest = app.deployments.find((d) => d.external);
-  const rows: Array<[string, React.ReactNode]> = [
-    ["Hosted by", "Vercel. Nothing of this app runs on this server."],
-    ["Link", app.target?.mode === "deploy" ? "Deploy target: Dockify sends variables and asks Vercel to deploy" : "Follow only: Dockify changes nothing on Vercel"],
-    ["Vercel project", app.target?.vercelProjectId ?? "Not picked yet: choose it in Settings, Deploy target"],
-    ["Address", latest?.external?.url ? <ExternalLink key="url" href={latest.external.url}>{hostOfUrl(latest.external.url)}</ExternalLink> : "None yet"],
-    ["On Vercel", latest?.external?.inspectorUrl ? <ExternalLink key="ins" href={latest.external.inspectorUrl}>Open the latest deployment</ExternalLink> : "None yet"],
-  ];
-  return (
-    <section className="card" aria-labelledby="pd-rt-title">
-      <div className="card-hd">
-        <CardTitle id="pd-rt-title" icon="vercel" title="Vercel" sub="Where this app is built and served" />
-      </div>
-      <dl className="pd-kv">
-        {rows.map(([k, v]) => (
-          <div key={k} className="pd-kv-row">
-            <dt className="kv-label">{k}</dt>
-            <dd className="kv-value">{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
-}
+/* Nothing of a Vercel app runs on this server, so it has no container metrics, jobs or terminal. Its
+   Domains tab shows the Vercel project's domains instead of this server's (vercel-tabs.tsx). */
+const HOSTED_HIDES: ReadonlySet<AppTab> = new Set(["jobs", "metrics", "terminal"]);
 
 type Op = "deploy" | "restart" | "stop" | "start";
 
@@ -299,16 +272,10 @@ function Latest({ app, now }: { app: AppDetail; now: number }) {
   );
 }
 
-/** Usage across the page, then the latest deployment and the runtime facts side by side. */
-function OverviewTab({ app, now }: { app: AppDetail; now: number }) {
-  if (onVercel(app)) {
-    return (
-      <div className="pd-ov-pair">
-        <Latest app={app} now={now} />
-        <VercelFacts app={app} />
-      </div>
-    );
-  }
+/** Usage across the page, then the latest deployment and the runtime facts side by side. An app on
+    Vercel shows what Vercel serves and the project it follows instead. */
+function OverviewTab({ app, now, onTab }: { app: AppDetail; now: number; onTab: (t: "deployments") => void }) {
+  if (onVercel(app)) return <VercelOverview app={app} now={now} onTab={onTab} />;
   return <ServerOverview app={app} now={now} />;
 }
 
@@ -408,6 +375,8 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
   const tabGuard = useTabSwitchGuard(tab, "settings", setTab);
   const [override, setOverride] = useState<{ status: AppStatus; at: string } | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  // A rename saved on this page: the name people read, until the page reads it again.
+  const [renamed, setRenamed] = useState<{ displayName: string | null } | null>(null);
   const [busy, setBusy] = useState<Op | null>(null);
   const [range, setRange] = useState<MetricRange>("24h");
 
@@ -418,8 +387,13 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
     const live = o?.resources.find((r) => r.id === base.id)?.status;
     // The preview never changes, so there the action's state simply sticks.
     const fresh = override && (result.source === "preview" || Date.parse(result.fetchedAt) <= Date.parse(override.at));
-    return { ...base, status: fresh ? override.status : (live ?? override?.status ?? base.status), settings: settings ?? base.settings };
-  }, [page.data, o, override, settings, result.fetchedAt, result.source]);
+    return {
+      ...base,
+      status: fresh ? override.status : (live ?? override?.status ?? base.status),
+      settings: settings ?? base.settings,
+      displayName: renamed ? renamed.displayName : base.displayName,
+    };
+  }, [page.data, o, override, settings, renamed, result.fetchedAt, result.source]);
 
   // The page's own snapshot holds the deployments: read it again when the polled status moves.
   const polled = app?.status;
@@ -441,7 +415,7 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
     [deployCount, kind, hosted, terminal],
   );
 
-  const trail = ["Apps", app?.name ?? id];
+  const trail = ["Apps", app ? appTitle(app) : id];
 
   if (!app) {
     return (
@@ -480,7 +454,7 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
     setBusy(op);
     const commit = app.deployments[0]?.commit?.slice(0, 7);
     const branch = app.deployments[0]?.branch;
-    const what = `${app.projectSlug} / ${app.name}${op === "deploy" && branch ? `, ${branch}${commit ? ` ${commit}` : ""}` : ""}`;
+    const what = `${app.projectSlug} / ${appTitle(app)}${op === "deploy" && branch ? `, ${branch}${commit ? ` ${commit}` : ""}` : ""}`;
     const r = await track(mutate({ type: "app.action", id: app.id, op }), {
       ...OP_COPY[op],
       what,
@@ -525,12 +499,19 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
           title={
             <span className="pd-title">
               <AppIcon id={app.id} kind={app.kind} size="lg" />
-              <span className="ellipsis" title={app.name}>{app.name}</span>
+              <span className="ellipsis" title={appTitle(app)}>{appTitle(app)}</span>
             </span>
           }
           lead={
             <DetailLead tone={APP_TONE[app.status]} state={APP_STATUS_LABEL[app.status]} envs={multiEnv ? [app.environment] : []}>
               <span className="pd-kind">{KIND_LABEL[app.kind]}</span>
+              {/* Renamed: the name links, the CLI and preview addresses still use, so nobody types the wrong one. */}
+              {app.displayName && app.displayName !== app.name ? (
+                <span className="pd-repo" title="The app’s name in links, the CLI and preview addresses">
+                  <Icon name="code" size={14} />
+                  <span className="pd-mono ellipsis">{app.name}</span>
+                </span>
+              ) : null}
               {app.url ? (
                 <a href={app.url} target="_blank" rel="noreferrer" className="pd-repo">
                   <Icon name="globe" size={14} />
@@ -556,26 +537,28 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
         <Rule />
 
         <TabPanel id="app" value={shown} className="pd-panel">
-          {shown === "overview" ? <OverviewTab app={app} now={now} /> : null}
+          {shown === "overview" ? <OverviewTab app={app} now={now} onTab={setTab} /> : null}
           {shown === "deployments" ? (
             <DeployCard
               scope="app"
               deployments={withRepo(app.deployments, app.repo)}
               now={now}
-              sub={`${hosted ? "Every deployment on Vercel of" : "Every build of"} ${app.projectSlug} / ${app.name}, newest first`}
+              sub={`${hosted ? "Every deployment on Vercel of" : "Every build of"} ${app.projectSlug} / ${appTitle(app)}, newest first`}
               emptyBody={hosted ? (app.target?.mode === "deploy" ? "Vercel’s deployments of the linked project show here within a couple of minutes. Press Deploy to start one." : "Vercel’s deployments of the linked project show here within a couple of minutes.") : "Press Deploy, or push to the environment’s branch."}
             />
           ) : null}
           {shown === "logs" && hosted ? <VercelRuntimeLogs appId={app.id} inspectorUrl={app.deployments.find((d) => d.external?.inspectorUrl)?.external?.inspectorUrl} name={`${app.projectSlug}-${app.name}`} sub="Read live from Vercel" /> : null}
           {shown === "logs" && !hosted ? <LogPanel lines={page.data?.logs ?? null} error={page.data?.logsError} status={app.status} name={app.name} /> : null}
           {shown === "metrics" ? <MetricsTab app={app} now={now} range={range} onRange={setRange} onSettings={() => setTab("settings")} /> : null}
-          {shown === "env" ? <AppEnvTab app={app} apps={o?.resources ?? NO_RESOURCES} now={now} /> : null}
-          {shown === "domains" ? <DomainsTab app={app} now={now} /> : null}
+          {shown === "env" && variablesOnVercel(app.target) ? <VercelEnvTab app={app} now={now} /> : null}
+          {shown === "env" && !variablesOnVercel(app.target) ? <AppEnvTab app={app} apps={o?.resources ?? NO_RESOURCES} now={now} /> : null}
+          {shown === "domains" && hosted ? <VercelDomainsTab app={app} /> : null}
+          {shown === "domains" && !hosted ? <DomainsTab app={app} now={now} /> : null}
           {shown === "jobs" ? <JobsTab appId={app.id} /> : null}
           {shown === "data" ? <DataTab app={app} /> : null}
           {shown === "backups" ? <BackupsTab app={app} now={now} /> : null}
           {shown === "terminal" ? <TerminalTab app={app} /> : null}
-          {shown === "settings" ? <SettingsTab app={app} multiEnv={multiEnv} now={now} onSaved={setSettings} onDirty={tabGuard.onDirty} /> : null}
+          {shown === "settings" ? <SettingsTab app={app} multiEnv={multiEnv} now={now} onSaved={setSettings} onRenamed={(displayName) => setRenamed({ displayName })} onDirty={tabGuard.onDirty} /> : null}
         </TabPanel>
         {tabGuard.dialog}
         <Spacer end />

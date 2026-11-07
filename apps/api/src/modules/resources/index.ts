@@ -45,6 +45,7 @@ export function toResourceRow(app: AppRow, sample: { cpuPct: number | null; memo
   return {
     id: app.id,
     name: app.name,
+    ...(app.displayName ? { displayName: app.displayName } : {}),
     kind: app.kind,
     status: app.status,
     projectId: app.environment.project.id,

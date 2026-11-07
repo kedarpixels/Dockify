@@ -24,7 +24,7 @@ import { When } from "@/components/ui/when";
 import { resolvesItself } from "@/lib/dashboard-domain";
 import { showsEnvironments } from "@/lib/environments";
 import { describe, report } from "@/lib/feedback";
-import { bytes, plural } from "@/lib/format";
+import { appTitle, bytes, plural } from "@/lib/format";
 import { branchHref, commitHref, githubRepo, pullHref, type GitHubRepo } from "@/lib/git-links";
 import type { PreviewDeployment, PreviewSettings, PreviewState, PreviewStatus, ProjectDetail } from "@/lib/pages/project-detail";
 import { NO_ACCESS_TIP, useCan } from "@/lib/viewer";
@@ -209,7 +209,7 @@ export function PreviewSettingsCard({
     // Vercel builds its own previews of an app it hosts, so it is named here and never offered.
     const inBase = p.apps.filter((a) => a.environment === draft.baseEnvironment && PREVIEW_KINDS.has(a.kind));
     const baseApps = inBase.filter((a) => !a.onVercel);
-    const hostedApps = inBase.filter((a) => a.onVercel).map((a) => a.name);
+    const hostedApps = inBase.filter((a) => a.onVercel).map((a) => appTitle(a));
     const envOptions: SelectOption<string>[] = p.environments.map((e) => ({ value: e.name, label: envName(e.name), hint: e.name === "production" ? "Not recommended" : e.name === "development" ? "Default" : undefined }));
     // A stored base that no longer exists still shows, so the field never reads blank.
     const baseOptions = envOptions.some((o) => o.value === draft.baseEnvironment) ? envOptions : [...envOptions, { value: draft.baseEnvironment, label: envName(draft.baseEnvironment), hint: "Not found" }];
@@ -283,8 +283,8 @@ export function PreviewSettingsCard({
               {baseApps.map((a) => (
                 <li key={a.id}>
                   <CheckRow
-                    title={a.name}
-                    body={a.kind === "frontend" ? "Frontend, included by default" : a.kind === "backend" ? "Backend, included by default" : "Bot, off by default"}
+                    title={appTitle(a)}
+                    body={`${a.kind === "frontend" ? "Frontend, included by default" : a.kind === "backend" ? "Backend, included by default" : "Bot, off by default"}${a.displayName ? `. Its preview address starts pr-<number>-${a.name}` : ""}`}
                     checked={draft.appIds.includes(a.id) || (off && !draft.appIds.length && DEFAULT_KINDS.has(a.kind))}
                     onChange={(on) => set({ appIds: on ? [...draft.appIds, a.id].sort() : draft.appIds.filter((x) => x !== a.id) })}
                     extra={<AppIcon id={a.id} kind={a.kind} />}

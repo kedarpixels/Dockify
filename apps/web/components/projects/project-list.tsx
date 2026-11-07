@@ -6,6 +6,7 @@ import { KIND_LABEL } from "@/components/project-detail/shared";
 import { Chip, StatusChip } from "@/components/ui/chip";
 import { Node } from "@/components/ui/rule";
 import { deployMessage } from "@/lib/deploy-source";
+import { appTitle } from "@/lib/format";
 import { APP_STATUS_LABEL, type ProjectCard as ProjectSummary } from "@/lib/derive";
 import { DeployDot, DeployRefs, DeployTime, Envs, ProjectCard } from "./project-card";
 
@@ -52,7 +53,7 @@ export function ProjectRows({ projects, now }: { projects: ProjectSummary[]; now
               {p.apps.map((a) => (
                 <li key={a.id}>
                   <Chip size="sm" href={`/apps/${a.id}`} icon={<AppIcon id={a.id} kind={a.kind} />} tip={`${KIND_LABEL[a.kind]}, ${APP_STATUS_LABEL[a.status].toLowerCase()}`}>
-                    {a.name}
+                    {appTitle(a)}
                   </Chip>
                 </li>
               ))}

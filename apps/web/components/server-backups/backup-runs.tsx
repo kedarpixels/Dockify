@@ -19,7 +19,7 @@ import { useDayHeading, useUtcAt } from "@/lib/time-prefs";
 import type { BackupRun, BackupSchedule } from "@/lib/pages/server-backups";
 import { useCan } from "@/lib/viewer";
 import { testLine } from "./backup-dialogs";
-import { KIND_LABEL, dbLabel, placeName } from "./util";
+import { KIND_LABEL, dbLabel, dbName, placeName } from "./util";
 
 /** Starts a file download from a same-origin link without leaving the page. */
 function saveFrom(href: string) {
@@ -130,7 +130,7 @@ function RunRow({ r, now, actions }: { r: BackupRun; now: number; actions: RunAc
       <When iso={r.createdAt} now={now} utc className="sb-run-time num" />
       <span className="sb-run-db">
         <span className="ellipsis" title={dbLabel(r.database)}>
-          <span className="sb-muted">{r.database.projectSlug} /</span> {r.database.name}
+          <span className="sb-muted">{r.database.projectSlug} /</span> {dbName(r.database)}
         </span>
         <EnvTag env={r.database.environment} compact quiet />
       </span>
@@ -193,7 +193,7 @@ export function History({ runs, schedules, now, actions }: { runs: BackupRun[]; 
     return m;
   }, [runs]);
   // Each segment names its database; the project joins in only where two databases share a name.
-  const segName = (s: BackupSchedule) => (schedules.some((x) => x !== s && x.database.name === s.database.name) ? dbLabel(s.database) : s.database.name);
+  const segName = (s: BackupSchedule) => (schedules.some((x) => x !== s && dbName(x.database) === dbName(s.database)) ? dbLabel(s.database) : dbName(s.database));
   // Databases are not states, so the filter counts without dots.
   const options = filterOptions([
     { value: "all", label: "All", count: runs.length },

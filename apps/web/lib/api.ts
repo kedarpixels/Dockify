@@ -41,6 +41,8 @@ export interface ApiInit {
    * visitor (no cookie, no address), so every visitor shares one cached answer.
    */
   revalidate?: { seconds: number; tags: string[] };
+  /** The browser's request: when the visitor leaves, the API call is cut too, so its work stops. */
+  signal?: AbortSignal;
 }
 
 export interface ApiFailure {
@@ -122,7 +124,10 @@ export async function apiRequest<T>(path: string, init: ApiInit = {}): Promise<A
       redirect: "manual",
       headers: { ...fwd, accept: "application/json", ...(hasBody ? { "content-type": "application/json" } : {}), ...init.headers },
       body: hasBody ? JSON.stringify(init.body) : undefined,
-      signal: AbortSignal.timeout(init.timeoutMs ?? (method === "GET" ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS)),
+      signal: (() => {
+        const timeout = AbortSignal.timeout(init.timeoutMs ?? (method === "GET" ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS));
+        return init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+      })(),
     });
     text = await res.text();
   } catch (e) {
@@ -147,7 +152,7 @@ export async function apiRequest<T>(path: string, init: ApiInit = {}): Promise<A
  * the wait for the response head, so a long stream is never cut; `signal` (the browser's request)
  * still ends it when the visitor leaves. A non-2xx answer is read and returned as a failure.
  */
-export async function apiStream(path: string, init: ApiInit & { accept: string; signal?: AbortSignal }): Promise<{ ok: true; res: Response } | ApiFailure> {
+export async function apiStream(path: string, init: ApiInit & { accept: string }): Promise<{ ok: true; res: Response } | ApiFailure> {
   const url = urlFor(path, init.query);
   if (!(url instanceof URL)) return url;
   const head = new AbortController();

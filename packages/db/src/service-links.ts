@@ -10,10 +10,10 @@ import { readSecretValues } from "./index.ts";
 const refersTo = (value: string | null, serviceId: string): boolean => !!value && value.startsWith("\u0000") && value.includes(serviceId);
 
 /** The apps of a service's environment that run code and link to it, directly or from a shared variable. */
-export async function linkedApps(db: Tx, access: SecretAccess, service: { id: string; environmentId: string }): Promise<Array<{ id: string; name: string }>> {
+export async function linkedApps(db: Tx, access: SecretAccess, service: { id: string; environmentId: string }): Promise<Array<{ id: string; name: string; displayName?: string | null }>> {
   const apps = await db.app.findMany({
     where: { environmentId: service.environmentId, kind: { in: ["frontend", "backend", "bot"] } },
-    select: { id: true, name: true },
+    select: { id: true, name: true, displayName: true },
     orderBy: { name: "asc" },
   });
   if (!apps.length) return [];

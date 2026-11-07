@@ -1,5 +1,11 @@
 import type { TimePrefs } from "./types";
 
+/**
+ * The name people read for an app: its display name, else its name. The name itself stays the app's
+ * identity (containers, links, preview hosts, the CLI), so it shows beside the label where it is typed.
+ */
+export const appTitle = (a: { name: string; displayName?: string | null }): string => a.displayName || a.name;
+
 export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 

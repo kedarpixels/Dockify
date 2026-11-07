@@ -13,7 +13,7 @@ import { followOnly, requestVercelDeploy } from "../integrations/vercel.ts";
 import { appLifecycleHandlers } from "./handlers.ts";
 
 export const APPS_ENDPOINTS = [
-  "apps.deploy", "apps.get", "apps.patch", "apps.delete", "apps.start", "apps.stop", "apps.restart", "apps.config.get", "apps.config.patch",
+  "apps.deploy", "apps.get", "apps.patch", "apps.rename", "apps.delete", "apps.start", "apps.stop", "apps.restart", "apps.config.get", "apps.config.patch",
 ] as const satisfies readonly EndpointId[];
 
 const STATEFUL = new Set(["postgres", "redis", "s3"]);

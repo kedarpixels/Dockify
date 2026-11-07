@@ -89,7 +89,7 @@ export function createAlertRunner(
     const apps = await db.app.findMany({
       where: appsHere(serverId),
       select: {
-        id: true, name: true, desiredState: true, deployTarget: true, currentDeploymentId: true, status: true,
+        id: true, name: true, displayName: true, desiredState: true, deployTarget: true, currentDeploymentId: true, status: true,
         deployments: { where: { status: { in: ["queued", "building", "deploying", "cancelling"] } }, select: { id: true }, take: 1 },
       },
     });
@@ -99,7 +99,8 @@ export function createAlertRunner(
       const busy = a.status === "deploying" || a.deployments.length > 0;
       map.set(a.id, {
         id: a.id,
-        name: a.name,
+        // An alert's detail reads as the dashboard does: the display name when the app has one.
+        name: a.displayName || a.name,
         expectRunning: a.desiredState === "running" && a.deployTarget === "server" && !!a.currentDeploymentId && !busy,
         container: !sampler.dockerSeen
           ? undefined

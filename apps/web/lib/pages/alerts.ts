@@ -151,7 +151,7 @@ async function write<T>(path: string, method: "POST" | "PATCH" | "PUT" | "DELETE
 const previewApp = (id: string | null): AlertApp | null => {
   if (!id) return null;
   const r = buildPreviewOverview(new Date()).resources.find((x) => x.id === id);
-  return r ? { id: r.id, name: r.name, kind: r.kind, projectSlug: r.projectSlug, environment: r.environment } : null;
+  return r ? { id: r.id, name: r.name, ...(r.displayName ? { displayName: r.displayName } : {}), kind: r.kind, projectSlug: r.projectSlug, environment: r.environment } : null;
 };
 
 export function createRule(input: RuleInput): Promise<RouteAnswer<AlertRule>> {
@@ -203,7 +203,7 @@ function buildPreviewAlerts(at: Date): AlertsPayload {
   const resources = buildPreviewOverview(at).resources;
   const app = (project: string, name: string, env = "production"): AlertApp => {
     const r = resources.find((x) => x.projectSlug === project && x.name === name && x.environment === env)!;
-    return { id: r.id, name: r.name, kind: r.kind, projectSlug: r.projectSlug, environment: r.environment };
+    return { id: r.id, name: r.name, ...(r.displayName ? { displayName: r.displayName } : {}), kind: r.kind, projectSlug: r.projectSlug, environment: r.environment };
   };
   const dbPg = app("brightlane", "postgres");
   const chatBot = app("inkwell", "chat-bot");

@@ -167,6 +167,8 @@ export const POLICIES = {
   "apps.jobs.run.get": session("viewer", "read"),
   "apps.get": session("viewer", "read"),
   "apps.patch": elevated("admin"),
+  /** The name people read, an app setting like the rest: the same step-up as apps.patch and projects.patch. */
+  "apps.rename": elevated("admin"),
   "apps.delete": elevated("admin"),
   "apps.logs": session("viewer", "read"),
   "apps.deploy": session("admin", "deploy"),
@@ -321,6 +323,9 @@ export const POLICIES = {
   /** Authenticated by the GitHub HMAC signature, checked by the handler. */
   "webhooks.github": anonymous(),
 
+  /** Read only toward Vercel. The handler keeps plain values and comments to admins; nothing is ever decrypted. */
+  "apps.vercel.project": session("viewer", "read"),
+  "apps.vercel.env": session("viewer", "read"),
   /** The same reader rule as every other log, whichever server the lines come from. */
   "apps.vercel.logs": session("viewer", "read"),
   "apps.vercel.logs.stream": session("viewer", "read"),

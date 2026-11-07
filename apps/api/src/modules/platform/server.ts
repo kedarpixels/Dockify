@@ -227,7 +227,7 @@ async function snapshot(ctx: Ctx, env: PlatformEnv, actor: Actor | null) {
     ctx.db.app.findMany({
       where: { containerId: { not: null }, ...view.appWhere },
       select: {
-        id: true, name: true, kind: true, status: true, containerId: true, containerStartedAt: true,
+        id: true, name: true, displayName: true, kind: true, status: true, containerId: true, containerStartedAt: true,
         environment: { select: { name: true, project: { select: { slug: true } } } },
         metrics: { where: { resolution: "raw", at: { gte: since } }, orderBy: { at: "desc" }, take: 1 },
       },
@@ -275,7 +275,7 @@ async function snapshot(ctx: Ctx, env: PlatformEnv, actor: Actor | null) {
       return {
         id: view.hostDetails ? (a.containerId ?? a.id) : a.id,
         name: a.name,
-        app: { id: a.id, name: a.name, projectSlug: a.environment.project.slug, environment: a.environment.name, kind: a.kind },
+        app: { id: a.id, name: a.name, ...(a.displayName ? { displayName: a.displayName } : {}), projectSlug: a.environment.project.slug, environment: a.environment.name, kind: a.kind },
         cpuPct: m ? round(m.cpuPct) : 0,
         memoryBytes: m ? Number(m.memoryBytes) : 0,
         restarts: m?.restarts ?? 0,

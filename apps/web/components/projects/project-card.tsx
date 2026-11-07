@@ -10,7 +10,7 @@ import { When } from "@/components/ui/when";
 import { deployMessage } from "@/lib/deploy-source";
 import { APP_STATUS_LABEL, APP_TONE, DEPLOY_LABEL, DEPLOY_TONE, upCount, type ProjectCard as ProjectSummary } from "@/lib/derive";
 import { showsEnvironments } from "@/lib/environments";
-import { plural } from "@/lib/format";
+import { appTitle, plural } from "@/lib/format";
 import { commitHref, githubRepo } from "@/lib/git-links";
 import type { AppStatus, RecentDeployment } from "@/lib/types";
 
@@ -47,8 +47,8 @@ export function DeployRefs({ d, withApp = false }: { d: RecentDeployment; withAp
         </GitLink>
       ) : null}
       {withApp ? (
-        <span className="pj-meta-item ellipsis" title={d.app.name}>
-          {d.app.name}
+        <span className="pj-meta-item ellipsis" title={appTitle(d.app)}>
+          {appTitle(d.app)}
         </span>
       ) : null}
     </span>
@@ -106,7 +106,7 @@ function Pips({ apps }: { apps: ProjectSummary["apps"] }) {
   return (
     <span className="pips" role="img" aria-label={said || "No apps"}>
       {apps.map((a) => (
-        <i key={a.id} data-tone={APP_TONE[a.status]} data-tip={`${a.name}, ${APP_STATUS_LABEL[a.status].toLowerCase()}`} />
+        <i key={a.id} data-tone={APP_TONE[a.status]} data-tip={`${appTitle(a)}, ${APP_STATUS_LABEL[a.status].toLowerCase()}`} />
       ))}
     </span>
   );
@@ -159,8 +159,8 @@ export function ProjectCard({ p, now, variant, delay = 0 }: { p: ProjectSummary;
                 <li key={a.id}>
                   <Link href={`/apps/${a.id}`} className="soft-row pj-app">
                     <AppIcon id={a.id} kind={a.kind} />
-                    <span className="pj-app-name ellipsis" title={a.name}>
-                      {a.name}
+                    <span className="pj-app-name ellipsis" title={appTitle(a)}>
+                      {appTitle(a)}
                     </span>
                     {multiEnv ? <EnvTag env={a.environment} quiet compact /> : null}
                     <span className="pj-kind">{KIND_LABEL[a.kind]}</span>

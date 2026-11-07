@@ -238,6 +238,7 @@ export const deploymentHandlers: Handlers = {
         { branch: { contains: q, mode: "insensitive" } },
         { commitSha: { startsWith: q.toLowerCase() } },
         { app: { name: { contains: q, mode: "insensitive" } } },
+        { app: { displayName: { contains: q, mode: "insensitive" } } },
       ] });
     }
     if (query.from) and.push({ createdAt: { gte: dayStart(query.from) } });

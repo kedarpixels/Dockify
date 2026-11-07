@@ -29,7 +29,7 @@ export interface DeploymentRow extends ExternalColumns {
 
 export function recentDeployment(
   d: DeploymentRow,
-  app: { id: string; name: string; kind: RecentDeployment["app"]["kind"]; repo: string | null; image?: string | null },
+  app: { id: string; name: string; displayName?: string | null; kind: RecentDeployment["app"]["kind"]; repo: string | null; image?: string | null },
   projectSlug: string,
   environment: string,
   people: People = NO_PEOPLE,
@@ -43,7 +43,7 @@ export function recentDeployment(
     trigger: d.trigger,
     createdAt: iso(d.createdAt),
     finishedAt: d.finishedAt ? iso(d.finishedAt) : null,
-    app: { id: app.id, name: app.name, ...(app.kind ? { kind: app.kind } : {}) },
+    app: { id: app.id, name: app.name, ...(app.displayName ? { displayName: app.displayName } : {}), ...(app.kind ? { kind: app.kind } : {}) },
     projectSlug,
     environment,
     repo: app.repo,

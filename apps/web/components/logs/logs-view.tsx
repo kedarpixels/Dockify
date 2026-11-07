@@ -16,7 +16,7 @@ import { Select, type SelectOption } from "@/components/ui/select";
 import { Skel } from "@/components/ui/skeleton";
 import { deriveNotices, notRunning } from "@/lib/derive";
 import { downloadText } from "@/lib/download";
-import { clause, plural } from "@/lib/format";
+import { appTitle, clause, plural } from "@/lib/format";
 import { useNow, useOverview } from "@/lib/hooks";
 import type { LogsResult } from "@/lib/pages/logs";
 import type { OverviewResult } from "@/lib/types";
@@ -110,7 +110,8 @@ export function LogsView({ initial, overview, filters: start }: { initial: LogsR
   const catalogue = useMemo(() => ov.data?.resources ?? [], [ov.data]);
   const pickerApps = useMemo<PickerApp[]>(() => {
     const order = catalogue.map((r) => r.id);
-    return catalogue.map((r) => ({ id: r.id, name: r.name, kind: r.kind, project: r.projectSlug, env: r.environment, stopped: notRunning(r.status), onVercel: !!r.onVercel, slot: colorSlot(r.id, order) }));
+    // The picker reads each app by the name people know it by: its display name when it has one.
+    return catalogue.map((r) => ({ id: r.id, name: appTitle(r), kind: r.kind, project: r.projectSlug, env: r.environment, stopped: notRunning(r.status), onVercel: !!r.onVercel, slot: colorSlot(r.id, order) }));
   }, [catalogue]);
   // A picked app on Vercel prints nothing here: its lines are read live on its own page, never stored.
   const pickedOnVercel = pickerApps.filter((a) => a.onVercel && filters.apps.includes(a.id));

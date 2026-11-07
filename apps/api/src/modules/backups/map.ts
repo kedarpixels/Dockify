@@ -38,6 +38,8 @@ export interface BackupRowIn {
   restoreTestError: string | null;
   expiredAt: Date | null;
   destination: DestinationRow | null;
+  /** The app today, while it exists: its display name is the one shown. */
+  app?: { displayName: string | null } | null;
 }
 
 
@@ -84,7 +86,7 @@ export function toRun(b: BackupRowIn): BackupRun {
     id: b.id,
     scheduleId: b.trigger === "schedule" ? b.sourceAppId : null,
     resourceId: b.sourceAppId,
-    database: database(b.appSnapshot, b.appId === null ? (b.finishedAt ?? b.createdAt) : null),
+    database: { ...database(b.appSnapshot, b.appId === null ? (b.finishedAt ?? b.createdAt) : null), ...(b.app?.displayName ? { displayName: b.app.displayName } : {}) },
     status: b.status,
     kind: KIND[b.trigger],
     createdAt: b.createdAt.toISOString(),
@@ -110,6 +112,7 @@ export function toRun(b: BackupRowIn): BackupRun {
 export interface ScheduleAppIn {
   id: string;
   name: string;
+  displayName?: string | null;
   backupEnabled: boolean;
   backupCron: string | null;
   backupTimezone: string;
@@ -141,7 +144,7 @@ export function toSchedule(app: ScheduleAppIn, fingerprint: string | null, fallb
   return {
     id: app.id,
     resourceId: app.id,
-    database: { name: app.name, projectSlug: app.environment.project.slug, environment: app.environment.name, deletedAt: null },
+    database: { name: app.name, ...(app.displayName ? { displayName: app.displayName } : {}), projectSlug: app.environment.project.slug, environment: app.environment.name, deletedAt: null },
     cron: app.backupCron ?? DEFAULT_CRON,
     timezone: app.backupTimezone,
     retentionDays: app.backupRetentionDays,

@@ -143,9 +143,14 @@ export const endpoints = {
   "apps.jobs.run.get": ep({ method: "GET", path: `${V1}/apps/:id/jobs/:jobId/runs/:runId`, params: J.JobRunParams, response: J.JobRunDetail }),
   "apps.get": ep({ method: "GET", path: `${V1}/apps/:id`, params: Ap.AppParams, response: Ap.AppDetail }),
   "apps.patch": ep({ method: "PATCH", path: `${V1}/apps/:id`, params: Ap.AppParams, body: Ap.AppPatchBody, response: Ap.AppDetail }),
+  "apps.rename": ep({ method: "PUT", path: `${V1}/apps/:id/name`, params: Ap.AppParams, body: Ap.AppRenameBody, response: Ap.AppDetail }),
   "apps.delete": ep({ method: "DELETE", path: `${V1}/apps/:id`, params: Ap.AppParams, body: P.ConfirmBody, kind: "none" }),
   "apps.logs": ep({ method: "GET", path: `${V1}/apps/:id/logs`, params: Ap.AppParams, query: Ap.AppLogsQuery, response: Ap.AppLogs }),
   "apps.vercel.sync": ep({ method: "POST", path: `${V1}/apps/:id/vercel/sync`, params: Ap.AppParams, body: EmptyBody, kind: "none", status: 202 }),
+  /** The Vercel project an app links to, read live from Vercel (cached briefly): settings, production, domains. */
+  "apps.vercel.project": ep({ method: "GET", path: `${V1}/apps/:id/vercel/project`, params: Ap.AppParams, response: I.VercelProjectView }),
+  /** The linked Vercel project's environment variables. Never decrypted; plain values for admins only. */
+  "apps.vercel.env": ep({ method: "GET", path: `${V1}/apps/:id/vercel/env`, params: Ap.AppParams, response: I.VercelEnvList }),
   /** A Vercel app's runtime logs, read from Vercel (at most 256 lines; Vercel keeps them per plan). */
   "apps.vercel.logs": ep({ method: "GET", path: `${V1}/apps/:id/vercel/logs`, params: Ap.AppParams, query: S.VercelLogsQuery, response: S.VercelLogPage }),
   /** SSE of a Vercel app's runtime logs as Vercel prints them: events `line` (id = line id) and `end`. */

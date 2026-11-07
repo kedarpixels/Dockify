@@ -20,7 +20,7 @@ import { projectLimit } from "./scope.ts";
 import { updateNotices } from "../platform/updates/notices.ts";
 
 const RECENT = 10;
-const DEPLOYMENT_ROW = { app: { select: { id: true, name: true, kind: true, image: true, gitRepository: true, environment: { select: { name: true, project: { select: { slug: true } } } } } } } as const;
+const DEPLOYMENT_ROW = { app: { select: { id: true, name: true, displayName: true, kind: true, image: true, gitRepository: true, environment: { select: { name: true, project: { select: { slug: true } } } } } } } as const;
 const HEALTH_DAYS = 30;
 const DAY_MS = 86_400_000;
 const KINDS = ["frontend", "backend", "bot", "postgres", "redis", "s3"] as const;
@@ -64,7 +64,7 @@ export async function overview(db: Db, actor: Actor | null, now = Date.now(), op
     db.deployment.findMany({ where: depWhere, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: RECENT, include: DEPLOYMENT_ROW }),
     db.app.findMany({
       where: appWhere,
-      select: { id: true, name: true, kind: true, status: true, deployTarget: true, environment: { select: { name: true, project: { select: { id: true, slug: true } } } } },
+      select: { id: true, name: true, displayName: true, kind: true, status: true, deployTarget: true, environment: { select: { name: true, project: { select: { id: true, slug: true } } } } },
       orderBy: [{ environment: { project: { slug: "asc" } } }, { environment: { name: "asc" } }, { name: "asc" }],
       take: 500,
     }),
@@ -102,7 +102,7 @@ export async function overview(db: Db, actor: Actor | null, now = Date.now(), op
     trigger: d.trigger,
     createdAt: d.createdAt.toISOString(),
     finishedAt: d.finishedAt?.toISOString() ?? null,
-    app: { id: d.app.id, name: d.app.name, kind: d.app.kind },
+    app: { id: d.app.id, name: d.app.name, ...(d.app.displayName ? { displayName: d.app.displayName } : {}), kind: d.app.kind },
     projectSlug: d.app.environment.project.slug,
     environment: d.app.environment.name,
     repo: d.app.gitRepository,
@@ -153,7 +153,7 @@ export async function overview(db: Db, actor: Actor | null, now = Date.now(), op
     recentDeployments: recent.map(row),
     lastDeployments: last.map(row),
     resources: apps.map((a) => ({
-      id: a.id, name: a.name, kind: a.kind, status: a.status,
+      id: a.id, name: a.name, ...(a.displayName ? { displayName: a.displayName } : {}), kind: a.kind, status: a.status,
       projectId: a.environment.project.id, projectSlug: a.environment.project.slug, environment: a.environment.name,
       ...(a.deployTarget === "vercel" ? { onVercel: true as const } : {}),
     })),

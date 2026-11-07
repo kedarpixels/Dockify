@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AppView } from "@/components/project-detail/app-view";
 import { getOverview } from "@/lib/data";
+import { appTitle } from "@/lib/format";
 import { getAppPage } from "@/lib/pages/project-detail";
 
 type Props = { params: Promise<{ id: string }> };
@@ -8,7 +9,7 @@ type Props = { params: Promise<{ id: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const page = await getAppPage(decodeURIComponent((await params).id));
   const app = page.data?.app;
-  return { title: app ? `${app.projectSlug} / ${app.name}` : "App" };
+  return { title: app ? `${app.projectSlug} / ${appTitle(app)}` : "App" };
 }
 
 /* The open tab lives in ?tab=, read on the client by useUrlTab. */

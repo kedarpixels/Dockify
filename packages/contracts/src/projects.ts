@@ -20,6 +20,8 @@ export const ProjectDomain = z.object({
   host: z.string(),
   appId: z.string(),
   appName: z.string(),
+  /** The app's display name, when it has one. */
+  appDisplayName: z.string().optional(),
   environment: z.string(),
   tls: TlsStatus,
   expiresAt: Iso.nullable(),
@@ -285,7 +287,10 @@ export function previewCeiling(s: Pick<PreviewSettings, "maxConcurrent" | "cpuLi
 export const PreviewStatus = z.enum(["building", "ready", "asleep", "failed", "blocked", "closing", "closed"]);
 export const PreviewApp = z.object({
   appId: z.string(),
+  /** The app's name: its preview host is pr-<n>-<name>. */
   name: z.string(),
+  /** What people read as its name, when it has one. */
+  displayName: z.string().optional(),
   kind: AppKind,
   url: z.string().nullable(),
   /** The newest deployment of this app in the preview. */

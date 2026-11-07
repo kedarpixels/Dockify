@@ -78,6 +78,11 @@ const RANGES: Array<[string, string, z.ZodNumber]> = [
   ["projects_preview_limits", "previewPidsLimit", PS.pidsLimit],
   ["instance_preview_server_max", "previewServerMax", PS.serverMaxConcurrent],
 ];
+/** CHECK lengths a contract string writes straight into, as [check, column, schema]. */
+const LENGTHS: Array<[string, string, z.ZodString]> = [
+  ["apps_display_name_length", "displayName", contracts.AppDisplayName],
+];
+
 /** CHECKs no contract list or range feeds, each read by hand against what writes it. A new CHECK must pick a group. */
 const REVIEWED = new Set([
   "instance_singleton", "apps_one_source", "apps_port_range", "apps_replicas_range", "apps_retention_min", "apps_sysctls_object",
@@ -123,8 +128,17 @@ describe("contracts against the database", () => {
     }
   });
 
+  it("gives a CHECK length at least the room the contract allows", () => {
+    for (const [name, column, schema] of LENGTHS) {
+      const m = new RegExp(`char_length\\("${column}"\\) BETWEEN (\\d+) AND (\\d+)`).exec(checks.get(name) ?? "");
+      expect(m, `${name} on ${column}`).not.toBeNull();
+      expect(schema.minLength!, column).toBeGreaterThanOrEqual(Number(m![1]));
+      expect(schema.maxLength!, column).toBeLessThanOrEqual(Number(m![2]));
+    }
+  });
+
   it("makes every CHECK choose: compared with a contract, or reviewed by hand", () => {
-    const covered = new Set([...Object.keys(LISTS), ...RANGES.map((r) => r[0]), ...REVIEWED]);
+    const covered = new Set([...Object.keys(LISTS), ...RANGES.map((r) => r[0]), ...LENGTHS.map((r) => r[0]), ...REVIEWED]);
     expect([...checks.keys()].filter((c) => !covered.has(c))).toEqual([]);
     expect([...covered].filter((c) => !checks.has(c))).toEqual([]);
   });
@@ -177,6 +191,30 @@ describe.skipIf(!url)("contracts against a migrated Postgres", () => {
       expect(contracts.RepoPath.safeParse(rootDir).success, rootDir).toBe(false);
       await expect(app({ rootDir })).rejects.toThrow(/apps_root_dir_relative/);
     }
+  });
+
+  it("stores every display name the contract accepts, and two apps of an environment never show the same one", async () => {
+    for (const displayName of ["x", "Storefront", "Café Zürich 東京", "x".repeat(60), null]) {
+      if (displayName !== null) expect(contracts.AppDisplayName.safeParse(displayName).success, displayName).toBe(true);
+      await expect(app({ displayName })).resolves.toBeTruthy();
+    }
+    expect(contracts.AppDisplayName.safeParse("x".repeat(61)).success).toBe(false);
+    await expect(app({ displayName: "x".repeat(61) })).rejects.toThrow(/apps_display_name_length/);
+    await expect(app({ displayName: "" })).rejects.toThrow(/apps_display_name_length/);
+    // The same name in another case, in one environment: refused by the index; in another environment: fine.
+    await db.$transaction(async (tx) => {
+      const project = await tx.project.create({ data: { slug: `names-${Date.now()}`, name: "Names" } });
+      const prod = await tx.environment.create({ data: { projectId: project.id, name: "production", branch: "main" } });
+      const dev = await tx.environment.create({ data: { projectId: project.id, name: "development", branch: "dev" } });
+      const serverId = await defaultServerId(tx);
+      await tx.app.create({ data: { environmentId: prod.id, serverId, name: "web", kind: "frontend", displayName: "Storefront" } });
+      await tx.app.create({ data: { environmentId: dev.id, serverId, name: "web", kind: "frontend", displayName: "STOREFRONT" } });
+      await tx.app.create({ data: { environmentId: prod.id, serverId, name: "api", kind: "backend" } });
+      await expect(tx.app.update({ where: { environmentId_name: { environmentId: prod.id, name: "api" } }, data: { displayName: "storefront" } })).rejects.toThrow(/Unique constraint/);
+      throw ROLLBACK;
+    }).catch((e: unknown) => {
+      if (e !== ROLLBACK) throw e;
+    });
   });
 
   it("has the enums and the CHECKs the migrations say", async () => {

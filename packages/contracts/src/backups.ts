@@ -4,6 +4,8 @@ import { StorageProvider } from "./integrations.ts";
 
 export const BackupDatabase = z.object({
   name: z.string(),
+  /** The app's display name today, while it has one and still exists. */
+  displayName: z.string().optional(),
   projectSlug: z.string(),
   environment: z.string(),
   deletedAt: Iso.nullable().optional(),

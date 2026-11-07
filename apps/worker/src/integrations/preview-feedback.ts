@@ -4,7 +4,7 @@
  * through building, ready, asleep, failed, blocked and deleted. The worker is the only writer; the
  * api and the pipeline queue preview_feedback, and this job renders whatever the row says now.
  */
-import { projects as P } from "@dockify/contracts";
+import { appLabel, projects as P } from "@dockify/contracts";
 import type { Db, PreviewStatus, SecretVault, ShownAppIconRow } from "@dockify/db";
 import { utcTime } from "@dockify/email";
 import { jsonOf, type HttpClient } from "@dockify/net-guard";
@@ -229,7 +229,7 @@ export async function runPreviewFeedback(deps: FeedbackDeps, payload: unknown): 
         orderBy: { createdAt: "asc" },
         select: {
           hostname: true, currentDeploymentId: true,
-          app: { select: { ...SHOWN_APP_ICON, name: true, port: true, gitInstallation: { select: { installationId: true } } } },
+          app: { select: { ...SHOWN_APP_ICON, name: true, displayName: true, port: true, gitInstallation: { select: { installationId: true } } } },
           deployments: { orderBy: { createdAt: "desc" }, take: 1, select: { status: true, error: true } },
         },
       },
@@ -256,7 +256,8 @@ export async function runPreviewFeedback(deps: FeedbackDeps, payload: unknown): 
     prNumber: env.prNumber, status: env.status, reason: env.reason, error: env.error, lines: failureLines(failedBuild?.error ?? null), updatedAt: env.updatedAt, fromFork: env.fromFork,
     isolatedDb: env.isolatedDb, isolation: P.previewIsolation(env), passwordProtected: env.project.previewAccess === "password", baseEnvironment: env.baseEnvironment.name,
     // Only what answers gets a link: a first build that failed serves nothing.
-    apps: env.apps.map((a) => ({ name: a.app.name, url: a.app.port !== null && live && a.currentDeploymentId ? `https://${a.hostname}` : null, icon: iconOf(a.app) })),
+    // Each row names the app as the dashboard shows it, its display name when it has one.
+    apps: env.apps.map((a) => ({ name: appLabel(a.app), url: a.app.port !== null && live && a.currentDeploymentId ? `https://${a.hostname}` : null, icon: iconOf(a.app) })),
     dashboardUrl: deps.publicUrl ? `${deps.publicUrl.replace(/\/+$/, "")}/projects/${encodeURIComponent(env.project.slug)}?tab=previews` : null,
     idleMinutes: env.project.previewIdleMinutes, ttlHours: env.project.previewTtlHours,
   };

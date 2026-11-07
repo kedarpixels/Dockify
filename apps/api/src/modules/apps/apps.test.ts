@@ -22,7 +22,7 @@ const base: AppRow = {
 };
 
 const row = (over: Record<string, unknown> = {}) => ({
-  ...base, status: "running", desiredState: "running", replicas: 1, currentDeploymentId: "d1", environmentId: "e1",
+  ...base, displayName: null, status: "running", desiredState: "running", replicas: 1, currentDeploymentId: "d1", environmentId: "e1",
   primaryDomain: { hostname: "web.example.com" },
   domains: [{ hostname: "web.example.com" }],
   environment: { name: "production", projectId: PROJECT, project: { slug: "shop" } },
@@ -31,15 +31,17 @@ const row = (over: Record<string, unknown> = {}) => ({
 });
 
 /** A fake database that records every write the handlers make. */
-function fakeDb(app: Record<string, unknown> | null, opts: { inFlight?: boolean; vercel?: Record<string, unknown> | null } = {}) {
+function fakeDb(app: Record<string, unknown> | null, opts: { inFlight?: boolean; vercel?: Record<string, unknown> | null; shown?: Record<string, unknown> | null; raceLost?: boolean } = {}) {
   const jobs: Array<Record<string, unknown>> = [];
   const audits: Array<Record<string, unknown>> = [];
   const updates: Array<Record<string, unknown>> = [];
   const deleted: string[] = [];
   const secretsDeleted: string[][] = [];
+  const lookups: Array<Record<string, unknown>> = [];
+  const locks: string[] = [];
   let current = app;
   const tx = {
-    $executeRaw: async () => 0,
+    $executeRaw: async (_s: TemplateStringsArray, ...v: unknown[]) => { locks.push(String(v[0])); return 0; },
     deployment: {
       findFirst: async () => (opts.inFlight ? { id: "d-open", app: { name: "web" } } : null),
       findMany: async () => [{ envSecretId: "s-dep" }],
@@ -50,9 +52,12 @@ function fakeDb(app: Record<string, unknown> | null, opts: { inFlight?: boolean;
       createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => { jobs.push(...data); return { count: data.length }; },
     },
     app: {
-      findFirst: async () => null,
+      findFirst: async (q: Record<string, unknown>) => { lookups.push(q); return opts.shown ?? null; },
       findUnique: async () => current,
-      update: async ({ data }: { data: Record<string, unknown> }) => { updates.push(data); current = { ...current, ...data }; return current; },
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        if (opts.raceLost && "displayName" in data) throw Object.assign(new Error("unique"), { code: "P2002" });
+        updates.push(data); current = { ...current, ...data }; return current;
+      },
       delete: async ({ where }: { where: { id: string } }) => { deleted.push(where.id); return current; },
       findMany: async () => [{ id: APP, name: "web", environmentId: "e1", containerId: "c1", passwordSecretId: "s-pw", volumes: [{ name: "v1" }], domains: [], deployments: [{ imageId: "sha256:one" }, { imageId: "sha256:one" }, { imageId: "sha256:two" }] }],
     },
@@ -69,7 +74,7 @@ function fakeDb(app: Record<string, unknown> | null, opts: { inFlight?: boolean;
     integration: { findUnique: async () => opts.vercel ?? null },
     $transaction: async (fn: (t: unknown) => unknown) => fn(tx),
   };
-  return { db, jobs, audits, updates, deleted, secretsDeleted };
+  return { db, jobs, audits, updates, deleted, secretsDeleted, lookups, locks };
 }
 
 function call<K extends keyof typeof appsHandlers & string>(id: K, db: unknown, input: { body?: unknown; actor?: Actor } = {}): Promise<unknown> {
@@ -316,5 +321,96 @@ describe("what the app page shows", () => {
     // Oldest first, as the card draws it.
     expect(out.metrics![0]!.cpuPct).toBe(1.5);
     expect(out.metrics![1]!.cpuPct).toBe(3.2);
+  });
+});
+
+describe("apps.rename", () => {
+  const viewer = { kind: "session", userId: "v", name: "Viewer", role: "viewer", sessionId: "s2", elevated: true } as Actor;
+  const readToken = { ...limitedToken, scope: "read", projectIds: [PROJECT] } as Actor;
+
+  it("stores the display name and nothing else, with one audit row naming both names", async () => {
+    const f = fakeDb(row());
+    const out = (await call("apps.rename", f.db, { body: { displayName: "Storefront" } })) as Record<string, unknown>;
+    // The identity stays: only displayName is written, and no job (container, route, link) is queued.
+    expect(f.updates).toEqual([{ displayName: "Storefront" }]);
+    expect(f.jobs).toEqual([]);
+    expect(out).toMatchObject({ id: APP, name: "web", displayName: "Storefront", url: "https://web.example.com" });
+    expect(endpoints["apps.rename"].response.safeParse(out).success).toBe(true);
+    expect(f.audits).toHaveLength(1);
+    expect(f.audits[0]).toMatchObject({
+      category: "config", action: "app.rename", verb: "renamed", targetType: "app", targetId: APP, targetLabel: "shop/production/web",
+      suffix: "from web to Storefront", changes: [{ key: "displayName", before: null, after: "Storefront" }], actorName: "Owner", ip: "203.0.113.1",
+    });
+    // Checked under the environment's lock, against every other app of the environment, ignoring case.
+    expect(f.locks).toEqual(["app-name:e1"]);
+    expect(f.lookups[0]).toMatchObject({ where: { environmentId: "e1", id: { not: APP }, OR: [{ name: { equals: "Storefront", mode: "insensitive" } }, { displayName: { equals: "Storefront", mode: "insensitive" } }] } });
+  });
+
+  it("goes back to the name with null or the name itself, and audits that too", async () => {
+    const f = fakeDb(row({ displayName: "Storefront" }));
+    const out = (await call("apps.rename", f.db, { body: { displayName: null } })) as Record<string, unknown>;
+    expect(f.updates).toEqual([{ displayName: null }]);
+    expect(out.displayName).toBeUndefined();
+    expect(f.audits[0]).toMatchObject({ action: "app.rename", suffix: "from Storefront to web", changes: [{ key: "displayName", before: "Storefront", after: null }] });
+
+    const same = fakeDb(row({ displayName: "Storefront" }));
+    await call("apps.rename", same.db, { body: { displayName: "web" } });
+    expect(same.updates).toEqual([{ displayName: null }]);
+    // A different case of the name is a display name of its own.
+    const cased = fakeDb(row());
+    await call("apps.rename", cased.db, { body: { displayName: "Web" } });
+    expect(cased.updates).toEqual([{ displayName: "Web" }]);
+  });
+
+  it("writes nothing and audits nothing when the name does not change", async () => {
+    const f = fakeDb(row({ displayName: "Storefront" }));
+    await call("apps.rename", f.db, { body: { displayName: "Storefront" } });
+    const g = fakeDb(row());
+    await call("apps.rename", g.db, { body: { displayName: null } });
+    expect([...f.updates, ...g.updates, ...f.audits, ...g.audits]).toEqual([]);
+  });
+
+  it("refuses a name another app of the environment shows or answers to, and a rename that lost the race", async () => {
+    const byName = fakeDb(row(), { shown: { name: "storefront", displayName: null } });
+    await expect(call("apps.rename", byName.db, { body: { displayName: "Storefront" } })).rejects.toMatchObject({ status: 409, code: "NAME_TAKEN", extra: { field: "displayName" } });
+    await expect(call("apps.rename", byName.db, { body: { displayName: "Storefront" } })).rejects.toThrow("Another app in this environment is called Storefront. Pick another name.");
+    const byLabel = fakeDb(row(), { shown: { name: "api", displayName: "Storefront" } });
+    await expect(call("apps.rename", byLabel.db, { body: { displayName: "storefront" } })).rejects.toThrow("Storefront in this environment already goes by that name. Pick another one.");
+    const race = fakeDb(row(), { raceLost: true });
+    await expect(call("apps.rename", race.db, { body: { displayName: "Storefront" } })).rejects.toMatchObject({ status: 409, code: "NAME_TAKEN" });
+    expect([...byName.updates, ...byLabel.updates, ...race.updates, ...byName.audits, ...byLabel.audits, ...race.audits]).toEqual([]);
+  });
+
+  it("checks the name in the contract: trimmed, 1 to 60 characters, one line of visible text", () => {
+    const body = endpoints["apps.rename"].body!;
+    expect(body.parse({ displayName: "  Storefront  " })).toEqual({ displayName: "Storefront" });
+    expect(body.safeParse({ displayName: "Shop: Café (EU) 2" }).success).toBe(true);
+    expect(body.safeParse({ displayName: "x".repeat(60) }).success).toBe(true);
+    expect(body.safeParse({ displayName: null }).success).toBe(true);
+    for (const bad of ["", "   ", "x".repeat(61), "a\nb", "a\u0000b", "evil\u202Etxt", "zero\u200Bwidth"]) expect(body.safeParse({ displayName: bad }).success, JSON.stringify(bad)).toBe(false);
+    expect(body.safeParse({ displayName: "Shop", name: "shop" }).success).toBe(false);
+    expect(body.safeParse({}).success).toBe(false);
+  });
+
+  it("is an elevated admin write: a viewer and every token only read the name", async () => {
+    expect(describePolicy(POLICIES["apps.rename"])).toBe(describePolicy(POLICIES["apps.patch"]));
+    expect(POLICIES["apps.rename"]).toEqual({ access: "elevated", role: "admin" });
+    const { app } = await buildApp({ db: noDb(), ring: testRing(), config: testConfig(), logger: false });
+    const res = await app.inject({ method: "PUT", url: `/api/v1/apps/${APP}/name`, payload: { displayName: "Storefront" } });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+    // Reads carry it to every reader, a viewer and a token limited to the project included.
+    for (const actor of [viewer, readToken]) {
+      const out = (await call("apps.get", fakeDb(row({ displayName: "Storefront" })).db, { actor })) as Record<string, unknown>;
+      expect(out).toMatchObject({ name: "web", displayName: "Storefront" });
+    }
+    await expect(call("apps.rename", fakeDb(row()).db, { body: { displayName: "Storefront" }, actor: limitedToken })).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("keeps the name for every identity check: a delete is still confirmed with the name", async () => {
+    const f = fakeDb(row({ displayName: "Storefront" }));
+    await expect(call("apps.delete", f.db, { body: { confirm: "Storefront" } })).rejects.toThrow("Type web to confirm");
+    await call("apps.delete", f.db, { body: { confirm: "web" } });
+    expect(f.deleted).toEqual([APP]);
   });
 });

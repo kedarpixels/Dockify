@@ -10,7 +10,7 @@ import { bytes, plural } from "@/lib/format";
 import { useUtcAt } from "@/lib/time-prefs";
 import type { BackupRun, BackupSchedule, RestoreRequest } from "@/lib/pages/server-backups";
 import { NEW_DB_NAME, isOrphan } from "@/lib/pages/server-backups-shared";
-import { dbLabel, dbRef, placeName, restoreName } from "./util";
+import { dbLabel, dbName, dbRef, placeName, restoreName } from "./util";
 import { hasReservedPrefix, isReservedServiceName, RESERVED_NAME_MESSAGE, RESERVED_SERVICE_MESSAGE } from "@/lib/validation";
 
 /** Backups run on UTC schedules, so every absolute time in these dialogs reads in UTC. */
@@ -163,7 +163,7 @@ export function RunDialog({ onClose, schedules, onConfirm }: { onClose: () => vo
       value: s.resourceId,
       label: (
         <>
-          <span className="sb-muted">{s.database.projectSlug} /</span> {s.database.name}
+          <span className="sb-muted">{s.database.projectSlug} /</span> {dbName(s.database)}
         </>
       ),
       meta: placeName(s.storage),

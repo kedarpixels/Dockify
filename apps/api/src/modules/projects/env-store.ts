@@ -26,14 +26,14 @@ export interface StoredEntry extends Entry {
 export interface ProjectScope {
   projectId: string;
   environments: Array<{ id: string; name: string }>;
-  apps: Array<{ id: string; name: string; environmentId: string; kind: string; serviceRedirectId?: string | null }>;
+  apps: Array<{ id: string; name: string; displayName?: string | null; environmentId: string; kind: string; serviceRedirectId?: string | null }>;
 }
 
 export async function loadScope(tx: Tx, projectId: string): Promise<ProjectScope> {
   const environments = await tx.environment.findMany({ where: { projectId }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
   const apps = await tx.app.findMany({
     where: { environmentId: { in: environments.map((e) => e.id) } },
-    select: { id: true, name: true, environmentId: true, kind: true, serviceRedirectId: true },
+    select: { id: true, name: true, displayName: true, environmentId: true, kind: true, serviceRedirectId: true },
     orderBy: { createdAt: "asc" },
   });
   return { projectId, environments, apps };

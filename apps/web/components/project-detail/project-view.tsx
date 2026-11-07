@@ -26,7 +26,7 @@ import { Corners, Node, Rule, Spacer } from "@/components/ui/rule";
 import { SectionHead } from "@/components/ui/section-head";
 import { TabPanel, Tabs } from "@/components/ui/tabs";
 import { APP_STATUS_LABEL, APP_TONE, deriveNotices } from "@/lib/derive";
-import { plural } from "@/lib/format";
+import { appTitle, plural } from "@/lib/format";
 import { withRepo } from "@/lib/git-links";
 import { showsEnvironments } from "@/lib/environments";
 import { useNow, useOverview } from "@/lib/hooks";
@@ -63,7 +63,7 @@ function AppCard({ a, now, multiEnv, delay, repoUrl }: { a: AppSummary; now: num
           <Link href={`/apps/${a.id}`} className="pj-hd-link">
             <AppIcon id={a.id} kind={a.kind} size="lg" />
             <span className="pj-id">
-              <h2 className="pj-name ellipsis">{a.name}</h2>
+              <h2 className="pj-name ellipsis">{appTitle(a)}</h2>
               <span className="pd-app-sub">
                 {KIND_LABEL[a.kind]}
                 {multiEnv ? <EnvTag env={a.environment} compact /> : null}
@@ -166,7 +166,7 @@ function DomainsTab({ p, now, manage }: { p: ProjectDetail; now: number; manage:
             {p.domains.map((d, i) => (
               <DomainRow
                 key={d.id}
-                d={{ id: d.id, hostname: d.host, appId: d.appId, appName: d.appName, environment: d.environment, tls: { status: d.tls, expiresAt: d.expiresAt } }}
+                d={{ id: d.id, hostname: d.host, appId: d.appId, appName: d.appName, appDisplayName: d.appDisplayName, environment: d.environment, tls: { status: d.tls, expiresAt: d.expiresAt } }}
                 now={now}
                 showTarget
                 delay={Math.min(i, 12) * 30}

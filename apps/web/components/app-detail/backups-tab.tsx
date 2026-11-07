@@ -18,7 +18,7 @@ import { Skel } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { When } from "@/components/ui/when";
 import { describe, errText } from "@/lib/feedback";
-import { plural } from "@/lib/format";
+import { appTitle, plural } from "@/lib/format";
 import { useUtcAt } from "@/lib/time-prefs";
 import type { AppBackups, AppDetail } from "@/lib/pages/project-detail";
 import type { BackupRun, RestoreAccepted, RestoreOutcome, RestoreRequest } from "@/lib/pages/server-backups";
@@ -171,7 +171,7 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
   const running = b?.runs.some((r) => r.status === "running") ?? false;
   const testRunning = b?.runs.some((r) => r.restoreTest.status === "running") ?? false;
   const newest = b?.runs.find(restorable) ?? null;
-  const what = dbLabel({ projectSlug: app.projectSlug, name: app.name, environment: app.environment });
+  const what = dbLabel({ projectSlug: app.projectSlug, name: app.name, ...(app.displayName ? { displayName: app.displayName } : {}), environment: app.environment });
 
   // A live run or test is read again 5s after every answer until it settles; the preview has no
   // worker, so it settles here.
@@ -226,7 +226,7 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
       loading: req.mode === "new" ? "Restoring into a new database" : "Restoring database",
       description: req.mode === "new" ? `${app.projectSlug} / ${req.name}, from ${stamp}` : `${what}, from ${stamp}. Keep this page open`,
       success: (out) => {
-        const target = `${out.database.projectSlug} / ${out.database.name}`;
+        const target = dbLabel(out.database);
         return req.mode === "new"
           ? {
               title: "Database restored",
@@ -303,8 +303,8 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
               title="No backups yet"
               body={
                 can.manage
-                  ? `Press Back up now for a first backup of ${app.name}, or set a schedule on the Backups page.`
-                  : `Backups of ${app.name} show up here once an admin runs one or sets a schedule.`
+                  ? `Press Back up now for a first backup of ${appTitle(app)}, or set a schedule on the Backups page.`
+                  : `Backups of ${appTitle(app)} show up here once an admin runs one or sets a schedule.`
               }
               action={
                 <Link href="/backups" className="btn btn-sm">

@@ -36,6 +36,8 @@ export const THRESHOLD: Partial<Record<AlertMetric, { min: number; max: number; 
 export interface AlertApp {
   id: string;
   name: string;
+  /** What people read as the app's name, when it has one. */
+  displayName?: string;
   kind: AppKind;
   projectSlug: string;
   environment: string;

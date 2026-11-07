@@ -19,6 +19,7 @@ import { callJson } from "@/lib/client-api";
 import { resolvesItself } from "@/lib/dashboard-domain";
 import type { DomainTargets } from "@/lib/domain-targets";
 import { projectsShowingEnvironments } from "@/lib/environments";
+import { appTitle } from "@/lib/format";
 import type { DomainRow } from "@/lib/pages/resources-domains";
 import type { Resource } from "@/lib/types";
 import { CfRecords, HostPicker, useCloudflareZones } from "./cloudflare";
@@ -34,6 +35,7 @@ function previewDomain(host: string, target: Resource, test = false): DomainRow 
     hostname: host,
     appId: target.id,
     appName: target.name,
+    ...(target.displayName ? { appDisplayName: target.displayName } : {}),
     projectSlug: target.projectSlug,
     environment: target.environment,
     tls: { status: "pending", issuer: null, expiresAt: null },
@@ -51,10 +53,13 @@ export function AddDomainDialog({
   target: to,
   live,
   cloudflare = false,
+  vercelApps = 0,
   onClose,
   onAdded,
 }: {
   targets: Resource[];
+  /** Apps left out of `targets` because Vercel serves them: the hint says where their domains go. */
+  vercelApps?: number;
   existing: DomainRow[];
   /** Where the records point: the server's addresses, or the tunnel. */
   target: DomainTargets;
@@ -102,8 +107,8 @@ export function AddDomainDialog({
   const appOptions = useMemo<SelectOption<string>[]>(
     () =>
       [...targets]
-        .sort((x, y) => x.projectSlug.localeCompare(y.projectSlug) || x.name.localeCompare(y.name) || (x.environment === "production" ? -1 : 1))
-        .map((t) => ({ value: t.id, label: `${t.projectSlug} / ${t.name}`, hint: shows(t.projectSlug) ? envName(t.environment) : undefined, glyph: <AppIcon id={t.id} kind={t.kind} /> })),
+        .sort((x, y) => x.projectSlug.localeCompare(y.projectSlug) || appTitle(x).localeCompare(appTitle(y)) || (x.environment === "production" ? -1 : 1))
+        .map((t) => ({ value: t.id, label: `${t.projectSlug} / ${appTitle(t)}`, hint: shows(t.projectSlug) ? envName(t.environment) : undefined, glyph: <AppIcon id={t.id} kind={t.kind} /> })),
     [targets, shows],
   );
   const rec = recordFor(host);
@@ -210,7 +215,7 @@ export function AddDomainDialog({
           <HostPicker value={hostname} onChange={setHostname} zones={zones} error={touched ? hostError : null} />
           <Field
             label="Target app"
-            hint={target ? `Traffic goes to ${target.projectSlug} / ${target.name}${shows(target.projectSlug) ? ` in ${envName(target.environment)}` : ""}` : "No app can take a domain yet"}
+            hint={`${target ? `Traffic goes to ${target.projectSlug} / ${appTitle(target)}${shows(target.projectSlug) ? ` in ${envName(target.environment)}` : ""}.` : "No app can take a domain yet."}${vercelApps ? " Apps on Vercel are not listed: add their domains on Vercel." : ""}`}
           >
             {(ids) => (
               <Select

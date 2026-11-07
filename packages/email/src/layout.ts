@@ -50,6 +50,7 @@ export interface AppRef {
   projectSlug: string;
   /** "production", "development", ... */
   env: string;
+  /** The app as people read it: its display name when it has one, else its name. */
   appName: string;
   appKind: AppKind;
   /** A public, signed link to the project's own icon (/api/icons/mail/<token>). Absent or null shows the folder tile. */

@@ -44,7 +44,7 @@ function matches(d: RecentDeployment, q: DeploymentQuery) {
   if (q.project && d.projectSlug !== q.project) return false;
   const text = q.q?.trim().toLowerCase();
   if (!text) return true;
-  return [d.message, d.app.name, d.projectSlug, d.branch, d.commit, `${d.projectSlug} / ${d.app.name}`].some((v) => v?.toLowerCase().includes(text));
+  return [d.message, d.app.name, d.app.displayName, d.projectSlug, d.branch, d.commit, `${d.projectSlug} / ${d.app.name}`].some((v) => v?.toLowerCase().includes(text));
 }
 
 function previewStats(rows: RecentDeployment[], now: number): DeploymentStats {

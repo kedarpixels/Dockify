@@ -24,7 +24,8 @@ const placeOf = (where: AppRef | string): AppRef | string =>
         projectName: oneLine(where.projectName, 60),
         projectSlug: oneLine(where.projectSlug, 40),
         env: oneLine(where.env, 32),
-        appName: oneLine(where.appName, 32),
+        // The name people read: a display name runs to 60 characters (an app's name to 32).
+        appName: oneLine(where.appName, 60),
         appKind: where.appKind,
         projectIcon: where.projectIcon ?? null,
         appIcon: where.appIcon ?? null,

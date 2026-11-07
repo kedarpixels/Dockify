@@ -7,6 +7,7 @@
  * A webhook's URL is its credential. It is opened only right before the send (integrations/
  * webhooks.ts), sent through net-guard, and never logged; failures name the provider and status.
  */
+import { appLabel } from "@dockify/contracts";
 import type { Db, SecretVault } from "@dockify/db";
 import type { Metric } from "./alerts.ts";
 import { createHttpClient, type HttpClient } from "@dockify/net-guard";
@@ -66,12 +67,13 @@ export interface AlertView {
   href: string;
   startedAt: Date;
   resolvedAt: Date | null;
-  app: { name: string; projectSlug: string; environment: string } | null;
+  /** `shown` is what people read as the app's name, its display name when it has one; `name` stays its identity. */
+  app: { name: string; shown?: string; projectSlug: string; environment: string } | null;
   /** The app as the email's project chip shows it (name, kind, icon links); only the email channel reads it. */
   chip?: AppRef | null;
 }
 
-const whereOf = (a: AlertView): string => (a.app ? `${a.app.projectSlug} / ${a.app.environment} / ${a.app.name}` : a.service ? `service ${a.service}` : "host");
+const whereOf = (a: AlertView): string => (a.app ? `${a.app.projectSlug} / ${a.app.environment} / ${a.app.shown ?? a.app.name}` : a.service ? `service ${a.service}` : "host");
 
 /**
  * One alert as every webhook gets it, shaped per provider by @dockify/notify. The generic
@@ -95,7 +97,8 @@ export function alertMessage(a: AlertView, t: Transition, publicUrl: string | nu
         id: a.id, metric: PUBLIC_METRIC[a.metric], detail: a.detail, startedAt: a.startedAt.toISOString(),
         resolvedAt: a.resolvedAt?.toISOString() ?? null, url: url ?? a.href,
       },
-      app: a.app,
+      // The shape earlier versions sent: the app by its name, which is its identity.
+      app: a.app ? { name: a.app.name, projectSlug: a.app.projectSlug, environment: a.app.environment } : null,
       service: a.service,
     },
   };
@@ -149,7 +152,7 @@ export async function deliverAlert(deps: NotifyDeps, raw: unknown): Promise<"sen
       app: {
         select: {
           ...SHOWN_APP_ICON,
-          name: true, kind: true,
+          name: true, displayName: true, kind: true,
           environment: { select: { name: true, project: { select: { ...SHOWN_PROJECT_ICON, slug: true, name: true } } } },
         },
       },
@@ -172,11 +175,11 @@ export async function deliverAlert(deps: NotifyDeps, raw: unknown): Promise<"sen
   const view: AlertView = {
     id: ev.id, metric: ev.metric as Metric, service: ev.service, detail: ev.detail, href: ev.href,
     startedAt: ev.startedAt, resolvedAt: ev.resolvedAt,
-    app: ev.app && project ? { name: ev.app.name, projectSlug: project.slug, environment: ev.app.environment.name } : null,
+    app: ev.app && project ? { name: ev.app.name, shown: appLabel(ev.app), projectSlug: project.slug, environment: ev.app.environment.name } : null,
     // The email's project chip: the dashboard's names and icons; webhooks keep their own shape.
     chip: ev.app && project
       ? {
-          projectName: project.name, projectSlug: project.slug, env: ev.app.environment.name, appName: ev.app.name, appKind: ev.app.kind,
+          projectName: project.name, projectSlug: project.slug, env: ev.app.environment.name, appName: appLabel(ev.app), appKind: ev.app.kind,
           ...mailIconLinks(origin, mailIconSigner(deps.internalToken), ev.app, project),
         }
       : null,

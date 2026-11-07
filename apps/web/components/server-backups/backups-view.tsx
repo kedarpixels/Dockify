@@ -298,7 +298,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
       loading: req.mode === "new" ? "Restoring into a new database" : "Restoring database",
       description: req.mode === "new" ? `${run.database.projectSlug} / ${req.name}, from ${stamp}` : `${name}, from ${stamp}. Keep this page open`,
       success: (out) => {
-        const target = `${out.database.projectSlug} / ${out.database.name}`;
+        const target = dbLabel(out.database);
         return req.mode === "new"
           ? {
               title: "Database restored",

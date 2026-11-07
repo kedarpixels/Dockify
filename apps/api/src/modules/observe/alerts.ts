@@ -14,11 +14,11 @@ import { notFound } from "./scope.ts";
 const EVENTS_SHOWN = 100;
 const RETAIN_MS = 90 * 86_400_000;
 
-const APP_SELECT = { id: true, name: true, kind: true, environment: { select: { name: true, project: { select: { slug: true } } } } } as const;
+const APP_SELECT = { id: true, name: true, displayName: true, kind: true, environment: { select: { name: true, project: { select: { slug: true } } } } } as const;
 type AppRow = Prisma.AppGetPayload<{ select: typeof APP_SELECT }>;
 
 const alertApp = (a: AppRow | null) =>
-  a ? { id: a.id, name: a.name, kind: a.kind, projectSlug: a.environment.project.slug, environment: a.environment.name } : null;
+  a ? { id: a.id, name: a.name, ...(a.displayName ? { displayName: a.displayName } : {}), kind: a.kind, projectSlug: a.environment.project.slug, environment: a.environment.name } : null;
 
 const RULE_INCLUDE = { app: { select: APP_SELECT }, webhooks: { select: { webhookId: true } } } as const;
 type RuleRow = Prisma.AlertRuleGetPayload<{ include: typeof RULE_INCLUDE }>;

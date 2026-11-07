@@ -18,7 +18,7 @@ import { Corners, Node, Rule, Spacer } from "@/components/ui/rule";
 import { SectionHead } from "@/components/ui/section-head";
 import { Segmented, filterOptions } from "@/components/ui/segmented";
 import { APP_STATUS_LABEL, APP_TONE, deriveNotices, notRunning } from "@/lib/derive";
-import { bytes, plural, uptime } from "@/lib/format";
+import { appTitle, bytes, plural, uptime } from "@/lib/format";
 import { useNow, useOverview } from "@/lib/hooks";
 import type { PageResult, ResourceRow, StatefulKind } from "@/lib/pages/resources-domains";
 import type { AppKind, OverviewResult } from "@/lib/types";
@@ -106,7 +106,7 @@ function Summary({ items, hostMemory }: { items: ResourceRow[]; hostMemory?: num
 const memPct = (r: ResourceRow) => (r.memory.reservedBytes ? (r.memory.usedBytes / r.memory.reservedBytes) * 100 : 0);
 
 /** The link that opens the app: its name says project, app, kind and environment, so twin rows differ. */
-const coverName = (r: ResourceRow) => `${r.projectSlug} / ${r.name}, ${KIND_LABEL[r.kind]}, ${envName(r.environment)}`;
+const coverName = (r: ResourceRow) => `${r.projectSlug} / ${appTitle(r)}, ${KIND_LABEL[r.kind]}, ${envName(r.environment)}`;
 
 /** "horseai" for production (the default says nothing in a row), "horseai, Dev" otherwise. */
 function Where({ r }: { r: ResourceRow }) {
@@ -159,7 +159,7 @@ function ResourceListRow({ r, now, delay }: RowProps) {
         <span className="rs-col-name">
           <AppIcon id={r.id} kind={r.kind} size="md" />
           <span className="two">
-            <span className="two-main rd-wrap">{r.name}</span>
+            <span className="two-main rd-wrap">{appTitle(r)}</span>
             <Where r={r} />
           </span>
         </span>
@@ -195,7 +195,7 @@ function ResourceCell({ r, now, delay }: RowProps) {
         <header className="rs-cell-hd">
           <AppIcon id={r.id} kind={r.kind} size="lg" />
           <span className="two">
-            <span className="two-main rd-wrap rs-name-lg">{r.name}</span>
+            <span className="two-main rd-wrap rs-name-lg">{appTitle(r)}</span>
             <Where r={r} />
           </span>
           <StatusChip tone={APP_TONE[r.status]} className="rs-cell-status">
@@ -308,7 +308,7 @@ export function ResourcesView({ overview, initial }: { overview: OverviewResult;
     const q = query.trim().toLowerCase();
     const match = KIND_FILTERS.find((f) => f.id === filter)!.match;
     return items.filter(
-      (r) => match(r.kind) && (!q || [r.name, r.projectSlug, r.environment, r.image, KIND_LABEL[r.kind]].some((s) => s.toLowerCase().includes(q))),
+      (r) => match(r.kind) && (!q || [r.name, r.displayName ?? "", r.projectSlug, r.environment, r.image, KIND_LABEL[r.kind]].some((s) => s.toLowerCase().includes(q))),
     );
   }, [items, query, filter]);
 

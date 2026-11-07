@@ -10,7 +10,7 @@ import { Field, SearchField, TextArea } from "@/components/ui/field";
 import { PendingButton } from "@/components/ui/pending";
 import { ResultCount } from "@/components/ui/result-count";
 import { SkelRows } from "@/components/ui/skeleton";
-import { bytes, plural } from "@/lib/format";
+import { appTitle, bytes, plural } from "@/lib/format";
 import type { AppDetail, Cell, PgColumn, PgRows, PgTables, QueryResult, RedisKeys, RedisType } from "@/lib/pages/project-detail";
 import { isStepUpCancel, STEP_UP_MINUTES } from "@/lib/step-up";
 import { useCan } from "@/lib/viewer";
@@ -97,7 +97,7 @@ function TableList({ tables, picked, onPick }: { tables: PgTables["tables"]; pic
 }
 
 /** What a read that found the container down says, instead of the bare status text. */
-const idleText = (app: AppDetail) => `${app.name} is not running or cannot be reached right now. Start it, then try again.`;
+const idleText = (app: AppDetail) => `${appTitle(app)} is not running or cannot be reached right now. Start it, then try again.`;
 
 function RowsPanel({ app, table }: { app: AppDetail; table: string }) {
   const q = useAppTab<PgRows>(app.id, "rows", { table });

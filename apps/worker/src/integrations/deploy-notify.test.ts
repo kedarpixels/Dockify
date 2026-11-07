@@ -23,7 +23,7 @@ const VERIFIED = new Date("2026-10-01T00:00:00Z");
 /** The project's uploaded icon; its sha256 prefix is the version a mail icon link names. */
 const UPLOAD = { id: "img1", source: "upload", sha256: "ab".repeat(32), width: 64, height: 64, origin: null, updatedAt: VERIFIED };
 
-function world(opts: { email?: boolean; deployment?: Record<string, unknown>; users?: User[]; events?: Record<string, boolean>; hooks?: Array<{ id: string }>; token?: boolean } = {}) {
+function world(opts: { email?: boolean; deployment?: Record<string, unknown>; users?: User[]; events?: Record<string, boolean>; hooks?: Array<{ id: string }>; token?: boolean; displayName?: string } = {}) {
   const users: User[] = opts.users ?? [
     { id: "u1", email: "sam@example.com", githubLogin: "sam", githubVerifiedAt: VERIFIED, emailDeployFailed: true, member: true, disabledAt: null },
     { id: "u2", email: "lena@example.com", githubLogin: "lena", githubVerifiedAt: VERIFIED, emailDeployFailed: false, member: true, disabledAt: null },
@@ -34,7 +34,7 @@ function world(opts: { email?: boolean; deployment?: Record<string, unknown>; us
     status: "failed", error: "build failed: exit 1", branch: "main", commitSha: "4f2a9c1e".padEnd(40, "0"), finishedAt: new Date("2026-10-30T14:05:00Z"),
     actorType: "user", actorId: "u1", gitAuthor: null,
     app: {
-      id: APP_ID, name: "web", kind: "frontend", iconChoice: "auto", icons: [], gitRepository: "https://github.com/sam/horseai", gitInstallationId: null,
+      id: APP_ID, name: "web", displayName: opts.displayName ?? null, kind: "frontend", iconChoice: "auto", icons: [], gitRepository: "https://github.com/sam/horseai", gitInstallationId: null,
       environment: { name: "production", project: { id: PROJECT_ID, slug: "horseai", name: "horseai", iconChoice: "upload", icons: [UPLOAD], environments: [] } },
     },
     ...opts.deployment,
@@ -218,5 +218,21 @@ describe("deploy_notify", () => {
   it("refuses a malformed payload for good", async () => {
     const e = await deliverDeployFailed(world().deps, { deploymentId: "nope" }).catch((x: unknown) => x);
     expect(isPermanentError(e)).toBe(true);
+  });
+});
+
+describe("a renamed app", () => {
+  it("is named by its display name in the webhook and the email, and by its name in the webhook's data", async () => {
+    const w = world({ hooks: [{ id: "h1" }], displayName: "Storefront" });
+    expect(await deliverDeployFailed(w.deps, { deploymentId: DEP })).toBe("sent");
+    const message = w.jobs[0]!.payload.message as unknown as NotifyMessage;
+    expect(message.title).toBe("Deploy failed: Storefront");
+    expect(message.fields.find((f) => f.name === "Where")?.value).toBe("horseai / production / Storefront");
+    // A receiver that keys on the app keeps working: the data names it by its identity.
+    expect((message.data as { deployment: { app: string } }).deployment.app).toBe("web");
+    const mail = w.calls[0]!;
+    expect(mail.html).toContain("Storefront");
+    expect(mail.text).toContain("horseai / production / Storefront");
+    expect(mail.text).not.toContain("production / web");
   });
 });

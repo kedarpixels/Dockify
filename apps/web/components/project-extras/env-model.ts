@@ -1,5 +1,6 @@
 import type { AppSummary, EnvChange, EnvEntry, EnvRef, EnvRefView, EnvState, EnvTarget, EnvVersion } from "@/lib/pages/project-detail";
 import type { ActorRef, AppKind } from "@/lib/types";
+import { appTitle } from "@/lib/format";
 
 /* The staged env model, pure and framework free. Edits never touch the stored state: they collect
    as EnvChange records keyed by scope and key, and every view is the stored entries with the
@@ -186,14 +187,15 @@ export function affectedApps(changes: EnvChange[], state: EnvState, apps: AppSum
       if (!overridden || overrideRemoved) touch(app, c.key, target);
     }
   }
-  return [...hit.values()].sort((a, b) => a.app.name.localeCompare(b.app.name));
+  return [...hit.values()].sort((a, b) => appTitle(a.app).localeCompare(appTitle(b.app)));
 }
 
 /** The listing view of a link, from the project's own apps, as the API would send it. */
 export function refViewOf(ref: EnvRef, apps: AppSummary[]): EnvRefView {
   const svc = apps.find((a) => a.id === ref.resourceId && (a.kind === "postgres" || a.kind === "redis" || a.kind === "s3"));
   if (!svc) return { ...ref, resourceName: "Deleted service", kind: null, environment: "", missing: true };
-  return { ...ref, resourceName: svc.name, kind: svc.kind as EnvRefView["kind"], environment: svc.environment };
+  // As the API names it: a renamed service by its display name, with the name its connection details use.
+  return { ...ref, resourceName: svc.displayName ? `${svc.displayName} (${svc.name})` : svc.name, kind: svc.kind as EnvRefView["kind"], environment: svc.environment };
 }
 
 /** The stored state after an apply, for the preview and for an answer that does not carry the new state. */
@@ -221,7 +223,7 @@ export function applyLocal(state: EnvState, changes: EnvChange[], apps: AppSumma
   for (const c of changes) {
     if (!c.appId || c.op === "remove" || overrides.some((o) => o.appId === c.appId && o.environment === c.environment)) continue;
     const app = apps.find((a) => a.id === c.appId);
-    overrides.push({ appId: c.appId, appName: app?.name ?? c.appId, environment: c.environment, vars: edit([], changes.filter((x) => x.appId === c.appId && x.environment === c.environment)) });
+    overrides.push({ appId: c.appId, appName: app ? appTitle(app) : c.appId, environment: c.environment, vars: edit([], changes.filter((x) => x.appId === c.appId && x.environment === c.environment)) });
   }
   return { version, environments, overrides: overrides.filter((o) => o.vars.length) };
 }

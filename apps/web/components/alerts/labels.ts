@@ -1,5 +1,5 @@
 import type { IconName } from "@/components/icon";
-import { plural } from "@/lib/format";
+import { appTitle, plural } from "@/lib/format";
 import type { AlertApp, AlertChannel, AlertMetric, ControlService } from "@/lib/pages/alerts";
 
 /** The glyph for each kind of rule, in rows, the history and the editor. */
@@ -42,7 +42,8 @@ export const SERVICE_NAME: Record<ControlService, string> = {
 export const CHANNEL_NAME: Record<AlertChannel, string> = { email: "Email", bell: "In-app bell" };
 export const CHANNEL_ICON: Record<AlertChannel, IconName> = { email: "mail", bell: "bell" };
 
-export const appName = (a: AlertApp) => `${a.projectSlug} / ${a.name}`;
+/** "horseai / Storefront": the app as people read it, its display name when it has one. */
+export const appName = (a: AlertApp) => `${a.projectSlug} / ${appTitle(a)}`;
 
 const minutes = (n: number) => plural(n, "minute");
 

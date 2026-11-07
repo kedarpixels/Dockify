@@ -64,7 +64,7 @@ describe("route policy table", () => {
 
   it("puts every privilege-changing or destructive route behind step-up", () => {
     const mustElevate = [
-      "apps.version.change", "apps.version.switch", "apps.version.back", "apps.patch", "apps.delete", "apps.stop", "apps.restart", "apps.config.patch", "apps.terminal.ticket", "apps.data.query",
+      "apps.version.change", "apps.version.switch", "apps.version.back", "apps.patch", "apps.rename", "apps.delete", "apps.stop", "apps.restart", "apps.config.patch", "apps.terminal.ticket", "apps.data.query",
       "projects.delete", "projects.apps.create", "projects.apps.import", "projects.apps.template", "environments.patch", "environments.delete",
       "resources.create", "domains.delete", "backups.restore",
       "backups.download", "backups.schedules.patch", "backups.orphans.delete", "server.updates.apply",

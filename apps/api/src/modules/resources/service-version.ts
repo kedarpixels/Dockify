@@ -84,8 +84,8 @@ async function viewOf(ctx: Ctx, app: Row): Promise<View> {
   const version = serviceVersionOf(app.image) ?? null;
   const raw = (app.serviceUpgrade ?? null) as Record<string, unknown> | null;
   const targetId = typeof raw?.targetId === "string" ? raw.targetId : null;
-  const target = targetId ? await ctx.db.app.findUnique({ where: { id: targetId }, select: { id: true, name: true } }) : null;
-  const redirect = app.serviceRedirectId ? await ctx.db.app.findUnique({ where: { id: app.serviceRedirectId }, select: { id: true, name: true } }) : null;
+  const target = targetId ? await ctx.db.app.findUnique({ where: { id: targetId }, select: { id: true, name: true, displayName: true } }) : null;
+  const redirect = app.serviceRedirectId ? await ctx.db.app.findUnique({ where: { id: app.serviceRedirectId }, select: { id: true, name: true, displayName: true } }) : null;
   // The new service was deleted by its owner: that change is over.
   const gone = !!targetId && !target;
   const job = await running(ctx, app.id);

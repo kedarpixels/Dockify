@@ -13,7 +13,7 @@ import { toast } from "@/components/ui/toast";
 import { callJson } from "@/lib/client-api";
 import { domainTargets } from "@/lib/domain-targets";
 import { describe, errText } from "@/lib/feedback";
-import { plural } from "@/lib/format";
+import { appTitle, plural } from "@/lib/format";
 import type { AppDetail } from "@/lib/pages/project-detail";
 import type { DomainRow, DomainsPayload } from "@/lib/pages/resources-domains";
 import { useCan } from "@/lib/viewer";
@@ -35,7 +35,7 @@ export function DomainsTab({ app, now }: { app: AppDetail; now: number }) {
   const items = q.data?.items ?? [];
   // Where a domain's records should point. The tab gets the API's payload as it is (null for an unknown target).
   const target = useMemo(() => domainTargets(q.data), [q.data]);
-  const where = `${app.projectSlug} / ${app.name}`;
+  const where = `${app.projectSlug} / ${appTitle(app)}`;
 
   const check = async (d: DomainRow) => {
     if (checking.has(d.id)) return;
@@ -103,7 +103,7 @@ export function DomainsTab({ app, now }: { app: AppDetail; now: number }) {
             !can.manage
               ? "Hostnames show up here once an admin adds them."
               : notRunning(app.status)
-                ? `Add a hostname now; it serves once ${app.name} runs.`
+                ? `Add a hostname now; it serves once ${appTitle(app)} runs.`
                 : "Add a hostname, point its DNS at this server, and Dockify issues the certificate."
           }
         />

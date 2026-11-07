@@ -47,6 +47,8 @@ export interface DomainRow {
   hostname: string;
   appId: string;
   appName: string;
+  /** The app's display name, when it has one: what the row reads. */
+  appDisplayName?: string;
   projectSlug: string;
   environment: string;
   /** "expiring" is derived in the UI from expiresAt, it is never sent. */
@@ -293,6 +295,7 @@ function previewDomains(now: Date): DomainsPayload {
       hostname,
       appId: target?.id ?? "app_x",
       appName: app,
+      ...(target?.displayName ? { appDisplayName: target.displayName } : {}),
       projectSlug: project,
       environment,
       tls: {

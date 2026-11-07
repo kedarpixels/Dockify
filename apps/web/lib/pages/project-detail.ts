@@ -1,5 +1,5 @@
 import "server-only";
-import { isPreviewVercelApp, PREVIEW_VERCEL_PROJECT, previewVercelRows } from "@/lib/preview-vercel";
+import { isPreviewVercelApp, PREVIEW_VERCEL_PROJECT, previewVercelEnv, previewVercelProject, previewVercelRows } from "@/lib/preview-vercel";
 import { connection } from "next/server";
 import { cache } from "react";
 import { apiRequest, plainError, UNREADABLE, type Method } from "@/lib/api";
@@ -59,6 +59,8 @@ export interface ProjectDomain {
   host: string;
   appId: string;
   appName: string;
+  /** The app's display name, when it has one. */
+  appDisplayName?: string;
   environment: string;
   tls: TlsStatus;
   /** Certificate expiry, when issued. */
@@ -186,6 +188,8 @@ export interface AppPage {
 export type Mutation =
   | { type: "app.action"; id: string; op: "deploy" | "restart" | "stop" | "start" }
   | { type: "app.settings"; id: string; settings: AppSettings; source?: AppSource }
+  /** The name people read; null goes back to the app's name, which never changes. */
+  | { type: "app.rename"; id: string; displayName: string | null }
   | { type: "app.create"; slug: string; app: NewAppInput }
   | { type: "app.delete"; id: string; confirm: string }
   | { type: "env.put"; slug: string; environment: string; vars: Array<Pick<EnvVar, "key" | "value" | "secret">> }
@@ -337,6 +341,8 @@ function toUpstream(m: Mutation): Upstream | null {
       return { method: "POST", path: `/api/v1/apps/${m.id}/${m.op}`, body: {} };
     case "app.settings":
       return ok(m.id) ? { method: "PATCH", path: `/api/v1/apps/${m.id}`, body: { settings: m.settings, ...(m.source ? { source: m.source } : {}) } } : null;
+    case "app.rename":
+      return ok(m.id) && (m.displayName === null || typeof m.displayName === "string") ? { method: "PUT", path: `/api/v1/apps/${m.id}/name`, body: { displayName: m.displayName } } : null;
     case "app.delete":
       return ok(m.id) ? { method: "DELETE", path: `/api/v1/apps/${m.id}`, body: { confirm: m.confirm } } : null;
     case "app.create":
@@ -481,6 +487,7 @@ function previewProject(slug: string, now: Date): ProjectDetail | null {
       host: d.host,
       appId: app.id,
       appName: app.name,
+      ...(app.displayName ? { appDisplayName: app.displayName } : {}),
       environment: d.env,
       tls: d.tls,
       expiresAt: d.tls === "active" ? new Date(t + (24 + ((d.i * 17) % 60)) * 86_400_000).toISOString() : null,
@@ -1248,8 +1255,8 @@ function previewExtrasMutation(m: ExtrasMutation): ExtrasMutationResult {
  *   refusal (lib/step-up.ts); the browser confirms it is you (components/step-up) and sends again.
  */
 
-export type AppTabKey = "metrics" | "domains" | "tables" | "rows" | "keys" | "backups" | "config";
-export const APP_TAB_KEYS: readonly AppTabKey[] = ["metrics", "domains", "tables", "rows", "keys", "backups", "config"];
+export type AppTabKey = "metrics" | "domains" | "tables" | "rows" | "keys" | "backups" | "config" | "vercel" | "vercelEnv";
+export const APP_TAB_KEYS: readonly AppTabKey[] = ["metrics", "domains", "tables", "rows", "keys", "backups", "config", "vercel", "vercelEnv"];
 
 export interface TabResult<T> {
   source: OverviewSource;
@@ -1381,6 +1388,8 @@ export interface VercelLink {
   connected: boolean;
   /** Vercel projects the token can see. */
   projects: Array<{ id: string; name: string; framework: string | null }>;
+  /** Why that list could not be read (a refused token, a rate limit); absent from older APIs. */
+  projectsError?: string | null;
   /** Set while the app deploys to a linked Vercel project. */
   sync: {
     state: VercelSyncState;
@@ -1389,6 +1398,81 @@ export interface VercelLink {
     lastDeploy: { url: string; state: "ready" | "building" | "error"; at: string } | null;
     error?: string | null;
   } | null;
+}
+
+/*
+ * What an app that follows a Vercel project shows of it, read live from Vercel by the API
+ * (GET /api/v1/apps/:id/vercel/project and /vercel/env). Read only: Dockify never writes to Vercel
+ * for a followed app, and never asks Vercel to decrypt a variable.
+ */
+export interface VercelDeploymentView {
+  id: string;
+  url: string | null;
+  inspectorUrl: string | null;
+  status: "queued" | "building" | "ready" | "failed" | "cancelled";
+  target: "production" | "preview";
+  branch: string | null;
+  commit: string | null;
+  message: string | null;
+  commitUrl: string | null;
+  author: string | null;
+  createdAt: string;
+  readyAt: string | null;
+  durationMs: number | null;
+  /** Custom domains first, then Vercel's own names. */
+  aliases: string[];
+  /** Dockify's mirrored row of it, for a link to its page. */
+  deploymentId: string | null;
+}
+
+export interface VercelProjectDomain {
+  name: string;
+  verified: boolean;
+  redirect: string | null;
+  redirectStatusCode: number | null;
+  gitBranch: string | null;
+  createdAt: string | null;
+}
+
+export interface VercelProjectView {
+  id: string;
+  name: string;
+  framework: string | null;
+  nodeVersion: string | null;
+  rootDirectory: string | null;
+  buildCommand: string | null;
+  installCommand: string | null;
+  outputDirectory: string | null;
+  repo: { provider: "github" | "gitlab" | "bitbucket"; slug: string; url: string | null; productionBranch: string | null } | null;
+  links: { project: string; deployments: string; domains: string; env: string; settings: string };
+  production: VercelDeploymentView | null;
+  domains: VercelProjectDomain[];
+  domainsError: string | null;
+  fetchedAt: string;
+}
+
+export type VercelTargetName = "production" | "preview" | "development";
+
+export interface VercelEnvVar {
+  id: string;
+  key: string;
+  targets: VercelTargetName[];
+  /** plain, encrypted, sensitive or system. */
+  type: string;
+  gitBranch: string | null;
+  comment: string | null;
+  updatedAt: string | null;
+  /** A plain variable's value, for an admin only; never a decrypted one. */
+  value: string | null;
+}
+
+export interface VercelEnvList {
+  variables: VercelEnvVar[];
+  hiddenProductionCount: number;
+  /** Whether plain values came with this read (admins only). */
+  values: boolean;
+  manageUrl: string;
+  fetchedAt: string;
 }
 
 export interface AppConfig {
@@ -1499,6 +1583,8 @@ export async function getAppTab(id: string, tab: AppTabKey, params: URLSearchPar
     : tab === "rows" ? `/api/v1/apps/${id}/data/rows?table=${enc(table)}&limit=50`
     : tab === "keys" ? `/api/v1/apps/${id}/data/keys?match=${enc(match)}&count=200`
     : tab === "tables" ? `/api/v1/apps/${id}/data/tables`
+    : tab === "vercel" ? `/api/v1/apps/${id}/vercel/project`
+    : tab === "vercelEnv" ? `/api/v1/apps/${id}/vercel/env`
     : `/api/v1/apps/${id}/${tab}`;
 
   if (process.env.DOCKIFY_API_URL) {
@@ -1828,6 +1914,11 @@ async function previewTab(app: AppDetail, tab: AppTabKey, p: { range: MetricRang
       return pg ? (await appBackups(app.id)).data ?? undefined : undefined;
     case "config":
       return previewConfig(app);
+    case "vercel":
+      return app.target?.kind === "vercel" ? previewVercelProject(app.deployments) : undefined;
+    case "vercelEnv":
+      // The preview is an admin's view: plain values show, as the API sends them to an admin.
+      return app.target?.kind === "vercel" ? previewVercelEnv() : undefined;
   }
 }
 
@@ -1854,19 +1945,19 @@ export interface ServiceVersionView {
   image: string;
   pin: string | null;
   options: Array<{ version: string; path: "in_place" | "new_service" }>;
-  linkedApps: Array<{ id: string; name: string }>;
+  linkedApps: Array<{ id: string; name: string; displayName?: string | null }>;
   upgrade: {
     phase: "backing_up" | "upgrading" | "copying" | "ready" | "switching" | "switched" | "done" | "failed";
     toVersion: string;
     fromVersion: string;
     at: string;
-    target: { id: string; name: string } | null;
+    target: { id: string; name: string; displayName?: string | null } | null;
     sourceCounts: { tables: number; rows: number } | null;
     targetCounts: { tables: number; rows: number } | null;
     copiedAt: string | null;
     error: string | null;
   } | null;
-  redirect: { id: string; name: string } | null;
+  redirect: { id: string; name: string; displayName?: string | null } | null;
   busy: boolean;
 }
 

@@ -8,7 +8,7 @@ import { Corners } from "@/components/ui/rule";
 import { When } from "@/components/ui/when";
 import { deployPeople, deploySource, shortImage, type DeployPerson } from "@/lib/deploy-source";
 import { IN_FLIGHT } from "@/lib/derive";
-import { clock, duration } from "@/lib/format";
+import { appTitle, clock, duration } from "@/lib/format";
 import { githubRepo } from "@/lib/git-links";
 import type { DeploymentDetail } from "@/lib/pages/deployments";
 import { triggerLabel } from "./actions";
@@ -63,8 +63,8 @@ export function DeploymentMeta({ d, now, multiEnv }: { d: DeploymentDetail; now:
       value: (
         <Link href={`/apps/${d.appId}`} className="dpd-meta-link">
           <AppIcon id={d.appId} kind={d.app.kind} />
-          <span className="ellipsis" title={d.app.name}>
-            {d.app.name}
+          <span className="ellipsis" title={appTitle(d.app)}>
+            {appTitle(d.app)}
           </span>
         </Link>
       ),

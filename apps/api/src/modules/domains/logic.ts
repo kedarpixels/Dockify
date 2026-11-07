@@ -28,7 +28,7 @@ export const isReserved = (host: string, reserved: Set<string>): boolean => rese
 /** What a domain row looks like on the wire (contracts DomainRow). */
 export type DomainWithApp = Omit<Domain, "testDomain"> & {
   testDomain?: boolean;
-  app: { id: string; name: string; port?: number | null; environment: { name: string; project: { slug: string } } };
+  app: { id: string; name: string; displayName?: string | null; port?: number | null; environment: { name: string; project: { slug: string } } };
 };
 
 export function toDomainRow(d: DomainWithApp) {
@@ -38,6 +38,7 @@ export function toDomainRow(d: DomainWithApp) {
     hostname: d.hostname,
     appId: d.app.id,
     appName: d.app.name,
+    ...(d.app.displayName ? { appDisplayName: d.app.displayName } : {}),
     projectSlug: d.app.environment.project.slug,
     environment: d.app.environment.name,
     tls: { status: d.tlsStatus, issuer: d.tlsIssuer, expiresAt: d.tlsExpiresAt?.toISOString() ?? null },

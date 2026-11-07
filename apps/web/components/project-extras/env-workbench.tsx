@@ -21,7 +21,7 @@ import { SkelRows } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { describe } from "@/lib/feedback";
-import { plural } from "@/lib/format";
+import { appTitle, plural } from "@/lib/format";
 import type { AppSummary, EnvTarget, EnvVersion, ProjectExtras } from "@/lib/pages/project-detail";
 import type { ActorRef } from "@/lib/types";
 import { useCan, useViewer } from "@/lib/viewer";
@@ -61,7 +61,8 @@ type Editing = { scope: string; key: string | null } | null;
 
 /** "Production, shared" or "Production, api", for toasts and dialog lines; "shared" or "api" when the project shows no environments. */
 const scopeName = (s: Scope, apps: AppSummary[], many: boolean) => {
-  const part = s.appId ? (apps.find((a) => a.id === s.appId)?.name ?? "app") : "shared";
+  const found = s.appId ? apps.find((a) => a.id === s.appId) : undefined;
+  const part = s.appId ? (found ? appTitle(found) : "app") : "shared";
   return many ? `${envName(s.environment)}, ${part}` : part;
 };
 
@@ -384,7 +385,7 @@ export function EnvWorkbench({
         <Empty
           icon="key"
           title="Set by Dockify"
-          body={`${self.name} is a managed ${KIND_LABEL[self.kind]} service, so it reads no project variables. Link it into an app from that app’s Variables tab.`}
+          body={`${appTitle(self)} is a managed ${KIND_LABEL[self.kind]} service, so it reads no project variables. Link it into an app from that app’s Variables tab.`}
         />
       </div>
     );
@@ -504,7 +505,7 @@ export function EnvWorkbench({
     if (scope.appId && scope.appId === addingFor) setAddingFor(null);
     const svc = project.apps.find((a) => a.id === picks[0]?.ref.resourceId);
     toast.success(picks.length === 1 ? "Variable linked" : "Variables linked", {
-      description: `${plural(picks.length, "variable")} from ${project.slug} / ${svc?.name ?? "service"} in ${scopeName(scope, project.apps, many)}. Review to apply.`,
+      description: `${plural(picks.length, "variable")} from ${project.slug} / ${svc ? appTitle(svc) : "service"} in ${scopeName(scope, project.apps, many)}. Review to apply.`,
     });
   };
 
@@ -684,7 +685,7 @@ export function EnvWorkbench({
   const takenIn = (rows: EnvRow[]) => rows.filter((r) => r.state !== "removed").map((r) => r.key);
 
   // Overrides: one table, ordered by app name, then key.
-  const byName = (a: AppSummary, b: AppSummary) => a.name.localeCompare(b.name);
+  const byName = (a: AppSummary, b: AppSummary) => appTitle(a).localeCompare(appTitle(b));
   const overrides = [...overrideApps]
     .sort(byName)
     .map((a) => {
@@ -705,7 +706,7 @@ export function EnvWorkbench({
   };
   // The head keys, always in the card head. On the project tab each opens the menu of apps first.
   const appItems = (run: (id: string) => void): RowMenuItem[] =>
-    [...envApps].sort(byName).map((a) => ({ label: a.name, glyph: <AppIcon id={a.id} kind={a.kind} />, onSelect: () => run(a.id) }));
+    [...envApps].sort(byName).map((a) => ({ label: appTitle(a), glyph: <AppIcon id={a.id} kind={a.kind} />, onSelect: () => run(a.id) }));
   const overrideActs =
     self && selfScope ? (
       <span className="pd-hd-acts">
@@ -758,14 +759,14 @@ export function EnvWorkbench({
     overridesBody = (
       <div className="ev-vars-wrap">
         <EnvTableHead targets app={!self} />
-        <ul className="ev-vars" aria-label={self ? `${self.name} overrides` : "App overrides"}>
+        <ul className="ev-vars" aria-label={self ? `${appTitle(self)} overrides` : "App overrides"}>
           {overrides.map((g) => (
             <ScopeItems
               key={g.app.id}
               scope={g.scope}
               rows={g.shown}
               taken={takenIn(g.rows)}
-              app={self ? undefined : { name: g.app.name, icon: <AppIcon id={g.app.id} kind={g.app.kind} /> }}
+              app={self ? undefined : { name: appTitle(g.app), icon: <AppIcon id={g.app.id} kind={g.app.kind} /> }}
               notes={(key) => (sharedKeys.has(key) ? "Overrides shared" : undefined)}
               {...rowsProps}
             />
@@ -893,7 +894,7 @@ export function EnvWorkbench({
             id="px-over-title"
             icon="layers"
             title="App overrides"
-            sub={self ? `Values only ${self.name} reads${many ? ` in ${envName(env)}` : ""}, winning over the shared ones` : `Per-app values in ${where} that win over the shared ones`}
+            sub={self ? `Values only ${appTitle(self)} reads${many ? ` in ${envName(env)}` : ""}, winning over the shared ones` : `Per-app values in ${where} that win over the shared ones`}
           />
           {overrideActs}
         </div>

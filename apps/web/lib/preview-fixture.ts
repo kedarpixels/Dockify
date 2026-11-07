@@ -81,6 +81,10 @@ const apps: Array<[project: string, env: string, name: string, kind: AppKind, st
   ["fieldnote", "production", "minio", "s3", "running"],
 ];
 
+/** Apps the preview shows renamed: project/environment/name to the display name people read. */
+const DISPLAY_NAMES: Record<string, string> = { "horseai/production/web": "Storefront" };
+const displayOf = (project: string, environment: string, name: string) => DISPLAY_NAMES[`${project}/${environment}/${name}`];
+
 const deploys: Array<[
   project: string, app: string, env: string, status: DeploymentStatus,
   message: string, branch: string, sha: string, startedMinAgo: number, durationSec: number | null,
@@ -110,6 +114,7 @@ export function buildPreviewOverview(at: Date): Overview {
   const resources: Resource[] = apps.map(([project, environment, name, kind, status], i) => ({
     id: `app_${i}`,
     name,
+    ...(displayOf(project, environment, name) ? { displayName: displayOf(project, environment, name) } : {}),
     kind,
     status,
     projectId: `prj_${project}`,
@@ -133,7 +138,7 @@ export function buildPreviewOverview(at: Date): Overview {
         trigger: "push",
         createdAt: created.toISOString(),
         finishedAt: dur === null ? null : new Date(created.getTime() + dur * 1000).toISOString(),
-        app: { id, name: app, kind: target?.kind },
+        app: { id, name: app, displayName: target?.displayName, kind: target?.kind },
         projectSlug: project,
         environment,
         actor: deployActor(i),
@@ -150,7 +155,7 @@ export function buildPreviewOverview(at: Date): Overview {
     const row: RecentDeployment = {
       id: `dpl_image_${i}`, appId: id, status: "ready", commit: null, branch: null, message: null, trigger: "manual",
       createdAt: created.toISOString(), finishedAt: new Date(created.getTime() + dur * 1000).toISOString(),
-      app: { id, name: app, kind: target?.kind }, projectSlug: project, environment: target?.environment ?? "production",
+      app: { id, name: app, displayName: target?.displayName, kind: target?.kind }, projectSlug: project, environment: target?.environment ?? "production",
       actor: i === 1 ? PREVIEW_LENA_ACTOR : PREVIEW_OWNER, author: null, image, repo: null,
     };
     const at = recentDeployments.findIndex((d) => Date.parse(d.createdAt) < created.getTime());
@@ -318,7 +323,7 @@ export function buildPreviewDay(date: string, at: Date): RecentDeployment[] {
       trigger: "push",
       createdAt: new Date(created).toISOString(),
       finishedAt: new Date(Math.min(created + dur * 1000, now.getTime())).toISOString(),
-      app: { id: app.id, name: app.name, kind: app.kind },
+      app: { id: app.id, name: app.name, displayName: app.displayName, kind: app.kind },
       projectSlug: app.projectSlug,
       environment: app.environment,
       actor: deployActor(i),

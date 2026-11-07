@@ -47,6 +47,12 @@ export function hasUnsafeText(v: string): boolean {
 
 export const UNSAFE_TEXT_MESSAGE = "Remove control characters, direction marks and invisible characters";
 
+/**
+ * The longest display name an app may have, as APP_DISPLAY_NAME_MAX in packages/contracts. An app's
+ * display name is what people read; its name stays its identity for links, the CLI and preview addresses.
+ */
+export const APP_DISPLAY_NAME_MAX = 60;
+
 /** The first problem with a display name (a person, a project, a token, the instance, a label), or null. */
 export function displayNameProblem(name: string, { max = 100, empty = "Enter a name" }: { max?: number; empty?: string } = {}): string | null {
   const v = name.trim();

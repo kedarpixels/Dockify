@@ -13,6 +13,7 @@ import type { EndpointId } from "@dockify/contracts";
 import type { Ctx, Handler, Handlers } from "../../app.ts";
 import { audit } from "../../audit.ts";
 import { HttpError, isUniqueViolation } from "../../errors.ts";
+import { nameShownElsewhere } from "../apps/display-name.ts";
 import { WORKER_SILENT_MS } from "../platform/server.ts";
 import { DEFAULT_CRON, toRun, toSchedule, type BackupRowIn, type DestinationRow, type ScheduleAppIn } from "./map.ts";
 import {
@@ -39,7 +40,7 @@ export const defaultBackupsOptions = (env: NodeJS.ProcessEnv = process.env): Bac
   env,
 });
 
-const BACKUP_INCLUDE = { destination: { include: { integration: true } } } as const;
+const BACKUP_INCLUDE = { destination: { include: { integration: true } }, app: { select: { displayName: true } } } as const;
 const SCHEDULE_INCLUDE = {
   environment: { include: { project: { select: { slug: true } } } },
   backupDestination: { include: { integration: true } },
@@ -125,6 +126,9 @@ async function configPayload(ctx: Ctx, fingerprint: { fingerprint: string | null
  */
 export async function createServiceApp(tx: Tx, ring: Ctx["ring"], input: { environmentId: string; name: string; kind: ServiceKind; image?: string | null }): Promise<string> {
   if (input.kind === "s3") throw new HttpError(409, STORAGE_UNAVAILABLE, "KIND_UNAVAILABLE");
+  // No two apps of an environment look alike: another one may already show this name.
+  const shown = await tx.app.findFirst({ where: { environmentId: input.environmentId, displayName: { equals: input.name, mode: "insensitive" } }, select: { name: true, displayName: true } });
+  if (shown) throw nameShownElsewhere(input.name, shown, "name");
   const id = randomUUID();
   await tx.app.create({
     data: { id, environmentId: input.environmentId, serverId: await defaultServerId(tx), name: input.name, kind: input.kind, image: input.image || SERVICE_IMAGES[input.kind], port: SERVICE_PORTS[input.kind], desiredState: "running" },

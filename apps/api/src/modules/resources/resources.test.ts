@@ -52,6 +52,9 @@ function fakeDb(apps: Row[] = []) {
       create: async ({ data }: Row) => (t.apps.push({ status: "unknown", cpuLimit: null, memoryLimitMb: null, ...data }), data),
       findMany: async ({ where }: Row) => t.apps.filter((a) => where.environmentId.in.includes(a.environmentId)),
       findUnique: async ({ where }: Row) => t.apps.find((a) => a.id === where.id) ?? null,
+      // New apps are checked against the display names of their environment (no two apps look alike).
+      findFirst: async ({ where }: Row) =>
+        t.apps.find((a) => a.environmentId === where.environmentId && where.OR.some((o: Row) => a.displayName && a.displayName.toLowerCase() === o.displayName.equals.toLowerCase())) ?? null,
       update: async ({ where, data }: Row) => Object.assign(t.apps.find((a) => a.id === where.id)!, data),
       updateMany: async ({ where, data }: Row) => {
         const a = t.apps.find((x) => x.id === where.id);

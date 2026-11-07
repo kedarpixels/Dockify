@@ -64,7 +64,7 @@ export interface ContainerRow {
   id: string;
   name: string;
   /** The app it runs; null for Dockify's own containers. */
-  app: { id: string; name: string; projectSlug: string; environment: string; kind?: AppKind } | null;
+  app: { id: string; name: string; displayName?: string; projectSlug: string; environment: string; kind?: AppKind } | null;
   /** Share of the whole host's CPU. */
   cpuPct: number;
   memoryBytes: number;
@@ -277,7 +277,10 @@ export type BackupKind = "scheduled" | "manual" | "preDeploy" | "preUpdate";
 export type StorageProvider = "r2" | "s3" | "minio" | "custom";
 
 export interface BackupDatabase {
+  /** The service's name: what a restore confirms with. */
   name: string;
+  /** What people read as its name today, while it has one. */
+  displayName?: string;
   projectSlug: string;
   environment: string;
   /** Set once the app is deleted; its backups stay until they are deleted here. */
@@ -754,7 +757,7 @@ function buildPreviewServer(now: Date): ServerSnapshot {
     return {
       id: `ctr_${r.id}`,
       name: `${r.projectSlug}-${r.name}${r.environment === "production" ? "" : "-dev"}-1`,
-      app: { id: r.id, name: r.name, projectSlug: r.projectSlug, environment: r.environment, kind: r.kind },
+      app: { id: r.id, name: r.name, ...(r.displayName ? { displayName: r.displayName } : {}), projectSlug: r.projectSlug, environment: r.environment, kind: r.kind },
       cpu: state === "exited" ? 0 : cpu * (0.7 + rnd() * 0.6),
       mem: state === "exited" ? 0 : mem * (0.7 + rnd() * 0.6),
       restarts: state === "exited" ? 5 : state === "unhealthy" ? 3 : rnd() > 0.85 ? 1 : 0,
@@ -1201,7 +1204,7 @@ function buildPreviewBackups(now: Date): BackupsData {
 
   dbs.forEach((r, k) => {
     const plan = PLANS[r.projectSlug]!;
-    const database: BackupDatabase = { name: r.name, projectSlug: r.projectSlug, environment: r.environment };
+    const database: BackupDatabase = { name: r.name, ...(r.displayName ? { displayName: r.displayName } : {}), projectSlug: r.projectSlug, environment: r.environment };
     const id = `bks_${r.projectSlug}`;
     const storage = plan.destination === "s3" ? R2 : null;
     const encryption = sealed(plan.encrypted);

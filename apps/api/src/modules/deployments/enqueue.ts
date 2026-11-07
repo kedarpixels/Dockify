@@ -62,8 +62,8 @@ export async function assertNoDeployInFlight(tx: Prisma.TransactionClient, appId
   for (const id of [...appIds].sort()) {
     const key = `deploy:${id}`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
-    const open = await tx.deployment.findFirst({ where: { appId: id, previewId: null, status: { in: IN_FLIGHT } }, select: { id: true, app: { select: { name: true } } } });
-    if (open) throw new HttpError(409, `A deployment of ${open.app.name} is in progress. Cancel it first.`, "DEPLOY_IN_FLIGHT", { deploymentId: open.id });
+    const open = await tx.deployment.findFirst({ where: { appId: id, previewId: null, status: { in: IN_FLIGHT } }, select: { id: true, app: { select: { name: true, displayName: true } } } });
+    if (open) throw new HttpError(409, `A deployment of ${open.app.displayName || open.app.name} is in progress. Cancel it first.`, "DEPLOY_IN_FLIGHT", { deploymentId: open.id });
   }
 }
 

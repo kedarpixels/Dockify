@@ -62,7 +62,8 @@ export interface RecentDeployment {
   createdAt: string;
   finishedAt: string | null;
   /** `kind` drives the row glyph; rows without it fall back to the plain status disc. */
-  app: { id: string; name: string; kind?: AppKind };
+  /** `displayName` is what people read (absent: show `name`); `name` stays the app's identity. */
+  app: { id: string; name: string; displayName?: string | null; kind?: AppKind };
   projectSlug: string;
   environment: string;
   /** Who started it; null when Dockify queued it, absent from older APIs. */
@@ -79,7 +80,10 @@ export interface RecentDeployment {
 
 export interface Resource {
   id: string;
+  /** The app's identity: containers, links, preview hosts and the CLI use it. */
   name: string;
+  /** What people read as its name; absent or null shows `name`. Read it through appTitle (lib/format.ts). */
+  displayName?: string | null;
   kind: AppKind;
   status: AppStatus;
   projectId: string;

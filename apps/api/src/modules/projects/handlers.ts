@@ -31,6 +31,7 @@ import { assertNoVersionChangeRunning } from "../resources/version-running.ts";
 import { isBlockedHost, registryHostProblem, repoHostOf, type RegistryResolver } from "./host-rule.ts";
 import { recentDeployment, repoLabel, slugCandidate, slugify } from "./views.ts";
 import { publicUrlOf } from "../apps/views.ts";
+import { nameShownElsewhere } from "../apps/display-name.ts";
 import { DEFAULT_MEMORY_MB } from "../observe/metrics.ts";
 
 type EnvChangeIn = z.infer<typeof P.EnvChange>;
@@ -167,7 +168,7 @@ async function projectDetail(ctx: Ctx, projectId: string, viewer: Actor) {
   };
   const rd = (d: (typeof deployments)[number]) => {
     const a = appById.get(d.appId);
-    return recentDeployment(d, { id: d.appId, name: a?.name ?? "", kind: a?.kind, repo: a?.gitRepository ?? null, image: a?.image ?? null }, p.slug, envName.get(a?.environmentId ?? "") ?? "", people);
+    return recentDeployment(d, { id: d.appId, name: a?.name ?? "", displayName: a?.displayName, kind: a?.kind, repo: a?.gitRepository ?? null, image: a?.image ?? null }, p.slug, envName.get(a?.environmentId ?? "") ?? "", people);
   };
   return {
     id: p.id,
@@ -181,6 +182,7 @@ async function projectDetail(ctx: Ctx, projectId: string, viewer: Actor) {
     apps: apps.map((a) => ({
       id: a.id,
       name: a.name,
+      ...(a.displayName ? { displayName: a.displayName } : {}),
       kind: a.kind,
       status: a.status,
       projectId: p.id,
@@ -198,6 +200,7 @@ async function projectDetail(ctx: Ctx, projectId: string, viewer: Actor) {
         host: d.hostname,
         appId: a.id,
         appName: a.name,
+        ...(a.displayName ? { appDisplayName: a.displayName } : {}),
         environment: envName.get(a.environmentId) ?? "",
         tls: d.tlsStatus,
         expiresAt: d.tlsExpiresAt ? iso(d.tlsExpiresAt) : null,
@@ -385,6 +388,12 @@ export async function createApps(
     return await ctx.db.$transaction(async (tx) => {
       const env = await tx.environment.findUnique({ where: { projectId_name: { projectId: project.id, name: environment } } });
       if (!env) throw new HttpError(404, `Environment ${environment} not found`, "ENV_NOT_FOUND");
+      // Another app may show a new app's name as its display name: refused, so no two apps look alike.
+      const shown = await tx.app.findFirst({
+        where: { environmentId: env.id, OR: apps.map((a) => ({ displayName: { equals: a.name, mode: "insensitive" as const } })) },
+        select: { name: true, displayName: true },
+      });
+      if (shown) throw nameShownElsewhere(shown.displayName ?? shown.name, shown, "name");
       const ids: string[] = [];
       const envChanges: ResolvedChange[] = [];
       const serverId = await defaultServerId(tx);

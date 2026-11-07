@@ -15,7 +15,7 @@ import { ResultCount } from "@/components/ui/result-count";
 import { Rule } from "@/components/ui/rule";
 import { Segmented, filterOptions } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
-import { bytes, plural } from "@/lib/format";
+import { appTitle, bytes, plural } from "@/lib/format";
 import { useTimeFormat } from "@/lib/time-prefs";
 import { useHydrated } from "@/lib/hooks";
 import type { ContainerRow, ContainerState } from "@/lib/pages/server-backups";
@@ -62,7 +62,7 @@ const isIssue = (c: ContainerRow) => c.state !== "running" || c.restarts >= 3;
 
 const SYSTEM_GROUP = "__dockify";
 
-const appName = (c: ContainerRow) => (c.app ? `${c.app.projectSlug} / ${c.app.name}` : "Dockify");
+const appName = (c: ContainerRow) => (c.app ? `${c.app.projectSlug} / ${appTitle(c.app)}` : "Dockify");
 
 function sortValue(c: ContainerRow, key: SortKey): number | string {
   switch (key) {
@@ -103,7 +103,7 @@ function ContainerRowView({ c, tick, host }: { c: ContainerRow; tick: number; ho
           <Link href={href} className="sb-c-applink">
             <AppIcon id={c.app.id} kind={c.app.kind} />
             {/* The group head above already names the project. */}
-            <span className="sb-c-appname">{c.app.name}</span>
+            <span className="sb-c-appname">{appTitle(c.app)}</span>
             <EnvTag env={c.app.environment} compact quiet />
           </Link>
         ) : (

@@ -11,6 +11,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { When } from "@/components/ui/when";
 import { report } from "@/lib/feedback";
+import { appTitle } from "@/lib/format";
 import type { AppConfig, AppConfigPatch, AppDetail, HealthCheck, VercelSyncState } from "@/lib/pages/project-detail";
 import { useCan } from "@/lib/viewer";
 import { mutate } from "@/components/project-detail/controls";
@@ -62,7 +63,7 @@ export function ReadOnlyNote() {
 
 /** Sends one slice. Resolves to the new config, or null after an error toast. */
 async function savePatch(app: AppDetail, config: AppConfig, patch: AppConfigPatch, m: { success: string; error: string; what: string }) {
-  const r = report(await mutate({ type: "app.config", id: app.id, patch }), { ...m, what: `${app.projectSlug} / ${app.name}, ${m.what}` });
+  const r = report(await mutate({ type: "app.config", id: app.id, patch }), { ...m, what: `${app.projectSlug} / ${appTitle(app)}, ${m.what}` });
   if (!r.ok) return null;
   const answered = r.data && typeof r.data === "object" && "health" in r.data ? (r.data as AppConfig) : null;
   return answered ?? { ...config, ...patch, target: patch.target ?? config.target };
@@ -100,7 +101,7 @@ function DowntimeNotice({ app, config, path, http }: { app: AppDetail; config: A
   if (!z.possible) {
     const why = z.blockers.map((b) =>
       b === "volume"
-        ? `${app.name} keeps its data on a volume, and two containers cannot share it, so a deploy stops the old one before the new one starts.${app.kind === "postgres" ? " Dockify backs it up first." : ""}`
+        ? `${appTitle(app)} keeps its data on a volume, and two containers cannot share it, so a deploy stops the old one before the new one starts.${app.kind === "postgres" ? " Dockify backs it up first." : ""}`
         : "It publishes a fixed host port with a single replica, so the new container cannot start beside the old one. Drop the host port to deploy without downtime.",
     );
     return (
@@ -443,12 +444,17 @@ export function TargetSection({ app, config, now, onSaved, onDirty }: { app: App
                   icon="vercel"
                   value={project}
                   onChange={setProject}
-                  placeholder={v.projects.length ? "Pick a project" : "No projects on this token"}
+                  placeholder={v.projects.length ? "Pick a project" : v.projectsError ? "Projects could not be listed" : "No projects on this token"}
                   disabled={!v.projects.length || !can.manage}
                   options={v.projects.map((p) => ({ value: p.id, label: p.name, hint: p.framework ?? undefined }))}
                 />
               )}
             </Field>
+            {v.projectsError ? (
+              <Callout tone="warn" icon="alert">
+                {v.projectsError}
+              </Callout>
+            ) : null}
             {sync ? (
               <dl className="at-sync">
                 <div className="kv">

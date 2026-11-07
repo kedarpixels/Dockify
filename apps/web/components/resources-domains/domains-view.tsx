@@ -85,7 +85,7 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items
-      .filter((d) => (filter === "all" || hasIssue(d, now, cf.stateOf(d.id))) && (!q || [d.hostname, d.projectSlug, d.appName].some((s) => s.toLowerCase().includes(q))))
+      .filter((d) => (filter === "all" || hasIssue(d, now, cf.stateOf(d.id))) && (!q || [d.hostname, d.projectSlug, d.appName, d.appDisplayName ?? ""].some((s) => s.toLowerCase().includes(q))))
       .sort((a, b) => a.projectSlug.localeCompare(b.projectSlug) || a.hostname.split(".").length - b.hostname.split(".").length || a.hostname.localeCompare(b.hostname));
   }, [items, filter, query, now, cf]);
 
@@ -212,7 +212,7 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
     const at = visible.findIndex((x) => x.id === d.id);
     nextAfterRemove.current = (visible[at + 1] ?? visible[at - 1])?.id ?? null;
     setItems((xs) => xs.filter((x) => x.id !== d.id));
-    toast.success("Domain removed", { description: note(`${d.hostname}, from ${d.projectSlug} / ${d.appName}`) });
+    toast.success("Domain removed", { description: note(`${d.hostname}, from ${d.projectSlug} / ${d.appDisplayName ?? d.appName}`) });
   };
 
   /** After a removal: the neighbouring row's hostname, else the search, else the page title. */
@@ -226,7 +226,7 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
     setItems((xs) => [...xs, d]);
     setAdding(false);
     setQuery("");
-    toast.success(d.test ? "Test domain added" : "Domain added", { description: note(`${d.hostname} on ${d.projectSlug} / ${d.appName}${d.test ? ", its certificate is on the way" : recordMade ? ", with its record on Cloudflare" : ", create its DNS record next"}`) });
+    toast.success(d.test ? "Test domain added" : "Domain added", { description: note(`${d.hostname} on ${d.projectSlug} / ${d.appDisplayName ?? d.appName}${d.test ? ", its certificate is on the way" : recordMade ? ", with its record on Cloudflare" : ", create its DNS record next"}`) });
     void cf.reload();
   };
 
@@ -396,7 +396,7 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
       </main>
 
       {adding ? (
-        <AddDomainDialog targets={targets} existing={items} target={target} live={live} cloudflare={cf.data?.connected === true} onClose={() => setAdding(false)} onAdded={added} />
+        <AddDomainDialog targets={targets} vercelApps={(o?.resources ?? []).filter((r) => r.onVercel).length} existing={items} target={target} live={live} cloudflare={cf.data?.connected === true} onClose={() => setAdding(false)} onAdded={added} />
       ) : null}
 
       <ConfirmDialog
@@ -408,7 +408,7 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
           removing ? (
             <div className="rd-fields">
               <p className="dlg-text">
-                <b className="rd-strong">{removing.hostname}</b> stops answering for {removing.projectSlug} / {removing.appName} and its certificate is deleted.{" "}
+                <b className="rd-strong">{removing.hostname}</b> stops answering for {removing.projectSlug} / {removing.appDisplayName ?? removing.appName} and its certificate is deleted.{" "}
                 {cf.stateOf(removing.id)?.records.some((r) => r.ours) ? "" : "DNS records are left as they are."}
               </p>
               {cf.stateOf(removing.id)?.records.some((r) => r.ours) ? (

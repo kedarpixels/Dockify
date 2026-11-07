@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Branch, BuilderKind, Capability, Command, ExternalId, ImageRef, Iso, MetricRange, Port, RecentDeployment, RepoPath, Resource, Sysctls, Uuid } from "./common.ts";
+import { AppDisplayName, Branch, BuilderKind, Capability, Command, ExternalId, ImageRef, Iso, MetricRange, Port, RecentDeployment, RepoPath, Resource, Sysctls, Uuid } from "./common.ts";
 import { DomainsPayload } from "./resources.ts";
 import { BackupConfig, BackupRun, BackupSchedule } from "./backups.ts";
 import { VercelLogRetention } from "./integrations.ts";
@@ -15,7 +15,7 @@ export const ServiceUpgradeState = z.object({
   toVersion: z.string(),
   fromVersion: z.string(),
   at: Iso,
-  target: z.object({ id: z.string(), name: z.string() }).nullable(),
+  target: z.object({ id: z.string(), name: z.string(), displayName: z.string().nullable().optional() }).nullable(),
   /** Tables and rows on each side at the last copy. Differences before the switch are writes since. */
   sourceCounts: Counts.nullable(),
   targetCounts: Counts.nullable(),
@@ -30,10 +30,10 @@ export const ServiceVersionView = z.object({
   pin: z.string().nullable(),
   /** Never older than what it runs: a downgrade is refused. */
   options: z.array(ServiceVersionOption),
-  linkedApps: z.array(z.object({ id: z.string(), name: z.string() })),
+  linkedApps: z.array(z.object({ id: z.string(), name: z.string(), displayName: z.string().nullable().optional() })),
   upgrade: ServiceUpgradeState.nullable(),
   /** After the switch: the service that links now lead to. */
-  redirect: z.object({ id: z.string(), name: z.string() }).nullable(),
+  redirect: z.object({ id: z.string(), name: z.string(), displayName: z.string().nullable().optional() }).nullable(),
   /** A version change is running. */
   busy: z.boolean(),
 });
@@ -75,6 +75,11 @@ export const AppSource = z.strictObject({
   branch: Branch.nullable().optional(),
 });
 export const AppPatchBody = z.strictObject({ settings: AppSettings, advanced: AppAdvanced.optional(), source: AppSource.optional() });
+/**
+ * The name people read. Null, or the app's own name in any case, clears it so the app shows its
+ * name again. The app's `name` never changes: links, containers, preview hosts and the CLI use it.
+ */
+export const AppRenameBody = z.strictObject({ displayName: AppDisplayName.nullable() });
 
 export const AppUsage = z.object({ cpuPct: z.number(), memoryBytes: z.number(), memoryLimitBytes: z.number() });
 export const AppDetail = Resource.extend({
@@ -167,6 +172,8 @@ export const AppConfig = z.object({
     .object({
       connected: z.boolean(),
       projects: z.array(z.object({ id: z.string(), name: z.string(), framework: z.string().nullable() })),
+      /** Why the project list could not be read from Vercel; the picker says so instead of looking empty. */
+      projectsError: z.string().nullable().optional(),
       sync: z
         .object({
           state: z.enum(["synced", "pending", "failed"]),

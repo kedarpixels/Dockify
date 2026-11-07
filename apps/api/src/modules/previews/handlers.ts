@@ -82,7 +82,7 @@ const ROW_SELECT = {
     orderBy: { createdAt: "asc" as const },
     select: {
       hostname: true, cpuPct: true, memoryBytes: true, currentDeploymentId: true,
-      app: { select: { id: true, name: true, kind: true, port: true, gitRepository: true } },
+      app: { select: { id: true, name: true, displayName: true, kind: true, port: true, gitRepository: true } },
       deployments: { orderBy: { createdAt: "desc" as const }, take: 1, select: { id: true, status: true, commitSha: true, error: true, createdAt: true } },
     },
   },
@@ -101,7 +101,7 @@ export function toRow(r: Row, ttlHours: number): PreviewRow {
     // Only what answers gets a link: a first build that failed serves nothing.
     const url = m.app.port !== null && live && m.currentDeploymentId ? `https://${m.hostname}` : null;
     return {
-      appId: m.app.id, name: m.app.name, kind: m.app.kind, url,
+      appId: m.app.id, name: m.app.name, ...(m.app.displayName ? { displayName: m.app.displayName } : {}), kind: m.app.kind, url,
       deployment: d ? { id: d.id, status: deploymentStatus(d.status), commit: d.commitSha, error: d.error, createdAt: d.createdAt.toISOString() } : null,
       cpuPct: live ? m.cpuPct : null,
       memoryBytes: live && m.memoryBytes !== null ? Number(m.memoryBytes) : null,
@@ -193,7 +193,7 @@ export const previewHandlers: Handlers = {
       ...toRow(row, p.previewTtlHours),
       deployments: deps.map((d) => {
         const a = byId.get(d.appId);
-        return recentDeployment(d, { id: d.appId, name: a?.name ?? "", kind: a?.kind, repo: a?.gitRepository ?? null }, p.slug, previewName(params.pr));
+        return recentDeployment(d, { id: d.appId, name: a?.name ?? "", displayName: a?.displayName, kind: a?.kind, repo: a?.gitRepository ?? null }, p.slug, previewName(params.pr));
       }),
     };
   },

@@ -45,7 +45,7 @@ export interface DeploymentRow {
   externalTarget?: "production" | "preview" | null;
   externalSource?: string | null;
   externalCreator?: string | null;
-  app: { id: string; name: string; kind: string; image?: string | null; gitRepository: string | null; environment: { name: string; project: { slug: string; id: string } } };
+  app: { id: string; name: string; displayName?: string | null; kind: string; image?: string | null; gitRepository: string | null; environment: { name: string; project: { slug: string; id: string } } };
 }
 
 export type ExternalColumns = Pick<DeploymentRow, "provider" | "externalId" | "externalUrl" | "inspectorUrl" | "externalTarget" | "externalSource" | "externalCreator">;
@@ -98,7 +98,7 @@ export function toRecent(d: DeploymentRow, people: People = NO_PEOPLE) {
     trigger: d.trigger,
     createdAt: d.createdAt.toISOString(),
     finishedAt: d.finishedAt?.toISOString() ?? null,
-    app: { id: d.app.id, name: d.app.name, kind: d.app.kind as AppKind },
+    app: { id: d.app.id, name: d.app.name, ...(d.app.displayName ? { displayName: d.app.displayName } : {}), kind: d.app.kind as AppKind },
     projectSlug: d.app.environment.project.slug,
     environment: d.app.environment.name,
     repo: d.app.gitRepository,

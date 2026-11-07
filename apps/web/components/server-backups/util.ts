@@ -52,7 +52,10 @@ export function dueIn(iso: string, now: number): string {
 }
 
 /** "horseai / postgres", the way deploy rows name an app. */
-export const dbLabel = (db: BackupDatabase) => `${db.projectSlug} / ${db.name}`;
+/** "horseai / Main database": the service as people read it, its display name when it has one. */
+export const dbLabel = (db: BackupDatabase) => `${db.projectSlug} / ${dbName(db)}`;
+/** The service's own part of that label. */
+export const dbName = (db: BackupDatabase) => db.displayName || db.name;
 
 /** What the operator types to confirm a restore: "horseai/postgres". */
 export const dbRef = (db: BackupDatabase) => `${db.projectSlug}/${db.name}`;

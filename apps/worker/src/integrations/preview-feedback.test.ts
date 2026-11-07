@@ -171,3 +171,40 @@ describe("runPreviewFeedback carries the build's last lines to the comment (seen
     expect(posted[0]).toContain('<img src="https://d.example.com/dockify-github-app-logo.png" alt="" width="16" height="16"> web');
   });
 });
+
+describe("a renamed app in the comment", () => {
+  const run = async (displayName: string | null) => {
+    const posted: string[] = [];
+    const env = {
+      prNumber: 42, status: "ready", reason: null, error: null, commitSha: "a".repeat(40), fromFork: false, isolatedDb: false, repo: "acme/web", commentId: null,
+      updatedAt: new Date("2026-11-06T14:05:00Z"), baseEnvironment: { name: "production" },
+      project: { id: "p", iconChoice: "auto", icons: [], slug: "acme", previewIdleMinutes: 30, previewTtlHours: 72, previewProductionAccess: false, environments: [{ id: "only", name: "production", apps: [] }], gitInstallation: { installationId: 7 } },
+      apps: [{
+        hostname: "pr-42-web.preview.example.com", currentDeploymentId: "d1", app: { id: "a", iconChoice: "auto", icons: [], name: "web", displayName, port: 3000, gitInstallation: null },
+        deployments: [{ status: "ready", error: null }],
+      }],
+    };
+    const db = { previewEnv: { findUnique: async () => env, update: async () => env } };
+    const http = (async (r: { url: string; body?: string }) => {
+      if (r.url.endsWith("/comments")) posted.push((JSON.parse(r.body ?? "{}") as { body: string }).body);
+      return { status: 201, headers: {}, body: Buffer.from('{"id":1}') };
+    }) as unknown as HttpClient;
+    await runPreviewFeedback({ db: db as unknown as Db, vault: {} as SecretVault, http, apiBase: "https://api.github.com", publicUrl: "https://d.example.com" }, { previewId: "p1" });
+    return posted[0]!;
+  };
+
+  it("names its row by the display name, while its preview address keeps the app's name", async () => {
+    const body = await run("Storefront");
+    expect(body).toContain('width="16" height="16"> Storefront |');
+    expect(body).toContain("https://pr-42-web.preview.example.com");
+    expect(body).not.toContain("> web |");
+  });
+
+  it("keeps a display name out of link, mention, HTML and table syntax", async () => {
+    const body = await run("Shop | [x](https://evil.example) @team <b>");
+    const row = body.split("\n").find((l) => l.includes("Shop"))!;
+    expect(row).not.toContain("https://evil.example");
+    expect(row).not.toMatch(/@team|<b>|\[x\]/);
+    expect(row.split("|")).toHaveLength(6);
+  });
+});

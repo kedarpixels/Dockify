@@ -51,6 +51,8 @@ export interface DomainView {
   hostname: string;
   appId: string;
   appName: string;
+  /** The app's display name, when it has one: what the row reads. */
+  appDisplayName?: string;
   projectSlug?: string;
   environment: string;
   tls: { status: TlsStatus; issuer?: string | null; expiresAt: string | null };
@@ -217,7 +219,7 @@ function NoPortNote({ d }: { d: DomainView }) {
   return (
     <div className="dm-fix" role="status">
       <Callout tone="warn" icon="alert">
-        <b>No route yet: {d.appName} has no port.</b> Dockify reads it from the running image. If this stays, set the port in the app&rsquo;s Settings, then deploy it again.
+        <b>No route yet: {d.appDisplayName ?? d.appName} has no port.</b> Dockify reads it from the running image. If this stays, set the port in the app&rsquo;s Settings, then deploy it again.
       </Callout>
     </div>
   );
@@ -317,7 +319,7 @@ export function DomainRow({
               <span className="two-sub rd-sub">
                 <span>
                   <Link href={`/apps/${d.appId}`} className="dm-app">
-                    {d.projectSlug ? `${d.projectSlug} / ${d.appName}` : d.appName}
+                    {d.projectSlug ? `${d.projectSlug} / ${d.appDisplayName ?? d.appName}` : (d.appDisplayName ?? d.appName)}
                   </Link>
                   {d.environment === "production" ? null : ","}
                 </span>

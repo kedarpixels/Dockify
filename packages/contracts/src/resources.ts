@@ -26,6 +26,8 @@ export const DomainRow = z.object({
   hostname: z.string(),
   appId: z.string(),
   appName: z.string(),
+  /** The app's display name, when it has one. */
+  appDisplayName: z.string().optional(),
   projectSlug: z.string(),
   environment: z.string(),
   tls: z.object({ status: TlsStatus, issuer: z.string().nullable(), expiresAt: Iso.nullable() }),

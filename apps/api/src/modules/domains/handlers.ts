@@ -10,7 +10,7 @@ import { audit } from "../../audit.ts";
 import { HttpError, isUniqueViolation } from "../../errors.ts";
 import { isReserved, jobsForCreate, jobsForDelete, normalizeHost, reservedHosts, ROUTABLE_KINDS, toDomainRow, type EdgeJob } from "./logic.ts";
 
-const withApp = { app: { select: { id: true, name: true, port: true, serverId: true, environment: { select: { name: true, project: { select: { slug: true, id: true } } } } } } } as const;
+const withApp = { app: { select: { id: true, name: true, displayName: true, port: true, serverId: true, environment: { select: { name: true, project: { select: { slug: true, id: true } } } } } } } as const;
 
 /** A token limited to projects sees and touches only those; the limit is never implied by an empty list. */
 const projectFilter = (a: Actor): Prisma.DomainWhereInput => {

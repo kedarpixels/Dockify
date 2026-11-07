@@ -1088,6 +1088,11 @@ model App {
   /// These two last, as migration 0022 adds them.
   serverId           String    @db.Uuid
   server             Server    @relation(fields: [serverId], references: [id], onDelete: Restrict)
+  /// What people read as the app's name; null shows `name`. Free to change: `name` stays the identity
+  /// (containers, volumes, network aliases, preview hosts, links, the CLI). Unique in its environment
+  /// regardless of case (a partial unique index, migration 0026); 1 to 60 characters (CHECK). Last, as
+  /// migration 0026 adds it.
+  displayName        String?
 
   volumes         Volume[]
   domains         Domain[]            @relation("AppDomains")

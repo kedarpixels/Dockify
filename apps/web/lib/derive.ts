@@ -1,5 +1,5 @@
 import { projectsShowingEnvironments } from "./environments";
-import { dayLabel, plural } from "./format";
+import { appTitle, dayLabel, plural } from "./format";
 import type { AppStatus, DeploymentStatus, Overview, RecentDeployment, Resource } from "./types";
 
 export type Tone = "ok" | "live" | "pending" | "warn" | "bad" | "idle";
@@ -111,8 +111,9 @@ export interface Notice {
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const DAY_MS = 86_400_000;
 
-export function appLabel(d: { projectSlug: string; app: { name: string } }) {
-  return `${d.projectSlug} / ${d.app.name}`;
+/** "horseai / Storefront": the project and the app as people read it (its display name, else its name). */
+export function appLabel(d: { projectSlug: string; app: { name: string; displayName?: string | null } }) {
+  return `${d.projectSlug} / ${appTitle(d.app)}`;
 }
 
 /** Sums days into Monday-first weeks, newest last, labelled by the week's Monday. */
@@ -289,7 +290,7 @@ function deriveProblems(o: Overview, now: number): Notice[] {
     const p = STATUS_PROBLEM[r.status];
     if (!p) continue;
     seen.add(r.id);
-    out.push({ id: `${r.id}:${r.status}`, tone: APP_TONE[r.status], title: `${r.name} ${p.title}`, detail: `${r.projectSlug}, ${p.detail}`, href: `/projects/${r.projectSlug}`, kind: "problem" });
+    out.push({ id: `${r.id}:${r.status}`, tone: APP_TONE[r.status], title: `${appTitle(r)} ${p.title}`, detail: `${r.projectSlug}, ${p.detail}`, href: `/projects/${r.projectSlug}`, kind: "problem" });
   }
   // Only an app's latest deployment matters: a failure followed by a good or running deploy is
   // resolved. Cancelled runs change nothing, so they are skipped rather than counted as the latest.
@@ -301,7 +302,7 @@ function deriveProblems(o: Overview, now: number): Notice[] {
     out.push({
       id: d.id,
       tone: "bad",
-      title: `${d.app.name} deploy failed`,
+      title: `${appTitle(d.app)} deploy failed`,
       detail: `${d.projectSlug}, ${shortCommit(d)}`,
       href: `/deployments/${d.id}`,
       at: d.finishedAt ?? d.createdAt,
@@ -321,7 +322,7 @@ export function deriveNotices(o: Overview, now: number): Notice[] {
     .map((d) => ({
       id: d.id,
       tone: d.status === "failed" ? "bad" : "ok",
-      title: `${d.app.name} ${d.status === "failed" ? "failed to deploy" : "deployed"}`,
+      title: `${appTitle(d.app)} ${d.status === "failed" ? "failed to deploy" : "deployed"}`,
       detail: `${d.projectSlug}, ${shortCommit(d)}`,
       href: `/deployments/${d.id}`,
       at: d.finishedAt ?? d.createdAt,
@@ -359,7 +360,8 @@ export function buildShell(data: Overview | null) {
   return {
     host: data?.host ? { name: data.host.name, region: data.host.region, cores: data.host.cpu.cores, disk: data.host.disk } : null,
     projects: data ? deriveProjects(data).map((p) => ({ slug: p.slug, tone: p.tone, stateLabel: p.stateLabel })) : [],
-    apps: data?.resources.map((r) => ({ id: r.id, kind: r.kind, label: appLabel({ projectSlug: r.projectSlug, app: r }), environment: shows(r.projectSlug) ? r.environment : null })) ?? [],
+    // A renamed app is still found by its name, which links and the CLI use.
+    apps: data?.resources.map((r) => ({ id: r.id, kind: r.kind, label: appLabel({ projectSlug: r.projectSlug, app: r }), name: r.name, environment: shows(r.projectSlug) ? r.environment : null })) ?? [],
     inFlight: data?.counts.deployments.inFlight ?? 0,
     viewer: data?.viewer ?? null,
   };

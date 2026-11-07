@@ -17,7 +17,8 @@ export interface ShellData {
   host: { name: string; region: string; cores: number; disk: { usedBytes: number; totalBytes: number; reclaimableBytes: number } } | null;
   projects: Array<{ slug: string; tone: Tone; stateLabel: string }>;
   /** `environment` is null when the app's project shows none (lib/environments.ts). */
-  apps: Array<{ id: string; kind: AppKind; label: string; environment: string | null }>;
+  /** `label` is what people read ("horseai / Storefront"); `name` is the app's own name, which a search also finds. */
+  apps: Array<{ id: string; kind: AppKind; label: string; name?: string; environment: string | null }>;
   inFlight: number;
   viewer: { name: string; role: string; email?: string; avatarUrl?: string } | null;
   /** Design preview build: sign out skips the API call. */

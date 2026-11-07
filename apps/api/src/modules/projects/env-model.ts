@@ -262,7 +262,10 @@ export const listedValue = (e: Pick<Entry, "secret" | "value">): string | null =
 /** A managed service of the project, as references see it. */
 export interface RefService {
   id: string;
+  /** The service's name: the host its connection details use. */
   name: string;
+  /** What people read as its name, when it has one. */
+  displayName?: string | null;
   kind: NonNullable<P.EnvRefView["kind"]>;
   environmentId: string;
   /** Set after a version change switched this service's links to another one. */
@@ -272,8 +275,8 @@ export interface RefService {
 const STATEFUL: ReadonlySet<string> = new Set(["postgres", "redis", "s3"]);
 
 /** The project's services, from its apps. Only these can be linked. */
-export const servicesOf = (apps: Array<{ id: string; name: string; kind: string; environmentId: string; serviceRedirectId?: string | null }>): RefService[] =>
-  apps.filter((a) => STATEFUL.has(a.kind)).map((a) => ({ id: a.id, name: a.name, kind: a.kind as RefService["kind"], environmentId: a.environmentId, redirectTo: a.serviceRedirectId ?? null }));
+export const servicesOf = (apps: Array<{ id: string; name: string; displayName?: string | null; kind: string; environmentId: string; serviceRedirectId?: string | null }>): RefService[] =>
+  apps.filter((a) => STATEFUL.has(a.kind)).map((a) => ({ id: a.id, name: a.name, ...(a.displayName ? { displayName: a.displayName } : {}), kind: a.kind as RefService["kind"], environmentId: a.environmentId, redirectTo: a.serviceRedirectId ?? null }));
 
 /** Where a link to this service leads now: the new service after a version change, one step only. */
 const followRedirect = (svc: RefService, services: RefService[]): RefService => (svc.redirectTo ? (services.find((s) => s.id === svc.redirectTo) ?? svc) : svc);
@@ -302,7 +305,9 @@ export function refView(value: string | null, services: RefService[], envName: (
   const svc = services.find((s) => s.id === ref.resourceId);
   if (!svc) return { resourceId: ref.resourceId, resourceName: "Deleted service", kind: null, environment: "", field: ref.field, missing: true };
   const now = followRedirect(svc, services);
-  return { resourceId: svc.id, resourceName: now.name, kind: now.kind, environment: envName(now.environmentId), field: ref.field };
+  // A renamed service reads by its display name, with the name its connection details use beside it.
+  const resourceName = now.displayName ? `${now.displayName} (${now.name})` : now.name;
+  return { resourceId: svc.id, resourceName, kind: now.kind, environment: envName(now.environmentId), field: ref.field };
 }
 
 /**

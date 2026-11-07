@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import { DeploymentView } from "@/components/deployments/deployment-view";
 import { getOverview } from "@/lib/data";
+import { appTitle } from "@/lib/format";
 import { getDeployment } from "@/lib/pages/deployments";
 
 type Props = { params: Promise<{ id: string }> };
@@ -14,7 +15,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const result = await load(id);
   const d = result.data;
-  if (d) return { title: `${d.projectSlug} / ${d.app.name}, ${d.commit?.slice(0, 7) ?? d.id}` };
+  if (d) return { title: `${d.projectSlug} / ${appTitle(d.app)}, ${d.commit?.slice(0, 7) ?? d.id}` };
   return { title: result.notFound ? "Deployment not found" : "Deployment" };
 }
 

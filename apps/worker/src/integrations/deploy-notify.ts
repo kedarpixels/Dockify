@@ -5,6 +5,7 @@
  * "Deploys I started that fail" on in Settings, Profile. A deployment on Vercel is told the same way;
  * its branch, commit and error come from a third party, so they lose links and mentions first.
  */
+import { appLabel } from "@dockify/contracts";
 import type { Db } from "@dockify/db";
 import { deployFailed } from "@dockify/email";
 import { Redactor } from "@dockify/redact";
@@ -47,7 +48,7 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
       app: {
         select: {
           ...SHOWN_APP_ICON,
-          name: true, kind: true, gitRepository: true, gitInstallationId: true,
+          name: true, displayName: true, kind: true, gitRepository: true, gitInstallationId: true,
           environment: { select: { name: true, project: { select: { ...SHOWN_PROJECT_ICON, slug: true, name: true } } } },
         },
       },
@@ -62,16 +63,18 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
   const commit = outside(d.commitSha);
   const source = [vercel ? (preview ? "Vercel preview" : "Vercel") : null, branch, commit?.slice(0, 7)].filter(Boolean).join(", ") || null;
   const project = d.app.environment.project;
+  // What people read as the app's name; the payload's data keeps the name, which is its identity.
+  const shown = appLabel(d.app);
   // The pipeline writes its own through its redactor. Vercel's text has been through nothing yet.
   const error = (vercel && d.error ? new Redactor().line(inertLine(d.error)) : d.error) || "The deploy did not finish";
   await webhooksOnce(deps.db, `deploy-failed:${deploymentId}`, {
     id: `deploy-failed-${deploymentId}`,
     event: "deploy.failed",
     severity: "warning",
-    title: `${preview ? "Preview failed on Vercel" : vercel ? "Deploy failed on Vercel" : "Deploy failed"}: ${d.app.name}`,
+    title: `${preview ? "Preview failed on Vercel" : vercel ? "Deploy failed on Vercel" : "Deploy failed"}: ${shown}`,
     text: error.slice(0, 2000),
     url: deps.publicUrl ? new URL(`/deployments/${deploymentId}`, deps.publicUrl).toString() : null,
-    fields: [{ name: "Where", value: `${project.slug} / ${d.app.environment.name} / ${d.app.name}` }, ...(source ? [{ name: "Source", value: source }] : [])],
+    fields: [{ name: "Where", value: `${project.slug} / ${d.app.environment.name} / ${shown}` }, ...(source ? [{ name: "Source", value: source }] : [])],
     at: (d.finishedAt ?? new Date()).toISOString(),
     instance: { name: inst?.name ?? "Dockify", url: deps.publicUrl ? new URL(deps.publicUrl).origin : null },
     data: { deployment: { id: deploymentId, project: project.slug, environment: d.app.environment.name, app: d.app.name, branch, commit } },
@@ -87,7 +90,7 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
     origin,
     // The place as the dashboard shows it: project icon or folder, EnvTag, app icon or kind tile.
     where: {
-      projectName: project.name, projectSlug: project.slug, env: d.app.environment.name, appName: d.app.name, appKind: d.app.kind,
+      projectName: project.name, projectSlug: project.slug, env: d.app.environment.name, appName: shown, appKind: d.app.kind,
       ...mailIconLinks(origin, mailIconSigner(deps.internalToken), d.app, project),
     },
     error,

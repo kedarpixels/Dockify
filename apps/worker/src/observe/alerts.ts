@@ -41,6 +41,7 @@ const APP_RULES = new Set<Metric>(["down", "crash_loop", "memory"]);
 
 export interface AppView {
   id: string;
+  /** The name an alert's detail reads: the app's display name when it has one. */
   name: string;
   /** False for an app that should not be running (stopped, deploying, never deployed, on Vercel). */
   expectRunning: boolean;

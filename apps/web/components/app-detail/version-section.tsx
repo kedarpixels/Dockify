@@ -11,7 +11,7 @@ import { Skel } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { callJson } from "@/lib/client-api";
 import { errText } from "@/lib/feedback";
-import { plural } from "@/lib/format";
+import { appTitle, plural } from "@/lib/format";
 import type { AppDetail, ServiceVersionView } from "@/lib/pages/project-detail";
 import { TabCard } from "./states";
 
@@ -89,7 +89,7 @@ export function VersionSection({ app }: { app: AppDetail }) {
 
   const up = view.upgrade;
   const linked = view.linkedApps;
-  const linkedLine = linked.length ? `${plural(linked.length, "app")} linked: ${linked.map((a) => a.name).join(", ")}` : "No app links to it";
+  const linkedLine = linked.length ? `${plural(linked.length, "app")} linked: ${linked.map((a) => appTitle(a)).join(", ")}` : "No app links to it";
 
   return (
     <TabCard id="at-ver-title" icon="database" title="Version" sub={`${label} ${view.version ?? "unknown"}${view.pin ? `, ${view.pin.slice(0, 19)}` : ""}`}>
@@ -103,7 +103,7 @@ export function VersionSection({ app }: { app: AppDetail }) {
         {!working && view.redirect ? (
           <>
             <Callout tone="info" icon="info" action={<button type="button" className="btn btn-sm" onClick={() => setPending({ type: "back" })}>Switch back</button>}>
-              Linked apps now use <Link className="na-link" href={`/apps/${view.redirect.id}`}>{view.redirect.name}</Link>. {app.name} keeps running with its data until you delete it. Deleting it keeps {view.redirect.name} and makes those links its own.
+              Linked apps now use <Link className="na-link" href={`/apps/${view.redirect.id}`}>{appTitle(view.redirect)}</Link>. {appTitle(app)} keeps running with its data until you delete it. Deleting it keeps {appTitle(view.redirect)} and makes those links its own.
             </Callout>
           </>
         ) : null}
@@ -111,14 +111,14 @@ export function VersionSection({ app }: { app: AppDetail }) {
         {!working && !view.redirect && phase === "ready" && up?.target ? (
           <>
             <Callout tone="info" icon="info" action={<button type="button" className="btn btn-sm btn-primary" onClick={() => setPending({ type: "switch" })}>Switch</button>}>
-              <b className="pd-strong">The copy in <Link className="na-link" href={`/apps/${up.target.id}`}>{up.target.name}</Link> is ready.</b> {app.name} holds {counts(up.sourceCounts)}, the copy holds {counts(up.targetCounts)}. A small difference is writes made since. {linkedLine}.
+              <b className="pd-strong">The copy in <Link className="na-link" href={`/apps/${up.target.id}`}>{appTitle(up.target)}</Link> is ready.</b> {appTitle(app)} holds {counts(up.sourceCounts)}, the copy holds {counts(up.targetCounts)}. A small difference is writes made since. {linkedLine}.
             </Callout>
           </>
         ) : null}
 
         {!working && phase === "failed" && up ? (
           <Callout tone="warn" icon="alert">
-            <b className="pd-strong">The change stopped.</b> {up.error ?? "No reason was recorded."} {app.name} still has all its data.
+            <b className="pd-strong">The change stopped.</b> {up.error ?? "No reason was recorded."} {appTitle(app)} still has all its data.
           </Callout>
         ) : null}
 
@@ -148,8 +148,8 @@ export function VersionSection({ app }: { app: AppDetail }) {
                 }
               >
                 {option?.path === "new_service"
-                  ? `A major version cannot open the old data. Dockify takes a backup, restores it into a new service at ${label} ${choice} and checks it. Nothing changes for your apps until you confirm the switch, and ${app.name} stays until you delete it.`
-                  : `Dockify takes a backup, then restarts ${app.name} on the new image with the same data, so it is down for a moment. If it does not come up healthy, the old container runs again.${view.kind === "redis" && !samePatch ? " Going back later means restoring that backup, since an older Redis cannot read a newer snapshot." : ""}`}
+                  ? `A major version cannot open the old data. Dockify takes a backup, restores it into a new service at ${label} ${choice} and checks it. Nothing changes for your apps until you confirm the switch, and ${appTitle(app)} stays until you delete it.`
+                  : `Dockify takes a backup, then restarts ${appTitle(app)} on the new image with the same data, so it is down for a moment. If it does not come up healthy, the old container runs again.${view.kind === "redis" && !samePatch ? " Going back later means restoring that backup, since an older Redis cannot read a newer snapshot." : ""}`}
               </Callout>
             </>
           ) : (
@@ -166,8 +166,8 @@ export function VersionSection({ app }: { app: AppDetail }) {
         confirmText={app.name}
         confirmLabel="Start"
         body={pending?.type === "change" && pending.newService
-          ? `This takes a backup and creates a second service, using more disk and memory while both run. Your apps keep using ${app.name}.`
-          : `This takes a backup, then restarts ${app.name}. ${linkedLine}, and connections drop for a moment.`}
+          ? `This takes a backup and creates a second service, using more disk and memory while both run. Your apps keep using ${appTitle(app)}.`
+          : `This takes a backup, then restarts ${appTitle(app)}. ${linkedLine}, and connections drop for a moment.`}
       />
       <ConfirmDialog
         open={pending?.type === "switch"}
@@ -184,10 +184,10 @@ export function VersionSection({ app }: { app: AppDetail }) {
         onClose={() => setPending(null)}
         onConfirm={run}
         tone="danger"
-        title={`Switch back to ${app.name}`}
+        title={`Switch back to ${appTitle(app)}`}
         confirmText={app.name}
         confirmLabel="Switch back"
-        body={`Linked apps redeploy on ${app.name}. Anything written to ${view.redirect?.name ?? "the new service"} since the switch stays there and is not in ${app.name}.`}
+        body={`Linked apps redeploy on ${appTitle(app)}. Anything written to ${view.redirect ? appTitle(view.redirect) : "the new service"} since the switch stays there and is not in ${appTitle(app)}.`}
       />
     </TabCard>
   );

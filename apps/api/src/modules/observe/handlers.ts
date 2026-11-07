@@ -5,6 +5,7 @@ import { alertsPayload, createRule, deleteMute, deleteRule, patchRule, putMute, 
 import { boundSearch, queryLogs, scopeApps, streamLogs, tailApp, withSearchSlot, type LogFilter } from "./logs.ts";
 import { withLogReadSlot } from "../deployments/handlers.ts";
 import { vercelRuntimeTail } from "../integrations/vercel.ts";
+import { viewerLeft } from "../integrations/vercel-logs.ts";
 import { appMetrics } from "./metrics.ts";
 import { overview } from "./overview.ts";
 import { loadApp } from "./scope.ts";
@@ -29,10 +30,10 @@ type ObserveIds =
   | "public.status" | "statusPage.get" | "statusPage.patch";
 
 /** An app Vercel hosts writes nothing to this server's log table: its tail is read from Vercel. */
-async function vercelAppTail(db: Ctx["db"], ring: Ctx["ring"], appId: string, tail: number) {
+async function vercelAppTail(db: Ctx["db"], ring: Ctx["ring"], appId: string, tail: number, signal?: AbortSignal) {
   const app = await db.app.findUnique({ where: { id: appId }, select: { deployTarget: true } });
   if (app?.deployTarget !== "vercel") return null;
-  const out = await vercelRuntimeTail(db, ring, appId, undefined, Math.min(tail, 256));
+  const out = await vercelRuntimeTail(db, ring, appId, undefined, Math.min(tail, 256), signal);
   return { lines: out.lines.map((l) => ({ at: l.ts, stream: l.stream, text: l.text })), source: "vercel" as const, retention: out.retention };
 }
 
@@ -44,9 +45,10 @@ export const observeHandlers = {
     return appMetrics(ctx.db, app, query.range ?? "1h");
   },
 
-  "apps.logs": async ({ ctx, actor, params, query }) => {
+  "apps.logs": async ({ ctx, actor, params, query, reply }) => {
+    const left = viewerLeft(reply);
     await loadApp(ctx.db, actor, params.id);
-    const remote = await withLogReadSlot(actor?.userId ?? "anonymous", () => vercelAppTail(ctx.db, ctx.ring, params.id, query.tail ?? 200));
+    const remote = await withLogReadSlot(actor?.userId ?? "anonymous", () => vercelAppTail(ctx.db, ctx.ring, params.id, query.tail ?? 200, left));
     return remote ?? tailApp(ctx.db, params.id, query.tail ?? 200);
   },
 

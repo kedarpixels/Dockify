@@ -21,6 +21,8 @@ interface Entry {
   label: string;
   /** Text the query also matches, shown on the right. */
   hint?: string;
+  /** Text the query also matches, not shown: a renamed app's own name. */
+  alias?: string;
   href: string;
   icon?: IconName;
   /** Projects show their icon and their state. */
@@ -88,6 +90,7 @@ export function CommandMenu({ data, onClose, onNavigate }: { data: ShellData; on
         id: `a-${a.id}`,
         group: "Apps",
         label: a.label,
+        alias: a.name,
         hint: a.environment ?? undefined,
         env: a.environment ?? undefined,
         href: `/apps/${a.id}`,
@@ -99,7 +102,7 @@ export function CommandMenu({ data, onClose, onNavigate }: { data: ShellData; on
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (q) return entries.filter((e) => e.label.toLowerCase().includes(q) || e.hint?.toLowerCase().includes(q));
+    if (q) return entries.filter((e) => e.label.toLowerCase().includes(q) || e.hint?.toLowerCase().includes(q) || e.alias?.toLowerCase().includes(q));
     // No query: recent picks first (entries that no longer exist drop out), then the defaults.
     const byId = new Map(entries.map((e) => [e.id, e]));
     const recents = recent.flatMap((id) => {

@@ -21,7 +21,7 @@ export const ServerSnapshot = z.object({
   containers: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    app: z.object({ id: z.string(), name: z.string(), projectSlug: z.string(), environment: z.string(), kind: AppKind.optional() }).nullable(),
+    app: z.object({ id: z.string(), name: z.string(), displayName: z.string().optional(), projectSlug: z.string(), environment: z.string(), kind: AppKind.optional() }).nullable(),
     cpuPct: z.number(),
     memoryBytes: z.number(),
     restarts: z.number(),
@@ -227,7 +227,7 @@ export const AlertMetric = z.enum(["disk", "service", "down", "crashLoop", "memo
 /** Where a rule sends besides its webhooks: email to owners and admins, and the in-app bell. */
 export const AlertChannel = z.enum(["email", "bell"]);
 export const ControlService = z.enum(["any", "api", "worker", "proxy", "database"]);
-const AlertApp = z.object({ id: z.string(), name: z.string(), kind: AppKind, projectSlug: z.string(), environment: z.string() });
+const AlertApp = z.object({ id: z.string(), name: z.string(), displayName: z.string().optional(), kind: AppKind, projectSlug: z.string(), environment: z.string() });
 export const AlertRule = z.object({
   id: z.string(),
   metric: AlertMetric,

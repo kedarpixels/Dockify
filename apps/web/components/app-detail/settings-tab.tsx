@@ -12,17 +12,19 @@ import { Select } from "@/components/ui/select";
 import { SkelRows } from "@/components/ui/skeleton";
 import { sourceOf, type AppSource } from "@/lib/app-source";
 import { report } from "@/lib/feedback";
+import { appTitle } from "@/lib/format";
 import type { AppConfig, AppDetail, AppSettings } from "@/lib/pages/project-detail";
 import { useCan } from "@/lib/viewer";
 import { mutate } from "@/components/project-detail/controls";
 import { useLeaveGuard } from "@/components/ui/leave-guard";
 import { DangerZone, DeleteDialog, isManaged, KIND_LABEL } from "@/components/project-detail/shared";
+import { NameSection } from "./name-section";
 import { VersionSection } from "./version-section";
-import { HealthSection, LimitsSection, ReadOnlyNote, ReleaseSection, SaveRow, TargetSection, useReportDirty, type DirtyReport } from "./settings-sections";
+import { HealthSection, LimitsSection, ReleaseSection, SaveRow, TargetSection, useReportDirty, type DirtyReport } from "./settings-sections";
 import { TabCard, TabFailed } from "./states";
 import { useAppTab } from "./use-tab";
 
-/* The app's settings: build and run, the icon, health check, resource limits, release command, the
+/* The app's settings: its name, build and run, the icon, health check, resource limits, release command, the
    deploy target for frontends, then the danger zone (the project settings order: identity first).
    An app on Vercel keeps only what does something for it: the branch, the icon, the deploy target
    and the danger zone. Nothing runs here, so the rest waits, saved, for a move back to this server.
@@ -88,7 +90,7 @@ function VercelBranchSection({ app, mode, multiEnv, onDirty }: { app: AppDetail;
     const r = report(await mutate({ type: "app.settings", id: app.id, settings: app.settings, source: { branch: value || null } }), {
       success: "Branch saved",
       error: "Could not save the branch",
-      what: `${app.projectSlug} / ${app.name}`,
+      what: `${app.projectSlug} / ${appTitle(app)}`,
     });
     setBusy(false);
     if (!r.ok) return;
@@ -106,7 +108,6 @@ function VercelBranchSection({ app, mode, multiEnv, onDirty }: { app: AppDetail;
           void save();
         }}
       >
-        <ReadOnlyNote />
         <Field label="Branch" error={tried ? error : null} hint={multiEnv ? `Leave empty to follow the ${envName(app.environment)} environment’s branch.` : "Leave empty to follow the project’s branch."}>
           {(ids) => <TextInput ids={ids} className="pd-mono" value={branch} placeholder="main" spellCheck={false} readOnly={!can.manage} onChange={(e) => setBranch(e.target.value)} />}
         </Field>
@@ -156,7 +157,7 @@ function BuildSection({ app, multiEnv, onSaved, onDirty }: { app: AppDetail; mul
     const r = report(await mutate({ type: "app.settings", id: app.id, settings, ...(sourcePatch ? { source: sourcePatch } : {}) }), {
       success: "Settings saved",
       error: "Could not save settings",
-      what: `${app.projectSlug} / ${app.name}, applies on the next deploy`,
+      what: `${app.projectSlug} / ${appTitle(app)}, applies on the next deploy`,
     });
     setBusy(false);
     if (!r.ok) return;
@@ -186,8 +187,6 @@ function BuildSection({ app, multiEnv, onSaved, onDirty }: { app: AppDetail; mul
           void save();
         }}
       >
-        {/* The tab's one note for a Viewer: every card below is read-only for them. */}
-        <ReadOnlyNote />
         {source === "image" ? (
           <Field label="Image" error={err("image")} hint="Pulled again and pinned by digest on the next deploy.">
             {(ids) => <TextInput ids={ids} className="pd-mono" value={draft.image} placeholder="ghcr.io/acme/web:1.2" spellCheck={false} readOnly={!can.manage} onChange={set("image")} />}
@@ -242,14 +241,15 @@ function BuildSection({ app, multiEnv, onSaved, onDirty }: { app: AppDetail; mul
 }
 
 /** The cards that report unsaved edits, by name. */
-type CardKey = "build" | "health" | "limits" | "release" | "target";
-const CARDS: CardKey[] = ["build", "health", "limits", "release", "target"];
+type CardKey = "name" | "build" | "health" | "limits" | "release" | "target";
+const CARDS: CardKey[] = ["name", "build", "health", "limits", "release", "target"];
 
 export function SettingsTab({
   app,
   multiEnv,
   now,
   onSaved,
+  onRenamed,
   onDirty,
 }: {
   app: AppDetail;
@@ -257,6 +257,8 @@ export function SettingsTab({
   multiEnv: boolean;
   now: number;
   onSaved: (s: AppSettings) => void;
+  /** A saved rename: the display name now shown (null shows the name). */
+  onRenamed: (displayName: string | null) => void;
   /** Whether any card holds unsaved edits, for a page that switches tabs in place. */
   onDirty?: (dirty: boolean) => void;
 }) {
@@ -285,7 +287,7 @@ export function SettingsTab({
     const r = report(await mutate({ type: "app.delete", id: app.id, confirm: app.name }), {
       success: "App deleted",
       error: "Could not delete the app",
-      what: `${app.projectSlug} / ${app.name}`,
+      what: `${app.projectSlug} / ${appTitle(app)}`,
     });
     if (r.ok) router.push(`/projects/${app.projectSlug}`);
     return r.ok;
@@ -293,9 +295,10 @@ export function SettingsTab({
 
   return (
     <div className="pd-stack">
-      {/* With no branch to set, the Viewer's note moves here: BuildSection normally carries it. */}
-      {!hosted ? <BuildSection app={app} multiEnv={multiEnv} onSaved={onSaved} onDirty={reporters.build} /> : branchAlone ? <VercelBranchSection app={app} mode={target?.mode} multiEnv={multiEnv} onDirty={reporters.build} /> : <ReadOnlyNote />}
-      <IconCard target={{ target: "app", id: app.id }} name={app.name} where={`${app.projectSlug} / ${app.name}`} kind={app.kind} url={app.url} now={now} />
+      {/* Identity first, as on the project's settings. The Name card carries the tab's one note for a Viewer. */}
+      <NameSection app={app} onRenamed={onRenamed} onDirty={reporters.name} />
+      {!hosted ? <BuildSection app={app} multiEnv={multiEnv} onSaved={onSaved} onDirty={reporters.build} /> : branchAlone ? <VercelBranchSection app={app} mode={target?.mode} multiEnv={multiEnv} onDirty={reporters.build} /> : null}
+      <IconCard target={{ target: "app", id: app.id }} name={appTitle(app)} where={`${app.projectSlug} / ${appTitle(app)}`} kind={app.kind} url={app.url} now={now} />
       {config ? (
         <>
           {hosted ? null : (
@@ -323,8 +326,8 @@ export function SettingsTab({
           {
             title: "Delete app",
             body: hosted
-              ? `Removes ${app.name} and its deployment list from Dockify. Nothing changes on Vercel, and project variables are kept.`
-              : `Stops ${app.name}, removes its container and volumes, and detaches its domains. Project variables are kept, and its backups stay until you delete them on the Backups page.`,
+              ? `Removes ${appTitle(app)} and its deployment list from Dockify. Nothing changes on Vercel, and project variables are kept.`
+              : `Stops ${appTitle(app)}, removes its container and volumes, and detaches its domains. Project variables are kept, and its backups stay until you delete them on the Backups page.`,
             action: "Delete app",
             onAction: () => setDel(true),
           },
@@ -334,8 +337,8 @@ export function SettingsTab({
         open={del}
         onClose={() => setDel(false)}
         name={app.name}
-        title={`Delete ${app.name}`}
-        body={`This removes ${app.name} from ${app.projectSlug}${multiEnv ? ` / ${envName(app.environment)}` : ""}. It cannot be undone.`}
+        title={`Delete ${appTitle(app)}`}
+        body={`This removes ${appTitle(app)} from ${app.projectSlug}${multiEnv ? ` / ${envName(app.environment)}` : ""}. It cannot be undone.`}
         action="Delete app"
         onConfirm={remove}
       />

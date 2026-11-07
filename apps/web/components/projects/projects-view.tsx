@@ -69,7 +69,7 @@ export function ProjectsView({ initial }: { initial: OverviewResult }) {
     const q = query.trim().toLowerCase();
     const match = FILTERS.find((f) => f.id === filter)!.match;
     return projects.filter(
-      (p) => match(p.tone) && (!q || p.slug.toLowerCase().includes(q) || p.apps.some((a) => a.name.toLowerCase().includes(q))),
+      (p) => match(p.tone) && (!q || p.slug.toLowerCase().includes(q) || p.apps.some((a) => a.name.toLowerCase().includes(q) || !!a.displayName?.toLowerCase().includes(q))),
     );
   }, [projects, query, filter]);
 

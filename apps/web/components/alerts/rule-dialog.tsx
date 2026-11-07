@@ -12,7 +12,7 @@ import { Select, type SelectOption } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { APP_TONE } from "@/lib/derive";
 import { projectsShowingEnvironments } from "@/lib/environments";
-import { plural } from "@/lib/format";
+import { appTitle, plural } from "@/lib/format";
 import {
   APP_METRICS,
   CHANNELS,
@@ -164,10 +164,10 @@ export function RuleDialog({
   const metricOptions: SelectOption<AlertMetric>[] = (d.scope === "server" ? SERVER_METRICS : APP_METRICS).map((m) => ({ value: m, label: METRIC_NAME[m], icon: METRIC_ICON[m] }));
   const shows = projectsShowingEnvironments(apps);
   const appOptions: SelectOption<string>[] = [...apps]
-    .sort((a, b) => `${a.projectSlug}/${a.name}/${a.environment}`.localeCompare(`${b.projectSlug}/${b.name}/${b.environment}`))
-    .map((a) => ({ value: a.id, label: `${a.projectSlug} / ${a.name}`, hint: shows(a.projectSlug) ? envName(a.environment) : undefined, tone: APP_TONE[a.status] }));
+    .sort((a, b) => `${a.projectSlug}/${appTitle(a)}/${a.environment}`.localeCompare(`${b.projectSlug}/${appTitle(b)}/${b.environment}`))
+    .map((a) => ({ value: a.id, label: `${a.projectSlug} / ${appTitle(a)}`, hint: shows(a.projectSlug) ? envName(a.environment) : undefined, tone: APP_TONE[a.status] }));
   // An edited rule whose app is gone still shows its name.
-  if (rule?.app && !apps.some((a) => a.id === rule.app!.id)) appOptions.unshift({ value: rule.app.id, label: `${rule.app.projectSlug} / ${rule.app.name}`, hint: "Removed" });
+  if (rule?.app && !apps.some((a) => a.id === rule.app!.id)) appOptions.unshift({ value: rule.app.id, label: `${rule.app.projectSlug} / ${appTitle(rule.app)}`, hint: "Removed" });
 
   const durOptions: SelectOption<string>[] = DURATIONS.map((n) => ({ value: String(n), label: plural(n, "minute") }));
   const show = (e: string | null) => (tried ? e : null);

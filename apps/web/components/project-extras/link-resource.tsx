@@ -12,7 +12,7 @@ import { envName } from "@/components/ui/env-tag";
 import { Field, TextInput } from "@/components/ui/field";
 import { GroupHead } from "@/components/ui/group-head";
 import { Select } from "@/components/ui/select";
-import { plural } from "@/lib/format";
+import { appTitle, plural } from "@/lib/format";
 import type { AppSummary, EnvRef, EnvTarget, StatefulKind } from "@/lib/pages/project-detail";
 import { FIELD_NAME, isService, KIND_NAME, REF_FIELDS } from "./env-refs";
 import { TARGET_LABEL } from "./env-model";
@@ -177,9 +177,13 @@ export function LinkResourceDialog({
                           <AppIcon id={s.id} kind={s.kind} size="md" />
                           <span className="two">
                             <span className="two-main">
-                              {slug} / {s.name}
+                              {slug} / {appTitle(s)}
                             </span>
-                            <span className="two-sub">{reachable ? KIND_NAME[s.kind] : `${KIND_NAME[s.kind]}, apps in ${envName(environment)} cannot reach it`}</span>
+                            {/* A renamed service: the name its connection details use, the host a linked app dials. */}
+                            <span className="two-sub">
+                              {reachable ? KIND_NAME[s.kind] : `${KIND_NAME[s.kind]}, apps in ${envName(environment)} cannot reach it`}
+                              {s.displayName ? `, host ${s.name}` : null}
+                            </span>
                           </span>
                           <input type="radio" name="px-link-svc" className="radio" checked={picked === s.id} disabled={!reachable} onChange={() => pick(s.id)} />
                         </label>

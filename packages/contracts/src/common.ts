@@ -114,6 +114,15 @@ export const UNSAFE_TEXT_MESSAGE = "Remove control characters, direction marks a
 export const DisplayName = z.string().trim().min(1).max(100).refine(isSafeText, UNSAFE_TEXT_MESSAGE);
 /** A short label shown to people, a public status page included: the DisplayName rule with its own length. */
 export const SafeLabel = (max: number, min = 0) => z.string().trim().min(min).max(max).refine(isSafeText, UNSAFE_TEXT_MESSAGE);
+/**
+ * What people read as an app's name: one line of visible text, 1 to 60 characters, any case. The
+ * app's `name` (AppName) stays its identity for containers, volumes, links, preview hosts and the
+ * CLI, so this one is free to change. The database holds the same length (apps_display_name_length).
+ */
+export const APP_DISPLAY_NAME_MAX = 60;
+export const AppDisplayName = SafeLabel(APP_DISPLAY_NAME_MAX, 1);
+/** The name to show for an app: its display name, else its name. */
+export const appLabel = (a: { name: string; displayName?: string | null }): string => a.displayName || a.name;
 export const Email = z.email().max(254);
 /** Policy: at least 12 characters (the web checks the same in apps/web/lib/password.ts). */
 export const NewPassword = z.string().min(12, "Use at least 12 characters").max(256);
@@ -280,7 +289,8 @@ export const RecentDeployment = z.object({
   trigger: z.string(),
   createdAt: Iso,
   finishedAt: Iso.nullable(),
-  app: z.object({ id: z.string(), name: z.string(), kind: AppKind.optional() }),
+  /** `displayName` is what people read (absent: show `name`); `name` stays the app's identity. */
+  app: z.object({ id: z.string(), name: z.string(), displayName: z.string().nullable().optional(), kind: AppKind.optional() }),
   projectSlug: z.string(),
   environment: z.string(),
   /** The app's git repository URL, for links to the commit and branch; null for an image source. */
@@ -298,7 +308,10 @@ export type RecentDeployment = z.infer<typeof RecentDeployment>;
 
 export const Resource = z.object({
   id: z.string(),
+  /** The app's identity: containers, links, preview hosts and the CLI use it. */
   name: z.string(),
+  /** What people read as its name; absent or null shows `name`. */
+  displayName: z.string().nullable().optional(),
   kind: AppKind,
   status: AppStatus,
   projectId: z.string(),

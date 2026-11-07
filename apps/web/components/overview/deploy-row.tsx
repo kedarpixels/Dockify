@@ -16,7 +16,7 @@ import { When } from "@/components/ui/when";
 import { deployFace, deployMessage, deploySource, deployTip } from "@/lib/deploy-source";
 import { appLabel, DEPLOY_LABEL, DEPLOY_TONE } from "@/lib/derive";
 import { describe, errText } from "@/lib/feedback";
-import { clock, duration } from "@/lib/format";
+import { appTitle, clock, duration } from "@/lib/format";
 import { githubRepo } from "@/lib/git-links";
 import type { ActionResult } from "@/lib/pages/deployments";
 import { useTimeFormat } from "@/lib/time-prefs";
@@ -83,6 +83,10 @@ function RedeployKey({ d }: { d: RecentDeployment }) {
  * deployment instead, since the app is the page itself. `time="clock"` (a past day in the heatmap
  * panel) prints the UTC clock time instead of the relative one.
  */
+const VERCEL_TARGET = { production: "Production", preview: "Preview" } as const;
+/** "Production on Vercel", "Preview on Vercel", or just where it ran when Vercel named no target. */
+const vercelTip = (d: RecentDeployment) => (d.external?.target ? `${VERCEL_TARGET[d.external.target]} on Vercel` : "On Vercel");
+
 export function DeployRow({ d, now, time = "ago", scope = "all" }: { d: RecentDeployment; now: number; time?: "ago" | "clock"; scope?: "all" | "project" | "app" }) {
   const can = useCan();
   const fmt = useTimeFormat();
@@ -115,10 +119,11 @@ export function DeployRow({ d, now, time = "ago", scope = "all" }: { d: RecentDe
         <span className="dep-name" title={scope === "app" ? undefined : appLabel(d)}>
           {scope === "all" ? <span className="dep-slug">{d.projectSlug}</span> : null}
           {scope === "all" ? <span className="dep-sep">/</span> : null}
-          <span>{scope === "app" ? triggerLabel(d.trigger) : d.app.name}</span>
+          {/* On a Vercel app's page every row is a push; whether it went to production says more. */}
+          <span>{scope === "app" ? (d.external?.target ? VERCEL_TARGET[d.external.target] : triggerLabel(d.trigger)) : appTitle(d.app)}</span>
         </span>
         {d.external ? (
-          <span className="dep-host" role="img" aria-label="On Vercel" data-tip="On Vercel">
+          <span className="dep-host" role="img" aria-label={vercelTip(d)} data-tip={vercelTip(d)}>
             <Icon name="vercel" size={14} />
           </span>
         ) : null}

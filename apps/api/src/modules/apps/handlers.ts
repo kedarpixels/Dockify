@@ -17,12 +17,13 @@ import { assertProjectScope, readsCommands, type Actor } from "../../actor.ts";
 import { loadPeople } from "../../actor-view.ts";
 import type { Ctx, Handlers } from "../../app.ts";
 import { audit } from "../../audit.ts";
-import { HttpError } from "../../errors.ts";
+import { HttpError, isUniqueViolation } from "../../errors.ts";
+import { appShowing, nameShownElsewhere, storedDisplayName } from "./display-name.ts";
 import { assertNoDeployInFlight } from "../deployments/enqueue.ts";
 import { IN_FLIGHT } from "../deployments/mapping.ts";
 import { configOf, findIntegration } from "../integrations/store.ts";
-import { enqueueVercelMirror, enqueueVercelSync, importGate, vercelApiFor } from "../integrations/vercel.ts";
-import { defaultCpuCores } from "@dockify/contracts";
+import { enqueueVercelMirror, enqueueVercelSync, importGate, TOKEN_DEAD, vercelApiFor } from "../integrations/vercel.ts";
+import { appLabel, defaultCpuCores } from "@dockify/contracts";
 import { DEFAULT_MEMORY_MB, DEFAULT_PIDS } from "../observe/metrics.ts";
 import { imageProblem } from "../projects/handlers.ts";
 import { enqueueRemovals } from "../projects/jobs.ts";
@@ -34,7 +35,7 @@ import { configUpdate, targetPlan, healthOf, STATEFUL, limitsOf, publicUrlOf, se
 export type PowerOp = "start" | "stop" | "restart";
 
 const ROW = {
-  id: true, name: true, kind: true, status: true, desiredState: true, image: true, gitRepository: true, gitBranch: true, gitRepoId: true, deployTarget: true, vercelProjectId: true, vercelFollowOnly: true,
+  id: true, name: true, displayName: true, kind: true, status: true, desiredState: true, image: true, gitRepository: true, gitBranch: true, gitRepoId: true, deployTarget: true, vercelProjectId: true, vercelFollowOnly: true,
   builder: true, rootDir: true, dockerfilePath: true, installCommand: true, buildCommand: true, startCommand: true, releaseCommand: true,
   port: true, healthCheckPath: true, healthExpectedStatus: true, healthTimeoutSeconds: true, healthGraceSeconds: true, healthIntervalSeconds: true,
   replicas: true, cpuLimit: true, memoryLimitMb: true, pidsLimit: true, capAdd: true, sysctls: true,
@@ -104,6 +105,7 @@ async function appDetail(ctx: Ctx, a: Row, viewer: Actor) {
     id: a.id,
     terminal,
     name: a.name,
+    ...(a.displayName ? { displayName: a.displayName } : {}),
     kind: a.kind,
     status: a.status,
     projectId: a.environment.projectId,
@@ -120,7 +122,7 @@ async function appDetail(ctx: Ctx, a: Row, viewer: Actor) {
     settings: readsCommands(viewer) ? settingsOf(a) : withoutCommands(settingsOf(a)),
     ...(up ? { usage: { cpuPct: latest ? Math.round(latest.cpuPct * 10) / 10 : 0, memoryBytes: latest ? Number(latest.memoryBytes) : 0, memoryLimitBytes } } : {}),
     ...(hourly.length ? { metrics: hourly.map((m) => ({ at: m.at.toISOString(), cpuPct: Math.round(m.cpuPct * 10) / 10, memoryBytes: Number(m.memoryBytes) })) } : {}),
-    deployments: deployments.map((d) => recentDeployment(d, { id: a.id, name: a.name, kind: a.kind, repo: a.gitRepository, image: a.image }, a.environment.project.slug, a.environment.name, people)),
+    deployments: deployments.map((d) => recentDeployment(d, { id: a.id, name: a.name, displayName: a.displayName, kind: a.kind, repo: a.gitRepository, image: a.image }, a.environment.project.slug, a.environment.name, people)),
   };
 }
 
@@ -168,15 +170,20 @@ async function vercelOf(ctx: Ctx, a: Row, viewer: Actor) {
   const row = await findIntegration(ctx.db, "vercel");
   const connected = !!row && row.status !== "disconnected" && !!row.secretId;
   let projects: Array<{ id: string; name: string; framework: string | null }> = [];
+  let projectsError: string | null = null;
   if (connected) {
     vercelHttp ??= createHttpClient();
     projects = await vercelApiFor(ctx.db, ctx.ring, vercelHttp)
       .then((api) => api.projects())
       .then((list) => list.filter((p) => viewer.role === "admin" && viewer.kind === "session" || p.id === a.vercelProjectId).map((p) => ({ id: p.id, name: p.name, framework: p.framework ?? null })))
-      .catch(() => []);
+      .catch((e: unknown) => {
+        // The picker says why it is empty: a dead token and a rate limit each need something else done.
+        projectsError = e instanceof HttpError && e.code === "VERCEL_TOKEN" ? TOKEN_DEAD : e instanceof HttpError && e.status < 500 ? e.message : "Vercel did not answer, so its projects could not be listed. Try again shortly.";
+        return [];
+      });
   }
   const apps = row ? (configOf<{ apps?: Record<string, SyncState> }>(row).apps ?? {}) : {};
-  return { connected, projects, sync: a.deployTarget === "vercel" && !a.vercelFollowOnly ? syncView(apps[a.id]) : null };
+  return { connected, projects, projectsError, sync: a.deployTarget === "vercel" && !a.vercelFollowOnly ? syncView(apps[a.id]) : null };
 }
 
 async function appConfig(ctx: Ctx, a: Row, viewer: Actor) {
@@ -249,6 +256,39 @@ export const appLifecycleHandlers: Handlers = {
           targetLabel: label(app), suffix: "(applies on the next deploy)", changes: changesJson(changes), ...meta(req),
         });
       });
+    }
+    return appDetail(ctx, await loadRow(ctx, a, params.id), a);
+  },
+
+  /**
+   * Changes the name people read, nothing else: `name` stays, so no container, volume, network alias,
+   * preview host, link, route or CLI call notices. Refused when another app of the environment
+   * already shows or answers to it, ignoring case.
+   */
+  "apps.rename": async ({ params, body, actor, ctx, req }) => {
+    const a = requireActor(actor);
+    const app = await loadRow(ctx, a, params.id);
+    const next = storedDisplayName(app.name, body.displayName);
+    if (next !== app.displayName) {
+      try {
+        await ctx.db.$transaction(async (tx) => {
+          // One rename per environment at a time, so the check below sees every other one.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`app-name:${app.environmentId}`}))`;
+          if (next !== null) {
+            const other = await appShowing(tx, app.environmentId, [next], app.id);
+            if (other) throw nameShownElsewhere(next, other);
+          }
+          await tx.app.update({ where: { id: app.id }, data: { displayName: next } });
+          await audit(tx, {
+            category: "config", action: "app.rename", verb: "renamed", ...actorFields(a), targetType: "app", targetId: app.id, targetLabel: label(app),
+            suffix: `from ${appLabel(app)} to ${appLabel({ name: app.name, displayName: next })}`,
+            changes: changesJson([{ key: "displayName", before: app.displayName, after: next }]), ...meta(req),
+          });
+        });
+      } catch (e) {
+        if (isUniqueViolation(e)) throw nameShownElsewhere(next ?? app.name, null);
+        throw e;
+      }
     }
     return appDetail(ctx, await loadRow(ctx, a, params.id), a);
   },
