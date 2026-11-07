@@ -1,8 +1,30 @@
 {
   "schema": 2,
   "channel": "beta",
-  "generatedAt": "2026-11-07T14:12:30.208Z",
+  "generatedAt": "2026-11-07T15:22:30.824Z",
   "releases": [
+    {
+      "version": "1.0.1",
+      "date": "2026-11-07",
+      "publishedAt": "2026-11-07T15:22:30.824Z",
+      "minFrom": "0.0.0",
+      "migration": "0026_app_display_name",
+      "critical": false,
+      "notesUrl": "https://github.com/kedarpixels/Dockify/releases/tag/v1.0.1",
+      "notes": "## 1.0.1 (2026-11-07)\n\nRename apps, a fuller view of apps that follow Vercel, and fixes for Vercel logs and Cloudflare tokens.\n\n### Added\n- Rename an app. Settings has a Name section for the name the dashboard, notifications, emails and pull request comments show. The app's original name stays its identity for containers, volumes, links, preview hosts and the CLI, so nothing is redeployed. Two apps in one environment cannot show the same name.\n- An app that follows Vercel now reads its Vercel project live. Overview shows what production serves (domains, commit, branch, author, build time) and the project settings, Variables lists the project's environment variables (an admin sees plain values, encrypted and sensitive values are never shown), and Domains lists the project's domains on Vercel. Each tab links to manage it on Vercel.\n\n### Changed\n- Counts in group headings are in brackets, so a count after a date, as in \"Sat 7 Nov (19)\", no longer reads as part of it.\n\n### Fixed\n- The Logs tab of an app that follows Vercel could keep showing \"Too many log reads\" after you switched tabs, because a read for a page you had left kept its slot. A read now stops the moment you leave, and the tab says plainly when Vercel has no runtime logs.\n- Connecting a Cloudflare token with only zone permissions failed with \"This token cannot see any Cloudflare account\". Dockify now takes the account from the token's zones.\n- After `install.sh --upgrade` from the signed feed, Settings, Updates could still ask to set DOCKIFY_RELEASE_FEED on an install made without a feed. The upgrade now records the feed and key that checked the new images in `.env`.\n",
+      "images": {
+        "control": {
+          "amd64": "ghcr.io/kedarpixels/dockify-control@sha256:54e1eb1bcb455d1738d0a687989bcfcf171feea5bd99bcee81ee19c4e5b1fa8a",
+          "arm64": "ghcr.io/kedarpixels/dockify-control@sha256:97d7c313ef4453894b47643e6802ea1f4ca57041d2ea3207ddc6caef5de44069"
+        },
+        "web": {
+          "amd64": "ghcr.io/kedarpixels/dockify-web@sha256:8a64fc1015a17eaee7e2ba33fd503bbcdf11767bb1f179a450293a6c04007a20",
+          "arm64": "ghcr.io/kedarpixels/dockify-web@sha256:597e08b21bdb3ddbae3a2194f6fe32455f33711376fe816a44741792c892e6b4"
+        }
+      },
+      "composeSha256": "7742d0c095f02b1d16c26806b9087931bc4fd7f4471f05d551b87c64062956f0",
+      "socketProxySha256": "19d55ffbf94bef940073b91432131ce3a87bce08401076fbd26b4a5967243e98"
+    },
     {
       "version": "1.0.0",
       "date": "2026-11-07",
