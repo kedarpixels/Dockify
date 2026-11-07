@@ -1,0 +1,90 @@
+---
+title: "Deploy sources"
+description: "Where an app comes from: a GitHub repository, with or without a Dockerfile, a Docker image, a managed Postgres or Redis, or a Docker Compose file."
+---
+
+## Choose a source
+
+In a project, **New app** asks where the app comes from. There are five sources. Whichever you pick, the app gets the same locked-down container: no host port, no privileged mode, no host folder.
+
+## GitHub repository
+
+Dockify clones a branch and builds it: from its **Dockerfile** when it has one, and with [Railpack](https://railpack.com) when it does not. Next.js, Vite, Astro and other Node apps, Python, Go, Ruby, PHP, Java, Rust, .NET, Elixir, Deno and static sites build with no setup.
+
+New app reads the repository before you deploy and shows what it found.
+
+| Field | Notes |
+|---|---|
+| Repository | Picked from the list of a connected GitHub App, or a public repository by its URL. See [Connect GitHub](/docs/github). |
+| Branch | The branch to build. |
+| Root directory | For a monorepo, the app's folder, such as `apps/web`. Relative, and it may not leave the repository. |
+| Build with | Shown when the repository has a Dockerfile: keep using it, or build with Railpack instead. In the app's settings, **Automatic** uses the Dockerfile when there is one, else Railpack. |
+| Dockerfile path | Relative to the root directory, then to the repository. Empty means `Dockerfile`. |
+| Install and build command | Without a Dockerfile, optional: each replaces that step. Empty uses what is detected, at each deploy. |
+| Start command | Optional. Runs in place of the image's entrypoint, with no shell. Words starting with a flag go to the image's own entrypoint instead. Quotes, variables or `&&` need a shell in the image. Empty runs the image as built. |
+| Port | The port the app listens on inside the container, filled in from what was detected. Dockify also passes it as `PORT`. |
+
+Variables reach the build too. From a Dockerfile, a plain variable whose target is `build` or `both` is a build argument (`ARG KEY`). A secret never is: read it with `RUN --mount=type=secret`. Without a Dockerfile, install and build commands see every build-visible variable as an environment variable, and none of them is stored in the image. See [Environment variables](/docs/env-vars#at-build-time).
+
+### Without a Dockerfile
+
+Railpack works out the language and framework from the repository's files, and installs the versions it asks for. A `railpack.json` in the root directory changes the plan; see Railpack's docs.
+
+- **Next.js.** `output: "standalone"` runs Next's own server, with its static files beside it. `output: "export"` is served as static files. Otherwise it runs your `start` script, or `next start`.
+- **Static sites.** An `index.html` or a `public` folder, or the output of Vite, Astro and similar, is served by Caddy.
+- **The port.** Dockify passes the app's port as `PORT`. Static sites and most frameworks read it. An app that picks a fixed port of its own needs that port set on the app.
+
+The plan is made and built in the same sandbox as any `RUN` step, with the same time and memory limits. A repository cannot use it to read another app's cache, the server or a secret you did not make visible to builds. When Railpack cannot work out what to do, the deploy fails and says why.
+
+## Docker image
+
+Run an image that is already built, from Docker Hub, GitHub Container Registry or your own registry.
+
+| Field | Notes |
+|---|---|
+| Image | A reference with a tag or a digest, such as `ghcr.io/owner/app:1.0`. |
+| Registry | Public registries, and a registry on your own network, by name or address and on any port, such as `registry.lan:5000/app:1` or `192.168.1.5:5000/app:1`. For a private image, a registry login added once under **Settings > Integrations**: GitHub Container Registry, Docker Hub, or a custom public host on the standard HTTPS port. A login cannot be saved for a registry on your own network. |
+| Start command | Optional. Runs in place of the image's entrypoint, with no shell. Words starting with a flag go to the image's own entrypoint instead. Quotes, variables or `&&` need a shell in the image. Empty runs the image as built. |
+| Port | Optional. Empty uses the image's `EXPOSE`. |
+
+## Database or service
+
+A managed **Postgres** (17, 16 or 15) or **Redis** (8.2 or 7.4), private to its environment, with generated credentials and its own volume. See [Databases](/docs/databases).
+
+S3 storage is not a managed service. Bring your own bucket, or run SeaweedFS from [Templates](/docs/templates) if it suits you.
+
+## Templates
+
+Popular self-hosted apps, ready to deploy, with every image, command, port, volume and variable shown before you press. See [Templates](/docs/templates).
+
+## Compose import
+
+Paste a `docker-compose.yml`. Dockify reads each service and proposes one app per service, for you to review before anything is created. Then it creates them together, all or none, up to 20 at once.
+
+| In the file | What happens |
+|---|---|
+| `image`, `command`, `environment`, named `volumes`, the first container port | Imported. Only that one port is routed. |
+| A Postgres or Redis image with a supported version | Becomes the managed service of that version. Its `environment` and `volumes` are not imported: Dockify generates the credentials and keeps the data on its own volume. |
+| A `minio/minio` image | Not imported: Storage is not available. |
+| `build` | A service with only `build` is skipped: add it as a GitHub repository app instead. With both `build` and `image`, the image runs. |
+| `ports` | Never published on the host. Use a domain instead. |
+| `privileged`, `cap_add`, `devices`, `network_mode: host`, host `pid`, `ipc` or `userns_mode`, bind mounts | Refused. |
+| `env_file`, `healthcheck`, `entrypoint`, `deploy`, `labels`, `networks`, `container_name` | Not imported. Set variables, the health check and limits in the app's settings. |
+
+This is what the dashboard does. The API import is stricter: it refuses the whole file when it holds `build`, `entrypoint`, `env_file` or a `minio/minio` image.
+
+## Limits for every app
+
+- **No host ports, ever.** Traffic reaches an app through the proxy, by domain.
+- **Volumes** are named volumes only, up to ten per app, and never over a system path such as `/etc`, `/proc` or `/usr`. An app with a volume deploys stop then start.
+- **Reserved variables.** `PORT` and every `DOCKIFY_` key are set by Dockify; an app cannot set them.
+- **Vercel as a target.** Only a frontend built from a repository can deploy to Vercel. See [Vercel import](/docs/vercel).
+
+## What can go wrong
+
+- **"No Dockerfile at ...".** The builder is set to Dockerfile. Add one, set its path, or switch the builder in the app's settings.
+- **"Dockify could not work out how to build this repository".** Railpack found nothing it knows, or no way to start the app. Set the commands in the app's settings, or add a Dockerfile.
+- **"That repository host is not reachable from Dockify".** The repository URL points at a private or internal address, which Dockify never calls.
+- **"Dockify does not pull from ...".** The image names this server's loopback, cloud metadata, a link-local address, Dockify's own control networks, or an address written in an unusual spelling. A registry on your own network is fine.
+- **A pull from your own network's registry fails with an HTTP or certificate error.** Docker pulls, so Docker has to trust it: give the registry a certificate Docker trusts, or list it under `insecure-registries` in `/etc/docker/daemon.json` on the server.
+- **A Compose service was skipped.** It builds from source, or has no image. Add it as its own app.

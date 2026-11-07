@@ -1,0 +1,92 @@
+---
+title: "Databases"
+description: "At the end you will have Postgres or Redis running next to your apps, private to their environment, with a connection URL and backups."
+---
+
+## Add a database
+
+Add an app to an environment and choose **Database or service**: **Postgres** or **Redis**, with a version. The newest version is the default.
+
+| Service | Versions | Image |
+|---|---|---|
+| Postgres | 17, 16, 15 | `postgres:<version>-alpine` |
+| Redis | 8.2, 7.4 | `redis:<version>-alpine` |
+
+The first deploy pulls the version's tag once and records the image's digest. Every redeploy runs that same digest until the version changes, so a tag that moves upstream never changes what runs.
+
+A service cannot take a name Dockify's own services use: `api`, `buildkit`, `cloudflared`, `dockify-proxy`, `dockify-worker`, `migrate`, `postgres`, `proxy`, `proxy-direct`, `socket-proxy`, `updater`, `web` or `worker`. Try `main-db`. A service that already has one of these names keeps it.
+
+S3 storage is not a managed service. Bring your own S3 compatible bucket, or run SeaweedFS from [Templates](/docs/templates) if it suits you.
+
+## Private by default
+
+Each service is one container with:
+
+- its own named volume for its data, `dockify-data-<app id>`,
+- its environment's private network, with a DNS name equal to the app name,
+- **no published port, ever.**
+
+Other apps in the same environment reach it by name. Nothing on the host or the internet can. If your Postgres app is called `db`:
+
+```text
+postgresql://<user>:<password>@db:5432/<database>
+```
+
+## How a service runs
+
+- **Generated credentials.** Dockify generates them when you create the service and stores them sealed. A service never runs with a default or empty password.
+- **Passwords in files, not in the environment.** Postgres reads its password from a file in its own volume. Redis reads its whole config, password included, from a file in its volume, and runs as the `redis` user. Neither password is on a command line or in the container's environment.
+- **Redis requires its password.** A client without it is refused.
+- **No project variables.** A service never sees the project's or the app's variables. It runs with exactly what Dockify gives it.
+- **Checked after every start.** Once the health check passes, Dockify signs in with the stored credentials: Postgres over TCP, Redis with an authenticated `PING`, and a Redis `PING` without the password must be refused.
+
+## Connection details
+
+There is no screen that shows the password. To give an app the connection URL, link it on the **Variables** page, for example as `DATABASE_URL` or `REDIS_URL`; it is not added for you. An admin can reveal a linked value there, and every reveal is written to the activity log.
+
+## Browse your data
+
+The data tab is read-only:
+
+- **Postgres.** Tables with row counts and sizes, rows from any table, and a SQL console.
+- **Redis.** Keys by pattern, with type, TTL and size.
+
+Every Postgres call runs inside `BEGIN TRANSACTION READ ONLY` with statement, lock and idle timeouts, under a role that holds only `pg_read_all_data` and `pg_read_all_stats`, and ends in `ROLLBACK`. Before anything is sent, the console refuses more than one statement, anything that is not a query, and functions that act on the server rather than read it. Results are capped by rows and size.
+
+Reading rows and running SQL ask you to confirm it is you, and are audited, because row contents are your users' data. The data tab is for admins.
+
+## Backups
+
+Each Postgres database has a backup schedule, off until you turn it on, then daily at 03:00 unless you set a cron, kept for the retention you set. Redis can be backed up too. Until you add a storage destination, backups are kept on this server's own disk, which is not off the server. See [Backups and restore](/docs/backups).
+
+## Deploys and restarts
+
+A database cannot run two copies on one volume, so a database deploys **stop then start**, never zero downtime: the previous container stops before the new one starts. If the new one fails its checks, the previous container is started again. Dockify tells you this on the app page before you deploy. Take a manual backup first if the change is risky.
+
+## Change the version
+
+Open the service, then **Settings**, then **Version**. Older versions are not offered, and the API refuses them: data written by a newer server does not open in an older one. You need to be an admin and confirm it is you, and an API token cannot do this.
+
+| Move | How it runs | Downtime |
+|---|---|---|
+| Newest patch of the same version | A backup, then the same data on the newly pulled tag. | A moment, while it restarts. |
+| A newer Redis | A backup, then the same data on the new image. | A moment, while it restarts. |
+| A newer Postgres major | A backup, a new service at the new version, a restore and a check. You then choose when to switch. | Only at the switch. |
+
+If an in-place move does not come up healthy, the old container runs again. Moving back from a newer Redis means restoring that backup into a new service, since an older Redis cannot read a newer snapshot.
+
+A Postgres major moves in two steps, because its data folder does not open in a newer major:
+
+1. **Copy.** Your apps keep running on the old service. The new one is named after it, such as `db-pg17`, and takes on its backup schedule and limits. You see the tables and rows on each side.
+2. **Switch**, when you are ready. Every app in the environment stops so nothing writes, a fresh backup replaces the copy, and tables and rows must match exactly or nothing changes and the apps start again. Then the apps linked to it redeploy on the new service.
+
+**Switch back** is one press: linked apps redeploy on the old service. Anything written to the new one since the switch stays there and is not in the old one. The old service keeps running with its data until you delete it, and Dockify never deletes it for you. Deleting it makes the links belong to the new service for good. While links lead to the new service, it cannot be deleted.
+
+Only linked variables switch. A connection string typed by hand keeps pointing at the old service, so change those yourself. Extensions a database uses must exist in the new version's image.
+
+## What can go wrong
+
+- **"connection refused" from an app.** Check that both apps are in the same environment, and that you used the app name as the host, not `localhost`.
+- **"NOAUTH Authentication required" from Redis.** The client connected without the password. Use the linked `REDIS_URL`, which carries it.
+- **You need to reach the database from your laptop.** It has no public port on purpose. Use the data browser in the dashboard, or run your tool as an app in the same environment.
+- **Disk is filling.** Database volumes show on the Server page. See [Alerts and notifications](/docs/alerts) for disk alerts.

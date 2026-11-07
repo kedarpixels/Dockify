@@ -1,0 +1,220 @@
+---
+title: "Updates"
+description: "At the end you will know how Dockify updates itself: from signed static files, with a database dump first, one container at a time, and an automatic rollback if anything fails."
+---
+
+## How automatic updates work
+
+Self-update starts with 1.0. Until the signing key and the default feed are published, an install updates itself only when it was given `--release-feed` and `--release-pubkey`. Updates come from static, signed release files only. There is no update server: the release feed is two plain files, and anyone can host a copy.
+
+Every 6 hours, plus up to an hour of random jitter so installs do not all ask at once, Dockify fetches:
+
+- `<feed>/releases/stable.json`, the release manifest.
+- `<feed>/releases/stable.json.minisig`, its signature.
+
+The beta channel reads `beta.json` and `beta.json.minisig` instead.
+
+From 1.0, the default feed is the `releases` branch of the GitHub repository, served raw, at `https://raw.githubusercontent.com/kedarpixels/Dockify/releases`. dockify.sh may mirror the same bytes at `https://dockify.sh/releases/stable.json`. Because the files are signed, a mirror is as good as the original: it cannot change a byte without the signature failing.
+
+The feed URL is `DOCKIFY_RELEASE_FEED` in `/opt/dockify/.env`. The installer writes it, and you can set it at install time with `--release-feed`.
+
+### What the manifest says
+
+The manifest lists every release. For each one it gives:
+
+| Field | Meaning |
+|---|---|
+| Version and date | Which release, and when it was published. |
+| Image digests | The control and web images, for amd64 and arm64, each pinned by digest. |
+| minFrom | The oldest version that may upgrade straight to this one. Older installs step through the releases in between. |
+| Migration | The id of the newest database migration in this release. |
+| Notes | A link to the release notes, and the notes themselves in markdown. |
+| Critical | Whether this is a security release. |
+
+When a release is found, the **Server** page shows it with its notes. What happens next depends on your [update policy](#policies).
+
+## Safety
+
+Each safeguard below is there so that an update either finishes cleanly or leaves you where you were.
+
+### The signature comes first
+
+The manifest is signed with minisign (Ed25519). The public key is pinned in the installer and baked into the control image, so it does not come from the feed. Dockify verifies the signature **before** it parses the file: an unsigned or tampered manifest is never read at all.
+
+The signature's trusted comment names the channel and the newest version, for example:
+
+```text
+channel:stable version:1.2.0 generated:2026-11-03T09:00:00Z
+```
+
+That comment is covered by the signature, so a manifest cannot be passed off as another channel or another version.
+
+### No replays, no downgrades
+
+- A feed older than the last one your install accepted is refused. An attacker who saved an old, validly signed feed cannot serve it back to hold you on a vulnerable version.
+- An update to an older version is refused. Going back is a [rollback](#roll-back), which has its own rules.
+- A release whose `minFrom` is above your version is shown as **needs vX first**. Dockify installs the release in between, then the newer one.
+
+### Images by digest
+
+Images are pulled by digest, never by a tag that can move. After each pull, Dockify checks that the image it got has the digest the signed manifest names.
+
+### A separate updater
+
+Updates are run by the **updater**, a sidecar container. It holds the Docker socket and the install folder (so it is root-equivalent), and it never loads the master key. The process doing an update is never the one being replaced: once the update has succeeded, a separate one-off container recreates the updater on the new image.
+
+## What an update does
+
+<Steps>
+
+1. **Preflight.** Check there is enough free disk, the database is healthy, and no deploy, backup or restore is in flight. Too little disk fails the update at once. A busy server or an unanswering database makes the updater wait and try again, for up to 2 hours, and then it fails. Nothing has changed either way.
+2. **Pull.** Pull the new images by digest and verify each pulled image's digest. Nothing has changed yet.
+3. **Dump.** Stop the api and the worker, and take a `pg_dump` of Dockify's own database into the backup folder, with its SHA-256 recorded. Once the stack is back, the dump is also copied to your configured backup destination.
+4. **Migrate.** Run the new version's database migrations in a one-off container.
+5. **Swap.** Replace the control containers one at a time: the api (it waits for `/readyz`), then the agent and the worker (it waits for its heartbeat), then the dashboard (it waits for its health check).
+6. **Verify.** Run the health checks of all three again.
+
+</Steps>
+
+Each step is written to the activity log, under **Activity**, and streamed to the progress stepper on the dashboard.
+
+### Automatic rollback
+
+A failure in preflight or pull ends the update as **failed**, with nothing changed. A failed dump is **failed** too, with the api and worker started again. From the migration on, the updater rolls back on its own: it puts the previous image digests back, restores the database from the dump it took in step 3, and marks the update **rolled back**, with the reason.
+
+If the rollback itself fails, the update is marked **failed**, with the id of the dump. That is the one case that needs you: restore that dump by hand (see [What can go wrong](#what-can-go-wrong)).
+
+### If the updater crashes
+
+An update in progress is held under a 2 minute lease. If the updater crashes or the server reboots halfway, the lease expires, the updater takes the job over again, and it resumes from the last recorded step, the steps of a rollback after its restore included. Every step is safe to repeat, so a step that ran twice does no harm.
+
+After the third takeover it stops running the update blind: from the backup step on it rolls back, and before that it marks the update **failed**, with nothing changed. A later update can then start.
+
+### Your apps during an update
+
+An update replaces only Dockify's own containers: the api, the agent, the worker and the dashboard, then the updater. Your app containers and the proxy in front of them keep running, so your sites stay up. The dashboard may be briefly unavailable while it is swapped, and no deploys run during the update.
+
+## Policies
+
+Set the policy under **Settings > Updates**.
+
+| Policy | What it does |
+|---|---|
+| Manual | Notify only. Nothing installs until you choose **Update now**. |
+| Automatic, security only | Only releases flagged critical install on their own, in the next maintenance window. |
+| Automatic, all stable releases | Every release on your channel installs in the next window. The default for new installs. |
+
+Critical security releases install in the next window under both automatic policies. Changing the policy asks you to confirm it is you.
+
+### Maintenance window
+
+Automatic installs start only inside the maintenance window: days of the week and hours, in the instance time zone. The default is every day from 03:00 to 05:00 UTC. You can also choose **any time**.
+
+### Channel
+
+Choose `stable` or `beta`. Use beta on a server you can afford to have go wrong.
+
+## Skip and pause
+
+- **Skip this version** holds back one release. Automatic installs pass it by and take the next one.
+- **Pause automatic updates for 7 days** holds back every automatic install for a week, then the policy resumes.
+
+Both hold back critical releases too, so use them on purpose. **Update now** still works while a version is skipped or updates are paused.
+
+## Notifications
+
+You hear about updates in the bell, and by email and Discord if those are configured:
+
+- **Update available**
+- **Updated to v1.2.0**
+- **Update failed, rolled back to v1.1.3**
+
+## The Updates card
+
+The **Server** page has an **Updates** card with:
+
+- Your current version and channel, and when Dockify last checked.
+- **Check now**, to fetch the feed right away.
+- The release notes of what is available.
+- **Update now**. A confirm dialog lists the steps before anything runs.
+- Live progress, step by step, while an update runs.
+- The history: from, to, when, the result and how long it took.
+- **Roll back to vX**, for the last good version.
+
+Applying an update, rolling back and changing the policy all ask you to confirm it is you.
+
+## Roll back
+
+**Roll back to vX** returns you to the last good version, for up to 7 days after the update. It restores that update's pre-update dump, so **anything written to Dockify's database since the update is lost**: deploys recorded, settings changed, users added. Before it restores, Dockify takes a fresh dump of the current database, so you can still get those writes back by hand.
+
+Rollback asks you to confirm it is you. It affects only Dockify's own database and containers, never your apps' data.
+
+Automatic updates skip the version you rolled back from, so the next maintenance window does not install it again. They carry on with the next newer release. To go back to the skipped version yourself, press **Update now**. Automatic updates also never retry a version that failed or rolled back here on its own.
+
+## Manual CLI
+
+When the dashboard is down, run updates from the server itself, as root:
+
+```bash
+dockify update status              # where this install stands
+dockify update check               # fetch and verify the feed now
+dockify update apply               # install the newest release you can reach
+dockify update apply 1.2.0         # install a specific version
+dockify update rollback            # roll back the last update
+dockify update rollback <update-id>
+dockify logs updater               # the updater's log
+```
+
+`dockify update apply` runs the update in a one-off updater container and prints each step as it goes. It follows the same steps and the same rollback as an update from the dashboard.
+
+An update only swaps images. For a release with a new `docker-compose.yml`, run [`install.sh --upgrade`](/docs/install#upgrade-an-install). To recreate the services on images you pinned by hand, run [`dockify redeploy`](/docs/cli#recreate-the-services).
+
+## Verify a release yourself
+
+You do not have to trust Dockify's own check. Fetch the manifest and its signature:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/kedarpixels/Dockify/releases/releases/stable.json
+curl -fsSLO https://raw.githubusercontent.com/kedarpixels/Dockify/releases/releases/stable.json.minisig
+minisign -Vm stable.json -P <public key>
+```
+
+From 1.0, the public key is published in three places, so you can check they agree: `deploy/release.pub` in the repository, `installer/install.sh`, and the GitHub Release.
+
+Then compare the image digests in the manifest with what you are running:
+
+```bash
+docker image inspect --format '{{json .RepoDigests}}' <image>
+docker buildx imagetools inspect <image>@<digest>
+```
+
+`scripts/release/verify.sh` in the repository does the signature and manifest checks for you; compare the image digests by hand as above.
+
+## Nothing phones home
+
+Dockify has no telemetry. The only outbound request the update check makes is a plain `GET` of two static files every 6 hours, and it sends no identifier: no install id, no version, no account. GitHub, or the mirror, sees an IP address, the same as for any download.
+
+To turn checks off:
+
+- Set the policy to **Manual**. Dockify still checks, so it can tell you about updates, but it installs nothing on its own.
+- Or remove `DOCKIFY_RELEASE_FEED` from `/opt/dockify/.env`. Then nothing is fetched at all, and nothing can be updated either. Put the feed back, then run `dockify update check` and `dockify update apply` when you choose.
+
+## The host
+
+The installer turned on unattended security upgrades for Ubuntu and for Docker's own packages, so runc and containerd fixes land without anyone logging in. A Docker upgrade restarts the daemon, and every container comes back by its restart policy.
+
+## What can go wrong
+
+- **"Update failed" with a dump id.** The rollback itself failed. Read `dockify logs updater` to see which step broke, then restore the named dump by hand. It is in the backup folder, with its SHA-256 recorded.
+- **The update waits, then fails after 2 hours.** Preflight was held up by a deploy, a backup or a restore in flight, or a database that does not answer. Check the database with `dockify ps`, let the work finish, and start the update again. Free disk is checked too, and too little of it fails the update at once: see `df -h`.
+- **"the updater lost this update".** A row said running with no job behind it. Dockify marks it failed after a couple of minutes, so a later update can start. Run `sudo dockify redeploy` to bring every service back on the images pinned now, then check the version it reports.
+- **`--upgrade` refuses the feed's release.** It is older than what runs, or needs a version you do not have yet. The message names which.
+- **"needs vX first".** Your version is below the release's `minFrom`. Install vX first, then the newer release.
+- **The signature does not verify.** The feed or a mirror served something that was not signed with your pinned key. Nothing is installed. Check `DOCKIFY_RELEASE_FEED` points where you expect.
+- **The feed is refused as older than the last one.** Something served an old feed, a stale mirror or a replay. Nothing is installed. It clears once the feed is current again.
+- **Nothing installs on its own.** Check the policy, the maintenance window and its time zone, and whether updates are paused or that version is skipped. A version is skipped by hand, and by a rollback from it.
+- **Last check never changes.** The server cannot reach the feed over https, or `DOCKIFY_RELEASE_FEED` is not set. Run `dockify update check` to see the error.
+- **The progress stepper stopped.** The updater may have restarted. Within about 2 minutes its lease expires and it resumes from the last recorded step. Read `dockify logs updater` if it does not.
+- **You installed with `--control-image` and `--web-image`.** Self-update works only when a release feed and key were also given.
+- **"this release ships a different docker-compose.yml than the one installed".** Updates do not change that file. Apply it with [`install.sh --upgrade`](/docs/install#upgrade-an-install).
+- **"docker-compose.yml does not match the hash pinned at install".** The file changed by hand, so the updater refuses to run it. Put it back, or apply a new one with `install.sh --upgrade`, which pins the new hash.

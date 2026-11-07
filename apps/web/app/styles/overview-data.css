@@ -1,0 +1,754 @@
+/* Overview, lower half: the deploy heatmap and its day panel, the deployment rows (every list of
+   deployments uses them), the server card and the in-progress builds. The status mark and the
+   meter list are shared and live in foundation.css. Spacing on the 4px scale; insets use
+   var(--gutter). */
+
+/* -------------- Deploy heatmap -------------- */
+
+/* The card is the container its stats measure, and the one the day panel's deployment rows size
+   their columns off (`deps`, as in every card that lists deployments). */
+.heat-card {
+  container: heat deps / inline-size;
+}
+
+/* The stats take the right-hand column of the row below (--side-col), so its edge runs straight
+   down the page. */
+.heat-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--side-col);
+}
+
+.heat-main {
+  container: heat-main / inline-size;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px var(--gutter);
+}
+
+/* Squares scale with the card so all 53 weeks fit without sideways scroll down to the 7px floor.
+   Whole pixels only, so every gap is the same 4px at 1x and 2x; the grid keeps the slack at its end. */
+.heat-main > * {
+  --cell: clamp(7px, calc((100cqw - 40px - (var(--weeks, 53) - 1) * 4px) / var(--weeks, 53)), 16px);
+}
+
+@supports (width: round(down, 1.5px, 1px)) {
+  .heat-main > * {
+    --cell: round(down, clamp(7px, calc((100cqw - 40px - (var(--weeks, 53) - 1) * 4px) / var(--weeks, 53)), 16px), 1px);
+  }
+}
+
+/* 4px of room so a cell's focus ring is never clipped when the grid scrolls on phones. */
+.heat-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 4px;
+  margin: -4px;
+  overflow: visible;
+  scrollbar-width: none;
+}
+
+/* Phone: all 53 weeks cannot fit at the 7px floor, so the grid scrolls (starting at the newest week). */
+@media (max-width: 760px) {
+  .heat-wrap {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}
+
+.heat {
+  display: grid;
+  grid-template-columns: 32px max-content;
+  column-gap: 8px;
+  row-gap: 8px;
+}
+
+.heat-months,
+.heat-days {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.heat-months {
+  display: grid;
+  line-height: 16px;
+}
+
+.heat-months span {
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.heat-days {
+  display: grid;
+  grid-template-rows: repeat(7, var(--cell));
+  row-gap: 4px;
+  line-height: 12px;
+}
+
+.heat-grid {
+  position: relative;
+  display: grid;
+  grid-template-rows: repeat(7, var(--cell));
+  grid-auto-flow: column;
+  row-gap: 4px;
+  touch-action: pan-x;
+}
+
+.cell {
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--heat-0);
+  box-shadow: none;
+  appearance: none;
+  animation: pop 0.35s var(--ease) both;
+}
+
+/* Also the sign-in art's cells (auth.css). */
+.cell[data-l="1"] { background: var(--heat-1); }
+.cell[data-l="2"] { background: var(--heat-2); }
+.cell[data-l="3"] { background: var(--heat-3); }
+.cell[data-l="4"] { background: var(--heat-4); }
+
+.heat-grid .cell {
+  width: var(--cell);
+  height: var(--cell);
+}
+
+/* Days later than today have not happened: a solid block lighter than a no-deploy day (halfway from
+   the empty grey to the card), no ring, so the rest of the year reads as "not yet", not "no deploys". */
+.heat-grid .cell[data-future="true"] {
+  background: color-mix(in srgb, var(--heat-0) 45%, var(--panel));
+  box-shadow: none;
+  animation: none;
+}
+
+/* Grid-pad cells: slots in the first and last week column that fall outside Jan 1 to Dec 31, so they
+   are not dates of this year at all. Same light block as a future day under fine diagonal stripes in
+   the rail node grey, the way a calendar marks a day that cannot be picked. The period is 5px across
+   (5 x 0.7071 along the 45 degree axis), so every stripe lands on the same pixel phase. */
+.heat-grid .cell[data-empty="true"] {
+  background:
+    repeating-linear-gradient(-45deg, var(--node) 0 1px, transparent 1px 3.5355px),
+    color-mix(in srgb, var(--heat-0) 45%, var(--panel));
+  box-shadow: none;
+  animation: none;
+}
+
+/* Like GitHub's graph (owner): hovering or clicking draws no ring, the tooltip says which day it is.
+   With a day picked it keeps its colour and every other cell fades. A filter, not opacity, because
+   the cells' entry animation holds opacity, and dropping that animation would replay it on unpick.
+   The keyboard's focus ring is the only outline. */
+.heat-grid .cell {
+  transition: filter 120ms var(--ease);
+}
+
+.heat-grid:has(.cell[data-picked="true"]) .cell:not([data-picked="true"]) {
+  filter: opacity(0.35);
+}
+
+.heat-grid .cell:focus-visible {
+  position: relative;
+  z-index: var(--z-node);
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.heat-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 0;
+}
+
+.heat-caption {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.heat-legend .cell {
+  margin: 0;
+  animation: none;
+}
+
+.heat-legend .cell:first-of-type {
+  margin-left: 4px;
+}
+
+.heat-legend .cell:last-of-type {
+  margin-right: 4px;
+}
+
+/* Stats: ruled rows like the portfolio skill rows, nodes where each line meets a divider, and a
+   quiet round marker before each label (grey, as none of them is one of the grid's series). */
+.heat-stats {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  border-left: 1px solid var(--line);
+  flex: 1 0 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* 44px rows inset by the page gutter, like every other cell's content. */
+.heat-stat {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 12px var(--gutter);
+}
+
+.heat-stat + .heat-stat {
+  border-top: 1px solid var(--line);
+}
+
+.heat-stat dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.heat-stat dt::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+  background: var(--ink-4);
+}
+
+/* Each stat keeps its own colour, the one its meaning carries elsewhere: blue for this week's
+   deploys, the chart blue for the busiest day, green for the streak, red for failures, amber for
+   rollbacks. */
+.heat-stat:nth-child(1) dt::before { background: var(--blue); }
+.heat-stat:nth-child(2) dt::before { background: var(--chart); }
+.heat-stat:nth-child(3) dt::before { background: var(--ok); }
+.heat-stat:nth-child(4) dt::before { background: var(--bad); }
+.heat-stat:nth-child(5) dt::before { background: var(--warn); }
+
+.heat-stat dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* The stats stack under the grid once the card cannot hold every week at the 7px floor beside
+   the side column: 32 + 8 + 53 x 7 + 52 x 4 = 619px of grid, 64px of gutter and 340px of column
+   need 1023px, 1034px in a 54 week year. */
+@container heat (max-width: 1040px) {
+  .heat-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .heat-stats {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* The Overview's bottom row (Recent deployments beside Server) stacks at that same width, measured
+   on itself, so the side column is in both rows or in neither whatever the sidebar's width. Each
+   item spanning both columns is the stacked layout; .split's own viewport rule still applies. */
+.ov-split {
+  container: ov-split / inline-size;
+}
+
+@container ov-split (max-width: 1040px) {
+  .ov-split > * {
+    grid-column: 1 / -1;
+  }
+  .ov-split > * + * {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* Fixed layer on <body>: the tooltip escapes every scroll box and card. The script nudges it
+   sideways (caret stays on the point) and flips it below when the top edge has no room. */
+.heat-tip-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-tip);
+  pointer-events: none;
+}
+
+.heat-tip-layer .ctip {
+  translate: var(--tip-dx, 0px) 0;
+}
+
+.heat-tip-layer .ctip::after {
+  left: calc(50% - var(--tip-dx, 0px));
+}
+
+.heat-tip-layer[data-flip="true"] .ctip {
+  transform: translate(-50%, 16px);
+}
+
+.heat-tip-layer[data-flip="true"] .ctip::after {
+  top: -4px;
+  bottom: auto;
+}
+
+/* -------------- Day panel -------------- */
+/* Folds open under the grid (its height eases over 260ms while the nodes fade in over 220ms), and
+   never changes the URL. */
+
+.heat-day {
+  position: relative;
+}
+
+.heat-day > .node {
+  opacity: 0;
+  transition: opacity 220ms var(--ease);
+}
+
+.heat-day[data-open="true"] > .node {
+  opacity: 1;
+}
+
+/* Height is the measured content height (deploy-heatmap.tsx), so open, close and content changes
+   all ease to an exact pixel height instead of jumping. */
+.heat-day-inner {
+  overflow: hidden;
+  transition: height 260ms var(--ease);
+}
+
+.heat-day:not([data-open="true"]) .heat-day-inner {
+  visibility: hidden;
+  transition: visibility 0s 220ms;
+}
+
+.day-panel {
+  border-top: 1px solid var(--line);
+}
+
+/* The head is a card head (the shared padding) whose keys may wrap under the title on narrow
+   screens; rows inherit Recent deployments. */
+.day-hd.card-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.day-hd .ctitle {
+  margin-right: auto;
+}
+
+.day-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.day-body {
+  padding: 8px calc(var(--gutter) - 8px) 12px;
+  animation: day-in 220ms var(--ease) both;
+}
+
+/* A day with nothing on it: one quiet line where the rows would be. A failed read is a Callout. */
+.day-note {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.day-error {
+  padding: 4px 8px;
+}
+
+@keyframes day-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Day panel skeleton rows (the shared `.skel` bars) borrow the row's column classes so narrow
+   layouts hide and place the same columns. */
+.skel-end {
+  justify-self: end;
+}
+
+/* -------------- Deployment rows -------------- */
+/* Every list of deployments: Recent deployments, the day panel, a project's and an app's
+   Deployments tab, the app's latest deployment and the Deployments page. The card around them is
+   the `deps` container they size their columns off. */
+
+.dep-card {
+  container: deps / inline-size;
+}
+
+.dep-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+/* Status, app, who and the message, branch, hash, duration, time, then the Redeploy key, in view at
+   all times, so touch and keyboard reach it as the pointer does. The message takes the spare room.
+   The list holds the columns, so a loading row (skeleton.ts) has the same ones. The row is the link
+   to the deployment and its log. */
+.dep-list,
+.day-body {
+  --dep-cols: var(--col-status) 240px minmax(0, 1fr) var(--col-branch) var(--col-hash) var(--col-dur) var(--col-time) var(--col-key);
+}
+
+.dep-row {
+  --cols: var(--dep-cols);
+  position: relative;
+  height: 44px;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.dep-row:has(.dep-link:focus-visible) {
+  background: var(--hover);
+}
+
+.dep-link {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+/* An inside ring, as on every other row. */
+.dep-link:focus-visible {
+  outline-offset: -2px;
+}
+
+.dep-app {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.dep-app .aicon {
+  flex: none;
+}
+
+/* The name takes what is left, and the project gives way before the app does, so a row always says
+   which app. */
+.dep-name {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.dep-name > span:last-child {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A deployment on Vercel: the mark after the name, above the row's link so its tip can show. */
+.dep-host {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  color: var(--ink-3);
+}
+
+.dep-slug {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.dep-sep {
+  flex: none;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.dep-msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink-3);
+}
+
+/* Above the row link, so its tip names who started the deploy. */
+.dep-msg > .avatar {
+  position: relative;
+  z-index: var(--z-raise);
+}
+
+.dep-msg-link {
+  position: relative;
+  z-index: var(--z-raise);
+  min-width: 0;
+  color: inherit;
+}
+
+.dep-branch,
+.dep-hash {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.dep-branch .ic {
+  color: var(--ink-4);
+}
+
+.dep-branch .git-branch {
+  gap: 6px;
+  max-width: 100%;
+}
+
+.dep-dur {
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.dep-when {
+  font-size: 13px;
+  line-height: 20px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+/* The key sits above the row link. A row with nothing to redeploy (in flight, or a Viewer's) keeps
+   the column empty, so the times still line up down the list. */
+.dep-actions {
+  position: relative;
+  z-index: var(--z-raise);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The Overview's column has less room (owner): the hash and the duration give
+   way, so names and messages read in full. The Deployments page and each deployment keep them. */
+@container deps (max-width: 960px) {
+  .dep-list,
+  .day-body {
+    --dep-cols: var(--col-status) 200px minmax(0, 1fr) var(--col-branch) 64px var(--col-key);
+  }
+  .dep-hash,
+  .dep-dur {
+    display: none;
+  }
+  .dep-list .skel-row > :nth-child(5),
+  .dep-list .skel-row > :nth-child(6) {
+    display: none;
+  }
+}
+
+/* Narrow lists drop the message column instead of scrolling sideways. */
+@container deps (max-width: 680px) {
+  .dep-list,
+  .day-body {
+    --dep-cols: var(--col-status) minmax(0, 1fr) var(--col-branch) 64px var(--col-key);
+  }
+  .dep-msg {
+    display: none;
+  }
+  /* A loading row draws one bar per column. */
+  .dep-list .skel-row > :nth-child(3) {
+    display: none;
+  }
+}
+
+/* Phones: two lines, the app over its commit message, so rows for one app still tell apart. The
+   time ends the first line; the status tile and the key sit centred beside both lines, the key in
+   a column of its own, so every row is the same height and the times line up whether or not a row
+   has a key. The message is plain text here, so a tap on the second line opens the deployment, not
+   GitHub (the deployment page links the commit). */
+@container deps (max-width: 520px) {
+  .dep-list,
+  .day-body {
+    --dep-cols: var(--col-status) minmax(0, 1fr) auto var(--col-key);
+  }
+  .dep-row {
+    grid-template-areas:
+      "st app when act"
+      "st msg msg act";
+    row-gap: 4px;
+    height: auto;
+    min-height: 56px;
+    padding-block: 8px;
+  }
+  .dep-row > .st-app {
+    grid-area: st;
+  }
+  .dep-app {
+    grid-area: app;
+  }
+  .dep-msg {
+    display: flex;
+    grid-area: msg;
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .dep-msg > .avatar {
+    display: none;
+  }
+  .dep-when {
+    grid-area: when;
+  }
+  .dep-actions {
+    grid-area: act;
+    align-self: center;
+  }
+  .dep-branch,
+  .dep-hash,
+  .dep-dur {
+    display: none;
+  }
+  /* One bar for the status, the app and the time. */
+  .dep-list .skel-row > :nth-child(n + 4):not(:last-child) {
+    display: none;
+  }
+  /* The day panel's skeleton rows take the same places. */
+  .dep-row > .skel:first-child {
+    grid-area: st;
+  }
+}
+
+/* -------------- Server card -------------- */
+
+.srv-card {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The host facts under the meters: containers and load, then the uptime, on the ruled foot. */
+.srv-foot {
+  position: relative;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* -------------- In progress -------------- */
+
+.fl-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.flight {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px var(--gutter);
+}
+
+.flight + .flight {
+  border-top: 1px solid var(--line);
+}
+
+.flight-hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.flight-id {
+  flex: 1;
+}
+
+/* Branch and hash stay on one line; the branch gives way first, without clipping the link tips. */
+.flight-ref {
+  display: flex;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.flight-branch {
+  display: flex;
+  min-width: 0;
+}
+
+.flight-time {
+  flex: none;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.flight-time.tone-pending {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.flight-ft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.flight-state {
+  color: var(--ink-3);
+}

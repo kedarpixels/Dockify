@@ -1,0 +1,12 @@
+/* Element resets. Tokens, the base and every shared class live in foundation-shared.css and foundation.css. */
+
+/* -------------- Reset -------------- */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}

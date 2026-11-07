@@ -1,0 +1,123 @@
+---
+title: "Vercel: deployments, logs, import and deploy target"
+description: "At the end you will see a Vercel project's deployments and logs next to your other deploys, or have its variables and domains brought into Dockify to run it here."
+---
+
+## Connect Vercel
+
+Create a Vercel access token on your Vercel account, then open **Settings > Integrations > Vercel** and paste it. Dockify checks the token first and lists your account and teams, so you can pick the personal account or one team. Connecting asks you to confirm it is you. The token is stored sealed, and only a hint is shown again.
+
+## Import a project
+
+Choose a Vercel project. Dockify lists each one with its framework, its variable keys and which targets they apply to, and its domains. Then pick:
+
+- the Dockify **project** and **environment** to import into, for example `production`,
+- the Vercel **target** to read from: `production`, `preview` or `development`.
+
+<Steps>
+
+1. **Variables.** Each variable is written into the environment's variables as one new version, through the same history as any other change. A new key comes in as a **secret**. A key you already have keeps its secret flag and target and only takes the Vercel value. A key whose value already matches is skipped, so an import that changes nothing writes no version.
+2. **Domains.** The first 100 domains on the Vercel project, except `*.vercel.app` names and redirects, is added to the app linked to that Vercel project, or to the environment's only frontend if there is just one. Domains already in use in Dockify, or that a domain added by hand would be refused, are skipped and counted. Dockify's own dashboard hostname is never imported. Only an app that runs on your server can take one, so with a linked app still on Vercel the domains wait.
+3. **Result.** You see how many variables were read and how many domains were imported. The import is in the activity log.
+
+</Steps>
+
+Importing writes secret values, so it asks you to confirm it is you, and an API token cannot do it. It never redeploys on its own. Deploy when you are ready.
+
+## Move the domain
+
+After the import, the domain is attached in Dockify but your DNS still points at Vercel. When the app is deployed and healthy on your server, change the DNS record as shown on the [Domains](/docs/domains) page. With Cloudflare connected and the zone managed, Dockify writes the record for you, but only if no record for that name exists yet. Remove the old Vercel record first.
+
+## Follow a Vercel project
+
+To see a project's deployments and logs here while it stays exactly as it is on Vercel, open the frontend's **Settings**, pick **Follow on Vercel** under **Deploy target**, and choose the project. This is the default for a link, and for a new app you create on Vercel.
+
+A followed app gets the deployment list, build and runtime logs, and shows what Vercel is serving. Dockify only reads Vercel for it: it sends no variables, asks for no deploys and changes no project setting. Deploy, Cancel and the variable push are not offered, and the API and worker refuse them too. A push to the repository does not start a build on your server. The app does not need a repository in Dockify.
+
+The optional [webhook](#how-they-stay-current) is the one thing Dockify can add to your Vercel team, and only when you press **Register**. Without it Dockify polls.
+
+## Vercel as a deploy target
+
+Some frontends are better left on Vercel's edge, with Dockify in charge of their variables and deploys. For those, pick **Deploy to Vercel** under **Deploy target** and link the Vercel project. The app needs a repository picked through the GitHub App, since that is what Vercel is told to build. This sends secrets to Vercel, so it asks you to confirm that, and to confirm it is you, each time it begins: when you first choose it, when you switch from following, and when you change the project. An API token cannot do it. Dockify then does not build the app. Instead it:
+
+- pushes the app's resolved variables, secrets included, from Dockify to the Vercel project, overwriting any with the same name,
+- asks Vercel to deploy the branch,
+- follows the deployment until it is ready or fails, and shows it with your other deploys.
+
+Dockify's `production` environment maps to Vercel's `production` target, and every other environment to `preview`. You keep one place for variables and one deploy history, wherever the app runs. Nothing of the app runs on your server, so it has no metrics, and Start, Stop and Restart are not offered. Going back to following stops the pushes, but what was already sent stays on Vercel until you remove it there.
+
+## Deployments next to your others
+
+An app linked to a Vercel project shows that project's deployments in its **Deployments** tab and on the **Deployments** page, whoever started them: Dockify, a push through Vercel's own Git integration, or the Vercel CLI. Each row has its status, branch, commit, who started it, its target (production or preview), its address and a link to Vercel's inspector. Its page has a **Details** card, its steps (queued, build, deploy) and its logs. Dockify only reads Vercel for this. It works the same for a followed app and a deploy target.
+
+If several apps link the same Vercel project, each deployment goes to one of them: production to the app in your `production` environment, a preview to the app following its branch, otherwise to the first non-production app. An app linked on its own shows both.
+
+Rows older than your deployment retention (90 days unless you changed it) are not copied in. A new link brings in the last 50.
+
+### How they stay current
+
+Dockify reads Vercel every 2 minutes. With a webhook, Vercel tells Dockify about each deployment as it happens and the regular read drops to every 10 minutes as a backstop. While a deployment is building, Dockify reads every 30 seconds either way.
+
+To add the webhook open **Settings > Integrations > Vercel > Manage** and press **Register**. It asks you to confirm it is you, and adds one webhook to your Vercel team, covering the projects linked right now. Its signing secret is stored sealed. If you link another project later, the card says so and **Update** adds it. **Remove** deletes the webhook from Vercel and forgets the secret.
+
+<Note title="Plans and limits">
+Vercel offers account webhooks on Pro and Enterprise only, and allows 20 per team. On Hobby, or with a token that may not create one, Vercel refuses it. The card shows Vercel's reason and Dockify keeps polling, so a deployment can take up to 2 minutes to show. Vercel has to reach your dashboard: the address must be public https, and Cloudflare Access or similar in front of `/api/v1/webhooks/vercel` will block it.
+</Note>
+
+Vercel signs each delivery with `x-vercel-signature`. Dockify checks it against the raw bytes in constant time, refuses a body over 256 KB, takes each delivery once, and ignores one older than 25 hours, past Vercel's retry window. A delivery can only ever cause one more read of Vercel.
+
+## Logs
+
+The deployment page shows the **Build log**, and for a deployment Vercel accepted, the **Runtime logs**. The app's **Logs** tab shows the runtime logs of what it is serving now. They use the same viewer as your other logs, and are redacted the same way before they reach your browser: the token, the project's secret values, and anything that names itself as a credential.
+
+These are read live from Vercel with your token and not stored on your server, so their lines are not in the **Logs** page and its search. Pick a Vercel app in that page's app filter and it says so, with a link to the app's live logs.
+
+- **Build logs** work for finished and running deployments. Vercel keeps them as long as the deployment, and cuts them at 4 MB. Dockify shows up to the last 10,000 events, and says so when there are more.
+- **Runtime logs** arrive live. Vercel's API streams new lines and has no way to read older ones, so the card opens with whatever a short read brings. Older lines are in Vercel's own Logs tab, which the card links to.
+
+How long Vercel keeps runtime logs depends on the plan, which Vercel does not tell Dockify, and it keeps at most 256 lines per request.
+
+| Plan | Runtime logs kept |
+|---|---|
+| Hobby | 1 hour |
+| Pro | 1 day |
+| Enterprise | 3 days |
+| Pro or Enterprise with Observability Plus | 30 days |
+
+Anyone who can read other logs in Dockify can read these, including read-only API tokens limited to that project.
+
+## When a deployment fails
+
+A production or preview deployment that fails on Vercel uses the same **Deploy failed** switch in **Settings > Notifications** as a deploy on your server. Every enabled webhook hears it, and so does the member who started it, by email: the one who pressed Deploy, or the one whose verified GitHub login is the commit author, if they kept that email on. It works for a followed app and a deploy target, and each deployment is told once.
+
+Dockify tells a deployment it saw in flight, and one it first sees failing within 15 minutes of the end. So a new link does not send a notice for every old failure it brings in. A build cancelled on Vercel is not a failure and sends nothing. The branch and error text come from outside, so links and mentions are taken out first. At most 10 notices go out per read, and a burst carries over to the next reads.
+
+With polling only, a notice can lag by up to 2 minutes.
+
+## What works from Dockify
+
+| Action on a Vercel deployment | Followed app | Deploy target | Why |
+|---|---|---|---|
+| **Deploy** the app | No | Yes | Pushes your variables to Vercel and asks it to deploy the branch. |
+| **Cancel** a running build | No, do it on Vercel | Yes, through Vercel's API | It only stops that build. Whatever Vercel is serving keeps running. |
+| **Redeploy** one deployment | No, do it on Vercel | No, do it on Vercel | Press Deploy on a deploy target for a new deployment of the branch. |
+| **Roll back** | No, do it on Vercel | No, do it on Vercel | Vercel's Instant Rollback also stops new deploys from reaching your production domains until you undo it. Dockify will not do that for you. When you roll back on Vercel, the deployment shown as serving traffic follows. |
+| **Start, stop, restart** | Not offered | Not offered | Nothing of the app runs on your server. |
+
+## What a Vercel app does not have here
+
+Nothing of the app runs on your server, so its page leaves out what would do nothing:
+
+- **Metrics** and the **Domains** tab. Its domains stay on Vercel, and the API refuses a new one for it. Domains you imported earlier stay on the **Domains** page and apply if the app moves to your server.
+- In **Settings**: the Dockerfile path, start command and port, **Health check**, **Resource limits** and **Release command**. What you saved is kept for a move back. The **Branch** stays for an app with a repository: a deploy target asks Vercel to build it, and it decides which previews show on which app when several link one project.
+- **Pull request previews.** Vercel builds its own, so Dockify never builds a second copy. Preview settings name the app and do not offer it. In a project with server apps too, those still get previews.
+
+## What can go wrong
+
+- **The token sees no projects.** It was created for another team. Pick the right team when connecting, or make a new token.
+- **Some domains were not imported.** They are `vercel.app` names, redirects, already in use, not allowed on an app, or there was no single app on this server to attach them to. Add them by hand on the Domains page.
+- **The app on Dockify fails at build.** Vercel injects some variables itself, such as `VERCEL_URL`. Set the ones your app reads by hand.
+- **No deployments show on a linked app.** Open the Vercel card: it says when Dockify last read Vercel, and what went wrong. **Sync now** reads again.
+- **Vercel refused the stored token.** Disconnect and connect again with a new token. Deployments already listed stay.
+- **You connected another team.** Its token cannot reach the old team's webhook, so remove that one on Vercel by hand.
+- **Disconnecting Vercel.** Dockify removes its webhook first, then forgets the token. Deployments already listed stay, and any still building are marked cancelled here, since nothing follows them any more. They keep running on Vercel.

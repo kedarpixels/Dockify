@@ -1,0 +1,36 @@
+---
+title: "Introduction"
+description: "Dockify is an open-source control plane for one server. These docs take you from a fresh VPS to apps, domains, databases and tested backups."
+---
+
+## What Dockify is
+
+Dockify runs on your own Ubuntu server and manages everything on it from one dashboard. You deploy apps from GitHub, add domains with TLS, run Postgres and Redis next to them, and keep encrypted backups in your own S3-compatible bucket.
+
+It is built for one job: several projects on one VPS that stay up. It does less than tools built for fleets of servers, and spends that effort on four things:
+
+- **Deploys that do not take you down.** For a stateless app, the new version starts beside the old one and must pass a health check before it gets traffic. If it fails, the old version keeps serving.
+- **Backups you have restored.** Dumps are encrypted on the server before upload, and a weekly restore test replays them into a throwaway database.
+- **A disk that stays clean.** A janitor removes old images and caps the build cache, but keeps the images your rollbacks need.
+- **A locked-down control plane.** No privileged containers, no published database ports, and in tunnel mode no inbound port opened by Dockify.
+
+## How it is organised
+
+A **project** holds one or more **environments**, such as `production` and `development`. Each environment tracks a branch and holds **apps**: frontends, backends, bots, and managed Postgres or Redis. Each app has its own domains, variables, logs, metrics and backups. Read more in [Projects and apps](/docs/projects-and-apps).
+
+## Start here
+
+<DocGrid>
+<DocCard href="/docs/getting-started" title="Getting started">What you need, and the path from a fresh server to a live app.</DocCard>
+<DocCard href="/docs/install" title="Install">One command on a fresh Ubuntu server. Tunnel or direct TLS.</DocCard>
+<DocCard href="/docs/first-deploy" title="First deploy">A repository, with or without a Dockerfile, built and live behind a health check.</DocCard>
+<DocCard href="/docs/domains" title="Domains and TLS">Add a hostname. Dockify can write the Cloudflare record for you.</DocCard>
+<DocCard href="/docs/backups" title="Backups and restore">Destinations, encryption, restore tests and restoring.</DocCard>
+<DocCard href="/docs/troubleshooting" title="Troubleshooting">A deploy rolled back, a domain is not live, the disk is full.</DocCard>
+</DocGrid>
+
+## Project status
+
+Dockify 1.0 is not released yet. On a real server we have run the install (direct mode), deploys from public and private repositories through the GitHub App, a zero-downtime redeploy, a rollback, a pull request preview from open to close, and apps using managed Postgres and Redis. Cloudflare tunnel and DNS, Vercel import, backups and restore tests have tests but have not yet run end to end on a real server. Where a feature is planned for later, the page says <Soon /> plainly.
+
+Search the docs at any time with <kbd className="kbd">Ctrl</kbd> <kbd className="kbd">K</kbd>, or <kbd className="kbd">/</kbd>.

@@ -1,0 +1,4317 @@
+/* ============== Tokens ============== */
+
+:root {
+  color-scheme: light;
+
+  /* Portfolio palette */
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --muted: #f4f4f4;
+  /* Muted text. 5.33:1 on the page and 4.72:1 on --mass, so small grey text passes on every grey
+     surface it sits on (hovered rows, fields, callouts, the log box). */
+  --muted-foreground: #6b6b6b;
+  --popover: #ffffff;
+  --border: #e8e8e8;
+  --mass: #f1f1f1;
+  /* Field surfaces (inputs, selects, search). Dark dialogs re-point it below so a field never matches its surface. */
+  --field: var(--mass);
+  /* The right-hand column of split rows and of the deploy heatmap's stats, so both edges line up. */
+  --side-col: 340px;
+  /* A hovered or selected row inside a popover or dialog. In dark, --mass is the popover's own
+     surface, so .dark lifts it to a white veil instead. */
+  --fill-popover: var(--mass);
+  /* A hovered row on the page itself. In dark it is a faint white veil, one step under --fill-popover. */
+  --hover: var(--mass);
+  --node: #d4d4d4;
+  --cloud-core: #ececec;
+
+  /* Type */
+  --font-sans: var(--font-geist), system-ui, sans-serif;
+  --font-mono: var(--font-geist), system-ui, sans-serif;
+  --font-pixel: var(--font-geist-pixel-square), var(--font-geist), system-ui, sans-serif;
+
+  /* Our names */
+  --bg: var(--background);
+  --panel: var(--background);
+  --panel-2: #fafafa;
+  --line: var(--border);
+  --line-strong: #d4d4d4;
+  /* The edge of a control whose edge is the control: checkbox, radio, an off switch. 3.23:1 on the
+     page (3.72:1 in dark), the 3:1 a boundary needs to be seen. Fields, searches, selects and date
+     triggers keep the normal light hairline instead: --field-line is the frame's --line, --field-line-hover one step stronger. */
+  --control-line: #8f8f8f;
+  --field-line: var(--line);
+  --field-line-hover: var(--line-strong);
+  --ink: var(--foreground);
+  --ink-2: #404040;
+  --ink-3: var(--muted-foreground);
+  /* Decoration only: glyphs, separators, rules. Below 4.5:1, so never small text. */
+  --ink-4: #8f8f8f;
+  /* Small text on --mass or --popover; the same as --ink-3 in light, a step dimmer in dark. */
+  --ink-muted: #6b6b6b;
+  --active: #ebebeb;
+  /* White text and glyphs on the solid blue and red keys and counts, in both themes. */
+  --on-solid: #ffffff;
+  /* The brand blue of the logo and the Dockify avatar (not a UI accent). */
+  --brand: #2396ed;
+
+  /* Accent: primary, focus, live building and deploying */
+  --blue: #0070f3;
+  --blue-hover: #0060d1;
+  --blue-ring: rgb(0 112 243 / 0.35);
+  /* Solid fills under white text: 4.55:1 with #fff in both themes. Keys with text on them step
+     darker on hover and press in both themes, so the text never drops under 4.5:1; controls with no
+     text (the switch, a ticked checkbox) take --blue-hover. */
+  --blue-solid: #0070f3;
+  --blue-solid-hover: color-mix(in srgb, var(--blue-solid) 88%, #000000);
+  --blue-solid-active: color-mix(in srgb, var(--blue-solid) 80%, #000000);
+  /* Blue text on a blue tint (a picked tag, a target mark): 5.58:1 on the 12% tint. */
+  --blue-ink: #0058c4;
+
+  /* Status */
+  --ok: #16a34a;
+  --ok-ink: #14753a;
+  --warn: #f59e0b;
+  --warn-ink: #ab4e08;
+  --bad: #e5484d;
+  /* --bad is for dots, icons and rings; text in the error tone uses --bad-ink (5.6:1 on bg). */
+  --bad-ink: #c62a2f;
+  --bad-solid: #c62a2f;
+  --bad-solid-hover: color-mix(in srgb, var(--bad-solid) 88%, #000000);
+  --bad-solid-active: color-mix(in srgb, var(--bad-solid) 80%, #000000);
+  /* Idle and stopped dots: 3.23:1 on the page, so the dot alone still reads. */
+  --idle: #8f8f8f;
+
+  /* Charts and heatmap */
+  --chart: #3b91f7;
+  --heat-0: #ededed;
+  --heat-1: #cfe3fc;
+  --heat-2: #9ec7f9;
+  --heat-3: #6dabf8;
+  --heat-4: #3b91f7;
+
+  /* Key material. --key-fill fills keys, chips, kbd chips and icon tiles; --key-hover is a secondary
+     key's hover fill. Both are the page's own on the page; popover surfaces re-point them (see
+     "Materials"), since in dark the page colour inside a popover reads as a punched-out hole. */
+  --key-fill: var(--bg);
+  --key-hover: var(--mass);
+  --key-hover-shadow: inset 0 1px 0 #ffffff, 0 0 0 1px rgb(0 0 0 / 0.14), 0 1px 2px rgb(0 0 0 / 0.08);
+  --key-picked-shadow: inset 0 1px 0 #ffffff, 0 0 0 1px rgb(0 0 0 / 0.6), 0 1px 2px rgb(0 0 0 / 0.1);
+  /* The segmented control's thumb and the theme switch's knob: flat fills, a ring and a soft shadow. */
+  --seg-thumb: var(--bg);
+  --seg-thumb-shadow: 0 0 0 1px var(--line-strong), 0 1px 2px rgb(0 0 0 / 0.06);
+  --knob: #ffffff;
+  --knob-shadow: 0 0 0 1px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.12);
+
+  /* Menu material (dropdown lists, row menus, the date picker): the line-strong ring and one soft shadow. */
+  --shadow-menu: 0 0 0 1px var(--line-strong), 0 8px 24px -12px rgb(0 0 0 / 0.18);
+  --shadow-dialog: 0 0 0 1px var(--line-strong), 0 24px 48px -16px rgb(0 0 0 / 0.18), 0 4px 12px -4px rgb(0 0 0 / 0.06);
+  --shadow-toast: 0 0 0 1px var(--line-strong), 0 12px 32px -16px rgb(0 0 0 / 0.22);
+  --scrim: rgb(0 0 0 / 0.32);
+
+  --rail: 1200px;
+  --gutter: 32px;
+  /* The sticky top bar, and the sidebar's brand cell beside it. */
+  --top-h: 56px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-key: cubic-bezier(0.65, 0, 0.35, 1);
+  /* Sheets and toasts: a quick start that settles softly. */
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  /* The field focus ring and its invalid twin: a 1px ring and a soft 3px halo. */
+  --ring-focus: inset 0 0 0 1px var(--blue), 0 0 0 3px color-mix(in srgb, var(--blue) 20%, transparent);
+  --ring-focus-bad: inset 0 0 0 1px var(--bad), 0 0 0 3px color-mix(in srgb, var(--bad) 20%, transparent);
+  /* Anything that cannot be used right now. */
+  --disabled-opacity: 0.45;
+
+  /* Stacking, one scale. Every z-index in the app takes one of these.
+     Inside main.page, which is a layer of its own (so nothing in it climbs over the top bar):
+       raise 1     page blocks over the bands; a link or chip over a row's stretched link
+       line 2      a rule or band nested inside a block, over its content
+       node 3      nodes inside a block, a hovered metric cell
+       hover 5     a hovered card in a split column, sticky bars inside the page
+       lift 30     a page block holding an open tooltip or dropdown, over its neighbours
+       rail 31     rule and band nodes and the band's rail segments, over a lifted block too
+       dropdown 50 an open in-page dropdown;  tip 60 tooltip bubbles;  popover 70 a shell popover
+     On the root, in the order they stack:
+       top 10 (the sticky bar), side 40 (the sidebar while a tip or menu of it is open),
+       top-open 60 (the bar with its notifications open), command 90, dialog 100,
+       picker 110 (a Select list or date picker over a dialog), toast 120, session 200. */
+  --z-raise: 1;
+  --z-line: 2;
+  --z-node: 3;
+  --z-hover: 5;
+  --z-lift: 30;
+  --z-rail: 31;
+  --z-dropdown: 50;
+  --z-tip: 60;
+  --z-popover: 70;
+  --z-top: 10;
+  --z-side: 40;
+  --z-top-open: 60;
+  --z-command: 90;
+  --z-dialog: 100;
+  --z-picker: 110;
+  --z-toast: 120;
+  --z-session: 200;
+
+  /* Project folder tile */
+  --folder-back-top: #3d86f0;
+  --folder-back-bottom: #1f5fd0;
+  --folder-front-top: #8cc2ff;
+  --folder-front-bottom: #4a95f5;
+
+  /* The five app icons: back gradient per icon; the glyph mixes white into the top */
+  --tile-web-top: #3d86f0;
+  --tile-web-bottom: #1f5fd0;
+  --tile-api-top: #8a6cf0;
+  --tile-api-bottom: #5a3fd0;
+  --tile-bot-top: #22b8a8;
+  --tile-bot-bottom: #0d8a7e;
+  --tile-postgres-top: #5a7fec;
+  --tile-postgres-bottom: #3156cf;
+  --tile-redis-top: #ff5e50;
+  --tile-redis-bottom: #e2332a;
+  --tile-minio-top: #db4660;
+  --tile-minio-bottom: #b8243e;
+  --tile-glyph-top: 92%;
+  --tile-glyph-bottom: 72%;
+
+  /* Soft tints and their rings: the fill and edge of anything toned (a callout, a toned icon tile, a
+     delta). `.dark` sits on this same element, so each resolves against the theme in use. */
+  --ok-soft: color-mix(in srgb, var(--ok) 12%, var(--bg));
+  --warn-soft: color-mix(in srgb, var(--warn) 12%, var(--bg));
+  --bad-soft: color-mix(in srgb, var(--bad) 12%, var(--bg));
+  --blue-soft: color-mix(in srgb, var(--blue) 12%, var(--bg));
+  --ok-ring: color-mix(in srgb, var(--ok) 24%, transparent);
+  --warn-ring: color-mix(in srgb, var(--warn) 28%, transparent);
+  --bad-ring: color-mix(in srgb, var(--bad) 24%, transparent);
+  --blue-ring-soft: color-mix(in srgb, var(--blue) 24%, transparent);
+}
+
+.dark {
+  color-scheme: dark;
+  --fill-popover: rgb(255 255 255 / 0.06);
+  --hover: rgb(255 255 255 / 0.04);
+
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --muted: #181818;
+  --muted-foreground: #8f8f8f;
+  --popover: #141414;
+  --border: #1e1e1e;
+  --mass: #141414;
+  --node: #333333;
+  --cloud-core: #171717;
+
+  --panel-2: #0f0f0f;
+  --line-strong: #2a2a2a;
+  --control-line: #6b6b6b;
+  --ink-2: #bdbdbd;
+  --ink-4: #6b6b6b;
+  --ink-muted: #858585;
+  --active: #1a1a1a;
+
+  --blue: #0a84ff;
+  --blue-hover: #3b9bff;
+  --blue-ring: rgb(10 132 255 / 0.4);
+  --blue-solid: #0070f3;
+  --blue-ink: #3b9bff;
+
+  --ok: #4ade80;
+  --ok-ink: #4ade80;
+  --warn: #fbbf24;
+  --warn-ink: #fbbf24;
+  --bad: #ff6166;
+  --bad-ink: #ff8a8d;
+  --bad-solid: #d1353a;
+  --idle: #7a7a7a;
+
+  --chart: #4da3ff;
+  --heat-0: #161616;
+  --heat-1: #13263d;
+  --heat-2: #1d4573;
+  --heat-3: #3474c0;
+  --heat-4: #4da3ff;
+
+  --key-hover-shadow: inset 0 1px 0 rgb(255 255 255 / 0.09), 0 0 0 1px rgb(255 255 255 / 0.13), 0 1px 2px rgb(0 0 0 / 0.6);
+  --key-picked-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), 0 0 0 1px rgb(255 255 255 / 0.55), 0 1px 2px rgb(0 0 0 / 0.6);
+  --seg-thumb: #1c1c1c;
+  --seg-thumb-shadow: 0 0 0 1px #2e2e2e;
+  --knob: #333333;
+  --knob-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
+
+  --shadow-menu: 0 0 0 1px var(--line-strong), 0 12px 32px -12px rgb(0 0 0 / 0.8);
+  --shadow-dialog: 0 0 0 1px var(--line-strong), 0 24px 48px -16px rgb(0 0 0 / 0.8);
+  --shadow-toast: 0 0 0 1px var(--line-strong), 0 16px 40px -16px rgb(0 0 0 / 0.8);
+  --scrim: rgb(0 0 0 / 0.55);
+
+  --folder-back-top: #2f73dc;
+  --folder-back-bottom: #1a4fae;
+  --folder-front-top: #7ab6ff;
+  --folder-front-bottom: #3d86f0;
+
+  --tile-web-top: #2f73dc;
+  --tile-web-bottom: #1a4fae;
+  --tile-api-top: #7558e0;
+  --tile-api-bottom: #4a32b3;
+  --tile-bot-top: #1aa596;
+  --tile-bot-bottom: #0b766c;
+  --tile-postgres-top: #4d70dc;
+  --tile-postgres-bottom: #2846b0;
+  --tile-redis-top: #f04a3d;
+  --tile-redis-bottom: #c22a21;
+  --tile-minio-top: #c93a54;
+  --tile-minio-bottom: #9e2036;
+  --tile-glyph-top: 88%;
+  --tile-glyph-bottom: 66%;
+}
+
+/* ============== Base ============== */
+
+/* overflow-x: clip keeps hidden tooltips at the right edge from widening the page; the stable
+   gutter stops the page shifting sideways when a scroll lock hides the scrollbar. Under the
+   sticky top bar, shell.css adds the scroll padding that keeps a focused control clear of it. */
+
+html {
+  margin: 0;
+  overflow-x: clip;
+  scrollbar-gutter: stable;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  overflow-x: clip;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 22px;
+  font-feature-settings: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Emphasis is medium weight everywhere, never the browser's bold. */
+
+b,
+strong {
+  font-weight: 500;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--line-strong) padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-4) padding-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============== Layout: the ruled frame ============== */
+
+/* The column runs between two rails the full page height; rules and dither bands run full bleed
+   and cross the rails at 5px nodes.
+
+   Every rail and node lands on a whole pixel at any width. A column wider than --rail centres the
+   rail, the odd pixel going right; a narrower one (a laptop with the sidebar open) starts the rail
+   on the column's left edge and holds the right rail 4px inside the clip edge, so its nodes keep
+   all 5px. Blocks, rule nodes and band nodes share the same two numbers, M the left offset and B
+   the rail's outer width:
+     M = round(down, max(0px, (100% - var(--rail)) / 2), 1px)
+     B = min(var(--rail), 100% - 4px)
+   Each round() declaration follows a plain one, which a browser without round() keeps. */
+
+main.page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: calc(100vh - var(--top-h));
+  overflow-x: clip;
+  /* Its own stacking layer, so a lifted section never paints over the sticky top bar. */
+  isolation: isolate;
+}
+
+main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .tswitch:hover, .tswitch:focus-visible, .ctip, .sel[data-open="true"]) {
+  z-index: var(--z-lift);
+}
+
+/* Panels: flat ruled blocks, no radius, no shadow. Titled heads start 20px from their rule. */
+
+.card {
+  position: relative;
+  min-width: 0;
+  background: var(--panel);
+}
+
+/* A card nested in a split column lifts over its neighbours while in use. (A card that is itself a
+   block of main.page lifts with the block rule above, which outweighs these.) */
+
+.card:hover,
+.card:focus-within {
+  z-index: var(--z-hover);
+}
+
+.card:has([data-tip]:hover, [data-tip]:focus-visible, .sel[data-open="true"]) {
+  z-index: var(--z-lift);
+}
+
+.card-hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px var(--gutter);
+  border-bottom: 1px solid var(--line);
+}
+
+.card-hd:has(.ctitle) {
+  min-height: 0;
+  padding: 18px var(--gutter);
+}
+
+/* On a phone a head's button drops under the title, lined up with the text, rather than wrapping
+   the title to two lines and cutting its sub short. */
+
+@media (max-width: 520px) {
+  .card-hd:has(.ctitle) {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  .card-hd:has(.ctitle) > .btn {
+    margin-left: 44px;
+  }
+  .card-hd .ctitle-sub.ellipsis {
+    white-space: normal;
+  }
+}
+
+.card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* 44px under its 1px rule, so anything centred in it lands on a whole pixel. */
+  min-height: 45px;
+  padding: 4px var(--gutter);
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* A footer that is itself the link runs edge to edge, where an outside ring would be clipped. */
+
+.card-foot:is(a, button):focus-visible {
+  outline-offset: -2px;
+  border-radius: 0;
+}
+
+.ctitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.ctitle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ctitle-h {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+
+.ctitle-sub {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--side-col);
+  align-items: start;
+  gap: 0;
+}
+
+.split[data-stretch="true"] {
+  align-items: stretch;
+}
+
+.split[data-stretch="true"] > .card {
+  display: flex;
+  flex-direction: column;
+}
+
+.split[data-stretch="true"] > .col > .card:last-child {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.split > * + * {
+  border-left: 1px solid var(--line);
+}
+
+.split > .col,
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.split > .col > * + * {
+  border-top: 1px solid var(--line);
+}
+
+/* -------------- Materials -------------- */
+
+/* Flat: the key fill and a hairline ring. Picked is a soft blue tint, never a dark outline. */
+
+.surface-key {
+  background-color: var(--key-fill);
+  background-image: none;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.surface-key-picked {
+  background-color: color-mix(in srgb, var(--blue) 8%, var(--key-fill));
+  background-image: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 32%, transparent);
+  color: var(--ink);
+}
+
+/* Popover material (dialogs, menus, the date picker, toasts and the shell popovers). Keys, chips,
+   kbd chips and tiles inside take the popover's fill and hover with its veil: in dark the page
+   colour would read as a punched-out hole and --mass is the popover itself. Fields inside a dark
+   popover take the page colour, so a field never matches its surface. */
+
+:is(.dlg, .dtp-pop, .sel-list, .toast, .cmd, .acct-pop, .ntf-panel, .px-menu-pop) {
+  --key-fill: var(--popover);
+  --key-hover: var(--fill-popover);
+  /* Status tints mix into the popover, not the page, so a toned tile or callout sits level with
+     its surface (in light the two are the same white; in dark the page tint read a step darker). */
+  --ok-soft: color-mix(in srgb, var(--ok) 12%, var(--popover));
+  --warn-soft: color-mix(in srgb, var(--warn) 12%, var(--popover));
+  --bad-soft: color-mix(in srgb, var(--bad) 12%, var(--popover));
+  --blue-soft: color-mix(in srgb, var(--blue) 12%, var(--popover));
+}
+
+.dark :is(.dlg, .dtp-pop) {
+  --field: var(--bg);
+}
+
+/* -------------- Soft rows -------------- */
+
+/* 10px radius, transparent until hover, no rules between. */
+
+.soft-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.soft-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 10px;
+  color: inherit;
+  transition: background-color 150ms;
+}
+
+a.soft-row:hover,
+button.soft-row:hover,
+.soft-row:focus-visible,
+.soft-row[data-hover="true"]:hover {
+  background: var(--hover);
+}
+
+/* A toned tile (a failed event, a setting that is on) keeps its tone under the pointer. */
+
+.soft-row:hover .icon-tile:not([data-tone]),
+.tile-host:hover .icon-tile:not([data-tone]) {
+  color: var(--ink);
+}
+
+/* -------------- Column rule -------------- */
+
+/* Every repeating row is the same grid: fixed columns, and one flexible column that takes the spare
+   room, so columns line up down the page and an empty value keeps its cell. A row's own rule names
+   only its `--cols`, from these shared widths, and changes them at its breakpoints; a phone gets
+   its own stacked `--cols`. Cells never push a neighbour: they cut or wrap inside their column. */
+
+:root {
+  --col-gap: 12px;
+  --col-status: 24px;
+  --col-time: 72px;
+  --col-dur: 56px;
+  --col-key: 28px;
+  --col-branch: 128px;
+  --col-hash: 68px;
+}
+
+:is(.dep-row, .dm-head, .dm-row, .rs-head, .rs-row, .act-row, .al-rule, .al-ev, .set-tk-head, .set-tk-row, .set-ss-head, .set-ss-row, .set-tm-row, .sb-sched-row, .sb-run, .sb-crow, .px-ver-row, .px-env-row, .px-prev, .at-key, .git-row) {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  column-gap: var(--col-gap);
+}
+
+:is(.dep-row, .dm-head, .dm-row, .rs-head, .rs-row, .act-row, .al-rule, .al-ev, .set-tk-head, .set-tk-row, .set-ss-head, .set-ss-row, .set-tm-row, .sb-sched-row, .sb-run, .sb-crow, .px-ver-row, .px-env-row, .px-prev, .at-key, .git-row) > * {
+  min-width: 0;
+}
+
+/* -------------- Icon tile -------------- */
+
+/* A tone colours the glyph (an activity row that failed, a setting that is on). `data-soft` also
+   tints the tile, the look of toast and notification icons: the soft fill, its ring, the glyph in
+   the tone. Live and info share the accent blue. */
+
+.icon-tile[data-tone="ok"] { color: var(--ok); }
+
+.icon-tile[data-tone="warn"] { color: var(--warn); }
+
+.icon-tile[data-tone="bad"] { color: var(--bad); }
+
+.icon-tile:is([data-tone="info"], [data-tone="live"]) { color: var(--blue); }
+
+.icon-tile[data-soft][data-tone="ok"] { background-color: var(--ok-soft); box-shadow: inset 0 0 0 1px var(--ok-ring); }
+
+.icon-tile[data-soft][data-tone="warn"] { background-color: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn-ring); }
+
+.icon-tile[data-soft][data-tone="bad"] { background-color: var(--bad-soft); box-shadow: inset 0 0 0 1px var(--bad-ring); }
+
+.icon-tile[data-soft]:is([data-tone="info"], [data-tone="live"]) { background-color: var(--blue-soft); box-shadow: inset 0 0 0 1px var(--blue-ring-soft); }
+
+/* -------------- Chip -------------- */
+
+/* Its fill and ring come from .surface-key or .surface-key-picked, which chip.tsx always adds. */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: box-shadow 150ms, color 150ms;
+}
+
+.chip:not(:has(.chip-ic, .dot)) {
+  padding: 0 12px;
+}
+
+.chip[data-size="sm"] {
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px 0 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.chip[data-size="sm"]:not(:has(.chip-ic, .dot)) {
+  padding: 0 9px;
+}
+
+/* A chip led by an app or project icon keeps the same inset on every side. */
+
+.chip[data-size="sm"]:has(> .chip-ic > .aicon) {
+  padding-left: 4px;
+}
+
+/* Uptime: live and green, a soft pulse then the clock. --ok-ink on a 9% tint (lighter than the
+   12% --ok-soft of the status tiles) keeps the digits above 4.5:1 in both themes, the unit letters
+   too, at full strength. */
+
+.chip.uptime-chip {
+  flex: none;
+  background-image: none;
+  background-color: color-mix(in srgb, var(--ok) 9%, var(--bg));
+  box-shadow: inset 0 0 0 1px var(--ok-ring);
+  color: var(--ok-ink);
+  font-weight: 500;
+}
+
+.uptime-dot {
+  --pulse: color-mix(in srgb, var(--ok) 45%, transparent);
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ok);
+  animation: pulse 2s ease-out infinite;
+}
+
+/* Steady digits, quiet unit letters. */
+
+.uptime-chip .up-clock {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.uptime-chip .up-part {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.uptime-chip .up-unit {
+  margin-left: 1px;
+  font-size: 12px;
+}
+
+/* The tag inside a row title: "You", "This device", a token scope. */
+
+.chip[data-size="xs"] {
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.chip[data-size="xs"]:not(:has(.chip-ic, .dot)) {
+  padding: 0 7px;
+}
+
+.chip[data-size="xs"] .chip-ic .ic {
+  width: 12px;
+  height: 12px;
+}
+
+.chip-ic {
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  transition: color 150ms;
+}
+
+a.chip:hover,
+button.chip:hover:not(:disabled) {
+  box-shadow: var(--key-hover-shadow);
+}
+
+a.chip:hover .chip-ic,
+button.chip:hover .chip-ic,
+.chip[data-picked] .chip-ic {
+  color: var(--ink);
+}
+
+a.chip[data-picked]:hover,
+button.chip[data-picked]:hover {
+  box-shadow: var(--key-picked-shadow);
+}
+
+/* -------------- Environment tag -------------- */
+
+.env-tag {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.env-tag[data-prod="true"] {
+  color: var(--ink);
+}
+
+.env-tag .ic {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+}
+
+/* -------------- Commit hash chip -------------- */
+
+.hash-chip {
+  position: relative;
+  z-index: var(--z-raise);
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+.hash-chip:hover {
+  background: color-mix(in srgb, var(--blue) 8%, var(--key-fill));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 28%, transparent);
+  color: var(--ink);
+}
+
+.hash-chip[data-empty] {
+  cursor: default;
+  color: var(--ink-muted);
+}
+
+/* -------------- Git links -------------- */
+
+/* Branch and repository links out to GitHub. They keep the text they replace, rise above a row's
+   stretched link, and take ink plus an underline on hover. */
+
+.git-ref {
+  position: relative;
+  z-index: var(--z-raise);
+  min-width: 0;
+  transition: color 150ms;
+}
+
+.git-ref:hover {
+  color: var(--ink);
+}
+
+.git-ref:hover > .ellipsis,
+.git-ref:hover:not(:has(> .ellipsis)) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.git-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* -------------- Chart tooltip -------------- */
+
+/* Inverted ink card with a caret toward the point. */
+
+.ctip {
+  position: absolute;
+  z-index: var(--z-tip);
+  display: flex;
+  flex-direction: column;
+  transform: translate(-50%, calc(-100% - 14px));
+  white-space: nowrap;
+  pointer-events: none;
+  min-width: 140px;
+  padding: 6px 12px;
+  gap: 3px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ctip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  bottom: -4px;
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.ctip-title {
+  margin-bottom: 1px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bg);
+}
+
+.ctip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: color-mix(in srgb, var(--bg) 62%, var(--ink));
+}
+
+.ctip-row i {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.ctip-row span {
+  flex: 1;
+}
+
+.ctip-row b {
+  margin-left: 12px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--bg);
+}
+
+/* -------------- Hover tooltip -------------- */
+
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  z-index: var(--z-tip);
+  pointer-events: none;
+  opacity: 0;
+  transition: none;
+  bottom: calc(100% + 9px);
+  translate: -50% 2px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  white-space: nowrap;
+  /* tip-guard.tsx slides a bubble that would leave the column or viewport by --tip-dx; the tail stays put. */
+  margin-left: var(--tip-dx, 0px);
+  margin-right: calc(var(--tip-dx, 0px) * -1);
+}
+
+/* The tail: a 10px square with 2px corners turned 45 degrees, centred 2px inside the bubble edge. */
+
+[data-tip]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  z-index: var(--z-tip);
+  pointer-events: none;
+  opacity: 0;
+  transition: none;
+  bottom: calc(100% + 6px);
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--ink);
+  rotate: 45deg;
+  translate: -50% 2px;
+}
+
+[data-tip]:hover::after,
+[data-tip]:hover::before,
+[data-tip]:focus-visible::after,
+[data-tip]:focus-visible::before {
+  opacity: 1;
+  translate: -50% 0;
+  transition: opacity 0s 150ms, translate 0s 150ms;
+}
+
+[data-tip][data-tip-side="right"]::after {
+  left: calc(100% + 10px);
+  bottom: auto;
+  top: 50%;
+  translate: -2px -50%;
+}
+
+[data-tip][data-tip-side="right"]::before {
+  left: calc(100% + 7px);
+  bottom: auto;
+  top: 50%;
+  translate: -2px -50%;
+}
+
+[data-tip][data-tip-align="end"]::after {
+  left: auto;
+  right: 0;
+  translate: 0 2px;
+}
+
+/* End-aligned tips keep the tail 12px in from the right edge, under the bubble. */
+
+[data-tip][data-tip-align="end"]::before {
+  left: auto;
+  right: 12px;
+  translate: 0 2px;
+}
+
+/* Esc hides the tip of the hovered or focused control until the pointer or focus leaves it
+   (tip-guard.tsx sets and clears the attribute), so a tip never has to be moved away from. */
+
+[data-tip][data-tip-hidden]::after,
+[data-tip][data-tip-hidden]::before {
+  opacity: 0;
+  transition: none;
+}
+
+/* -------------- Button -------------- */
+
+/* A toggle key that is on (Wrap, Regex, Follow): the soft blue picked tint. */
+
+.btn[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--blue) 8%, var(--key-fill));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 32%, transparent);
+  color: var(--ink);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+  pointer-events: none;
+}
+
+/* An icon key that is off for a reason its tip gives ("Viewers cannot change this", the last
+   environment) still takes the pointer, so the reason shows on hover. It neither lights up nor
+   presses: its handler ignores presses while it is aria-disabled. */
+
+.btn.btn-icon[aria-disabled="true"][data-tip] {
+  pointer-events: auto;
+  --key-hover: var(--key-fill);
+  --active: var(--key-fill);
+}
+
+.btn.btn-icon[aria-disabled="true"][data-tip]:hover .ic {
+  color: var(--ink-2);
+}
+
+.btn[aria-pressed="true"] .ic {
+  color: var(--blue);
+}
+
+/* Destructive confirm: the primary key in solid red. */
+
+.btn-danger {
+  background: var(--bad-solid);
+  box-shadow: none;
+  color: var(--on-solid);
+}
+
+.btn-danger:hover {
+  background: var(--bad-solid-hover);
+}
+
+.btn-danger:active {
+  background: var(--bad-solid-active);
+}
+
+.btn-danger:focus-visible {
+  outline-color: var(--bad);
+}
+
+:is(.btn-primary, .btn-danger).btn-icon .ic,
+:is(.btn-primary, .btn-danger).btn-icon:hover .ic {
+  color: var(--on-solid);
+}
+
+/* The quiet destructive key (Delete, Remove, Revoke) that opens a confirm: still the one secondary
+   key, red text and a soft red fill on hover. Its glyph, when it is an icon key, follows the text. */
+
+.btn.btn-quiet-danger {
+  color: var(--bad-ink);
+}
+
+.btn.btn-quiet-danger:hover:not(:disabled, [aria-disabled="true"]) {
+  background: var(--bad-soft);
+}
+
+.btn.btn-quiet-danger .ic,
+.btn.btn-quiet-danger:hover .ic {
+  color: inherit;
+}
+
+.btn:is(.btn-primary, .btn-danger):not(.btn-icon) > .ic {
+  display: block;
+  margin-left: -2px;
+  color: var(--on-solid);
+}
+
+.btn:is(.btn-primary, .btn-danger):not(.btn-icon):hover > .ic {
+  color: var(--on-solid);
+}
+
+.btn.btn-lead:not(.btn-icon) > .ic {
+  display: block;
+  margin-left: -2px;
+  color: var(--ink-2);
+}
+
+/* A key that moves on to the next step ("Continue") carries its arrow after the label, in any tone
+   (PendingLabel's `trailing`). Leading glyphs stay for the keys that make or change something. */
+
+.btn:not(.btn-icon) > .ic.ic-trail {
+  display: block;
+  margin: 0 -2px 0 0;
+}
+
+/* Popup close keys never carry a tooltip. */
+
+:is([role="dialog"], dialog, .ntf-panel) .btn-icon:is([aria-label^="Close"], [aria-label^="close"])::after,
+:is([role="dialog"], dialog, .ntf-panel) .btn-icon:is([aria-label^="Close"], [aria-label^="close"])::before {
+  display: none;
+}
+
+/* -------------- Segmented control -------------- */
+
+.seg2-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 150ms;
+}
+
+.seg2-opt:hover,
+.seg2-opt:is([aria-checked="true"], [aria-selected="true"]) {
+  color: var(--ink);
+}
+
+/* A filter option: a tone dot for a status, the label, and a count when the list is in memory
+   (filterOptions in segmented.tsx builds all three). Counts drop on phones, on every page. */
+
+.seg2-count {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.seg2-opt:is([aria-checked="true"], [aria-selected="true"]) .seg2-count {
+  color: var(--ink-3);
+}
+
+/* -------------- Select (custom dropdown) -------------- */
+
+/* The trigger matches the 36px fields and shares their focus look; the list is popover material. */
+
+.sel {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.sel[data-open="true"] {
+  z-index: var(--z-dropdown);
+}
+
+/* The Select and date picker triggers: one field-style key. */
+
+.sel-trigger,
+.dtp-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow 150ms, background-color 150ms;
+}
+
+.sel[data-size="sm"] .sel-trigger {
+  height: 32px;
+  font-size: 13px;
+}
+
+.sel-trigger:hover,
+.dtp-trigger:hover {
+  box-shadow: inset 0 0 0 1px var(--field-line-hover);
+}
+
+.sel-trigger:disabled {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+}
+
+.sel-trigger > .ic {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.sel-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sel-placeholder {
+  color: var(--ink-muted);
+}
+
+.sel-chev {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--ink-3);
+  transition: rotate 150ms var(--ease);
+}
+
+.sel[data-open="true"] .sel-chev {
+  rotate: 180deg;
+}
+
+/* The list holds focus for the keys; the active row shows where it is, so no ring. Menu material:
+   popover fill, 10px radius, --shadow-menu. */
+
+.sel-list {
+  position: absolute;
+  z-index: var(--z-popover);
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  max-height: 280px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border-radius: 10px;
+  background: var(--popover);
+  box-shadow: var(--shadow-menu);
+  outline: 0;
+  animation: sel-in 120ms var(--ease) both;
+}
+
+/* The Select's open list is a layer of its own: select.tsx portals it to the body and sets its
+   place, width and height against the viewport. Over dialogs, under toasts (--z-picker). */
+
+.sel-float {
+  position: fixed;
+  z-index: var(--z-picker);
+  top: 0;
+  left: 0;
+  min-width: 0;
+  max-height: none;
+}
+
+.sel-list[data-side="top"] {
+  animation-name: sel-in-up;
+}
+
+/* A list in the page flow (the logs app picker) opens above its trigger by itself. */
+
+.sel-list:not(.sel-float)[data-side="top"] {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+@keyframes sel-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
+@keyframes sel-in-up {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+
+.sel-list[data-align="end"] {
+  left: auto;
+  right: 0;
+}
+
+.sel-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 8px 0 10px;
+  border-radius: 6px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 100ms, color 100ms;
+}
+
+.sel-option > .ic {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.sel-option[data-active="true"] {
+  background: var(--fill-popover);
+  color: var(--ink);
+}
+
+.sel-option[data-active="true"] > .ic {
+  color: var(--ink);
+}
+
+.sel-option[aria-selected="true"] {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.sel-option[aria-disabled="true"] {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+}
+
+/* A fixed 16px glyph slot, so rows with and without a glyph line up. */
+
+.sel-lead {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--ink-3);
+}
+
+.sel-lead[data-glyph] {
+  width: 20px;
+  height: 20px;
+}
+
+.sel-glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  margin-left: -2px;
+}
+
+.sel-option[aria-selected="true"] .sel-lead,
+.sel-option[data-active="true"] .sel-lead {
+  color: var(--ink-2);
+}
+
+.sel-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sel-hint {
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.sel-check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  color: var(--blue);
+}
+
+/* A long list with a filter field on top: the popover holds the field, the list scrolls under it. */
+
+.sel-pop {
+  display: flex;
+  flex-direction: column;
+  width: max(100%, 280px);
+  max-width: calc(100vw - 32px);
+  max-height: 320px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sel-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+}
+
+.sel-search > input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.sel-search > input::placeholder {
+  color: var(--ink-muted);
+}
+
+.sel-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  outline: 0;
+}
+
+.sel-empty {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 10px;
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+
+/* -------------- Section tabs -------------- */
+
+/* Tabs (tabs.tsx): the Segmented track as a tab list, in a toolbar row of its own, one 36px row in
+   56px on the 4px grid. Measured on the strip itself, so a collapsed sidebar keeps the tabs longer;
+   where they do not fit the Select of the same sections takes over, so no label is ever cut off.
+   Six tabs need about 720px, ten about 900px. After the Segmented and Select sections, so the
+   hand-over wins their display. */
+
+.tabs-wrap {
+  container: tabs / inline-size;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 8px var(--gutter);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs > .seg2 {
+  flex: none;
+}
+
+.tabs > .tabs-sel {
+  display: none;
+  width: 100%;
+}
+
+@container tabs (max-width: 720px) {
+  .tabs > .tabs-list {
+    display: none;
+  }
+  .tabs > .tabs-sel {
+    display: flex;
+  }
+  .tabs {
+    overflow: visible;
+  }
+}
+
+@container tabs (max-width: 900px) {
+  .tabs-wrap[data-many] .tabs > .tabs-list {
+    display: none;
+  }
+  .tabs-wrap[data-many] .tabs > .tabs-sel {
+    display: flex;
+  }
+  .tabs-wrap[data-many] .tabs {
+    overflow: visible;
+  }
+}
+
+/* -------------- Switch -------------- */
+
+/* 36 by 20. Off is a soft grey track inside a light --line-strong ring (owner: no dark border); on is
+   solid blue. The knob is white in both themes with a soft shadow and no ring of its own. */
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 12%, var(--bg));
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  cursor: pointer;
+  transition: background-color 150ms, box-shadow 150ms;
+}
+
+.switch[aria-checked="true"] {
+  background: var(--blue);
+  box-shadow: none;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.switch:disabled {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+}
+
+/* Hover deepens the track a step, the way buttons fill on hover. */
+
+.switch:not(:disabled):not([aria-checked="true"]):hover {
+  background: color-mix(in srgb, var(--ink) 18%, var(--bg));
+}
+
+.switch[aria-checked="true"]:not(:disabled):hover {
+  background: var(--blue-hover);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.18), 0 0 1px rgb(0 0 0 / 0.12);
+  transition: translate 180ms var(--ease);
+}
+
+.switch[aria-checked="true"] .switch-knob {
+  translate: 16px 0;
+}
+
+/* -------------- Checkbox and radio -------------- */
+
+/* Every native checkbox: 16px, radius 4, a --control-line ring; ticked fills blue with a white
+   check. Plain element weight, so an area rule that places a checkbox (a 2px drop onto a first
+   line) wins by coming later. A radio opts in with .radio: the same ring, round, and a 5px blue
+   inset when chosen. */
+
+input[type="checkbox"],
+.radio {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--key-fill);
+  box-shadow: inset 0 0 0 1px var(--control-line);
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color 120ms, box-shadow 120ms;
+}
+
+.radio {
+  border-radius: 999px;
+}
+
+input[type="checkbox"]:hover,
+.radio:hover {
+  box-shadow: inset 0 0 0 1px var(--ink-3);
+}
+
+input[type="checkbox"]::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  opacity: 0;
+  scale: 0.6;
+  transition: opacity 120ms, scale 160ms var(--ease);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.75 5.25 4 7.5l4.25-5' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.75 5.25 4 7.5l4.25-5' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+input[type="checkbox"]:checked,
+input[type="checkbox"]:indeterminate {
+  background: var(--blue);
+  box-shadow: inset 0 0 0 1px var(--blue);
+}
+
+input[type="checkbox"]:checked:hover,
+input[type="checkbox"]:indeterminate:hover {
+  background: var(--blue-hover);
+  box-shadow: inset 0 0 0 1px var(--blue-hover);
+}
+
+.radio:checked {
+  box-shadow: inset 0 0 0 5px var(--blue);
+}
+
+input[type="checkbox"]:checked::after {
+  opacity: 1;
+  scale: 1;
+}
+
+input[type="checkbox"]:indeterminate::after {
+  opacity: 1;
+  scale: 1;
+  -webkit-mask: none;
+  mask: none;
+  height: 2px;
+  width: 8px;
+  border-radius: 1px;
+}
+
+input[type="checkbox"]:focus-visible,
+.radio:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+input[type="checkbox"]:disabled,
+.radio:disabled {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+}
+
+/* -------------- Theme switch -------------- */
+
+.tswitch-tip::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--ink);
+  rotate: 45deg;
+  translate: -50% 0;
+}
+
+/* The key chip inside a tip bubble (.tip-kbd): the inverted bubble's own colours, 12px. */
+
+.tswitch-tip kbd,
+.tip-kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg) 18%, transparent);
+  color: var(--bg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* -------------- Toasts -------------- */
+
+/* Popover cards, bottom right, moved with translate from offsets toast.tsx measures. At most three;
+   tucked cards peek 10px, 5% smaller, content hidden; hover or focus fans them out 8px apart.
+   Rounded 12px like every floating layer (owner: the frame's square blocks stay on the page). */
+
+.toaster {
+  position: fixed;
+  z-index: var(--z-toast);
+  right: 24px;
+  bottom: 24px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+
+.toast-list {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Fanned out, the list catches the pointer, so crossing a gap never collapses the stack. */
+
+.toaster[data-expanded] .toast-list {
+  pointer-events: auto;
+}
+
+.toast {
+  position: absolute;
+  z-index: calc(10 - var(--depth));
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--popover);
+  box-shadow: var(--shadow-toast);
+  pointer-events: auto;
+  touch-action: none;
+  transform-origin: 50% 0;
+  translate: 0 calc(var(--y) * -1 + var(--swipe, 0px));
+  scale: calc(1 - var(--depth) * 0.05);
+  opacity: 1;
+  transition:
+    translate 360ms var(--ease-sheet),
+    scale 360ms var(--ease-sheet),
+    height 360ms var(--ease-sheet),
+    opacity 200ms;
+}
+
+.toaster[data-expanded] .toast {
+  scale: 1;
+}
+
+/* A new card rises from below by its own height, the mirror of a dismissed one, so it never fades
+   in over the card it pushes back. */
+
+.toast:not([data-mounted]) {
+  translate: 0 calc(var(--y) * -1 + 100%);
+  opacity: 0;
+}
+
+/* A dismissed card slides down by its own height as it fades, out of the way of the card moving
+   into its place, so the two never show their text over each other. A swipe carries on from
+   where the finger let go. */
+
+.toast[data-leaving="dismiss"] {
+  translate: 0 calc(var(--y) * -1 + var(--swipe, 0px) + 100%);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    translate 360ms var(--ease-sheet),
+    scale 360ms var(--ease-sheet),
+    opacity 200ms ease-out;
+}
+
+/* A card sent out to make room keeps moving with the stack, one place further back, and fades. */
+
+.toast[data-leaving="overflow"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toast[data-swiping] {
+  transition: opacity 200ms;
+  user-select: none;
+}
+
+/* The 24px tile sits 16px in from the top and the left of a one-line card. */
+
+.toast-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 12px 12px 16px;
+}
+
+.toast > * {
+  transition: opacity 150ms;
+}
+
+.toaster:not([data-expanded]) .toast:not([data-depth="0"]) > * {
+  opacity: 0;
+}
+
+.toast-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toast-title {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.toast-desc {
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.toast-action {
+  flex: none;
+  align-self: center;
+}
+
+/* Close: always shown (owner), the dialog's key: 26px, a 14px cross, and the fill, ring and hover
+   of every secondary key from .btn, so it matches the action beside it. */
+
+.toast-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+.toast-close .ic {
+  color: var(--ink-3);
+}
+
+.toast-close:hover .ic {
+  color: var(--ink);
+}
+
+/* A 40px touch target around the 26px key, inside the card's 12px padding and the 12px gap. Touch
+   only: with a mouse the key's hover must start at its own edge (owner), not 8px out. */
+
+@media (pointer: coarse) {
+  .toast-close::after {
+    content: "";
+    position: absolute;
+    inset: -7px;
+  }
+}
+
+.toast-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--line-strong);
+  transform-origin: 0 50%;
+  animation: toast-timer linear both;
+}
+
+.toast[data-tone="ok"] .toast-timer { background: color-mix(in srgb, var(--ok) 45%, transparent); }
+
+.toast[data-tone="bad"] .toast-timer { background: color-mix(in srgb, var(--bad) 45%, transparent); }
+
+.toast[data-tone="warn"] .toast-timer { background: color-mix(in srgb, var(--warn) 50%, transparent); }
+
+.toast[data-tone="info"] .toast-timer { background: color-mix(in srgb, var(--blue) 45%, transparent); }
+
+@keyframes toast-timer {
+  to {
+    scale: 0 1;
+  }
+}
+
+/* -------------- Spinner -------------- */
+
+/* The one spin: every loader glyph takes `.spin`. */
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* -------------- Pending label -------------- */
+
+/* A text-only button keeps its label's width while a loader sits centred over it. */
+
+.pend-label[data-pending] {
+  opacity: 0;
+}
+
+.pend-spin {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.btn .pend-spin .ic {
+  color: inherit;
+}
+
+/* -------------- Copy -------------- */
+
+.copy-key[data-copied]::after,
+.copy-key[data-copied]::before {
+  opacity: 1;
+  translate: -50% 0;
+  transition-delay: 0ms;
+}
+
+/* Labels that swap in place share one cell, so the key keeps the wider width. */
+
+.swap {
+  display: inline-grid;
+}
+
+.swap > * {
+  grid-area: 1 / 1;
+  text-align: center;
+}
+
+.swap > :not([data-on]) {
+  visibility: hidden;
+}
+
+/* -------------- Relative time -------------- */
+
+.when {
+  cursor: default;
+  white-space: nowrap;
+}
+
+/* A time hugs its text, so its tip centres on the words even in a stretched cell. */
+
+time.when {
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* The time-format provider's wrapper (lib/time-prefs.tsx) takes no box of its own. */
+
+.time-scope {
+  display: contents;
+}
+
+/* -------------- Fields -------------- */
+
+/* One skin for every input: 36px (32px with data-size="sm"), radius 10, the mass fill inside a
+   --field-line ring, the shared blue focus, a red ring when invalid. */
+
+.fld {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fld > .sel {
+  width: 100%;
+}
+
+/* A segmented control hugs its options; the field is a flex column, so stop it stretching full width. */
+
+.fld > .seg2 {
+  align-self: flex-start;
+}
+
+/* On a phone a field's choices share its width, so long labels never run past the column. */
+
+@media (max-width: 480px) {
+  .fld > .seg2 {
+    display: flex;
+    align-self: stretch;
+  }
+  .fld > .seg2 .seg2-opt {
+    flex: 1 1 auto;
+    padding: 0 6px;
+  }
+}
+
+.fld-label {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+/* A fieldset's legend wearing the label skin loses the browser's 2px side padding, so it lines up
+   with the labels above and below it. */
+
+legend.fld-label {
+  padding: 0;
+}
+
+.fld-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.fld-error {
+  color: var(--bad-ink);
+}
+
+.field {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  outline: 0;
+  transition: box-shadow 150ms, background-color 150ms;
+}
+
+/* The compact field of an inline editor or a time row, at the 32px of the keys beside it. */
+
+.field[data-size="sm"] {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.field-area {
+  height: auto;
+  min-height: 88px;
+  padding: 8px 12px;
+  resize: vertical;
+}
+
+.field::placeholder,
+.search input::placeholder {
+  color: var(--ink-muted);
+  opacity: 1;
+}
+
+.field:hover:not(:disabled, :focus) {
+  box-shadow: inset 0 0 0 1px var(--field-line-hover);
+}
+
+.field:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.field[aria-invalid="true"],
+.field[aria-invalid="true"]:hover {
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+
+.search:has(input[aria-invalid="true"]) {
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+
+/* A focused search keeps the red ring while its query is invalid, with the red halo of a field. */
+
+.search:has(input[aria-invalid="true"]):focus-within {
+  outline: 2px solid transparent;
+  background-color: var(--bg);
+  box-shadow: var(--ring-focus-bad);
+}
+
+.field[aria-invalid="true"]:focus {
+  outline: 2px solid transparent;
+  outline-offset: 0;
+  background-color: var(--bg);
+  box-shadow: var(--ring-focus-bad);
+}
+
+/* A Select or date trigger in a Field with an error takes the same red ring and red focus. */
+
+:is(.sel-trigger, .dtp-trigger)[aria-invalid="true"],
+:is(.sel-trigger, .dtp-trigger)[aria-invalid="true"]:hover {
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+
+:is(.sel-trigger, .dtp-trigger)[aria-invalid="true"]:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 0;
+  background-color: var(--bg);
+  box-shadow: var(--ring-focus-bad);
+}
+
+.field[readonly] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+  cursor: default;
+}
+
+/* A number with its unit inside the box: <span class="field-unit"><input class="field">
+   <span class="field-unit-text">MB</span></span>. The unit is muted 13px text 12px from the edge. */
+
+.field-unit {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.field-unit > .field {
+  padding-right: 48px;
+}
+
+.field-unit-text {
+  position: absolute;
+  right: 12px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+/* A numbered step of a how-to list: the number in a 20px round chip. */
+
+.step-n {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+/* A read-only value with a copy key (CopyBox): setup keys, invite links, tokens, commands. The
+   value wraps, never an ellipsis; the 28px key stays top right on a 36px first line. */
+
+.copy-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 4px 4px 12px;
+  border-radius: 10px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.copy-box-value {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink);
+  user-select: all;
+}
+
+/* Codes and keys typed by hand: tabular digits, a touch of tracking. */
+
+.copy-box[data-code] .copy-box-value {
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Autofill keeps the theme instead of painting the field yellow or blue. */
+
+.field:-webkit-autofill,
+.field:-webkit-autofill:hover,
+.field:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--field) inset;
+  caret-color: var(--ink);
+  transition: background-color 9999s;
+}
+
+.field[type="number"] {
+  appearance: textfield;
+}
+
+.field[type="number"]::-webkit-inner-spin-button,
+.field[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+/* Search: the glyph, the input, then the "/" key or the clear key. */
+
+.search {
+  display: flex;
+  flex: 1 1 240px;
+  align-items: center;
+  gap: 8px;
+  max-width: 360px;
+  height: 36px;
+  padding: 0 6px 0 12px;
+  border-radius: 10px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+  color: var(--ink-3);
+  cursor: text;
+  transition: box-shadow 150ms, background-color 150ms;
+}
+
+.search:hover:not(:focus-within) {
+  box-shadow: inset 0 0 0 1px var(--field-line-hover);
+}
+
+/* The "/" hint keeps the clear key's 24px slot, so the input never changes width. */
+
+.search > .kbd {
+  margin-right: 2px;
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  appearance: none;
+}
+
+.search input::-webkit-search-cancel-button,
+.search input::-webkit-search-decoration {
+  appearance: none;
+}
+
+.search-clear {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  transition: color 150ms;
+}
+
+.search-clear:hover {
+  color: var(--ink);
+}
+
+/* -------------- Field focus -------------- */
+
+/* One look for every field, search, dropdown and date trigger: page white, a blue ring and a soft
+   3px halo, kept while a dropdown or calendar is open. The weight is on purpose: an :is() counts as
+   its strongest member (three classes), plus the :not(), so the shared look wins over any area
+   rule that restyles a field in its own context (an inline editor, a settings row) with no prefix.
+   The transparent outline is what forced colours mode draws in place of the box-shadow ring. */
+
+:is(
+    .field:focus,
+    .search:focus-within,
+    .sel-trigger:focus-visible,
+    .sel[data-open="true"] .sel-trigger,
+    .dtp-trigger:focus-visible,
+    .dtp[data-open="true"] .dtp-trigger,
+    .mnav-search:focus-visible,
+    .side-search:focus-visible,
+    textarea:focus-visible
+  ):not([aria-invalid="true"], :has(input[aria-invalid="true"])) {
+  outline: 2px solid transparent;
+  outline-offset: 0;
+  background-color: var(--bg);
+  box-shadow: var(--ring-focus);
+  transition: box-shadow 120ms, background-color 120ms;
+}
+
+/* -------------- Dialog -------------- */
+
+/* Never two popups at once. A dialog opened from inside another one (a remove confirm
+   in a manage dialog, a secret shown after a save) takes the screen alone: the dialog under it steps
+   out of view, kept mounted so its fields keep what was typed, and comes back when the top one
+   closes. Dialogs portal to the body in the order they open, so the top one is the last scrim. */
+
+.dlg-scrim:has(~ .dlg-scrim) {
+  visibility: hidden;
+}
+
+/* Step-up stands alone the same way. It mounts in a root of its own (step-up.tsx), so it is not a
+   sibling of the scrims above: while "Confirm it is you" is up, any dialog it interrupted steps out
+   of view and the check takes the full scrim. Both come back the moment the check is answered. */
+
+html.step-up-open .dlg-scrim:not(:has(> .dlg-stepup)) {
+  visibility: hidden;
+}
+
+html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
+  background: var(--scrim);
+}
+
+.dlg {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  /* An even height, so centring in the scrim never lands the head and foot rules on a half pixel. */
+  height: calc-size(auto, round(up, size, 2px));
+  max-height: calc(100dvh - 64px);
+  border-radius: 12px;
+  background: var(--popover);
+  box-shadow: var(--shadow-dialog);
+  animation: dlg-in 140ms var(--ease) both;
+}
+
+.dlg-form {
+  display: contents;
+}
+
+/* Head: 20px above and below, 24px in from the left like the body. The 32px key tile centres on the
+   title plus the first line of the sub (20 + 2 + 18 = 40px); a title alone centres on the tile.
+   The right 56px stays clear for the close key. */
+
+.dlg-hd {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 56px 20px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dlg-hd > .icon-tile {
+  margin-top: 4px;
+}
+
+.dlg-hd:has(> .icon-tile):not(:has(.dlg-sub)) > .icon-tile {
+  margin-top: 0;
+}
+
+.dlg-hd:has(> .icon-tile):not(:has(.dlg-sub)) .dlg-titles {
+  padding-top: 6px;
+}
+
+/* Close: a 26px key with a 14px cross on the same fill and hairline ring as every secondary key
+   (owner: it keeps its background), centred on the title's line, so the key sits 17px in from the
+   top and the right edge. It takes its fill, ring and hover from .btn, so it matches Cancel. */
+
+.dlg-close {
+  position: absolute;
+  top: 17px;
+  right: 17px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--ink-3);
+}
+
+/* A 40px touch target around the 26px key; the head keeps its right 56px clear, so it covers nothing.
+   Touch only: with a mouse the hover must start at the key's own edge (owner), not 8px out. */
+
+@media (pointer: coarse) {
+  .dlg-hd > .dlg-close.btn-icon::after {
+    content: "";
+    display: block;
+    position: absolute;
+    inset: -7px;
+  }
+}
+
+/* With a key tile and no sub, the title's line is the tile's centre line, 6px lower. */
+
+.dlg-hd:has(> .icon-tile):not(:has(.dlg-sub)) .dlg-close {
+  top: 23px;
+}
+
+/* A toned head (Dialog `tone="bad"`, the security release popup): a soft red wash under the title,
+   its own red hairline, the glyph on the soft red tile. Calm: the title stays ink, the close key
+   keeps its own fill and ring. The wash keeps the panel's top corners. */
+
+.dlg[data-tone="bad"] .dlg-hd {
+  border-radius: 12px 12px 0 0;
+  border-bottom-color: color-mix(in srgb, var(--bad) 20%, var(--line));
+  background: color-mix(in srgb, var(--bad) 7%, var(--popover));
+}
+
+.dlg[data-tone="bad"] .dlg-sub {
+  color: var(--ink-2);
+}
+
+.dlg-titles {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dlg-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+
+.dlg-sub {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.dlg-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* A confirm with only a title and sub (no body, no type-to-confirm) leaves this empty: collapse it
+   so the footer sits right under the sub instead of across a blank 24px gap. */
+
+.dlg-body:empty {
+  display: none;
+}
+
+/* With no body, the head's bottom rule would sit on the footer's top rule as a 2px line. */
+
+.dlg-body:empty + .dlg-ft {
+  border-top: 0;
+}
+
+.dlg-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-2);
+}
+
+.dlg-confirm-name {
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.dlg-ft {
+  position: relative;
+  z-index: var(--z-raise);
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--line);
+}
+
+/* Footer keys are the full 36px, matching the fields above them. */
+
+.dlg-ft .btn:not(.btn-icon) {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.dlg-note {
+  margin-right: auto;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+/* The phone bottom sheets' rise: dialogs and the notifications panel. */
+
+@keyframes sheet-up {
+  from { translate: 0 100%; }
+}
+
+/* -------------- Session notice -------------- */
+
+.session-ended {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-session);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--bg);
+}
+
+.session-ended-card {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+  width: min(400px, 100%);
+}
+
+/* -------------- Breadcrumb -------------- */
+
+/* 20px over the page title; `.crumbs + .shead` keeps the title where list pages put it. */
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px var(--gutter) 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crumbs li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.crumbs-sep {
+  color: var(--ink-4);
+}
+
+.crumbs-link {
+  border-radius: 4px;
+  color: var(--ink-3);
+  transition: color 150ms;
+}
+
+.crumbs-link:hover {
+  color: var(--ink);
+}
+
+.crumbs-here {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.crumbs-back {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--ink-3);
+  transition: color 150ms;
+}
+
+.crumbs-back:hover {
+  color: var(--ink);
+}
+
+.crumbs + .shead {
+  padding-top: 4px;
+}
+
+/* -------------- Secret -------------- */
+
+/* Masked value, eye key, copy key. Revealed values wrap. */
+
+.secret {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.secret-value {
+  min-width: 0;
+  margin-right: 4px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Twelve 4px dots: one width whatever the value, so rows never shift. */
+
+.mask {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  vertical-align: middle;
+}
+
+.mask i {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ink-3);
+}
+
+/* -------------- Group head -------------- */
+
+.ghead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+}
+
+/* In a dialog the rows bleed 8px into the body's padding, so the head's text starts at theirs. */
+.dlg-body > .ghead {
+  padding-inline: 0;
+}
+
+.ghead-h {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.ghead-h > .ic {
+  flex: none;
+}
+
+.ghead-count {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.ghead-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+/* -------------- Skeleton -------------- */
+
+/* Shapes only, never placeholder words; rows copy the real row's grid and height. */
+
+.skel {
+  display: block;
+  height: 8px;
+  border-radius: 6px;
+  background: var(--muted);
+  animation: skel 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes skel {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+.skel-rows {
+  display: grid;
+  gap: 2px;
+}
+
+.skel-row {
+  display: grid;
+  grid-template-columns: var(--skel-cols, minmax(0, 1fr));
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px;
+}
+
+.skel-two {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* -------------- Meter -------------- */
+
+/* A small `.bar` and its reading. */
+
+.gauge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  vertical-align: top;
+}
+
+.gauge .bar {
+  flex: none;
+}
+
+.gauge-val {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.gauge[data-tone="warn"] .gauge-val { color: var(--warn-ink); }
+
+.gauge[data-tone="bad"] .gauge-val { color: var(--bad-ink); }
+
+/* A list of usage meters: a name, a detail and a reading over a bar or a sparkline, ruled between
+   (the Overview server card, the app overview's Usage card). */
+
+.meters {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+}
+
+.meter {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px var(--gutter);
+}
+
+.meter + .meter {
+  border-top: 1px solid var(--line);
+}
+
+.meter-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+}
+
+.meter-name {
+  flex: 1;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.meter-detail {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.meter-val {
+  flex: none;
+  min-width: 40px;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  text-align: right;
+  color: var(--ink);
+}
+
+.meter[data-tone="warn"] .meter-val { color: var(--warn-ink); }
+
+.meter[data-tone="bad"] .meter-val { color: var(--bad-ink); }
+
+.meter .bar {
+  height: 8px;
+  border-radius: 6px;
+}
+
+/* -------------- Avatar -------------- */
+
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink-3);
+}
+
+/* The picture clips itself, not the box, so a hover tip on the avatar is never cut off. */
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+/* SVG pictures are line art on transparency, so they sit on a light disc in both themes. */
+
+.avatar-art {
+  background: #ffffff;
+}
+
+/* Dockify itself: the white whale on the brand blue disc (the logo's #2396ED), no ring, in both themes. */
+
+.avatar-brand {
+  background: var(--brand);
+  box-shadow: none;
+  color: var(--on-solid);
+}
+
+/* -------------- KPI strip -------------- */
+
+/* The grid is painted hairline, so its 1px gaps are the rules between cells at any column count.
+   Two named containers: `kpi` is the strip (column count, compact phone cells) and `kpi-cell` one
+   cell (the trend drops under the figures), so no query is ever read against the wrong box. */
+
+.kpi {
+  container: kpi / inline-size;
+  background: var(--bg);
+}
+
+/* Equal cells on whole pixels: every cell but the last rounds down, and the last takes the leftover,
+   so no hairline or node ever lands between pixels. --kpi-tpl-N is N columns; --kpi-cols and
+   --kpi-tpl always change together. */
+
+.kpi-grid {
+  --kpi-tpl-1: minmax(0, 1fr);
+  --kpi-tpl-2: round(down, calc((100% - 1px) / 2), 1px) minmax(0, 1fr);
+  --kpi-tpl-3: repeat(2, round(down, calc((100% - 2px) / 3), 1px)) minmax(0, 1fr);
+  --kpi-tpl-4: repeat(3, round(down, calc((100% - 3px) / 4), 1px)) minmax(0, 1fr);
+  --kpi-tpl: var(--kpi-tpl-4);
+  display: grid;
+  grid-template-columns: repeat(var(--kpi-cols, 4), minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+@supports (width: round(down, 1.5px, 1px)) {
+  .kpi-grid {
+    grid-template-columns: var(--kpi-tpl);
+  }
+}
+
+.kpi-grid[data-cols="1"] { --kpi-cols: 1; --kpi-tpl: var(--kpi-tpl-1); }
+
+.kpi-grid[data-cols="2"] { --kpi-cols: 2; --kpi-tpl: var(--kpi-tpl-2); }
+
+.kpi-grid[data-cols="3"] { --kpi-cols: 3; --kpi-tpl: var(--kpi-tpl-3); }
+
+/* One look on every page: 16px from the head to the figure, a node on every cell corner. */
+
+.kpi-cell {
+  container: kpi-cell / inline-size;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 24px var(--gutter);
+  background: var(--bg);
+}
+
+/* Lets the sparkline tooltip rise over the neighbouring cell. */
+
+.kpi-cell:hover {
+  z-index: var(--z-node);
+}
+
+/* 32px for the tile; a head with a 36px key in `.kpi-actions` (a range picker) grows to it. */
+
+.kpi-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  min-width: 0;
+}
+
+/* Keys in a cell's head (a range picker), at its right end. */
+
+.kpi-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.kpi-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+/* Change delta: a borderless soft tint with coloured text. */
+
+.kpi-delta.chip {
+  flex: none;
+  align-self: center;
+  height: 20px;
+  margin-left: 4px;
+  padding: 0 6px;
+  gap: 3px;
+  border-radius: 6px;
+  box-shadow: none;
+  background-color: color-mix(in srgb, var(--ink-4) 12%, var(--bg));
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+.kpi-delta .dot {
+  display: none;
+}
+
+.kpi-delta .chip-ic {
+  color: inherit;
+}
+
+.kpi-delta .chip-ic .ic {
+  width: 12px;
+  height: 12px;
+}
+
+.kpi-delta:has(.dot[data-tone="ok"]) {
+  background-color: var(--ok-soft);
+  color: var(--ok-ink);
+}
+
+.kpi-delta:has(.dot[data-tone="bad"]) {
+  background-color: var(--bad-soft);
+  color: var(--bad-ink);
+}
+
+.kpi-delta:has(.dot[data-tone="warn"]) {
+  background-color: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+.kpi-body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.kpi-figs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kpi-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.kpi-value small {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+
+.kpi-value .dot {
+  align-self: center;
+  margin-left: 4px;
+}
+
+.kpi-lead {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+/* A figure still loading holds the height of the figure and the line it replaces. */
+
+.kpi-value:has(> .skel) {
+  align-items: center;
+  height: 40px;
+}
+
+.kpi-lead:has(> .skel) {
+  display: flex;
+  align-items: center;
+  height: 18px;
+}
+
+/* The sparkline sits on the lead's bottom edge, so every cell ends on one line. */
+
+.kpi-cell .sparkarea {
+  width: 112px;
+  height: 40px;
+}
+
+/* 4 cells go 4, 2; 3 go 3, 1; 2 stay 2, so every row stays full; phones get compact cells. These
+   follow the base rules above, so they win over them. */
+
+@container kpi (max-width: 960px) {
+  .kpi-grid[data-cols="4"] { --kpi-cols: 2; --kpi-tpl: var(--kpi-tpl-2); }
+}
+
+@container kpi (max-width: 760px) {
+  .kpi-grid[data-cols="3"] { --kpi-cols: 1; --kpi-tpl: var(--kpi-tpl-1); }
+}
+
+@container kpi (max-width: 520px) {
+  .kpi-grid[data-cols="3"],
+  .kpi-grid[data-cols="1"] { --kpi-cols: 1; --kpi-tpl: var(--kpi-tpl-1); }
+  .kpi-grid[data-cols="4"],
+  .kpi-grid[data-cols="2"] { --kpi-cols: 2; --kpi-tpl: var(--kpi-tpl-2); }
+  /* The page gutter on the strip's outer edges, so a cell's text starts under the page title. */
+  .kpi-cell {
+    gap: 8px;
+    padding: 16px var(--gutter);
+  }
+  .kpi-grid:is([data-cols="4"], [data-cols="2"]):not(.at-mgrid):not(.sb-metrics) > .kpi-cell:nth-child(even) {
+    padding-left: 16px;
+  }
+  .kpi-grid:is([data-cols="4"], [data-cols="2"]):not(.at-mgrid):not(.sb-metrics) > .kpi-cell:nth-child(odd) {
+    padding-right: 16px;
+  }
+  .kpi-head .icon-tile {
+    display: none;
+  }
+  /* The change chip drops under the figure rather than off the cell's edge. */
+  .kpi-value {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    font-size: 24px;
+    line-height: 32px;
+  }
+}
+
+/* Narrow cells stack the trend under the figures at full width. */
+
+@container kpi-cell (max-width: 300px) {
+  .kpi-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .kpi-cell .sparkarea {
+    width: 100%;
+  }
+}
+
+/* -------------- Area sparkline -------------- */
+
+/* SparkArea (components/spark-area.tsx): the KPI strip, the server and app meters, app metrics. */
+
+.sparkarea {
+  position: relative;
+  flex: none;
+  width: 120px;
+  height: 44px;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+
+.sparkarea[data-fluid="true"] {
+  width: 100%;
+  height: 32px;
+}
+
+/* Reveal by clipping, not dash offset: a non-scaling stroke's dash length depends on width. */
+
+.sparkarea svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  animation: spark-reveal 1s var(--ease) both;
+}
+
+.sparkarea-line {
+  fill: none;
+  stroke: var(--spark, var(--chart));
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.sparkarea-cursor {
+  stroke: var(--ink-4);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The marker is a 6px round dot like every status dot, ringed in the page colour. */
+
+.sparkarea-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--spark, var(--chart));
+  box-shadow: 0 0 0 2px var(--bg);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: left 80ms var(--ease), top 80ms var(--ease);
+}
+
+@keyframes spark-reveal {
+  from { clip-path: inset(-8px 100% -8px -8px); }
+  to { clip-path: inset(-8px -8px -8px -8px); }
+}
+
+/* -------------- Empty panel -------------- */
+
+.empty-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px var(--gutter);
+  text-align: center;
+}
+
+.empty-panel .icon-tile {
+  margin-bottom: 4px;
+}
+
+/* The title at one size whatever its heading level (h3 in a card, h1 alone on a page). */
+
+.empty-panel .empty-title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.empty-panel p {
+  max-width: 340px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* Compact: a small card or a dialog. */
+
+.empty-panel[data-size="sm"] {
+  padding: 24px var(--gutter);
+}
+
+/* -------------- Not found -------------- */
+
+/* The one not-found block (not-found.tsx): the pixel code, the title, a line and the ways back.
+   The console frame centres it in the page; the public frame (status pages) sits it between the
+   bands with a smaller code. */
+
+.notfound {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(72vh - var(--top-h));
+  min-height: round(down, calc(72vh - var(--top-h)), 1px);
+  padding: 48px var(--gutter);
+  text-align: center;
+}
+
+.notfound[data-frame="public"] {
+  min-height: 0;
+  padding: 64px var(--gutter);
+}
+
+.notfound-code {
+  margin: 0;
+  font-size: 144px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.notfound[data-frame="public"] .notfound-code {
+  font-size: 96px;
+}
+
+.notfound-title {
+  margin: 24px 0 0;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.notfound-text {
+  max-width: 360px;
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--ink-3);
+  text-wrap: balance;
+}
+
+.notfound-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.notfound-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 24px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.notfound-hint .kbd:first-of-type {
+  margin-left: 4px;
+}
+
+.notfound-hint .kbd:last-of-type {
+  margin-right: 4px;
+}
+
+/* -------------- Empty state action -------------- */
+
+/* With the Empty panel's own 8px gap, the key sits 16px under the line. */
+
+.empty-act {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* -------------- Status -------------- */
+
+/* Status dots are 6px and round everywhere; pixel squares stay for heatmap cells and app pips.
+   A dot never stands alone for a state in a list: a label or a StatusChip sits beside it. */
+
+.dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--idle);
+}
+
+[data-tone="ok"] > .dot,
+.dot[data-tone="ok"] {
+  background: var(--ok);
+}
+
+[data-tone="live"] > .dot,
+.dot[data-tone="live"] {
+  background: var(--blue);
+}
+
+[data-tone="pending"] > .dot,
+.dot[data-tone="pending"],
+[data-tone="warn"] > .dot,
+.dot[data-tone="warn"] {
+  background: var(--warn);
+}
+
+[data-tone="bad"] > .dot,
+.dot[data-tone="bad"] {
+  background: var(--bad);
+}
+
+[data-tone="idle"] > .dot,
+.dot[data-tone="idle"] {
+  background: var(--idle);
+}
+
+/* The one pulse: a ring that grows out of a live dot and fades, in the dot's own tone. */
+
+.pulse {
+  --pulse: var(--blue-ring);
+  animation: pulse 2s ease-out infinite;
+}
+
+.pulse[data-tone="ok"] {
+  --pulse: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 var(--pulse, var(--blue-ring)); }
+  80%, 100% { box-shadow: 0 0 0 5px transparent; }
+}
+
+/* "N new" over a live list (activity, a build log, runtime logs): a calm 28px pill in popover
+   material with a hairline and a live dot, that rises into place. Its place (sticky, or over a log
+   box's bottom edge) is the area's; the look is this. */
+
+.new-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--popover);
+  color: var(--ink-2);
+  font: 500 13px/18px var(--font-sans);
+  cursor: pointer;
+  transition: background-color 150ms var(--ease), color 150ms var(--ease);
+  animation: new-pill-in 160ms var(--ease) both;
+}
+
+/* The popover's veil, so the hover shows in dark too, where --mass is the pill's own fill. */
+
+.new-pill:hover {
+  background: var(--fill-popover);
+  color: var(--ink);
+}
+
+/* It rises with transform, so an area that centres it with `translate` keeps its place. */
+
+@keyframes new-pill-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* A page that polls says so beside its head keys: "Updating" with the turning loader. */
+
+.updating {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.pips {
+  display: flex;
+  gap: 3px;
+}
+
+.pips i {
+  width: 6px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--idle);
+}
+
+.pips i[data-tone="ok"] {
+  background: var(--ok);
+}
+
+.pips i[data-tone="live"] {
+  background: var(--blue);
+}
+
+.pips i[data-tone="pending"],
+.pips i[data-tone="warn"] {
+  background: var(--warn);
+}
+
+.pips i[data-tone="bad"] {
+  background: var(--bad);
+}
+
+/* StatusMark (components/ui/status-mark.tsx): deployments, backups, update steps, previews. */
+
+/* A 24px soft tile tinted by tone, holding the mark: check, cross, slash, or a turning loader. The
+   tints are the shared soft and ring tokens, as on toasts and notification tiles. */
+
+.st-app {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink-2);
+}
+
+.st-app[data-tone="ok"] {
+  background: var(--ok-soft);
+  box-shadow: inset 0 0 0 1px var(--ok-ring);
+  color: var(--ok);
+}
+
+.st-app[data-tone="bad"] {
+  background: var(--bad-soft);
+  box-shadow: inset 0 0 0 1px var(--bad-ring);
+  color: var(--bad);
+}
+
+.st-app[data-tone="live"] {
+  background: var(--blue-soft);
+  box-shadow: inset 0 0 0 1px var(--blue-ring-soft);
+  color: var(--blue);
+}
+
+.st-app[data-tone="pending"] {
+  background: var(--warn-soft);
+  box-shadow: inset 0 0 0 1px var(--warn-ring);
+  color: var(--warn-ink);
+}
+
+.st-app[data-tone="idle"] {
+  color: var(--ink-3);
+}
+
+.st-mark {
+  display: grid;
+  place-items: center;
+}
+
+/* Queued turns slower than building and deploying. */
+
+.st-app[data-tone="pending"] .spin {
+  animation-duration: 2.4s;
+}
+
+/* -------------- Bars and tracks -------------- */
+
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--chart);
+  transform-origin: left;
+  animation: grow 0.9s var(--ease) both;
+}
+
+.bar[data-tone="warn"] > span {
+  background: var(--warn);
+}
+
+.bar[data-tone="bad"] > span {
+  background: var(--bad);
+}
+
+@keyframes grow {
+  from { transform: scaleX(0); }
+}
+
+/* A progress track: 4px, a blue fill over its 14% tint; queued shows the bare line; indeterminate
+   slides a third of a fill across. */
+
+.track {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+}
+
+.track > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 1s linear;
+}
+
+.track[data-queued="true"] {
+  background: var(--line);
+}
+
+.track[data-queued="true"] > span {
+  display: none;
+}
+
+.track[data-indeterminate="true"] > span {
+  width: 36%;
+  animation: slide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(280%); }
+}
+
+/* -------------- Date and time picker -------------- */
+
+/* The picker is a field-style trigger (it shares .sel-trigger's skin and the field focus) and a
+   calendar in a layer of its own: datetime-picker.tsx portals the open calendar to the body and
+   fixes it to the viewport beside the trigger, so the scrolling body of a dialog never clips it. */
+
+.dtp {
+  min-width: 0;
+}
+
+.dtp-trigger > .ic {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.dtp-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dtp-trigger > .ic:last-child {
+  margin-left: auto;
+  transition: rotate 150ms var(--ease);
+}
+
+.dtp[data-open="true"] .dtp-trigger > .ic:last-child {
+  rotate: 180deg;
+}
+
+/* The calendar is popover material: popover fill, 12px radius, the shared line-strong ring and the
+   dropdown's soft shadow. It sits over dialogs and under toasts and the session notice
+   (--z-picker). Its type is set here because it hangs off the body, which reads 15px. */
+
+.dtp-pop {
+  position: fixed;
+  z-index: var(--z-picker);
+  top: 0;
+  left: 0;
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 12px;
+  background: var(--popover);
+  box-shadow: var(--shadow-menu);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 20px;
+  animation: sel-in 120ms var(--ease) both;
+}
+
+.dtp-pop[data-side="top"] {
+  animation-name: sel-in-up;
+}
+
+.dtp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.dtp-month {
+  font-weight: 500;
+}
+
+.dtp-nav {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background-color 100ms, color 100ms;
+}
+
+/* Hovered keys and days take --fill-popover: in dark, --mass is the popover itself and would not show. */
+
+.dtp-nav:hover:not([aria-disabled="true"]) {
+  background: var(--fill-popover);
+  color: var(--ink);
+}
+
+.dtp-nav[aria-disabled="true"] {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+}
+
+.dtp-grid {
+  display: grid;
+  gap: 2px;
+}
+
+.dtp-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.dtp-dow {
+  display: grid;
+  place-items: center;
+  height: 28px;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.dtp-cell {
+  display: grid;
+}
+
+.dtp-day {
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 100ms;
+}
+
+.dtp-day:hover:not(:disabled) {
+  background: var(--fill-popover);
+}
+
+/* The chosen day gets the same fill plus the shared ring and medium weight, so a hovered day never
+   reads as the chosen one. */
+
+.dtp-cell[aria-selected="true"] > .dtp-day {
+  background: var(--fill-popover);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  font-weight: 500;
+}
+
+.dtp-day:disabled {
+  color: var(--ink-muted);
+  cursor: default;
+}
+
+/* The focus ring is inset, so it stays inside the 2px gaps between days. */
+
+.dtp-day:focus-visible {
+  border-radius: 8px;
+  outline-offset: -2px;
+}
+
+.dtp-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.dtp-time > .ic {
+  flex: none;
+  margin-right: 2px;
+  color: var(--ink-3);
+}
+
+/* Hours and minutes wear the .field skin (fill, ring, shared blue focus, 16px type on phones) at the
+   compact 32px of the time row. */
+
+.dtp-num {
+  flex: none;
+  width: 44px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.dtp-colon {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+/* AM and PM use the shared segmented control at the row's 32px, with its track in the field fill so it
+   matches the fields beside it. */
+
+.dtp-time .seg2 {
+  height: 32px;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--field);
+}
+
+.dtp-time .seg2-thumb {
+  top: 2px;
+  bottom: 2px;
+  border-radius: 6px;
+}
+
+.dtp-time .seg2-opt {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+}
+
+/* -------------- Callout -------------- */
+
+/* The one boxed note: icon, text, and an optional button on the right. Tones tint it; "info" keeps
+   the neutral box and only blues the glyph (a hint, not a state). */
+
+.callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.callout > .ic {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+
+.callout-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.callout:has(> .btn) {
+  align-items: center;
+  padding: 8px 8px 8px 16px;
+}
+
+.callout:has(> .btn) > .ic {
+  margin-top: 0;
+}
+
+.callout[data-tone="ok"] {
+  background: var(--ok-soft);
+  box-shadow: inset 0 0 0 1px var(--ok-ring);
+  color: var(--ink);
+}
+
+.callout[data-tone="warn"] {
+  background: var(--warn-soft);
+  box-shadow: inset 0 0 0 1px var(--warn-ring);
+  color: var(--ink);
+}
+
+.callout[data-tone="bad"] {
+  background: var(--bad-soft);
+  box-shadow: inset 0 0 0 1px var(--bad-ring);
+  color: var(--ink);
+}
+
+.callout[data-tone="ok"] > .ic { color: var(--ok-ink); }
+
+.callout[data-tone="warn"] > .ic { color: var(--warn-ink); }
+
+.callout[data-tone="bad"] > .ic { color: var(--bad-ink); }
+
+.callout[data-tone="info"] > .ic { color: var(--blue); }
+
+/* In dark, --mass is the dialog's own surface, so a neutral callout there takes the popover veil. */
+
+.dlg .callout:is(:not([data-tone]), [data-tone="info"]) {
+  background: var(--fill-popover);
+}
+
+/* Emphasis inside a callout is medium weight, as everywhere else, not the browser's bold. */
+
+.callout b,
+.callout strong {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* -------------- Markdown (components/ui/markdown.tsx) -------------- */
+
+.md {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.md-h {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.md-h:first-child {
+  margin-top: 0;
+}
+
+.md-p {
+  margin: 0;
+}
+
+.md-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 16px;
+}
+
+.md-list li::marker {
+  color: var(--ink-4);
+}
+
+.md-link {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.md-link:hover {
+  text-decoration-color: currentColor;
+}
+
+/* -------------- External link -------------- */
+
+/* ExternalLink (external-link.tsx): muted ink, a quiet underline that turns ink on hover, the
+   external glyph after the text. It takes the size of the text around it. */
+
+.ext-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  transition: color 150ms, text-decoration-color 150ms;
+}
+
+.ext-link:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+/* -------------- Inline code -------------- */
+
+/* Inline code in prose (env names in a note): the mono face on a small framed chip. */
+
+.md-code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* ============== Utilities ============== */
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tabular figures in the surrounding size: it never forces its own font size. */
+
+.mono {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.num,
+time,
+td,
+kbd {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pixel display face: 18px and up only. */
+
+.pixel {
+  font-family: var(--font-pixel);
+  font-feature-settings: "ss09";
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.folder {
+  flex: none;
+  display: block;
+}
+
+.reveal {
+  animation: reveal 0.5s var(--ease) both;
+}
+
+/* A cell popping in: the heatmap and the sign-in art. */
+
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.6); }
+}
+
+/* A popover dropping in from 4px above: the notifications panel, the row menus. */
+
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+/* Two-line cell: 20px over 18px with a 2px gap. */
+
+.two {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.two-main {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.two-sub {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+/* At its own 20px an env tag would grow the sub line and lift the row's main line 1px. */
+
+.two-sub .env-tag {
+  height: 18px;
+  line-height: 18px;
+}
+
+/* Label over value: 13/18, 4px, then 14/20. Works on <div> or <dl> pairs. */
+
+.kv {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+}
+
+.kv-label {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.kv-value {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* 56px for one row of 36px controls (8px above and below a 40px line); wraps cleanly. */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px var(--gutter);
+}
+
+/* Text tones use the 4.5:1 -ink shades. The class is doubled on purpose: two classes outweigh an
+   area's own one-class colour (a row's muted sub line), while an area rule that means to recolour a
+   toned element names both classes and wins by loading later. */
+
+.tone-ok.tone-ok { color: var(--ok-ink); }
+
+.tone-warn.tone-warn { color: var(--warn-ink); }
+
+.tone-bad.tone-bad { color: var(--bad-ink); }
+
+.tone-live.tone-live { color: var(--blue-ink); }
+
+.tone-pending.tone-pending { color: var(--warn-ink); }
+
+/* A missing or zero value that still says so: "None yet", "Never". */
+
+.none {
+  color: var(--ink-3);
+}
+
+/* The one word for a missing branch or commit in a narrow cell: muted, and it never truncates. */
+
+.none-mark {
+  flex: none;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+/* ============== Responsive ============== */
+
+/* The breakpoint scale is in the file header. */
+
+@media (max-width: 1100px) {
+  .split,
+  .split[data-stretch="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .split > * + * {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --gutter: 24px;
+  }
+  /* The console on a phone draws no rails and no nodes, the grammar of the phone bar above it (its
+     cells end in plain T joins): the column runs edge to edge, so a rule or band has no rail to
+     cross, and a cell's corner node would be a 2px stub on the screen edge. Hairlines and bands
+     stay. The signed-out and status pages keep their rails and nodes, 16px in from the edges. */
+  .shell-main > main.page > * {
+    max-width: none;
+    margin-inline: 0;
+    border-inline: 0;
+  }
+  .shell-main > main.page :is(.rule, .sep)::after,
+  .shell-main > main.page .node {
+    display: none;
+  }
+  .shell-main > main.page > :not(.rule, .sep) .rule {
+    margin-inline: 0;
+  }
+  /* Phones zoom into any field under 16px. */
+  .field {
+    font-size: 16px;
+  }
+  .shead {
+    padding: 32px var(--gutter) 24px;
+  }
+  .shead-title {
+    font-size: 28px;
+    line-height: 36px;
+  }
+  .toaster {
+    right: 12px;
+    left: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    width: auto;
+    max-width: none;
+  }
+  /* Dialogs become a bottom sheet with a grab bar, clear of the home indicator. */
+  .dlg-scrim {
+    place-items: end stretch;
+    padding: 0;
+  }
+  .dlg,
+  .dlg[data-size] {
+    position: relative;
+    max-width: none;
+    max-height: min(88dvh, calc(100dvh - 24px));
+    max-height: round(down, min(88dvh, calc(100dvh - 24px)), 1px);
+    padding-top: 8px;
+    border-radius: 12px 12px 0 0;
+    animation: sheet-up 240ms var(--ease-sheet) both;
+  }
+  /* The grab bar of every phone sheet (the notifications panel is one too, shell.css). */
+  :is(.dlg, .ntf-panel)::before {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    margin-left: -18px;
+    border-radius: 999px;
+    background: var(--line-strong);
+  }
+  .dlg-hd {
+    padding-left: var(--gutter);
+  }
+  /* A toned head runs up under the grab bar to the sheet's top edge; its title and close key stay
+     where the sheet puts them, and the bar stays on top of the wash. */
+  .dlg[data-tone="bad"] .dlg-hd {
+    margin-top: -8px;
+    padding-top: 28px;
+  }
+  .dlg[data-tone="bad"] .dlg-close {
+    top: 26px;
+  }
+  .dlg[data-tone="bad"]::before {
+    z-index: var(--z-raise);
+  }
+  .dlg-body {
+    padding: 24px var(--gutter);
+  }
+  .dlg-ft {
+    padding: 12px var(--gutter) calc(12px + env(safe-area-inset-bottom));
+  }
+  /* A footer note takes its own row, so the keys stay together on the row under it instead of the
+     primary wrapping away from Cancel. */
+  .dlg-note {
+    flex-basis: 100%;
+    margin-right: 0;
+  }
+  .dlg-body:last-child {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+  /* Crumbs keep the phone title where list pages put it. */
+  .crumbs {
+    padding-top: 12px;
+  }
+  .crumbs + .shead {
+    padding-top: 0;
+  }
+  /* A callout's button drops under the text, lined up with it, instead of squeezing the text into
+     a thin column. */
+  .callout:has(> .btn) {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    padding: 12px 16px;
+  }
+  .callout:has(> .btn) > .ic {
+    margin-top: 2px;
+  }
+  .callout:has(> .btn) > .callout-text {
+    flex-basis: calc(100% - 28px);
+  }
+  .callout:has(> .btn) > .btn {
+    margin-left: 28px;
+  }
+  /* Phones have no keyboard shortcut to offer. */
+  .notfound-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  /* Filter counts give way on phones, on every page, so a status filter keeps one row. */
+  .seg2-count {
+    display: none;
+  }
+  .notfound-code {
+    font-size: 96px;
+  }
+  .notfound[data-frame="public"] .notfound-code {
+    font-size: 72px;
+  }
+}
+
+/* ============== Reduced motion ============== */
+
+/* Everything holds still; toasts and dialogs appear in place, and toasts lose their timer line.
+   Progress still says so: a loader turns slowly instead of stopping (so building and stuck never
+   look alike), and an indeterminate track shows a still striped fill. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .spin {
+    animation: spin 2.4s linear infinite !important;
+  }
+  .track[data-indeterminate="true"] > span {
+    width: 100%;
+    background-image: repeating-linear-gradient(-45deg, transparent 0 4px, color-mix(in srgb, var(--bg) 45%, transparent) 4px 8px);
+  }
+  .toast:not([data-mounted]),
+  .toast[data-leaving] {
+    translate: 0 calc(var(--y) * -1);
+  }
+  .toast-timer {
+    display: none;
+  }
+}
+
+/* ============== Forced colours ============== */
+
+/* High contrast modes drop every box-shadow, which is how keys, fields, chips and popovers draw
+   their edges and how fields show focus. Real borders and outlines take their place. */
+
+@media (forced-colors: active) {
+  :is(.btn, .field, .search, .sel-trigger, .dtp-trigger, .chip, .seg2, .seg2-thumb, .switch, .kbd, .hash-chip, .icon-tile, .callout, .copy-box, .dlg, .sel-list, .dtp-pop, .toast, .cmd, .acct-pop, .ntf-panel, .px-menu-pop) {
+    border: 1px solid CanvasText;
+  }
+  input[type="checkbox"],
+  .radio {
+    border: 1px solid CanvasText;
+  }
+  :focus-visible,
+  :is(.field, .sel-trigger, .dtp-trigger, textarea):focus,
+  .search:focus-within {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+  }
+  /* The frame is drawing, not information: it keeps its own greys. */
+  .node,
+  .rule,
+  .rule::after,
+  .sep,
+  .sep::after {
+    forced-color-adjust: none;
+  }
+}
+
+/* ============== Print ============== */
+
+/* Paper gets the content: no shell, no floating layers, no dither, and the light palette's text
+   and lines even from the dark theme, so nothing prints light grey on white. */
+
+@media print {
+  :root.dark {
+    color-scheme: light;
+    --background: #ffffff;
+    --foreground: #0a0a0a;
+    --muted-foreground: #6b6b6b;
+    --border: #e8e8e8;
+    --mass: #f1f1f1;
+    --popover: #ffffff;
+    --panel-2: #fafafa;
+    --ink-2: #404040;
+    --ink-4: #8f8f8f;
+    --ink-muted: #6b6b6b;
+    --line-strong: #d4d4d4;
+    --node: #d4d4d4;
+  }
+  .side,
+  .top,
+  .secb,
+  .toaster,
+  .set-savebar,
+  .px-pending,
+  .sep::before {
+    display: none !important;
+  }
+  .shell {
+    display: block;
+  }
+  main.page {
+    min-height: 0;
+  }
+}

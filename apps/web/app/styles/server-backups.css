@@ -1,0 +1,1080 @@
+/* Server: metric cells, disk breakdown, services, system facts and containers.
+   Backups: schedules, history rows and the content of their dialogs. */
+
+.sb-muted {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+/* -------------- Metric cards -------------- */
+/* Each card is the shared KPI cell (components/ui/kpi.tsx, KpiCell with the range picker as its
+   actions) in a two column KPI grid; this file only adds the range's chart under the figures and
+   the average and peak line under the chart. One column once the strip is narrow. */
+@container kpi (max-width: 760px) {
+  .kpi-grid.sb-metrics {
+    --kpi-cols: 1;
+    --kpi-tpl: var(--kpi-tpl-1);
+  }
+}
+
+.sb-trend {
+  position: relative;
+  height: 72px;
+}
+
+/* The cell's own sparkline rule draws a small 112px trend; a metric card's chart is the full width. */
+.sb-trend .sparkarea[data-fluid="true"] {
+  width: 100%;
+  height: 72px;
+}
+
+.sb-trend-msg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  height: 100%;
+  border-radius: 8px;
+  background: var(--mass);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+.sb-trend-load {
+  height: 100%;
+}
+
+.sb-trend-ft {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* -------------- Disk breakdown -------------- */
+/* Each slice names its colour once in --slice; the stack, legend, keys and bars all read it, and
+   the reclaimable part is a soft tint of the same colour. Scoped to the card and the prune
+   dialog's list, which is portalled outside the page. */
+:is(.sb-disk, .sb-dlg-list) [data-slice="images"] { --slice: var(--heat-4); }
+:is(.sb-disk, .sb-dlg-list) [data-slice="buildCache"] { --slice: var(--heat-3); }
+:is(.sb-disk, .sb-dlg-list) [data-slice="volumes"] { --slice: var(--heat-2); }
+:is(.sb-disk, .sb-dlg-list) [data-slice="logs"] { --slice: color-mix(in srgb, var(--heat-2) 55%, var(--heat-1)); }
+/* Every used slice is a shade of the usage blue, darkest first (images, build cache, volumes, logs,
+   then the rest of the disk), so the bar reads as one used block in steps; only free space is the
+   grey track. With no Docker breakdown reported, all used space is the one chart blue. */
+:is(.sb-disk, .sb-dlg-list) [data-slice="used"] { --slice: var(--chart); }
+:is(.sb-disk, .sb-dlg-list) [data-slice="other"] { --slice: var(--heat-1); }
+:is(.sb-disk, .sb-dlg-list) [data-slice="free"] { --slice: var(--mass); }
+
+.sb-disk {
+  container: sb-disk / inline-size;
+}
+
+.sb-disk-total {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px var(--gutter);
+}
+
+.sb-stack {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.sb-stack > span {
+  flex: none;
+  height: 100%;
+  background: var(--slice);
+  transform-origin: left;
+  animation: grow 0.9s var(--ease) both;
+}
+
+.sb-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.sb-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-legend-val {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.sb-legend i,
+.sb-slice-key {
+  display: block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--slice);
+}
+
+.sb-legend i[data-slice="free"],
+.sb-slice-key[data-slice="free"] {
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+/* The reclaimable part's key: the slice's soft tint, ringed so it reads on the page. */
+.sb-spare-key {
+  display: block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--slice) 35%, var(--bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slice) 40%, transparent);
+}
+
+/* One ruled cell per slice, the same build as the KPI strips: 1px gaps on the line colour. */
+.sb-slices {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, round(down, calc((100% - 3px) / 4), 1px)) minmax(0, 1fr);
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+  background: var(--line);
+}
+
+@container sb-disk (max-width: 900px) {
+  .sb-slices { grid-template-columns: round(down, calc((100% - 1px) / 2), 1px) minmax(0, 1fr); }
+}
+
+@container sb-disk (max-width: 480px) {
+  .sb-slices { grid-template-columns: minmax(0, 1fr); }
+}
+
+.sb-slice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 20px var(--gutter) 24px;
+  background: var(--panel, var(--bg));
+}
+
+.sb-slice-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sb-slice-name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.sb-slice-count {
+  margin-left: auto;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* The same headline figure as every KPI cell, 32 on 40. */
+.sb-slice-val {
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.sb-hbar {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.sb-hbar > span {
+  flex: none;
+  height: 100%;
+  transform-origin: left;
+  animation: grow 0.9s var(--ease) both;
+}
+
+.sb-hbar-kept {
+  background: var(--slice);
+}
+
+.sb-hbar-spare {
+  background: color-mix(in srgb, var(--slice) 35%, var(--bg));
+}
+
+.sb-slice-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* -------------- Services -------------- */
+/* Beside the System list the card stretches to its height; the rows keep their own height and
+   stack from the top, as in Maintenance, so a short list never spreads over the spare room. */
+.sb-svc {
+  display: flex;
+  flex-direction: column;
+  container: sb-svc / inline-size;
+}
+
+.sb-svc-list {
+  flex: 1;
+  grid-auto-rows: minmax(44px, auto);
+  align-content: start;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+.sb-svc-row {
+  min-height: 44px;
+  padding: 0 8px;
+}
+
+.sb-svc-id {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sb-svc-name {
+  flex: none;
+  width: 80px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.sb-svc-detail {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.sb-svc-end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 16px;
+}
+
+.sb-svc-lat {
+  min-width: 56px;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: right;
+  color: var(--ink-2);
+}
+
+/* Narrow: the detail drops under the name (20 over 18, 2px gap) instead of being hidden. */
+@container sb-svc (max-width: 520px) {
+  .sb-svc-row {
+    padding: 8px;
+  }
+  .sb-svc-id {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .sb-svc-name {
+    width: auto;
+  }
+  .sb-svc-detail {
+    line-height: 18px;
+  }
+  .sb-svc-end {
+    gap: 12px;
+  }
+}
+
+/* The smallest phones keep the state's word and let the latency go. */
+@container sb-svc (max-width: 360px) {
+  .sb-svc-lat {
+    display: none;
+  }
+}
+
+/* -------------- System facts -------------- */
+/* A plain definition list in the 340px side column: label left, value right, 36px rows. Stacked
+   full width (under 1100px) the same rows would sit hundreds of pixels apart, so a wider card lays
+   the facts out as columns of label over value instead: two, then three. */
+.sb-sys {
+  flex: 1;
+  container: sb-sys / inline-size;
+}
+
+.sb-facts {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 8px 0 16px;
+  background: none;
+}
+
+.sb-fact {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 36px;
+  padding: 0 var(--gutter);
+}
+
+.sb-fact dt {
+  flex: none;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* Reversed, so every value ends on the card's edge and a copy key sits before its value. */
+.sb-fact dd {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  height: auto;
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  text-align: right;
+  color: var(--ink);
+}
+
+.sb-fact-val {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The copy key keeps its 28px box without making its row taller than the rest. */
+.sb-fact dd .btn {
+  margin: -4px 0;
+}
+
+@container sb-sys (min-width: 440px) {
+  .sb-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 24px;
+    padding: 20px var(--gutter) 24px;
+  }
+  .sb-fact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-height: 0;
+    padding: 0;
+  }
+  .sb-fact dd {
+    flex-direction: row;
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
+@container sb-sys (min-width: 640px) {
+  .sb-facts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* -------------- Containers -------------- */
+.sb-ctr {
+  container: sb-ctr / inline-size;
+}
+
+.sb-ctr-sort {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.sb-ctable {
+  display: flex;
+  flex-direction: column;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+.sb-crow {
+  --cols: minmax(0, 1fr) 104px round(down, calc((100% - 648px) * 0.4545), 1px) 136px 136px 72px 104px;
+  gap: 16px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  transition: background-color 150ms;
+}
+
+.sb-crow:not(.sb-crow-hd):hover {
+  background: var(--hover);
+}
+
+.sb-crow-hd {
+  min-height: 36px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.sb-crow-hd [data-numeric] {
+  justify-self: end;
+}
+
+/* Header keys: plain text that inks on hover; the sorted key shows its arrow. Numeric keys put
+   the arrow first so the label's right edge lines up with the values under it. */
+.sb-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin: 0 -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  transition: color 150ms, background-color 150ms;
+}
+
+[data-numeric] > .sb-sort {
+  flex-direction: row-reverse;
+}
+
+.sb-sort:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.sb-sort[data-on] {
+  color: var(--ink);
+}
+
+.sb-sort .ic {
+  color: var(--ink-4);
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.sb-sort:hover .ic,
+.sb-sort:focus-visible .ic {
+  opacity: 1;
+}
+
+.sb-sort[data-on] .ic {
+  color: var(--ink-2);
+  opacity: 1;
+}
+
+/* Each project opens with the shared group head (a server glyph for Dockify's own); a hairline
+   parts one project from the next. */
+.sb-cgroup + .sb-cgroup {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.sb-c-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sb-c-id {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Status: the shared status chip, as on Services and Resources. */
+.sb-c-state {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.sb-crow[data-state="exited"] .sb-c-id {
+  color: var(--ink-3);
+}
+
+.sb-c-app {
+  min-width: 0;
+}
+
+.sb-c-applink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.sb-c-applink .ic {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.sb-c-applink[data-system] {
+  color: var(--ink-3);
+}
+
+.sb-c-appname {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+a.sb-c-applink:hover .sb-muted,
+a.sb-c-applink:hover .ic {
+  color: var(--ink-2);
+}
+
+a.sb-c-applink:focus-visible {
+  border-radius: 4px;
+}
+
+.sb-c-applink .env-tag {
+  flex: none;
+}
+
+.sb-c-cpu,
+.sb-c-mem,
+.sb-c-rs,
+.sb-c-up {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.sb-c-up {
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/* Readings share one width, so the bars line up from row to row. */
+.sb-crow .gauge-val {
+  min-width: 56px;
+  text-align: right;
+}
+
+/* A restart count's word: screen readers always hear it (an .sr copy), and the two-line rows,
+   which have no Restarts header, show it. */
+.sb-rs-word {
+  display: none;
+}
+
+.sb-ctr-foot {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@container sb-ctr (max-width: 980px) {
+  .sb-crow {
+    --cols: minmax(0, 1fr) 104px round(down, calc((100% - 552px) * 0.4545), 1px) 112px 112px 64px 88px;
+    gap: 12px;
+  }
+}
+
+/* 860 and below (seven columns would squeeze the names): each container is two lines, and the
+   header row gives way to a sort dropdown. */
+@container sb-ctr (max-width: 860px) {
+  .sb-chead {
+    display: none;
+  }
+  .sb-ctr-sort {
+    display: inline-flex;
+  }
+  .sb-ctr-tools .search {
+    max-width: none;
+  }
+  .sb-crow {
+    /* Fixed side columns, so values line up from row to row. */
+    --cols: minmax(0, 1fr) auto 96px 112px;
+    grid-template-areas:
+      "name name state up"
+      "app rs cpu mem";
+    gap: 4px 16px;
+    padding: 8px;
+  }
+  .sb-c-name { grid-area: name; }
+  .sb-c-state { grid-area: state; justify-content: flex-end; }
+  .sb-c-app { grid-area: app; font-size: 13px; }
+  .sb-c-cpu { grid-area: cpu; }
+  .sb-c-mem { grid-area: mem; }
+  .sb-c-rs { grid-area: rs; }
+  .sb-c-up { grid-area: up; }
+  .sb-crow .gauge-val {
+    min-width: 0;
+  }
+  /* No header names the column here: a bare 0 says nothing, a count says what it counts. */
+  .sb-rs-zero {
+    display: none;
+  }
+  .sb-rs-word {
+    display: inline;
+  }
+  .sb-ctr-foot > :last-child {
+    display: none;
+  }
+}
+
+/* Phones: still two lines; the bars give way so the app keeps its room, the values stay. The
+   restart count drops its word to fit beside the app; screen readers keep it. */
+@container sb-ctr (max-width: 480px) {
+  .sb-crow {
+    --cols: minmax(0, 1fr) auto 80px 88px;
+    gap: 4px 12px;
+  }
+  .sb-crow .gauge .bar {
+    display: none;
+  }
+  .sb-rs-word {
+    display: none;
+  }
+  /* Alone on its own row under the filter, the sort pair starts at the left like the rows above. */
+  .sb-ctr-sort {
+    margin-left: 0;
+  }
+}
+
+/* -------------- Backups: schedules -------------- */
+/* The rows sit in one soft box: a faint fill and a hairline ring, rows ruled inside it. */
+.sb-sched {
+  container: sb-sched / inline-size;
+}
+
+.sb-sched-wrap {
+  padding: 16px var(--gutter) 24px;
+}
+
+.sb-sched-box {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-radius: 10px;
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.sb-sched-row {
+  --cols: var(--col-status) minmax(160px, 1fr) minmax(180px, round(down, calc((100% - 588px) * 0.5), 1px)) 288px 160px 36px;
+  gap: 16px;
+  min-height: 56px;
+  padding: 8px 16px;
+}
+
+.sb-sched-row + .sb-sched-row {
+  border-top: 1px solid var(--line);
+}
+
+/* The name and its environment tag share the first line. */
+.sb-sched-db .two-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.sb-sched-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.sb-cron {
+  display: inline-flex;
+}
+
+.sb-sched-words {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.sb-sched-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-sched-next {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.sb-sched-next .two-main {
+  color: var(--ink-2);
+}
+
+.sb-sched-next .two-sub {
+  overflow-wrap: anywhere;
+}
+
+.sb-sched-switch {
+  justify-self: end;
+}
+
+.sb-sched-row[data-off] .sb-sched-words,
+.sb-sched-row[data-off] .chip {
+  color: var(--ink-3);
+}
+
+.sb-sched-row[data-off] .sb-sched-tile {
+  opacity: var(--disabled-opacity);
+}
+
+@container sb-sched (max-width: 980px) {
+  .sb-sched-row {
+    --cols: 24px minmax(0, 1fr) auto 36px;
+    grid-template-areas:
+      "tile db next sw"
+      ". when tags tags";
+    gap: 8px 16px;
+  }
+  .sb-sched-tile { grid-area: tile; }
+  .sb-sched-db { grid-area: db; }
+  .sb-sched-when { grid-area: when; }
+  .sb-sched-tags { grid-area: tags; justify-content: flex-end; }
+  .sb-sched-next { grid-area: next; }
+  .sb-sched-switch { grid-area: sw; }
+}
+
+@container sb-sched (max-width: 520px) {
+  .sb-sched-wrap {
+    padding: 16px var(--gutter);
+  }
+  .sb-sched-row {
+    --cols: 24px minmax(0, 1fr) 36px;
+    grid-template-areas:
+      "tile db sw"
+      ". when when"
+      ". tags tags"
+      ". next next";
+    gap: 8px 12px;
+    padding: 12px;
+  }
+  .sb-sched-tags {
+    justify-content: flex-start;
+  }
+  .sb-sched-next {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+/* -------------- Backups: history -------------- */
+/* --when-w fits the widest relative time a row prints ("Yesterday", "12h ago"). */
+.sb-hist {
+  container: sb-hist / inline-size;
+  --when-w: 72px;
+}
+
+/* History filter: the segmented strip when it fits, the shared dropdown on narrow cards. */
+.sb-tools-wide {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sb-tools-narrow {
+  display: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-tools-narrow .sel,
+.sb-tools-narrow .sel-trigger {
+  width: 100%;
+}
+
+.sb-hist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+.sb-run {
+  --cols: 24px var(--when-w) minmax(140px, 1fr) minmax(140px, round(down, calc((100% - 392px) * 0.5652), 1px)) 72px 56px 96px;
+  gap: 12px;
+  height: 44px;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.sb-run-mark {
+  display: grid;
+  place-items: center;
+}
+
+/* Hugs its text, so the tip centres on the time, not on the whole cell. */
+.sb-run-time {
+  justify-self: start;
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.sb-run-db {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.sb-run-detail {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.sb-run[data-status="failed"] .sb-run-detail {
+  white-space: normal;
+  line-height: 18px;
+}
+
+.sb-run-size {
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+
+.sb-run-dur {
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.sb-run-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.sb-run-expired {
+  font-size: 13px;
+}
+
+.sb-hist-foot {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@container sb-hist (max-width: 760px) {
+  .sb-run {
+    --cols: 24px var(--when-w) minmax(0, 1fr) 64px 96px;
+  }
+  .sb-run-detail,
+  .sb-run-dur {
+    display: none;
+  }
+  .sb-tools-wide {
+    display: none;
+  }
+  .sb-tools-narrow {
+    display: block;
+  }
+  /* A failed run keeps its reason on a second line instead of losing it. */
+  .sb-run[data-status="failed"] {
+    height: auto;
+    min-height: 44px;
+    padding: 8px;
+    row-gap: 2px;
+  }
+  .sb-run[data-status="failed"] .sb-run-detail {
+    display: block;
+    grid-column: 3 / -1;
+    grid-row: 2;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+@container sb-hist (max-width: 420px) {
+  .sb-run {
+    --cols: 24px var(--when-w) minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .sb-run-size {
+    display: none;
+  }
+}
+
+/* -------------- Dialog content -------------- */
+.sb-dlg-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-muted);
+}
+
+.sb-dlg-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.sb-dlg-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+}
+
+.sb-dlg-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.sb-dlg-li-hd {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* The slice colour key sits before the name. */
+.sb-dlg-li-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-dlg-li-body {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-muted);
+}
+
+.sb-dlg-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.sb-dlg-facts div {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.sb-dlg-facts dt {
+  flex: none;
+  width: 56px;
+  color: var(--ink-muted);
+}
+
+.sb-dlg-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+}
+
+/* Choice rows in Back up now and Restore: soft rows in a dialog, each led by the shared .radio. */
+.sb-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* A field label over the rows; no browser inset, so it lines up with them. */
+.sb-choices legend {
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.sb-choice {
+  height: 44px;
+  padding: 0 12px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.sb-choice:hover,
+.sb-choice:has(input:checked) {
+  background: var(--fill-popover);
+}
+
+.sb-choice-label {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.sb-choice-meta {
+  flex: none;
+  font-size: 13px;
+  color: var(--ink-2);
+}

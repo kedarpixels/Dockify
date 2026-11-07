@@ -1,0 +1,85 @@
+---
+title: "Alerts and notifications"
+description: "At the end you will have rules that tell you when an app is down or the disk is filling, sent to the dashboard, Discord, email or your own webhook."
+---
+
+## Nothing is sent until you ask
+
+A fresh install has no alert rules. A failed deploy is marked failed in the dashboard with its reason, and the old version keeps serving, but nobody is told until you add a rule or turn on notifications below.
+
+## Alert rules
+
+Create rules on the **Alerts** page. Each rule watches one app, every app, the host, or a service of Dockify itself.
+
+| Metric | Watches | Default threshold |
+|---|---|---|
+| `down` | An app is not running. | |
+| `crashLoop` | Restarts within the window. | 3 restarts |
+| `memory` | Memory against the app's limit. | 90% |
+| `disk` | Host disk use. | 85% |
+| `service` | The api, worker, proxy or database of Dockify itself. | |
+
+For each rule you set the threshold, a duration from 1 to 1440 minutes, and the channels.
+
+- **Gauge rules** (`down`, `memory`, `disk`, `service`) fire after the condition has held for the whole duration, and resolve after it has been clear for a minute. Memory and disk clear only 5 points under the threshold, so a value hovering at the line cannot flap.
+- **Window rules** (`crashLoop`) already measure over the duration, so they fire at once.
+- **No data holds state.** A tick where the sampler saw nothing never opens or resolves an alert.
+
+There is one open alert per rule and app, so a flapping app does not send a stream of messages.
+
+## Channels
+
+A rule sends to any of these:
+
+| Channel | Where it goes |
+|---|---|
+| Bell | The dashboard's notification bell. |
+| Email | Every admin, once email is set up. |
+| Webhooks | The webhooks you pick for the rule, by name: Discord, Slack, Teams and the other providers, or any https URL as a JSON `POST`. Discord messages never ping anyone. |
+
+Add webhooks under **Settings > Integrations > Webhooks**, and send a test from there. Every alert carries a link to the page that shows the problem, such as the app's logs for a crash loop.
+
+### The webhook body
+
+A webhook receives one JSON object per event:
+
+```json
+{
+  "version": 1,
+  "id": "0f0e0d0c-0000-4000-8000-0000000000aa",
+  "event": "alert.firing",
+  "occurredAt": "2026-11-06T09:30:00.000Z",
+  "severity": "critical",
+  "title": "web is down",
+  "text": "No running container for 5 minutes",
+  "url": "https://dockify.example.com/apps/...",
+  "fields": [{ "name": "App", "value": "shop / web" }],
+  "instance": { "name": "Acme Cloud", "url": "https://dockify.example.com" }
+}
+```
+
+`event` is one of `alert.firing`, `alert.resolved`, `update.available`, `update.updated`, `update.failed`, `update.rolled_back`, `deploy.failed`, `backup.failed`, `job.failed`, `tls.expiring` and `test`. `id` stays the same across retries of one delivery. An alert also carries `alert`, `app` and `service`, and an update notice carries `update`.
+
+Give a generic webhook a secret and each request is signed: `X-Dockify-Signature` is `sha256=` and the hex HMAC-SHA256 of `<X-Dockify-Timestamp>.<body>`. `X-Dockify-Event` and `X-Dockify-Delivery` come with every request.
+
+Discord, Slack, Microsoft Teams, Google Chat, Telegram, Mattermost, Rocket.Chat and ntfy each get their own format, detected from the URL. Anything else is the generic webhook above.
+
+## Mutes
+
+Mute an app for 1, 8 or 24 hours during maintenance. Its alerts are still recorded, marked muted, but are not sent to webhooks or email.
+
+## Instance notifications
+
+**Settings > Notifications** turns on events for the whole instance: **Deploy failed** (webhooks, and email to whoever started it), **App down** (off, alert rules only show in the bell), **Backup failed** (webhooks, and email to admins), **Scheduled job failed** (the same, once when a [job](/docs/scheduled-jobs) starts failing, until it succeeds again), **TLS expiring** (the same, for a certificate with less than 14 days left whose renewal keeps failing) and **Preview deployments** (email to whoever opened the pull request, or to admins). Only an admin can change them.
+
+## Your own email
+
+With email set up, **Settings > Preferences** has two choices for your own inbox:
+
+- **Deploys I started that fail.** A deploy you started did not go live.
+- **Security alerts about my account.** A new sign-in, or a password or two-factor change. Always on for admins.
+
+## What can go wrong
+
+- **A disk alert, but cleanup freed little.** Look at the disk breakdown on the Server page. Volumes and database data are never cleaned up for you.
+- **The webhook or Discord channel shows an error.** Its last send did not get a 2xx answer. Send a test from **Settings > Integrations** to see what it answers.

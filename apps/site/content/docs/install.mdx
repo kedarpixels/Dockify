@@ -1,0 +1,181 @@
+---
+title: "Install"
+description: "At the end you will have Dockify running on your server, on HTTPS, with your admin account created."
+---
+
+## Requirements
+
+- A fresh **Ubuntu 22.04 or 24.04** server, on amd64 (x86_64) or arm64 (aarch64). Ubuntu 26.04 is accepted but untested; other Ubuntu versions get a warning, and other distributions are refused.
+- **Root**, or sudo over SSH. If SSH listens on a port other than 22, allow it first (`sudo ufw allow <port>/tcp`) or pass `--no-ufw`: the installer turns ufw on with incoming traffic denied.
+- Ports **80 and 443 free** on the server, and a public IPv4 address. That is enough to try Dockify: no domain, no account anywhere.
+- **Your own domain, for real use**, now or later. With `--ingress direct`, an A record for it pointing at the server.
+- For a Cloudflare tunnel instead (`--domain` with no open ports): a domain on **Cloudflare** and an API token with `Zone:DNS:Edit` and `Account:Cloudflare Tunnel:Edit`.
+
+Docker is installed for you if it is missing. If it is already there, Dockify needs Docker Engine 25.0 or newer and Docker Compose 2.24 or newer.
+
+<Note title="Memory and disk">Tested on 2 vCPU, 4 GB of memory and 49 GB of disk (Ubuntu 22.04). Leave room for your apps and their builds: BuildKit alone may use up to 4 GB while building.</Note>
+
+## The one-liner
+
+Run this on the server:
+
+```bash
+curl -fsSL https://dockify.sh/install.sh | sh
+```
+
+<Note tone="warn" title="Not released yet">Dockify 1.0 is not released yet. This command works once the first signed release is out. Until then the installer stops early, after asking for the domain, with "no release source".</Note>
+
+It asks for a domain. Give yours if you have it ready. Or press Enter to start on a **temporary address**, `https://<your-server-ip-with-dashes>.sslip.io`, with a real Let's Encrypt certificate: `203.0.113.10` becomes `https://203-0-113-10.sslip.io`. With no terminal attached the script does the same. It stops if it cannot find the server's public IPv4.
+
+<Note title="sslip.io is for getting started">[sslip.io](https://sslip.io) is a free third-party DNS service that answers each such name with the address it spells. Your dashboard depends on it for as long as it stays there, and if it is down, so is that address. Before real use, move to your own domain in **Settings, Instance, Dashboard domain**: see [the dashboard's domain](/docs/domains#the-dashboards-own-domain).</Note>
+
+Type a domain at the prompt and it asks how the server is reached, ports 80 and 443 or a Cloudflare tunnel, and for an email for Let's Encrypt, which you can skip. In tunnel mode it asks for your Cloudflare token if a terminal is attached. For an unattended install, save the token to a file and pass `--cf-token-file /root/cf-token`. Flags go after `sh -s --`:
+
+```bash
+curl -fsSL https://dockify.sh/install.sh | sh -s -- --domain dockify.example.com --cf-token-file /root/cf-token
+```
+
+Want to see the plan first? Add `--dry-run`. It changes nothing on the server, and stops before writing files and starting the stack. In tunnel mode it still reads your Cloudflare account when `jq` is installed.
+
+```bash
+curl -fsSL https://dockify.sh/install.sh | sh -s -- --dry-run
+```
+
+<Note>The command fetches a small bootstrap from dockify.sh (`installer/bootstrap.sh`). It downloads the full installer (`installer/install.sh`), compares it with the SHA-256 published next to it, which catches a broken download (both files come from dockify.sh, so this does not prove who published them), and runs it as root. The release it installs is then verified with minisign against the pinned key. To check the installer yourself first, take `installer/install.sh` from the repository at the release's tag instead, read it, then run it with `sudo bash install.sh`.</Note>
+
+## What the script does
+
+<Steps>
+
+1. **Preflight.** Checks for Ubuntu, root, a supported architecture, free ports in direct mode, and an existing install. If `/opt/dockify/.env` already exists it stops and changes nothing.
+2. **Host hardening.** Turns on unattended security upgrades, including Docker's own packages so runc and containerd fixes land on their own. Sets up `ufw` to allow SSH, plus 80 and 443 in direct mode.
+3. **Docker.** Installs Docker Engine from Docker's signed apt repository, after checking the key fingerprint.
+4. **Runtime check.** Refuses a runc or containerd version with known container escape bugs. Pass `--allow-vulnerable-runtime` only if you must, and it will warn instead.
+5. **Network guards.** Adds a rule that drops container traffic to cloud metadata addresses, and one that stops tenant networks (bridges named `dk-*`) from reaching the host. Both survive reboots.
+6. **Signed release.** Downloads the release manifest, verifies its minisign signature against the pinned public key, and pins every image by digest.
+7. **Ingress.** In direct mode, prepares Traefik for Let's Encrypt. In tunnel mode, creates a **new**, uniquely named Cloudflare tunnel and the DNS record for your hostname. It never reuses or edits an existing tunnel.
+8. **Secrets and start.** Writes `.env`, `release/release.env` and `secrets/` under `/opt/dockify` with generated values, then starts the stack.
+9. **Ready.** Waits for the api to report ready and, in direct mode, for the first certificate, then prints your setup link and a one-time setup token.
+
+</Steps>
+
+## Cloudflare Tunnel or direct TLS
+
+| | Tunnel | Direct |
+|---|---|---|
+| Flag | `--ingress tunnel`, the default with `--domain` | `--ingress direct`, the default without a domain |
+| Inbound ports | None for Dockify. `cloudflared` dials out to Cloudflare; SSH stays open. | 80 and 443, opened in `ufw`, plus SSH. |
+| TLS | Ends at Cloudflare's edge. | Traefik gets Let's Encrypt certificates over HTTP-01. |
+| DNS for apps | Proxied CNAME to the tunnel. Dockify can write it for you. | A record pointing at the server's IPv4. |
+| Client address | From `CF-Connecting-IP`, set by Cloudflare. | Traefik is the hop that decides it. |
+| Needs | A Cloudflare zone and API token. | A public IPv4 and free ports. |
+
+Direct needs nothing set up first, on a temporary address until you add your own domain. A tunnel means Dockify opens no port for anyone to scan (only SSH stays open), and the dashboard is never reachable over plain HTTP, so pick it if you are on Cloudflare and want that.
+
+## Flags
+
+| Flag | What it does |
+|---|---|
+| `--domain HOST` | Dashboard hostname. Omitted: asked for on the terminal; Enter, or no terminal, starts on the server's sslip.io name in direct mode. |
+| `--ingress tunnel` or `direct` | Front door. Default: `tunnel` with `--domain`, asked for when you type a domain, `direct` on sslip.io. |
+| `--cf-token-file PATH` | Cloudflare API token. Prompted for when omitted and a terminal is attached. |
+| `--cf-account-id ID` | Needed when the token sees more than one account. |
+| `--replace-dns` | Allows replacing an existing CNAME for `--domain`. Never other record types. |
+| `--acme-email EMAIL` | Let's Encrypt account, in direct mode. Omitted: asked for on the terminal; Enter, or no terminal, registers `dockify@<the dashboard host>`. |
+| `--dir PATH` | Install folder. Default `/opt/dockify`. |
+| `--release-feed URL` | Signed feed base, https only. The manifest is `URL/releases/stable.json`. |
+| `--release-pubkey KEY` | minisign public key, if not the pinned one. |
+| `--control-image REF` `--web-image REF` | Run these digest-pinned images instead of the feed. Self-update then needs a feed and key too. |
+| `--no-ufw` | Leave the host firewall alone. |
+| `--allow-vulnerable-runtime` | Warn instead of refusing on an old runc or containerd. |
+| `--from-checkout` | Take `docker-compose.yml` and the socket proxy config from the repository this script sits in, not the signed feed. The checkout must be root's alone. |
+| `--upgrade` | Upgrade the install in `--dir` in place. See [Upgrade an install](#upgrade-an-install). |
+| `--dry-run` | Print the plan and change nothing. |
+
+Some integrations can also be given on the first install only, before you create your account: see [Email](/docs/email#set-it-at-install) and [Connect GitHub](/docs/github).
+
+## First login
+
+When the script finishes it prints:
+
+```text
+Open    https://203-0-113-10.sslip.io/setup
+Setup token (asked for once, to create the owner):
+        <token>
+```
+
+Open the link, paste the token and create your account. That account is the first **admin**. Without the token nobody can claim the server, even if they reach the setup page first. On an sslip.io address, setup ends by offering to move to your own domain; you can skip that and do it later.
+
+<Note tone="bad" title="Back up the master key now">The file `/opt/dockify/secrets/master_key` seals every stored secret. Without it, your secret variables, integration tokens and backup key cannot be opened, and neither can your offsite backups. Copy it somewhere safe that is not this server.</Note>
+
+## Managing the stack
+
+The installer adds a `dockify` command: `docker compose` for the install folder, after it checks that nothing a non-root user could change is about to run as root. It also runs updates and account rescue. See [The dockify command](/docs/cli).
+
+```bash
+sudo dockify ps
+sudo dockify logs api
+sudo dockify up -d
+```
+
+If the dashboard is ever unreachable from outside, sign in through an SSH tunnel, on the same port on both ends:
+
+```bash
+ssh -N -L 3000:127.0.0.1:3000 root@your-server
+```
+
+Then open `http://127.0.0.1:3000` on your machine, by that exact address: `localhost`, or another port on your side, is refused like any other foreign origin. If you set `DOCKIFY_PORT` in `.env`, use that port instead of 3000. The tunnel's sign-in cookie is plain http and goes to every port on `127.0.0.1`, so sign out when you are done if you run other local apps. The [terminal](/docs/terminal) does not work this way.
+
+To give the dashboard a working address again, use `sudo dockify admin set-domain <host>`, or `--sslip`. See [Recovery](/docs/recovery#if-the-dashboards-address-is-gone).
+
+To remove Dockify again, see [Uninstall](/docs/uninstall).
+
+An install that wrote its files and then failed to start says so when you run the installer again, with the setup token and what to do next. It does not read as installed.
+
+## Upgrade an install
+
+Most new versions arrive as an [update](/docs/updates), which only swaps images. `--upgrade` also applies what an update leaves alone: the compose file, the socket proxy config, the firewall rules and the `dockify` command. Without the flag, the installer stops on an existing install and changes nothing.
+
+```bash
+curl -fsSL https://dockify.sh/install.sh | sh -s -- --upgrade
+sudo bash install.sh --upgrade        # the same, from a saved copy
+```
+
+It runs these images: the ones you pass with `--control-image` and `--web-image` (both, by digest), else the feed's newest, else the ones already pinned. The feed's newest is held to the same rules as an update: it stops, changing nothing, if that release is older than what runs or if its `minFrom` is above it. Images you pass by hand are your choice and are not checked against the feed, and the dashboard's version is only updated for a release from the feed. The compose file and socket proxy config come from the signed feed, each checked against its hash in the manifest. Add `--dry-run` to see the plan.
+
+<Steps>
+
+1. **Back up.** Copies `docker-compose.yml`, `.env`, `release.env` and `haproxy.cfg` to `upgrade-backups/<time>/` in the install folder.
+2. **Write.** The new compose file and proxy config, the firewall rules and the `dockify` command. In `.env` it only updates the compose hash, the version, the server's name and IPv6, and the Docker version. Your dashboard's address and `secrets/` stay as they are.
+3. **Pull.** The images.
+4. **Migrate.** A dump of Dockify's database into the same backup folder, then the migrations, before the api, worker or web are recreated.
+5. **Recreate.** The socket proxy always, then the others one at a time, each waited for. Compose leaves alone a service whose image and settings did not change. Your app containers are not touched, but if the proxy is recreated, traffic to them stops for a moment.
+
+</Steps>
+
+If the pull, the dump or the migrations fail, the previous files go back and the api, worker and web are not recreated. A failed migration names the dump and does not restore it. If a service does not come up healthy after that, the script stops and says where the previous files are: it does not roll back on its own.
+
+The last three backups are kept. Each holds a copy of `.env` and the whole control database in the clear, readable by root only.
+
+In tunnel mode, add `--cf-token-file <file>` to give the tunnel the dashboard's rules if it has none for the current address, or the `/api/v1/` rule if it was made before that rule existed. With Cloudflare connected in Settings, the worker adds them too.
+
+### From a checkout
+
+Before a feed publishes these files, or to run your own, use `--from-checkout`. It reads `deploy/docker-compose.yml` and `deploy/socket-proxy/haproxy.cfg` from the repository the script sits in. The repository, its `deploy` folder and those files must belong to root and not be writable by group or others. If a signed manifest names hashes for them, the files must still match.
+
+```bash
+chown -R root: /root/dockify-src && chmod -R go-w /root/dockify-src
+sudo bash /root/dockify-src/installer/install.sh --upgrade --from-checkout
+```
+
+## What can go wrong
+
+- **"no docker-compose.yml: use a feed whose manifest has composeSha256 and socketProxySha256, or pass --from-checkout in a repository root owns".** There is no feed to take these files from. Run from a checkout with `--from-checkout`, or wait for a release that publishes them.
+- **"--from-checkout: ... must be owned by root and not writable by group or others".** Run the `chown` and `chmod` the message prints.
+
+- **"no release source: pass --release-feed and --release-pubkey, or --control-image and --web-image".** No signed release is pinned in this installer yet. See the note under the one-liner.
+- **"port 80 is already in use; direct mode needs it".** Another web server is running. Stop it, or use tunnel mode.
+- **"the token sees 2 accounts; pass --cf-account-id".** Add the account id from the Cloudflare dashboard.
+- **"dockify.example.com already has a CNAME record".** Pick another hostname, or pass `--replace-dns` if that record is yours to replace.
+- **"the api did not become ready in 180 s".** The script prints the last api log lines. See [Troubleshooting](/docs/troubleshooting).
+- **You lose SSH after the install.** Your SSH port was not 22 and was not found. Use your provider's console to run `sudo ufw allow <port>/tcp`.

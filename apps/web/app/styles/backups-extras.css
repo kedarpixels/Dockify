@@ -1,0 +1,177 @@
+/* Backups: destinations, encryption, restore tests, restore into a new database, orphaned backups. */
+
+/* -------------- Run rows -------------- */
+/* The history row gains a restore test column and a third key (Run restore test) at the end. */
+.sb-run.bk-run {
+  --cols: 24px var(--when-w) minmax(140px, 1fr) minmax(150px, round(down, calc((100% - 520px) * 0.5455), 1px)) 80px 72px 56px 132px;
+}
+
+.bk-detail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bk-detail-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The lock reads the encryption: muted when encrypted, amber when the backup is plain. */
+.bk-lock {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.bk-lock[data-plain] {
+  color: var(--warn);
+}
+
+/* Hugs its chip, so the tip centres on it, not on the 80px cell. */
+.bk-test {
+  justify-self: start;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.bk-test.none {
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+@container sb-hist (max-width: 1080px) {
+  .sb-run.bk-run {
+    --cols: 24px var(--when-w) minmax(120px, 1fr) minmax(130px, round(down, calc((100% - 452px) * 0.5455), 1px)) 80px 72px 132px;
+  }
+  .bk-run .sb-run-dur {
+    display: none;
+  }
+}
+
+@container sb-hist (max-width: 760px) {
+  .sb-run.bk-run {
+    --cols: 24px var(--when-w) minmax(0, 1fr) 64px 132px;
+  }
+  .bk-run .bk-test {
+    display: none;
+  }
+  /* Restates the shared narrow hide, which .bk-detail's own display outranks. The failed rule
+     is more specific, so a failed run keeps its reason. */
+  .bk-run .bk-detail {
+    display: none;
+  }
+}
+
+@container sb-hist (max-width: 420px) {
+  .sb-run.bk-run {
+    --cols: 24px var(--when-w) minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+}
+
+/* -------------- Notes -------------- */
+/* Spaces the shared callout (the not-off-server note on Schedules) inside its card. */
+.bk-note-wrap {
+  padding: 16px var(--gutter) 0;
+}
+
+/* -------------- Storage and encryption -------------- */
+.bk-store {
+  container: bk-store / inline-size;
+}
+
+.bk-store-list {
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+.bk-store-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 56px;
+}
+
+.bk-store-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.bk-store-end {
+  display: flex;
+  min-width: 0;
+  text-align: right;
+}
+
+.bk-store-end.two {
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.bk-fp {
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+@container bk-store (max-width: 520px) {
+  .bk-store-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: start;
+    row-gap: 4px;
+  }
+  .bk-store-end,
+  .bk-store-end.two {
+    grid-column: 2;
+    align-items: flex-start;
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
+/* -------------- Orphaned backups -------------- */
+.bk-orphan-when {
+  margin-right: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.bk-orphan-more {
+  display: flex;
+  padding: 4px 8px 8px;
+}
+
+@container sb-hist (max-width: 420px) {
+  .bk-orphan-when {
+    display: none;
+  }
+}
+
+/* -------------- Restore dialog -------------- */
+/* A where-to-restore choice carries a sub line, so it grows past the 44px single-line choice. */
+.sb-choice.bk-mode {
+  height: auto;
+  min-height: 56px;
+  padding: 8px 12px;
+  align-items: flex-start;
+}
+
+.bk-mode .radio {
+  margin-top: 2px;
+}
+
+.bk-mode .two {
+  min-width: 0;
+}

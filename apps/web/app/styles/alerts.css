@@ -1,0 +1,271 @@
+/* Alerts: rule and history lists, and the editor and mute dialogs. */
+
+/* An in-text link: ink with a quiet underline (the lead's pointer to Settings, a channel's setup link). */
+.al-link,
+.al-channel a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--line-strong);
+}
+
+/* -------------- Lists: rules and history -------------- */
+/* Grouped soft rows, inset like the deploy list so the 8px row padding lines up with the gutter.
+   Each card measures itself (the alerts container), so the rows fold by the card's width. */
+.al-rules,
+.al-hist {
+  container: alerts / inline-size;
+}
+
+/* The same rhythm as the Deployments and Activity lists: 8px over the first group, 4px between. */
+.al-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+.al-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.al-group[data-muted] .ghead-h {
+  color: var(--ink-3);
+}
+
+.al-group-none {
+  margin: 0;
+  padding: 12px 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+/* -------------- Rule rows -------------- */
+.al-rule {
+  --cols: var(--col-status) minmax(0, 1fr) 116px 36px 60px;
+  min-height: 56px;
+}
+
+.al-rule-id .two-main,
+.al-ev-id .two-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.al-rule[data-off] .al-rule-id .two-main > span:first-child {
+  color: var(--ink-3);
+}
+
+.al-rule[data-off] .al-rule-tile,
+.al-rule[data-off] .al-ch-key {
+  opacity: var(--disabled-opacity);
+}
+
+/* Each channel is the shared 24px icon tile, so it keeps its ring on the row's hover grey. A
+   webhook's tile carries its service's mark in that service's colours. */
+.al-rule-ch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Past five channels the last tile counts the rest; its tip names them. */
+.al-ch-more {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.al-rule-sw {
+  justify-self: end;
+}
+
+.al-rule-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.al-muted {
+  display: inline-flex;
+  margin-right: 4px;
+}
+
+/* -------------- History rows -------------- */
+.al-ev {
+  --cols: 24px minmax(0, 1fr) 156px 72px 84px 14px;
+  min-height: 56px;
+  text-decoration: none;
+}
+
+.al-ev-when {
+  white-space: nowrap;
+}
+
+.al-ev-when .two-main {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+/* Hugs its figure at the right of its cell, so the tip centres on the digits. */
+.al-ev-dur {
+  justify-self: end;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: right;
+  color: var(--ink-2);
+}
+
+.al-ev-state {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.al-ev-go {
+  color: var(--ink-4);
+  transition: color 150ms;
+}
+
+.al-ev:hover .al-ev-go,
+.al-ev:focus-visible .al-ev-go {
+  color: var(--ink);
+}
+
+/* Narrow cards: the times and duration drop under the title; the state stays at the right. */
+@container alerts (max-width: 820px) {
+  .al-ev {
+    --cols: 24px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "tile id state"
+      ". when dur";
+    gap: 8px 12px;
+    align-items: start;
+  }
+  .al-ev > .icon-tile { grid-area: tile; }
+  .al-ev-id { grid-area: id; }
+  .al-ev-when { grid-area: when; white-space: normal; }
+  .al-ev-dur { grid-area: dur; align-self: end; }
+  .al-ev-state { grid-area: state; }
+  .al-ev-go { display: none; }
+}
+
+@container alerts (max-width: 620px) {
+  .al-rule {
+    --cols: 24px minmax(0, 1fr) 36px;
+    grid-template-areas:
+      "tile id sw"
+      ". ch keys";
+    gap: 8px 12px;
+    align-items: start;
+  }
+  .al-rule-tile { grid-area: tile; }
+  .al-rule-id { grid-area: id; }
+  .al-rule-ch { grid-area: ch; }
+  .al-rule-sw { grid-area: sw; }
+  .al-rule-keys { grid-area: keys; justify-self: end; }
+}
+
+@container alerts (max-width: 520px) {
+  .al-hist .card-hd {
+    flex-wrap: wrap;
+  }
+  /* The group head keeps its label; the mute and add keys wrap beneath it. The label takes the
+     whole first line, since a heading free to shrink cut the app name to one letter instead. */
+  .al-rules .ghead {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 32px;
+    row-gap: 4px;
+    padding-block: 4px;
+  }
+  .al-rules .ghead-h {
+    flex-basis: 100%;
+  }
+}
+
+/* -------------- Editor and mute dialogs -------------- */
+.al-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.al-form-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+/* The rows reach 8px past the form edges, so their checkboxes line up with the fields above and
+   only the hover fill runs into the margin. The legend steps back in to the edge. */
+.al-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin: 0 -8px;
+  padding: 0;
+  border: 0;
+}
+
+.al-channels > legend {
+  margin: 0 8px 8px;
+  padding: 0;
+}
+
+/* The whole row is the checkbox's label, so the row is the target. A row in the editor dialog
+   takes the popover hover fill. */
+.al-channel {
+  display: grid;
+  grid-template-columns: 16px 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+
+.al-channel:not([data-off]):hover {
+  background: var(--fill-popover);
+}
+
+.al-channel > .ic {
+  color: var(--ink-3);
+}
+
+.al-channel[data-off] {
+  cursor: default;
+}
+
+.al-channel[data-off] .two-main {
+  color: var(--ink-3);
+}
+
+.al-enable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.al-err {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--bad-ink);
+}
+
+.al-channels .al-err {
+  padding: 4px 8px 0;
+}

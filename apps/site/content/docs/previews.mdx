@@ -1,0 +1,133 @@
+---
+title: "Pull request previews"
+description: "At the end every pull request gets its own copy of your project on its own URL, built automatically, asleep when idle, and deleted when the pull request closes."
+---
+
+Previews start from GitHub's `pull_request` webhook, so they need the GitHub App. See [Connect GitHub](/docs/github).
+
+## What a preview is
+
+A preview is a short-lived environment named `pr-<n>`, cloned from a **base environment** of your project. The default base is `development`. Production is never the default; you can pick it, but you should not need to. In a project with one environment, that environment counts as production, whatever its name.
+
+Only the apps you mark **Include in previews** are copied. By default that is every frontend and backend app in the base environment built from a repository on this server; a bot is off until you tick it. **Databases are never cloned.** With a `development` base, a preview has that environment's secrets and network and reaches its services through its [linked variables](/docs/env-vars), so it talks to the same development database your `development` apps use.
+
+Turn on **Isolated database per preview** to give each preview its own empty, throwaway Postgres instead. It is deleted with the preview, and only then does the pull request's release command (migrations) run, against that throwaway database. A preview that shares the base database, or has none, never runs its release command.
+
+## Previews and production
+
+Anyone who can push a branch can open a pull request, and a preview runs that branch's code. Push access should not be enough to read production, so a preview of a production base, one named `production`, `prod` or `live` or the only one in its project, gets by default:
+
+- no secret variable and no linked service credential, at build time or at run time,
+- no database variables, marked secret or not, unless **Isolated database per preview** gives it its own,
+- a network of its own, so it cannot reach production's apps or services directly,
+- the plain variables. A value you did not mark secret is not hidden, so mark anything sensitive.
+
+An app that needs what was withheld fails to start. The preview shows **Failed**, and its card, email and pull request comment say it ran without production's secrets. To change it, either make a `development` environment the base, or turn on **Previews may use production secrets and services** in Preview settings. That setting gives anyone who can push a branch those secrets and that network, and a change to it reaches previews already running within a few minutes: each is built again, and its temporary database starts empty. Forks never get them, whatever the setting.
+
+## Turn it on
+
+Open the project, then **Settings > Preview deployments**, and switch on **Pull request previews**. That is the only step. From then on everything is automatic:
+
+| Pull request event | What Dockify does |
+|---|---|
+| Opened or reopened | Builds `pr-<n>` from the head commit and posts one comment on the pull request. |
+| New commits pushed | Rebuilds the same preview and updates the same comment. |
+| Closed or merged | Deletes the preview: containers, routes and images. |
+
+The comment is **sticky**: there is one per pull request and Dockify edits it in place. A commit status named **Dockify preview** follows along: building, then `Ready at <url>`, or `Failed: <reason>`. When a preview sleeps it says `Asleep, push or press Wake`; when it is deleted it says why.
+
+Every event arrives through your instance's GitHub App webhook, which is verified with its secret before anything happens.
+
+## Preview domain
+
+Previews answer on `pr-<n>-<app>.<preview domain>`, for example `pr-12-web.preview.example.com`. Your instance uses **its own** domain; nothing runs through anyone else's infrastructure.
+
+- **Instance default.** **Settings > Instance > Preview domain**. Left empty, it is derived from your dashboard's address: `preview.<parent of the dashboard host>`. A dashboard at `dash.example.com` gives `preview.example.com`.
+- **Per project.** A project's preview settings can override it, so one project can use `preview.horseai.com` and another `preview.shop.io`. The project's value wins, then the instance value, then the derived default.
+
+Each preview domain needs **one wildcard DNS record**, `*.<preview domain>`:
+
+- **With the Cloudflare integration connected**, Dockify creates that one record for you (plus the tunnel rule in tunnel mode), on a zone you marked managed. It records the ids and deletes only that record, and only once no project uses the domain any more. A record that already exists is left alone.
+- **Without Cloudflare**, the preview settings show the exact record to create, with copy keys for the name and value:
+
+| Ingress mode | Record |
+|---|---|
+| Cloudflare tunnel | `CNAME *.preview.example.com` to `<tunnel id>.cfargotunnel.com`, proxied |
+| Direct | `A *.preview.example.com` to your server's IPv4, DNS only |
+
+Press **Check DNS** to verify it. **Previews refuse to start until the preview domain resolves to this server.** Until then the pull request comment and the dashboard both say so; fix the record, press Check DNS, then push again.
+
+In tunnel mode, Cloudflare's free certificate covers one level below your zone. `pr-12-web.preview.example.com` is two levels below `example.com`, so either use the zone itself as the preview domain or add an advanced certificate for `*.preview.example.com`.
+
+## Who can open a preview
+
+Bots find a new public URL within minutes, and a preview runs your unreleased code. In **Settings > Preview deployments**, **Preview access** is either:
+
+- **Password.** The default for a new project. Every preview of the project asks for one password before anything reaches your app.
+- **Public.** Anyone with the link can open it. A project that already had previews on when this setting arrived stays Public until you change it.
+
+Dockify makes the password when you first save with protection on, and shows it once. It keeps only a hash. **Make a new one** replaces it: the old one stops working at once and everyone who entered it has to enter the new one. Changes reach running previews within a few seconds, with no rebuild.
+
+Someone who enters it stays in on that one preview's address for 24 hours. The pull request comment says the preview is password protected and never contains the password.
+
+What keeps working as before: Dockify's own health checks, which talk to the container directly; your app's own `Authorization` headers and cookies, which pass through untouched; WebSockets, once signed in.
+
+What the password does not suit, so use Public for these:
+
+- **Webhooks into a preview.** A service calling your preview's URL cannot enter a password.
+- **A frontend preview calling a backend preview from the browser.** Each has its own address, and the browser's request to the second one has no sign-in for it. Calls between containers are not affected.
+
+Other limits:
+
+- Guessing is limited to 10 tries from one network, then 6 a minute, and is limited for the preview as a whole. The password has about 99 bits, so the limit is a backstop.
+- It is one password per project, not per person. Anyone who has it can share it, and Dockify cannot tell who used it. Dockify's sign-in and roles do not apply to a preview.
+- If the Dockify api is down, previews do not serve, public ones included, because the check runs on each request.
+- A sleeping preview's page is public. It says only that a preview is asleep.
+- Every preview also answers with `X-Robots-Tag: noindex, nofollow`.
+
+## TLS
+
+| Ingress mode | Certificates |
+|---|---|
+| Cloudflare tunnel | Cloudflare terminates TLS. Nothing to do on the server. |
+| Direct, with a DNS-01 token | One Let's Encrypt wildcard certificate for `*.<preview domain>` through DNS-01. |
+| Direct, without one | One Let's Encrypt certificate per preview host through HTTP-01. |
+
+For the wildcard path, put a Cloudflare token with **Zone, DNS, Edit** in `secrets/cf_dns_token` and set `DOCKIFY_ACME_DNS01=1` in `.env`, then run `sudo dockify up -d --force-recreate api worker proxy-direct`, so the settings page says the same as the proxy. Without it, each preview host gets its own certificate on its first request. Let's Encrypt allows 50 certificates per registered domain per week, so a busy repository on HTTP-01 can hit that limit; the wildcard avoids it.
+
+## Cost guardrails
+
+One server runs everything, so every guardrail is on by default. Most are per-project settings with a one-line explanation in the dashboard (the server-wide cap and the disk guard apply to every project), and the settings card shows the ceiling they allow, for example "At most 2 previews, about 1 CPU and 1 GB".
+
+| Guardrail | Default | What happens |
+|---|---|---|
+| Previews at once, per project | 2 | A new pull request past the cap evicts the oldest idle preview. Its comment says it was evicted; a push brings it back. |
+| Previews at once, per server | 4 | Shared by every project. Same eviction rule, across projects. |
+| Limits per preview app | 0.5 CPU, 512 MB, 128 processes | Separate from production limits. |
+| Sleep when idle | 30 minutes | No request for that long stops the containers. A push or **Wake** starts them again. |
+| Delete after no commits | 72 hours | Also always on close or merge. |
+| Disk guard | 85% | No new preview starts above it; the pull request comment explains why. |
+
+Each preview builds with a cache of its own, so nothing a pull request builds is reused by a production build. Its first build is slower than a normal one, and a deleted preview's cache mounts go with it. A deleted preview's images are removed at once, and preview builds never take one of the rollback images kept for your production apps.
+
+A preview that is still building is never evicted. When every slot is busy building, the new pull request is not started and its comment says the limit was reached. Push again once a slot is free.
+
+## Pull requests from forks
+
+Fork pull requests are **skipped by default**. Turn on **Build previews from forks (no secrets)** to build them anyway. A fork preview:
+
+- never receives a secret variable or a linked service credential, at build time or at run time,
+- runs on a network that holds no service of any environment,
+- is built from the exact head commit of the pull request.
+
+Use it for open-source projects whose previews need nothing secret. See the [security model](/docs/security).
+
+## The Previews tab
+
+The project's **Previews** tab lists each preview: pull request number and title, branch, author, status (Building, Ready, Asleep, Failed), the URL with a copy key, the last commit, its age and its CPU and memory use. **Wake** starts a sleeping preview; **Delete** removes it now, after you confirm it is you.
+
+## Cleanup you can rely on
+
+Every few minutes Dockify reconciles previews against what is actually running. It deletes previews whose pull request closed, whose time ran out, or whose project turned previews off or was deleted, and it removes any container, route or image labelled as a preview that no longer has one. A crash at any point is caught on the next pass. If the pull request close event is lost, the preview is deleted at its no-commit limit.
+
+Nothing in this path calls a Dockify-run service: only GitHub, Cloudflare when you connected it, and public DNS.

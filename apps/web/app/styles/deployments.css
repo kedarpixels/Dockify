@@ -1,0 +1,584 @@
+/* Deployments: the /deployments list (the shared KPI strip and toolbar over the overview's deploy
+   rows, .dep-*, in overview-data.css) and one deployment's page (the Details grid, the steps and
+   the build log viewer). Layouts inside a card follow that card's width (named containers), so a
+   collapsed or open sidebar never changes how they wrap; the page head and toolbars follow the
+   viewport on the shared scale (520, 760, 1100). */
+
+/* ============== /deployments ============== */
+
+/* -------------- Toolbar -------------- */
+/* Project filter: the shared Select, pushed to the right end of the toolbar. */
+.dpl-select {
+  flex: 0 1 220px;
+  max-width: 220px;
+  margin-left: auto;
+}
+
+/* -------------- Feed -------------- */
+/* The deploy rows size their columns off the `deps` container (overview-data.css), as they do in
+   every card that holds them. */
+.dpl-feed {
+  container: deps / inline-size;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* The shared card foot: the count at the left, Load more at the right. */
+.dpl-foot {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 760px) {
+  .dpl-select {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .dpl-tools .search,
+  .dpl-select {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  /* The status filter spans the toolbar: five even options, the dots dropped so every label fits. */
+  .dpl-tools .seg2 {
+    display: flex;
+    width: 100%;
+  }
+  .dpl-tools .seg2-opt {
+    flex: 1 1 auto;
+    padding: 0 6px;
+  }
+  .dpl-tools .seg2-opt .dot {
+    display: none;
+  }
+}
+
+/* ============== /deployments/[id] ============== */
+
+/* -------------- Head -------------- */
+.dpd-lead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.dpd-status {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.dpd-status[data-tone="ok"] { color: var(--ok-ink); }
+.dpd-status[data-tone="bad"] { color: var(--bad-ink); }
+.dpd-status[data-tone="live"] { color: var(--blue); }
+.dpd-status[data-tone="pending"] { color: var(--warn-ink); }
+.dpd-status[data-tone="idle"] { color: var(--ink-3); }
+
+.dpd-msg {
+  min-width: 0;
+  color: var(--ink-3);
+}
+
+.dpd-head .shead-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Phones: the title, then the status line, then the keys, so wrapped rows of buttons never sit
+   between the title and the status. The row's title and keys join the head's own column. */
+@media (max-width: 760px) {
+  .dpd-head {
+    display: flex;
+    flex-direction: column;
+  }
+  .dpd-head .shead-row {
+    display: contents;
+  }
+  .dpd-head .shead-lead {
+    order: 1;
+  }
+  .dpd-head .shead-actions {
+    order: 2;
+    justify-content: flex-start;
+    margin-top: 16px;
+  }
+}
+
+/* -------------- Details grid -------------- */
+/* Ruled cells painted on the line colour, like the KPI strip, with a node on every cell corner:
+   3 columns, then one row per fact when the card is narrow. */
+.dpd-meta-card {
+  container: dpd-meta / inline-size;
+}
+
+.dpd-meta {
+  display: grid;
+  grid-template-columns: repeat(2, round(down, calc((100% - 2px) / 3), 1px)) minmax(0, 1fr);
+  gap: 1px;
+  margin: 0;
+  background: var(--line);
+}
+
+.dpd-meta-cell {
+  position: relative;
+  padding: 16px var(--gutter);
+  background: var(--bg);
+}
+
+/* The value row holds glyphs and chips, so it centres them on a 24px line. */
+.dpd-meta-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 24px;
+  font-weight: 500;
+}
+
+.dpd-meta-link,
+.dpd-meta-ic {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink);
+  text-decoration: none;
+  transition: color 150ms var(--ease);
+}
+
+/* How it started, beside who started it. */
+.dpd-meta-note {
+  flex: none;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.dpd-meta-link .ic,
+.dpd-meta-ic .ic {
+  color: var(--ink-3);
+}
+
+.dpd-meta-link:hover {
+  color: var(--blue);
+}
+
+/* The environment reads like every other value: 14px medium ink, a 16px glyph 8px from its name. */
+.dpd-meta-value .env-tag {
+  gap: 8px;
+  height: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.dpd-meta-value .env-tag .ic {
+  width: 16px;
+  height: 16px;
+}
+
+@container dpd-meta (width < 520px) {
+  .dpd-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dpd-meta-cell {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 44px;
+    padding: 8px var(--gutter);
+  }
+  .dpd-meta-value {
+    justify-content: flex-end;
+    text-align: right;
+  }
+}
+
+/* -------------- Steps -------------- */
+/* Why a build failed: the shared callout, on the gutter between the card head and the steps. */
+.dpd-note {
+  padding: 16px var(--gutter);
+  border-bottom: 1px solid var(--line);
+}
+
+.dpd-steps-card {
+  container: dpd-steps / inline-size;
+}
+
+/* Every step on one row when the card is wide (the component sets --steps to the step count), ruled
+   by a 1px gap over the line colour, a node on every cell corner. A single row reads in order, so it
+   drops the step numbers and tightens the sides to 12px, which keeps "Health check" whole; the
+   first cell keeps the page gutter. */
+.dpd-steps {
+  display: grid;
+  grid-template-columns: repeat(var(--steps, 7), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--steps-rest, 6), round(down, calc((100% - var(--steps-rest, 6) * 1px) / var(--steps, 7)), 1px)) minmax(0, 1fr);
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--line);
+}
+
+.dpd-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px 12px;
+  background: var(--bg);
+}
+
+.dpd-step:first-child {
+  padding-left: var(--gutter);
+}
+
+/* The mark is keyed on the step's status: a new state settles in from a slightly smaller tile. */
+.dpd-step-mark {
+  display: grid;
+  flex: none;
+  animation: dpd-mark-in 220ms var(--ease) both;
+}
+
+@keyframes dpd-mark-in {
+  from {
+    opacity: 0;
+    scale: 0.85;
+  }
+}
+
+.dpd-step-no {
+  display: none;
+  margin-right: 8px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+/* Name and meta of the shared two-line cell, kept to one line each. */
+.dpd-step-name,
+.dpd-step-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 200ms var(--ease);
+}
+
+.dpd-step[data-status="pending"] .dpd-step-name,
+.dpd-step[data-status="skipped"] .dpd-step-name {
+  color: var(--ink-3);
+}
+
+/* A step that has not run: the status tile, empty, holding one round dot. */
+.dpd-wait-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ink-4);
+}
+
+.dpd-step[data-status="skipped"] .dpd-wait-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ink-4);
+}
+
+/* Narrower cards wrap the steps 4, then 3 across, each cell on the page gutter with its number.
+   The last step stretches over whatever its row has left, so a short last row never shows bare
+   line-coloured filler cells. */
+@container dpd-steps (width < 1024px) {
+  .dpd-steps {
+    grid-template-columns: repeat(3, round(down, calc((100% - 3px) / 4), 1px)) minmax(0, 1fr);
+  }
+  .dpd-step {
+    gap: 12px;
+    padding: 16px 16px 16px var(--gutter);
+  }
+  .dpd-step-no {
+    display: inline;
+  }
+  .dpd-step:last-child:nth-child(4n + 1) {
+    grid-column: 1 / -1;
+  }
+  .dpd-step:last-child:nth-child(4n + 2) {
+    grid-column: span 3;
+  }
+  .dpd-step:last-child:nth-child(4n + 3) {
+    grid-column: span 2;
+  }
+}
+
+@container dpd-steps (width < 760px) {
+  .dpd-steps {
+    grid-template-columns: repeat(2, round(down, calc((100% - 2px) / 3), 1px)) minmax(0, 1fr);
+  }
+  .dpd-step:last-child:nth-child(n) {
+    grid-column: auto;
+  }
+  .dpd-step:last-child:nth-child(3n + 1) {
+    grid-column: 1 / -1;
+  }
+  .dpd-step:last-child:nth-child(3n + 2) {
+    grid-column: span 2;
+  }
+}
+
+/* Phones: one compact row per step. */
+@container dpd-steps (width < 520px) {
+  .dpd-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dpd-step {
+    min-height: 44px;
+    padding: 8px var(--gutter);
+  }
+  .dpd-step:last-child:nth-child(n) {
+    grid-column: auto;
+  }
+}
+
+/* ============== Log viewer ============== */
+/* The timestamp column and the search follow the viewer's own width. */
+.lg {
+  container: lg / inline-size;
+}
+
+.lg-count {
+  flex: none;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.lg-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lg-keys-end {
+  margin-left: auto;
+}
+
+/* The surface: mono face on the mass colour, its own scroll in both directions. It is as tall as its
+   lines up to a cap, then scrolls, so a seven-line build log is not a mostly empty 640px box. */
+.lg-box {
+  position: relative;
+  max-height: min(640px, 70vh);
+  max-height: round(down, min(640px, 70vh), 1px);
+  min-height: 96px;
+  padding: 8px 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--mass);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Flush with the card's edges, so the focus ring is drawn inside. */
+.lg-box:focus-visible {
+  outline-offset: -2px;
+}
+
+.lg-box:has(.lg-status) {
+  height: auto;
+  min-height: 0;
+}
+
+.lg-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 var(--gutter);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* Unwrapped lines keep their width, so the box scrolls sideways and the page never does. */
+.lg-rows {
+  width: max-content;
+  min-width: 100%;
+}
+
+.lg[data-wrap] .lg-rows {
+  width: auto;
+}
+
+/* A row's tint lives in --lg-tint so the opaque sticky gutter can paint the same tint over --mass,
+   and an error, warning or active row reads as one band from the left edge to the right. */
+.lg-line {
+  --lg-tint: transparent;
+  display: flex;
+  gap: 16px;
+  min-height: 20px;
+  padding-right: var(--gutter);
+  background: var(--lg-tint);
+  transition: background-color 150ms var(--ease);
+}
+
+.lg-line:hover {
+  --lg-tint: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+/* Tinted by what a line says, not by its stream: BuildKit prints normal progress on stderr. Errors,
+   warnings and the line a link points at take the same tints as the runtime logs (logs.css); the
+   active search hit, which only this viewer has, takes a stronger 12% blue. */
+.lg-line[data-level="error"] {
+  --lg-tint: color-mix(in srgb, var(--bad) 7%, transparent);
+}
+
+.lg-line[data-level="error"]:hover {
+  --lg-tint: color-mix(in srgb, var(--bad) 11%, transparent);
+}
+
+.lg-line[data-level="warn"] {
+  --lg-tint: color-mix(in srgb, var(--warn) 7%, transparent);
+}
+
+.lg-line[data-level="warn"]:hover {
+  --lg-tint: color-mix(in srgb, var(--warn) 11%, transparent);
+}
+
+/* The line a #L link points at: a soft blue band that stays. */
+.lg-line[data-target] {
+  --lg-tint: color-mix(in srgb, var(--blue) 10%, transparent);
+}
+
+.lg-line[data-active] {
+  --lg-tint: color-mix(in srgb, var(--blue) 12%, transparent);
+}
+
+/* Line numbers stay pinned while the text scrolls sideways under them. They are permalinks; the
+   doubled selector keeps them sticky over the tooltip rule's position: relative. */
+.lg-line > .lg-no {
+  position: sticky;
+  left: 0;
+  z-index: var(--z-raise);
+  flex: none;
+  width: calc(var(--lg-digits, 4) * 1ch + var(--gutter));
+  width: round(up, calc(var(--lg-digits, 4) * 1ch + var(--gutter)), 1px);
+  padding-right: 4px;
+  background: linear-gradient(var(--lg-tint), var(--lg-tint)), var(--mass);
+  text-align: right;
+  color: var(--ink-muted);
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition: color 150ms var(--ease);
+}
+
+.lg-line:hover > .lg-no {
+  color: var(--ink-2);
+}
+
+/* The gutter key sits flush on the box's left edge and the next line paints over its bottom, so
+   its focus ring is drawn inside it. */
+.lg-line > .lg-no:focus-visible {
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+.lg-line[data-active] > .lg-no,
+.lg-line[data-target] > .lg-no {
+  color: var(--blue);
+}
+
+/* "Link copied" shows by itself for a moment, above the rows below it. */
+.lg-line > .lg-no[data-copied] {
+  z-index: var(--z-node);
+}
+
+.lg-no[data-copied]::after,
+.lg-no[data-copied]::before {
+  opacity: 1;
+  translate: 0 -50%;
+  transition-delay: 0ms;
+}
+
+/* Holds the scroll box and the "N new lines" pill, which floats over its bottom edge. */
+.lg-stage {
+  position: relative;
+}
+
+/* The shared .new-pill, placed: centred over the box's bottom edge, above the pinned gutter or
+   times. Centred by layout, not by a -50% shift, so its 1px ring lands on whole pixels at any width. */
+.lg-new,
+.lx-new {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 16px;
+  z-index: var(--z-hover);
+  width: max-content;
+  margin-inline: auto;
+}
+
+.lg-ts {
+  flex: none;
+  color: var(--ink-muted);
+  user-select: none;
+}
+
+.lg-tx {
+  white-space: pre;
+  color: var(--ink-2);
+}
+
+.lg[data-wrap] .lg-tx {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lg-line[data-level="error"] .lg-tx {
+  color: var(--bad-ink);
+}
+
+.lg-hit {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--warn) 34%, transparent);
+  color: inherit;
+}
+
+/* The solid blue keeps white text above 4.5:1 in both themes; the brighter dark --blue does not. */
+.lg-hit[data-active] {
+  background: var(--blue-solid);
+  color: var(--on-solid);
+}
+
+@container lg (width < 760px) {
+  .lg-ts {
+    display: none;
+  }
+}
+
+@container lg (width < 520px) {
+  .lg-tools .search {
+    flex-basis: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* A phone screen is short: the box gives the page some room around it. */
+@media (max-width: 520px) {
+  .lg-box {
+    max-height: 60vh;
+    max-height: round(down, 60vh, 1px);
+  }
+}
+
+/* The title is a commit hash: Geist Pixel slashes its zero, which reads badly in a hash. */
+.dpd-head h1 {
+  font-family: var(--font-sans);
+  letter-spacing: -0.02em;
+}

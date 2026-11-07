@@ -1,0 +1,766 @@
+/*
+ * What the dashboard and the site share: primitives only, no tokens. The source is apps/web; the site
+ * holds a copy, which apps/site/scripts/sync-ui.mjs writes and checks. Each app imports this file right
+ * before its own foundation.css, which holds its tokens, what differs between the two, and every rule
+ * that must come after a rule of its own.
+ */
+
+/* ============== Base ============== */
+
+::selection {
+  background: color-mix(in srgb, var(--blue) 22%, transparent);
+  color: var(--ink);
+}
+
+/* The ring follows the element's own corners, so a square row keeps a square ring and its fill is
+   never rounded off by the focus. Bare text links get a small radius of their own. */
+
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+:where(a):focus-visible {
+  border-radius: 4px;
+}
+
+/* Inline code never falls back to the browser's typewriter face. */
+
+code,
+samp,
+pre {
+  font-family: var(--font-mono);
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+[role="switch"],
+[role="tab"] {
+  cursor: pointer;
+}
+
+:where(button, [role="button"]):disabled {
+  cursor: default;
+}
+
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* geist-icons are filled drawings; the few stroked paths have no width of their own and inherit these. */
+
+.ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: currentColor;
+  stroke: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ic-12 { width: 12px; height: 12px; stroke-width: 2; }
+
+.ic-14 { width: 14px; height: 14px; }
+
+.ic-20 { width: 20px; height: 20px; }
+
+/* ============== Layout: the ruled frame ============== */
+
+main.page > * {
+  width: 100%;
+  max-width: min(var(--rail), calc(100% - 4px));
+  margin-inline: max(0px, calc((100% - var(--rail)) / 2)) 0;
+  margin-inline: round(down, max(0px, calc((100% - var(--rail)) / 2)), 1px) 0;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+
+/* Node: 5px square centred on the parent's 1px border at a corner. */
+
+.node {
+  position: absolute;
+  z-index: var(--z-node);
+  width: 5px;
+  height: 5px;
+  background: var(--node);
+  pointer-events: none;
+}
+
+.node[data-pos="tl"] { top: -3px; left: -3px; }
+
+.node[data-pos="tr"] { top: -3px; right: -3px; }
+
+.node[data-pos="bl"] { bottom: -3px; left: -3px; }
+
+.node[data-pos="br"] { bottom: -3px; right: -3px; }
+
+.node-line[data-pos="tl"] { top: -2px; left: -2px; }
+
+.node-line[data-pos="tr"] { top: -2px; right: -2px; }
+
+.node-line[data-pos="bl"] { bottom: -2px; left: -2px; }
+
+.node-line[data-pos="br"] { bottom: -2px; right: -2px; }
+
+/* Rule: a hairline with a node at each end. Inside a block it spans its parent; every nested rule
+   sits in an unpadded wrapper flush with the block's 1px rails, so it reaches over them by a pixel
+   and its nodes centre on the rails instead of a pixel inside. */
+
+.rule {
+  position: relative;
+  z-index: var(--z-line);
+  flex: none;
+  height: 1px;
+  border: 0;
+  background: var(--line);
+  pointer-events: none;
+}
+
+main.page > :not(.rule, .sep) .rule {
+  margin-inline: -1px;
+}
+
+.rule::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  height: 5px;
+  background:
+    linear-gradient(var(--node), var(--node)) left top / 5px 5px no-repeat,
+    linear-gradient(var(--node), var(--node)) right top / 5px 5px no-repeat;
+}
+
+/* Spacer: 40px of 50% Bayer dither framed by rules. */
+
+.sep {
+  position: relative;
+  z-index: var(--z-line);
+  flex: none;
+  height: 42px;
+  border: 0;
+  background:
+    linear-gradient(var(--line), var(--line)) top / 100% 1px no-repeat,
+    linear-gradient(var(--line), var(--line)) bottom / 100% 1px no-repeat;
+}
+
+/* 50% Bayer dither is a 3px checker; one 6px tile repeats it. */
+
+.sep::before {
+  content: "";
+  position: absolute;
+  inset: 1px 0;
+  pointer-events: none;
+  background-color: var(--cloud-core);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h3v3H0zM3 3h3v3H3z'/%3E%3C/svg%3E") repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h3v3H0zM3 3h3v3H3z'/%3E%3C/svg%3E") repeat;
+}
+
+/* Rails redrawn across the band, a node on each crossing. */
+
+.sep::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: -2px;
+  right: -2px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--node), var(--node)) left top / 5px 5px no-repeat,
+    linear-gradient(var(--node), var(--node)) right top / 5px 5px no-repeat,
+    linear-gradient(var(--node), var(--node)) left bottom / 5px 5px no-repeat,
+    linear-gradient(var(--node), var(--node)) right bottom / 5px 5px no-repeat,
+    linear-gradient(var(--line), var(--line)) 2px 0 / 1px 100% no-repeat,
+    linear-gradient(var(--line), var(--line)) calc(100% - 2px) 0 / 1px 100% no-repeat;
+}
+
+/* Page end: the last band grows to the bottom with no dither, only the rails running on. */
+
+.sep-end {
+  flex: 1 0 41px;
+  height: auto;
+  min-height: 96px;
+  background: linear-gradient(var(--line), var(--line)) top / 100% 1px no-repeat;
+}
+
+.sep-end::before {
+  display: none;
+}
+
+.sep-end::after {
+  bottom: 0;
+  background:
+    linear-gradient(var(--node), var(--node)) left top / 5px 5px no-repeat,
+    linear-gradient(var(--node), var(--node)) right top / 5px 5px no-repeat,
+    linear-gradient(var(--line), var(--line)) 2px 0 / 1px 100% no-repeat,
+    linear-gradient(var(--line), var(--line)) calc(100% - 2px) 0 / 1px 100% no-repeat;
+}
+
+/* On the page, rules and bands run full bleed under every block: a block's own corner nodes paint
+   over their lines, and no tooltip or dropdown is ever crossed by one. Only their nodes and the
+   band's rail segments rise, over a block lifted by an open tip or dropdown too, on the rails at
+   M and M + B (see the frame note above). */
+
+main.page > .rule,
+main.page > .sep {
+  max-width: none;
+  margin-inline: 0;
+  z-index: auto;
+  border: 0;
+}
+
+main.page > .rule::after,
+main.page > .sep::after {
+  z-index: var(--z-rail);
+  left: calc(max(0px, (100% - var(--rail)) / 2) - 2px);
+  right: calc(100% - max(0px, (100% - var(--rail)) / 2) - min(var(--rail), 100% - 4px) - 2px);
+  left: calc(round(down, max(0px, (100% - var(--rail)) / 2), 1px) - 2px);
+  right: calc(100% - round(down, max(0px, (100% - var(--rail)) / 2), 1px) - min(var(--rail), 100% - 4px) - 2px);
+}
+
+main.page > .sep:first-child {
+  background: linear-gradient(var(--line), var(--line)) bottom / 100% 1px no-repeat;
+}
+
+/* Blocks stack over the rules and bands; a block with an open tooltip or dropdown lifts over its
+   neighbours, still under the rail nodes. */
+
+main.page > :not(.sep, .rule) {
+  position: relative;
+  z-index: var(--z-raise);
+}
+
+/* SectionHead: pixel title, 40px above, 8px to the lead, 32px below. */
+
+.shead {
+  padding: 40px var(--gutter) 32px;
+}
+
+.shead-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.shead-title {
+  margin: 0;
+  font-family: var(--font-pixel);
+  font-feature-settings: "ss09";
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.shead-lead {
+  margin: 8px 0 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 24px;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+
+.shead-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* -------------- Icon tile -------------- */
+
+.icon-tile {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  color: var(--ink-3);
+  user-select: none;
+  transition: color 150ms;
+}
+
+.icon-tile[data-size="md"] { width: 32px; height: 32px; border-radius: 10px; }
+
+.icon-tile[data-size="lg"] { width: 40px; height: 40px; border-radius: 10px; }
+
+.icon-tile .ic { width: 14px; height: 14px; pointer-events: none; }
+
+.icon-tile[data-size="md"] .ic { width: 16px; height: 16px; }
+
+.icon-tile[data-size="lg"] .ic { width: 18px; height: 18px; }
+
+/* -------------- Hover tooltip -------------- */
+
+/* data-tip="Label" on any control; data-tip-side="bottom" or "right", data-tip-align="end".
+   Shows whole after 150ms and hides at once, so nothing fades out under a band or a neighbour. */
+
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]:is([data-tip-side="bottom"], [data-tip-flip="bottom"])::after {
+  bottom: auto;
+  top: calc(100% + 9px);
+  translate: -50% -2px;
+}
+
+[data-tip]:is([data-tip-side="bottom"], [data-tip-flip="bottom"])::before {
+  bottom: auto;
+  top: calc(100% + 6px);
+  translate: -50% -2px;
+}
+
+[data-tip][data-tip-side="right"]:hover::after,
+[data-tip][data-tip-side="right"]:hover::before,
+[data-tip][data-tip-side="right"]:focus-visible::after,
+[data-tip][data-tip-side="right"]:focus-visible::before {
+  translate: 0 -50%;
+}
+
+[data-tip][data-tip-align="end"]:is([data-tip-side="bottom"], [data-tip-flip="bottom"])::after {
+  translate: 0 -2px;
+}
+
+[data-tip][data-tip-align="end"]:hover::after,
+[data-tip][data-tip-align="end"]:focus-visible::after {
+  translate: 0 0;
+}
+
+[data-tip][data-tip-align="end"]:is([data-tip-side="bottom"], [data-tip-flip="bottom"])::before {
+  translate: 0 -2px;
+}
+
+[data-tip][data-tip-align="end"]:hover::before,
+[data-tip][data-tip-align="end"]:focus-visible::before {
+  translate: 0 0;
+}
+
+/* Touch screens have no hover: a tapped tip would stay stuck on screen, so tips are desktop only.
+   A copy result ("Copied", "Copy failed") still shows for its moment, since nothing else says it. */
+
+@media (hover: none) {
+  [data-tip]:not([data-copied])::before,
+  [data-tip]:not([data-copied])::after {
+    display: none;
+  }
+}
+
+/* -------------- Button -------------- */
+
+/* .btn 36px, .btn-sm 32px, .btn-xs 28px; .btn-icon square; .btn-primary and .btn-danger solid,
+   leading with a glyph; .btn-quiet-danger the secondary key in red text for a destructive action
+   that confirms first. Hover only changes colour.
+   Glyphs: a labelled key carries one only when it is primary or danger (it makes or removes
+   something), or a .btn-lead file action (Download, Upload, Download CSV). Every other labelled key
+   is text only, and a glyph passed to it is not drawn. Primaries pass the same <Icon name /> with
+   no size: the key sizes it. */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--key-fill);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 150ms, box-shadow 150ms, color 150ms;
+}
+
+.btn:hover {
+  background: var(--key-hover);
+}
+
+.btn:active {
+  background: var(--active);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.btn .ic {
+  color: var(--ink-2);
+  transition: color 150ms;
+}
+
+.btn:hover .ic {
+  color: var(--ink);
+}
+
+.btn-sm {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.btn-xs {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.btn-icon {
+  width: 36px;
+  padding: 0;
+}
+
+.btn-sm.btn-icon {
+  width: 32px;
+}
+
+.btn-xs.btn-icon {
+  width: 28px;
+}
+
+.btn-primary {
+  background: var(--blue-solid);
+  box-shadow: none;
+  color: var(--on-solid);
+}
+
+.btn-primary:hover {
+  background: var(--blue-solid-hover);
+}
+
+.btn-primary:active {
+  background: var(--blue-solid-active);
+}
+
+/* Other labelled buttons are text only: no glyph, no tooltip. */
+
+.btn:not(.btn-icon) > .ic,
+.btn:not(.btn-icon) > svg {
+  display: none;
+}
+
+.btn:not(.btn-icon)[data-tip]::after,
+.btn:not(.btn-icon)[data-tip]::before {
+  display: none;
+}
+
+/* -------------- Whole-pixel widths -------------- */
+
+/* Text is measured in fractions, so a key or chip that hugs its label lands its edges, and everything
+   beside it, between pixels. This rounds the hug up to a whole pixel. Zero specificity, so a fixed,
+   stretched or flexed width elsewhere still wins. */
+
+@supports (width: calc-size(auto, round(up, size, 1px))) {
+  :where(.btn, .chip, .kbd, .hash-chip, .seg2-opt, .sb-sort, .set-readonly, .set-tk-prefix, .ev-target, .px-ref, .pd-res-label, .top-title-cell, .st-brand, .st-keys, .ld-chip, .dsoon, .skip, .tswitch-tip) {
+    width: calc-size(auto, round(up, size, 1px));
+  }
+}
+
+/* -------------- Segmented control -------------- */
+
+.seg2 {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.seg2-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  z-index: -1;
+  border-radius: 7px;
+  background: var(--seg-thumb);
+  box-shadow: var(--seg-thumb-shadow);
+  transition: transform 240ms var(--ease), width 240ms var(--ease);
+}
+
+.seg2-opt:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.seg2[data-icon-only] .seg2-opt {
+  width: 30px;
+  padding: 0;
+}
+
+/* -------------- Key chip -------------- */
+
+/* 12px, the floor for any text, on a 20px chip. */
+
+kbd.kbd,
+.kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: var(--key-fill);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 1px 0 var(--line-strong);
+  color: var(--ink-3);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* -------------- Theme switch -------------- */
+
+.tswitch {
+  position: relative;
+  flex: none;
+  width: 52px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--mass);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.07);
+}
+
+.dark .tswitch {
+  background: rgb(255 255 255 / 0.06);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+
+.tswitch:focus-visible {
+  border-radius: 8px;
+}
+
+/* A flat knob (no gradient on a control): one fill, a ring and a soft shadow, per theme. */
+
+.tswitch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--ink-3);
+  background: var(--knob);
+  box-shadow: var(--knob-shadow);
+  transition: translate 300ms var(--ease-key), color 300ms var(--ease-key);
+}
+
+.tswitch:hover .tswitch-knob {
+  color: var(--ink);
+}
+
+.dark .tswitch-knob {
+  translate: 24px 0;
+  color: var(--ink);
+}
+
+.tswitch-sun,
+.dark .tswitch-moon {
+  display: grid;
+  place-items: center;
+}
+
+.tswitch-moon,
+.dark .tswitch-sun {
+  display: none;
+}
+
+/* The [data-tip] bubble and tail exactly, plus a key chip for the D shortcut. */
+
+.tswitch-tip {
+  position: absolute;
+  z-index: var(--z-tip);
+  left: 50%;
+  bottom: calc(100% + 9px);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  translate: -50% 2px;
+  transition: none;
+}
+
+.tswitch[data-side="bottom"] .tswitch-tip {
+  bottom: auto;
+  top: calc(100% + 9px);
+  translate: -50% -2px;
+}
+
+.tswitch[data-side="bottom"] .tswitch-tip::before {
+  bottom: auto;
+  top: -3px;
+}
+
+.tswitch:hover .tswitch-tip,
+.tswitch:focus-visible .tswitch-tip {
+  opacity: 1;
+  translate: -50% 0;
+  transition: opacity 0s 150ms, translate 0s 150ms;
+}
+
+/* At a column edge the bubble ends flush with the switch, so it never crosses the rail; the tail
+   stays under the middle of the track (26px in, minus half its 10px width). */
+
+.tswitch[data-align="end"] .tswitch-tip {
+  left: auto;
+  right: 0;
+  translate: 0 2px;
+}
+
+.tswitch[data-align="end"][data-side="bottom"] .tswitch-tip {
+  translate: 0 -2px;
+}
+
+.tswitch[data-align="end"] .tswitch-tip::before {
+  left: auto;
+  right: 21px;
+  translate: 0 0;
+}
+
+.tswitch[data-align="end"]:hover .tswitch-tip,
+.tswitch[data-align="end"]:focus-visible .tswitch-tip {
+  translate: 0 0;
+}
+
+/* While the palette swaps nothing fades its own colour (the flash); animations pause, the knob
+   slides, unless the reader asked for less motion. */
+
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-switching .tswitch-knob {
+    transition: translate 300ms var(--ease-key) !important;
+  }
+}
+
+/* -------------- Copy -------------- */
+
+/* After a copy the tip stays up for its moment, even once the pointer has left. A fixed bubble
+   width keeps it from shifting as "Copy" turns into "Copied". */
+
+.copy-key[data-tip]::after {
+  min-width: 64px;
+  text-align: center;
+}
+
+.copy-key[data-copied][data-tip-align="end"]::after,
+.copy-key[data-copied][data-tip-align="end"]::before {
+  translate: 0 0;
+}
+
+/* -------------- Dialog -------------- */
+
+/* Popover material over a dim scrim. Head 20px above and below, body 24px, footer keys 36px on the
+   right. A Select or date picker inside floats in its own layer above (select.tsx, datetime-picker.tsx). */
+
+.dlg-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  background: var(--scrim);
+  animation: dlg-fade 140ms var(--ease) both;
+}
+
+.dlg[data-size="sm"] { max-width: 440px; }
+
+.dlg[data-size="md"] { max-width: 560px; }
+
+.dlg[data-size="lg"] { max-width: 640px; }
+
+.dlg:focus-visible {
+  outline: 0;
+}
+
+.dlg-close .ic {
+  color: var(--ink-3);
+}
+
+.dlg-close:hover .ic {
+  color: var(--ink);
+}
+
+@keyframes dlg-fade {
+  from { opacity: 0; }
+}
+
+@keyframes dlg-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+/* ============== Utilities ============== */
+
+/* Screen-reader only. The -1px margin keeps a box that lands after the content (the toaster's live
+   regions) from stretching the page by a pixel and adding a scrollbar to short pages. */
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.link {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

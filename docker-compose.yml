@@ -1,0 +1,24 @@
+# Local development only: the control-plane database. Never point this at a server.
+# Images are pinned to exact versions; pin them by digest before any release build.
+name: dockify-dev
+
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: dockify
+      POSTGRES_PASSWORD: dockify-local-dev
+      POSTGRES_DB: dockify
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dockify -d dockify"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 1g
+
+volumes:
+  pgdata:

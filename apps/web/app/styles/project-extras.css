@@ -1,0 +1,1088 @@
+/* Project extras: the staged variables workbench and its version history, environments, pull
+   request previews, the GitHub webhook and the status page setting, on the project and app pages.
+   Rows follow the project-detail tables: 44px soft rows, 8px inset, 13px muted heads. Each table
+   stacks by its own width (a named container), so it holds up beside the sidebar. */
+
+/* -------------- Shared bits -------------- */
+/* A switch with its visible label after it, for one option inside a dialog or a card head. */
+.px-inline-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.px-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.px-more {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 0;
+}
+
+.px-confirm-p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.px-confirm-switch {
+  margin-top: 4px;
+}
+
+/* -------------- Pending changes bar -------------- */
+.px-pending {
+  position: sticky;
+  top: var(--top-h);
+  z-index: var(--z-hover);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px var(--gutter);
+  background: var(--warn-soft);
+}
+
+.px-pending-dot {
+  flex: none;
+}
+
+.px-pending .two {
+  min-width: 0;
+}
+
+.px-pending .two-sub {
+  color: var(--ink-2);
+}
+
+.px-pending-acts {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* After Discard: the same bar, quiet, holding Undo until the next change or Dismiss. */
+.px-pending[data-quiet] {
+  background: var(--mass);
+}
+
+/* -------------- Env tools -------------- */
+.px-env-tools {
+  background: var(--panel);
+}
+
+.px-env-filter {
+  flex: 0 1 280px;
+  margin-left: auto;
+}
+
+.pd-stack > .px-env-tools {
+  border-top: 0;
+}
+
+/* A row's "more" menu: below its key, right aligned, above the next rows. Menu material, as the
+   dropdown list: 6px off its key, 10px radius, --shadow-menu. */
+.px-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.px-menu-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: var(--z-dropdown);
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--popover);
+  box-shadow: var(--shadow-menu);
+  animation: drop-in 120ms var(--ease) both;
+}
+
+.px-menu-pop[data-flip="up"] {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+/* Rows match the dropdown's options and the account menu: 36px, 14px type. */
+.px-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease), color 150ms var(--ease);
+}
+
+.px-menu-item > .ic {
+  flex: none;
+  color: var(--ink-3);
+}
+
+/* A leading node instead of an icon, such as an app tile in the Add override menu. */
+.px-menu-glyph {
+  display: inline-flex;
+  flex: none;
+}
+
+/* A row in a popover takes the popover fill, which stays visible on the dark popover. */
+.px-menu-item:hover:not(:disabled),
+.px-menu-item:focus-visible {
+  outline-offset: -2px;
+  background: var(--fill-popover);
+  color: var(--ink);
+}
+
+.px-menu-item[data-bad],
+.px-menu-item[data-bad] > .ic,
+.px-menu-item[data-bad]:hover:not(:disabled) {
+  color: var(--bad-ink);
+}
+
+.px-menu-item:disabled {
+  cursor: default;
+  opacity: var(--disabled-opacity);
+}
+
+/* -------------- Review dialog -------------- */
+.px-review-hd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.px-review-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.px-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.px-legend::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.px-legend[data-sign="add"]::before {
+  background: var(--ok-soft);
+  box-shadow: inset 0 0 0 1px var(--ok);
+}
+
+.px-legend[data-sign="remove"]::before {
+  background: var(--bad-soft);
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+
+.px-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 -8px;
+}
+
+.px-diff-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.px-diff-lines {
+  display: grid;
+  margin: 0 8px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  list-style: none;
+}
+
+.px-diff-line {
+  display: grid;
+  grid-template-columns: 24px minmax(0, max-content) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 12px 6px 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.px-diff-line[data-sign="add"] {
+  background: var(--ok-soft);
+}
+
+.px-diff-line[data-sign="remove"] {
+  background: var(--bad-soft);
+}
+
+.px-diff-sign {
+  text-align: center;
+  font-weight: 600;
+}
+
+.px-diff-line[data-sign="add"] .px-diff-sign {
+  color: var(--ok-ink);
+}
+
+.px-diff-line[data-sign="remove"] .px-diff-sign {
+  color: var(--bad-ink);
+}
+
+.px-diff-key {
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.px-diff-val {
+  min-width: 0;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.px-diff-extra {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+.px-reach {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.px-reach-hd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+
+.px-reach-title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.px-reach-list {
+  margin: 0 -8px;
+}
+
+.px-reach-row {
+  min-height: 44px;
+}
+
+.px-reach-row .two {
+  flex: 1;
+  min-width: 0;
+}
+
+.px-reach-row .env-tag,
+.px-reach-row .chip {
+  flex: none;
+}
+
+.px-reach-none {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+}
+
+.px-paste-opts {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  align-items: end;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.px-paste-secret {
+  min-height: 36px;
+}
+
+/* -------------- Version history -------------- */
+.px-ver-wrap {
+  container: px-vers / inline-size;
+  display: flex;
+  flex-direction: column;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+.px-vers {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.px-ver {
+  border-radius: 10px;
+  transition: background-color 150ms var(--ease);
+}
+
+.px-ver:hover,
+.px-ver[data-open] {
+  background: var(--hover);
+}
+
+.px-ver-row {
+  --cols: minmax(0, 1fr) 72px 88px;
+  gap: 12px;
+  min-height: 56px;
+  padding: 0 8px 0 0;
+}
+
+.px-ver-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 100%;
+  min-height: 56px;
+  padding: 0 0 0 8px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* The global ring, drawn inside: the row runs to its list's edge. */
+.px-ver-toggle:focus-visible {
+  outline-offset: -2px;
+}
+
+.px-ver-toggle .two {
+  min-width: 0;
+}
+
+.px-ver-chev {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.px-ver-num {
+  flex: none;
+  min-width: 40px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.px-ver-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.px-ver-when {
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.px-ver-act {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.px-ver-changes {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0 8px 12px 60px;
+  list-style: none;
+}
+
+.px-ver-change {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) minmax(0, auto) 128px;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.px-ver-sign {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-align: center;
+}
+
+.px-ver-sign[data-op="add"] {
+  color: var(--ok-ink);
+}
+
+.px-ver-sign[data-op="change"] {
+  color: var(--warn-ink);
+}
+
+.px-ver-sign[data-op="remove"] {
+  color: var(--bad-ink);
+}
+
+.px-ver-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.px-ver-scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.px-ver-app {
+  color: var(--ink-muted);
+}
+
+.px-ver-target {
+  color: var(--ink-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* -------------- Environments -------------- */
+.px-envs-wrap,
+.px-prevs-wrap {
+  display: flex;
+  flex-direction: column;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+.px-envs-wrap {
+  container: px-envs / inline-size;
+}
+
+.px-prevs-wrap {
+  container: px-prevs / inline-size;
+}
+
+.px-envs,
+.px-prevs {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.px-env-row,
+.px-prev {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 20px;
+  transition: background-color 150ms var(--ease);
+}
+
+li.px-env-row:hover,
+li.px-prev:hover {
+  background: var(--hover);
+}
+
+.px-env-head,
+.px-prev-head {
+  min-height: 36px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.px-env-row {
+  --cols: 160px minmax(0, 1fr) 96px 104px;
+}
+
+/* A flex cell, so the 20px env tag centres on the row instead of riding a taller line box. */
+.px-env-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.px-env-branch {
+  min-width: 0;
+}
+
+.px-env-ref {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.px-env-ref .ic {
+  flex: none;
+  color: var(--ink-3);
+}
+
+a.px-env-ref {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.px-env-row[data-kind="preview"] .px-env-ref {
+  font-family: var(--font-sans);
+  color: var(--ink-3);
+}
+
+.px-env-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+/* The compact field (data-size="sm"), in the mono face of the branch it edits. */
+.px-env-edit .field {
+  font-family: var(--font-mono);
+}
+
+.px-env-edit .pd-lead-field > .ic {
+  top: 9px;
+}
+
+.px-env-err {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--bad-ink);
+}
+
+.px-env-apps {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.px-env-acts,
+.px-prev-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* -------------- Previews -------------- */
+.px-prev-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.px-prev-opts:disabled .two,
+.px-prev-apps:has(input:disabled) .two {
+  opacity: var(--disabled-opacity);
+}
+
+.px-prev-cap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.px-prev-cap .two {
+  min-width: 0;
+}
+
+.px-prev-cap .sel {
+  flex: none;
+  width: 148px;
+}
+
+.px-prev-apps {
+  margin: 0 -8px;
+}
+
+.px-prev {
+  --cols: 24px minmax(0, 1fr) round(down, calc((100% - 376px) * 0.4167), 1px) 128px 72px 92px;
+  min-height: 56px;
+  padding: 8px;
+}
+
+.px-prev-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.px-prev-use {
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.px-prev[data-status="closed"] .px-prev-id,
+.px-prev[data-status="closing"] .px-prev-id {
+  opacity: 0.7;
+}
+
+.px-prev-dns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.px-prev-dns-hd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.px-prev-dns-hd .btn {
+  margin-left: auto;
+}
+
+.px-prev-id {
+  min-width: 0;
+}
+
+.px-prev-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.px-prev-pr {
+  flex: none;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+.px-prev-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  min-width: 0;
+}
+
+.px-prev-sub .ic {
+  flex: none;
+}
+
+.px-prev-branch {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.px-prev-url {
+  display: flex;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.px-prev-when {
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+/* -------------- Status page -------------- */
+.px-status-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 720px;
+  padding: 24px var(--gutter) 32px;
+}
+
+.px-status-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px 0 16px;
+  border-radius: 10px;
+  background: var(--mass);
+  color: var(--ink-3);
+}
+
+.px-status-link > .ic {
+  flex: none;
+}
+
+.px-status-url {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.px-status-url .ic {
+  flex: none;
+  color: var(--ink-4);
+  transition: color 150ms var(--ease);
+}
+
+.px-status-url:hover .ic {
+  color: var(--ink);
+}
+
+/* -------------- Linked variables -------------- */
+/* A link shows what it points at, never a value: a soft chip with the link glyph. Revealed, the
+   resolved value sits on a line under it. */
+.px-ref-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.px-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 20px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--blue-ink);
+  background: var(--blue-soft);
+}
+
+.px-ref .ic {
+  flex: none;
+}
+
+.px-ref-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.px-ref[data-missing] {
+  color: var(--bad-ink);
+  background: var(--mass);
+}
+
+/* What to do about a broken link, in words under its chip. */
+.px-ref-note {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--bad-ink);
+}
+
+/* The dialog: services as a picked list, then one row per variable it fills. */
+.px-link {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.px-link-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.px-link-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease), box-shadow 150ms var(--ease);
+}
+
+/* Picked is the foundation surface-key-picked; hover is the popover fill, which stays visible in dark. */
+.px-link-opt:not(.surface-key-picked):hover {
+  background: var(--fill-popover);
+}
+
+/* Inside, because the dialog body scrolls and would clip a ring drawn outside the row. The row
+   carries the one ring; its radio's own ring stays clear (forced colours still draw it). */
+.px-link-opt:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+
+.px-link-opt > .radio:focus-visible {
+  outline-color: transparent;
+}
+
+.px-link-opt[data-off] {
+  cursor: default;
+  opacity: var(--disabled-opacity);
+}
+
+/* The row is dimmed already; its radio does not dim a second time. */
+.px-link-opt[data-off] > .radio:disabled {
+  opacity: 1;
+}
+
+.px-link-opt[data-off]:hover {
+  background: none;
+}
+
+.px-link-opt .two {
+  flex: 1;
+  min-width: 0;
+}
+
+.px-link-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.px-link-legend {
+  margin-bottom: 4px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.px-link-field {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 120px;
+  align-items: start;
+  gap: 12px;
+}
+
+.px-link-field > input[type="checkbox"] {
+  margin-top: 10px;
+}
+
+.px-link-key {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.px-link-key .field {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.px-link-msg {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.px-link-what {
+  padding-top: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* Each table stacks by its own width, at the scale's steps: environments, webhook deliveries and
+   versions fit in columns down to 520px, previews (six columns) down to 760px. */
+@container px-envs (width < 520px) {
+  .px-env-head {
+    display: none;
+  }
+  .px-env-row {
+    --cols: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name acts"
+      "branch acts"
+      "apps acts";
+    gap: 4px 12px;
+    padding: 12px 8px;
+  }
+  .px-env-name { grid-area: name; }
+  .px-env-branch { grid-area: branch; }
+  .px-env-apps { grid-area: apps; }
+  .px-env-acts { grid-area: acts; align-self: center; }
+}
+
+@container px-prevs (width < 760px) {
+  .px-prev-head {
+    display: none;
+  }
+  .px-prev {
+    --cols: 24px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "icon id id"
+      "icon url url"
+      "icon use use"
+      "icon when acts";
+    gap: 4px 12px;
+    padding: 12px 8px;
+  }
+  .px-prev > .st-app { grid-area: icon; align-self: start; }
+  .px-prev-id { grid-area: id; }
+  .px-prev-url { grid-area: url; }
+  .px-prev-use { grid-area: use; }
+  .px-prev > .px-prev-when { grid-area: when; text-align: left; }
+  .px-prev-acts { grid-area: acts; align-self: center; }
+}
+
+@container px-vers (width < 760px) {
+  .px-ver-change {
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+  }
+  .px-ver-target {
+    display: none;
+  }
+}
+
+@container px-vers (width < 520px) {
+  .px-ver-row {
+    --cols: minmax(0, 1fr) auto;
+  }
+  .px-ver-when {
+    display: none;
+  }
+  .px-ver-toggle .two-sub {
+    white-space: normal;
+  }
+  /* 34px: the toggle's 8px inset, the 14px chevron and its 12px gap, so changes start under the version. */
+  .px-ver-changes {
+    padding-left: 34px;
+  }
+  .px-ver-change {
+    grid-template-columns: 16px minmax(0, 1fr);
+    gap: 2px 8px;
+    padding: 6px 0;
+  }
+  .px-ver-scope {
+    grid-column: 2;
+  }
+}
+
+/* Outside the tables: the sticky bar, the toolbar search and the dialog and settings rows follow the viewport. */
+@media (max-width: 760px) {
+  .px-pending {
+    flex-wrap: wrap;
+  }
+  /* Under the dot and its gap, so the keys line up with the text. */
+  .px-pending-acts {
+    margin-left: 20px;
+  }
+  .px-pending[data-quiet] .px-pending-acts {
+    margin-left: 0;
+  }
+  .px-env-filter {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+  .px-paste-opts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .px-prev-cap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .px-prev-cap .sel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .px-link-field {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+  .px-link-what {
+    display: none;
+  }
+  .px-diff-line {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+  .px-diff-val,
+  .px-diff-extra {
+    grid-column: 2;
+  }
+  .pd .card-hd > .chip {
+    margin-left: 44px;
+  }
+}

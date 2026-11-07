@@ -1,0 +1,8 @@
+{
+  "name": "dockify-prisma-cli",
+  "private": true,
+  "description": "The migration CLI baked into the control image. Keep the version equal to the prisma version in pnpm-lock.yaml.",
+  "dependencies": {
+    "prisma": "6.19.3"
+  }
+}

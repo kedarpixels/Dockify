@@ -1,0 +1,14 @@
+Dockify's control image ships these tools unchanged, fetched and checked against a sha256 when the
+image is built (deploy/Dockerfile). Dockify does not copy their source.
+
+Railpack (https://github.com/railwayapp/railpack)
+  Copyright (c) 2025 Railway Corp. MIT License. Its license is in the image at
+  /opt/dockify/builders/LICENSE.railpack.
+
+mise (https://github.com/jdx/mise)
+  Copyright (c) 2025 Jeff Dickey. MIT License. Its license is in the image at
+  /opt/dockify/builders/LICENSE.mise.
+
+Simple Icons (https://simple-icons.org)
+  The marks in apps/web/components/new-app/template-icons.ts, version 16.32.0. CC0-1.0. Each mark
+  remains the trademark of its owner.

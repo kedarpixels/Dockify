@@ -1,0 +1,22 @@
+{
+  "name": "@dockify/notify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dockify/contracts": "workspace:*",
+    "@dockify/net-guard": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

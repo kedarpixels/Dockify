@@ -1,0 +1,74 @@
+---
+title: "Environment variables"
+description: "At the end you will know how to set variables per environment or per app, review the diff, apply it, and roll back to any earlier version."
+---
+
+## Where variables live
+
+Variables belong to a project environment, for example `production`. Every app in that environment gets them. An app can also have its own **overrides**, which win over the environment value for that app only. The dashboard shows them on each project's **Variables** tab.
+
+Each variable has:
+
+| Field | Meaning |
+|---|---|
+| Key | Letters, digits and underscores, not starting with a digit. Up to 128 characters. |
+| Value | Up to 64 KB. |
+| Secret | Masked in the dashboard and never returned by the api unless revealed. |
+| Target | `build`, `runtime` or `both`. Build values reach the build only, never the running container. |
+
+Every value is sealed on its own with AES-256-GCM before it is stored, with a fresh key per value bound to its row. The master key never enters the database.
+
+`PORT` and every key starting with `DOCKIFY_` are set by Dockify itself, so an app cannot set them.
+
+### At build time
+
+At build time, without a Dockerfile, install and build commands see every build-visible variable as an environment variable, and none is stored in the image. From a Dockerfile, a plain variable is a build argument: read it with `ARG KEY`. A secret is never a build argument, whatever its target: read it with `RUN --mount=type=secret,id=KEY` (or `env=KEY`), so it does not stay in the image's history.
+
+```dockerfile
+ARG NEXT_PUBLIC_SITE_URL
+RUN --mount=type=secret,id=SENTRY_AUTH_TOKEN,env=SENTRY_AUTH_TOKEN npm run build
+```
+
+## Edit, review, apply
+
+Changes are staged, not saved one by one. You edit as many keys as you like, across environments and app overrides, then review the diff before anything changes.
+
+<Steps>
+
+1. **Edit.** Add, change or remove keys. Nothing is live yet.
+2. **Review.** The diff lists every change as add, change or remove, by environment and app. Secret values stay masked in the diff.
+3. **Apply.** Choose whether to redeploy the affected apps now. Applying writes one new version of the project's variables and, if you chose it, starts the redeploys.
+
+</Steps>
+
+Applying asks you to confirm it is you, because a variable can change what code runs. A swapped `DATABASE_URL` or an added `NODE_OPTIONS` is as powerful as a code change.
+
+### Conflicts
+
+Every apply names the version it was based on. If someone else applied in the meantime, yours is refused with the current version number, and the dashboard shows you their changes so you can rebase yours on top. Nobody's edit is lost to a race.
+
+## History and diff
+
+Every apply, from the dashboard, the api or a rollback, is a numbered version with who made it, when, the list of changes and how many apps were redeployed. Values are not shown in the history, only which keys changed and how.
+
+## Rollback
+
+Pick any earlier version and roll back. Dockify writes a **new** version whose contents equal the old one, marked as restored from it, so the history never loses a step. As with apply, you choose whether to redeploy, and you confirm it is you.
+
+## Revealing a secret
+
+A secret value is shown only when an admin asks for that one key. Each reveal is rate limited and written to the activity log.
+
+## Keys that need care
+
+Some keys change what runs before your app's own code starts, such as `NODE_OPTIONS`, `LD_PRELOAD`, `PYTHONPATH`, `JAVA_TOOL_OPTIONS` and `BASH_ENV`. Setting one asks for an explicit confirmation on top of confirming it is you, and is written to the activity log. An API token can never set one.
+
+## From the API
+
+A token with the `admin` scope and the explicit `env:write` grant can apply plain values. It can never write secret values or the keys above. See [API tokens and API](/docs/api).
+
+## What can go wrong
+
+- **"Someone applied env changes after you loaded them".** Reload, review their version and apply yours again on top.
+- **A value changed but the app did not.** Running containers keep the variables they started with. Apply with redeploy, or deploy the app.
+- **A build needs a value at build time.** Set its target to `build` or `both`. A secret target `build` is read with `RUN --mount=type=secret`, never `ARG`: an `ARG` of a secret is empty.

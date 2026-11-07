@@ -1,0 +1,55 @@
+---
+title: "Scheduled jobs"
+description: "Run a command on a schedule, in its own short-lived container, from an app's current image and with its variables."
+---
+
+## What a job is
+
+A job is a cron schedule and a command on an app. Open the app, then **Jobs**, then **New job**.
+
+Each run is a new container from the image the app is serving, on the app's network, with the variables its current deployment runs with and the app's CPU, memory and process limits. It is removed when it ends. A run never touches the app's own container, and never runs inside Dockify.
+
+Jobs are for apps Dockify runs. A managed database and an app on Vercel do not have them.
+
+| Field | Notes |
+|---|---|
+| Name | Lowercase letters, digits and hyphens. |
+| Schedule | Five-field cron: minute, hour, day of month, month, day of week. At least 5 minutes apart. |
+| Time zone | An IANA name, such as `Europe/Berlin`. A time skipped by a clock change does not run that day. A time repeated by one runs once. |
+| Command | Runs like a start command: as a plain program with no shell, unless it uses quotes, variables or `&&`, which need a shell in the image. |
+| Timeout | From 10 seconds to 2 hours. A run past it is stopped and counts as failed. |
+| If the last run is still going | **Skip** records this run as skipped. **Replace** stops the last run and starts this one. |
+
+A job that is off keeps its history and **Run now**, and never fires on its own.
+
+## Run now and history
+
+**Run now** starts a run at once. A viewer can read jobs and their history, without the command's text, but not change or run them. Changing a job asks you to confirm it is you, since its command runs with the app's secrets, and the activity log records every change, without the command's text.
+
+Each job keeps its last 50 runs, for at most 30 days, with the exit code and the last 256 KiB of output. Secrets are hidden from the output before it is stored.
+
+A run shows as one of:
+
+| Status | Means |
+|---|---|
+| Succeeded, Failed | It ran, and exited with that code. |
+| Timed out | It ran past its timeout and was stopped. |
+| Skipped | It did not run: the last run was still going, the app is stopped or not yet deployed, or too many runs were waiting. |
+| Missed | Dockify was not running when it was due. |
+| Cancelled | A newer run replaced it, or Dockify's worker restarted while it ran. It is not started again. |
+
+## When Dockify was down
+
+Nothing piles up while the server is down. A job that was due is due once, however many times it was missed. If that time is within 5 minutes it runs. Older than that, it is written to the history as **Missed** and the job waits for its next time, so a 3am report does not arrive at 9am, and a reboot does not start every job at once.
+
+If a run has to happen after a miss, use **Run now**, or make the job safe to run often.
+
+## Limits
+
+An app can have 10 jobs. A server runs 3 runs at once, and keeps 20 waiting; a run due past that is recorded as skipped. Jobs that are due at the same minute start spread over 30 seconds.
+
+A run has no access to the app's volumes, so a job does not become a second writer on its data. Reach data through the app's own database or an API.
+
+## Alerts
+
+A job that starts failing or timing out sends one **Scheduled job failed** notice to your webhooks and to admins by email, then stays quiet until it has succeeded again. Turn it off under **Settings > Notifications**. See [Alerts](/docs/alerts).

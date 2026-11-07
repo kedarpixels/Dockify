@@ -1,0 +1,76 @@
+---
+title: "FAQ"
+description: "Short answers to the questions people ask before and after they install."
+---
+
+## Who is Dockify for?
+
+People who run several projects on one VPS and want them to stay up. If you need many servers today, Coolify or Dokploy will suit you better.
+
+## How is it different from Coolify or Dokploy?
+
+It does less, on purpose. Today it runs on one server and spends its effort on safe deploys, tested backups, clean disks and a locked-down control plane. See the [comparison](/compare) for details and sources.
+
+## Can it really deploy with zero downtime?
+
+Yes, for stateless apps. The new version must pass its readiness check before traffic moves, and the old one keeps serving until then. Apps with a volume and databases deploy stop then start, and the app page tells you before you deploy.
+
+## What happens if a deploy fails?
+
+The old version keeps serving. The deploy is marked failed with the reason. To hear about it, add an alert rule or turn on notifications: see [Alerts and notifications](/docs/alerts).
+
+## Where do my backups go?
+
+To your own S3-compatible bucket, such as Cloudflare R2, Backblaze B2 or AWS S3. They are encrypted on the server before they leave it. Until you add a bucket, they are kept on the server's own disk, which is not off the server. See [Backups and restore](/docs/backups).
+
+## Do I need a domain to install?
+
+Not to try it. Press Enter at the prompt and the dashboard starts on a temporary `sslip.io` address, such as `https://203-0-113-10.sslip.io`, with a real certificate. For real use, move it to your own domain in Settings, Instance: sslip.io is a free third-party service, and your address depends on it. Dockify checks the new domain first, and the old address keeps working and redirects, so you cannot lock yourself out. See [the dashboard's own domain](/docs/domains#the-dashboards-own-domain).
+
+## Can I try an app without a domain?
+
+Yes. **Use a free test domain** gives it an address on sslip.io with HTTPS and nothing to set up. It is for trying things out; use your own domain for real traffic. See [a free test domain](/docs/domains#a-free-test-domain).
+
+## Do I have to use Cloudflare?
+
+No. Direct mode only needs ports 80 and 443, and uses Let's Encrypt. A tunnel is the option that opens no ports beyond SSH: see [Install](/docs/install#cloudflare-tunnel-or-direct-tls). In direct mode a domain can still sit on Cloudflare, [proxied or DNS only](/docs/domains#behind-cloudflares-proxy). Connect Cloudflare and Dockify can pick zones, create records and warn about SSL/TLS modes that break a domain. See [Cloudflare automation](/docs/domains#cloudflare-automation).
+
+## Does my app need a Dockerfile?
+
+No. A repository with a Dockerfile uses it. One without builds with Railpack: Next.js, Node, Python, Go, static sites and more, with the commands detected before you deploy and yours to change. A ready image from a registry needs nothing.
+
+## Can I move off Vercel?
+
+Yes. Connect your Vercel account to import a project's variables and domains, deploy on your server, then point the domain at Dockify. Or leave a project on Vercel: Dockify can follow its deployments and logs without deploying it or changing anything there, or, if you choose, push variables and ask Vercel to deploy. See [Vercel](/docs/vercel).
+
+## How do updates work?
+
+Automatically, by default, from static release files signed with minisign. Updates install in a maintenance window you choose, or only for security releases, or only when you click. Before an update, Dockify dumps its own database. If anything fails, it restores the dump and starts the previous version on its own. Nothing phones home: the check is a plain download of two files. See [Updates](/docs/updates).
+
+## Does it have preview deploys?
+
+Yes. With the GitHub App connected, turn them on per project and every pull request gets its own copy at `pr-<n>-<app>.<your preview domain>`, with a sticky comment and a commit status, asleep when idle and deleted on close or merge. See [Pull request previews](/docs/previews).
+
+## Is there a CLI?
+
+On the server, yes: the `dockify` command runs the stack, updates, account rescue and uninstall. See [The dockify command](/docs/cli). A client for your own machine is <Soon />.
+
+## Can I run any Docker image?
+
+Yes, as long as it runs without host privileges. Dockify never publishes host ports, runs privileged containers, or mounts host paths. Traffic reaches your app through the proxy, by domain.
+
+## Does Dockify support Docker Compose?
+
+You can paste a Compose file and Dockify proposes one app per service, listing what it did not import, such as host ports or bind mounts, and why. See [Deploy sources](/docs/sources#compose-import).
+
+## Which servers does it run on?
+
+Ubuntu 22.04 or 24.04 on amd64 or arm64. We tested on 2 vCPU, 4 GB of memory and 49 GB of disk; leave room for your apps and their builds.
+
+## What does it cost?
+
+Nothing. Dockify is open source under the Apache License 2.0 and runs on your server. You pay your VPS provider.
+
+## What if I lose the server?
+
+Keep two things off the server: your backup bucket, and a copy of `/opt/dockify/secrets/master_key`. Every backup run writes the backup key, sealed under the master key, next to the dumps, so the dumps can be decrypted later. <Soon /> Restoring them on a new server from the dashboard; until then, see [Recovery](/docs/recovery#if-you-lose-the-server).

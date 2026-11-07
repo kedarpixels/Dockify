@@ -1,0 +1,54 @@
+---
+title: "Contributing"
+description: "How to report a problem, propose a change and send a pull request, and the checks a change has to pass."
+---
+
+## Ways to help
+
+- **Report a bug.** <RepoLink path="issues/new">Open an issue</RepoLink> with what you did, what you expected and what happened, plus the deployment log or the service log with secrets removed.
+- **Fix something small.** Typos, copy, a clear bug: send a pull request.
+- **Propose something larger.** Open an issue first, so we can agree on the shape before you spend the time. Dockify stays small on purpose; [Open source](/open-source#no) lists what we will say no to.
+- **Report a vulnerability.** Never in a public issue. See the [Security](/security#report) page.
+
+## The repository
+
+One repository holds the api, the worker, the on-server agent, the dashboard, the installer and this site. [Open source](/open-source#repo) lists every folder.
+
+- `apps/api`, `apps/worker`, `apps/agent` and `packages/*` are one pnpm workspace at the root, on Node 22.18 or newer.
+- `apps/web` (the dashboard) has its own pnpm install.
+- `apps/site` (this site and the docs) has its own npm install.
+
+## The checks
+
+Run the checks for what you changed before you open a pull request.
+
+```bash
+# api, worker and packages, from the repository root
+pnpm install
+pnpm typecheck
+pnpm test
+
+# the dashboard
+cd apps/web && pnpm install && pnpm typecheck && pnpm lint && pnpm test
+
+# this site
+cd apps/site && npm ci && npm run typecheck && npm run lint && npm run build
+```
+
+Tests that need Postgres read its address from `DATABASE_URL_TEST`.
+
+## A good pull request
+
+- **One change.** A focused diff is reviewed faster than a mixed one.
+- **Tests with the fix.** A bug fix comes with the test that would have caught it.
+- **Screens for UI.** A change to the dashboard or the site shows desktop and phone widths, in light and dark.
+- **Plain words.** Copy and comments use short sentences and the dashboard's own words, and no em or en dashes.
+- **No secrets.** Never paste a token, a key or a real customer's data into an issue, a test or a screenshot.
+
+## How we work together
+
+Be kind, assume good faith, and keep to the technical point. Personal attacks and harassment are not welcome in issues, pull requests or reviews. A code of conduct file is not in the repository yet; until it is, these lines are the expectation.
+
+## License of contributions
+
+What you submit for inclusion is under the [Apache License 2.0](/docs/license), the same as the rest of Dockify, unless you say otherwise when you submit it.

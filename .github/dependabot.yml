@@ -1,0 +1,33 @@
+# Dependency updates for every lockfile and for the pinned images and actions. Security updates
+# open at once; the rest are batched weekly so the audit gate in ci.yml sees them together.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      monorepo-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      web-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule:
+      interval: weekly

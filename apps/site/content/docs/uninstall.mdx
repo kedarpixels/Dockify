@@ -1,0 +1,88 @@
+---
+title: "Uninstall"
+description: "One command removes what the installer wrote. It shows its plan first, backs up the master key, and keeps your data unless you ask."
+---
+
+## The one-liner
+
+```bash
+curl -fsSL https://dockify.sh/uninstall.sh | sh
+```
+
+On the server itself, `sudo dockify uninstall` runs the same script: the copy the installer saved, or the published one, checked against its SHA-256. Flags go after `sh -s --`, or straight after `dockify uninstall`:
+
+```bash
+curl -fsSL https://dockify.sh/uninstall.sh | sh -s -- --dry-run
+sudo dockify uninstall --dry-run
+```
+
+## What it does
+
+It shows the plan first, then asks you to type your dashboard domain (or `uninstall` when it cannot find one). Then, in this order:
+
+<Steps>
+
+1. **Backs up the keys.** The master key, `secrets/`, `.env` and `release.env` are copied to `/root/dockify-backup-<time>/`, readable by root only.
+2. **Stops the stack**, then removes every container Dockify manages, the apps it deployed included.
+3. **Removes the firewall service** (`dockify-firewall.service`, `/usr/local/sbin/dockify-firewall`) and its live iptables rules.
+4. **Removes the `dockify` command** and the apt rule `/etc/apt/apt.conf.d/52dockify-docker`.
+5. **Tunnel mode: deletes the tunnel** `dockify-<host>-<id>` and every CNAME pointing at it, through the Cloudflare API. Without a token it prints exactly what to delete in the Cloudflare dashboard.
+6. **With `--purge` only:** deletes every Dockify volume, network and built image, and Dockify's own images (control, web, Postgres, Traefik, BuildKit, the socket proxy, cloudflared). One another container still uses stays, and the uninstaller names it.
+7. **Removes the install folder**, `/opt/dockify` by default.
+
+</Steps>
+
+**Kept by default:** Dockify's data volumes and your apps' volumes and networks, each listed in the plan. Docker, ufw and its rules, unattended upgrades and Docker's apt repository always stay.
+
+**Installing again** on a server with that data picks it up. The installer sees the kept `dockify_dockify-db` volume and uses the secrets from the newest `/root/dockify-backup-*`, since a new password could not open that database. Your accounts, projects and settings come back as they were, and you sign in as before. So keep that backup until you know you are done with the data. With no such backup, the installer stops and changes nothing: put the old `secrets/` back in a `/root/dockify-backup-<any>/` folder, or delete the data with `--purge`.
+
+**Your apps do not start by themselves after that.** The uninstall removed their containers, and only a deploy makes one. Their settings, variables and volumes are all there, so open each one in the dashboard and press **Deploy**, databases first, then the apps that use them. The installer prints the same. `dockify redeploy` does not do this: it recreates Dockify's own services. In tunnel mode the install has a new tunnel, so an app domain routed through the old one leads nowhere: in **Settings > Integrations**, connect Cloudflare again, then remove each such domain and add it again.
+
+**What stays on the server, and why.** The uninstaller prints this too.
+
+- **Docker, ufw and its rules, unattended upgrades, Docker's apt repository.** They are yours, and something else may use them.
+- **`/etc/docker/daemon.json`, with `default-address-pools`,** which the installer adds when the file sets none. The file may hold your other settings and a change to it takes a Docker restart, so the uninstaller never edits it and never restarts Docker. It only decides where new Docker networks get addresses. To undo it, delete that key and run `sudo systemctl restart docker`, which stops every container on the server for a few seconds. The file as it was before Dockify is next to it, as `daemon.json.before-dockify`, when there was one.
+- **Dockify's own images,** about 2 GB, without `--purge`, so that installing again need not download them.
+- **Images your apps pulled,** such as nginx or a managed Postgres, even with `--purge`: Dockify cannot tell them from yours. `docker image prune -a` removes every image no container uses.
+- **`/root/dockify-backup-*`,** readable by root only. Keep it until you are done with the data, then delete it.
+
+For the tunnel cleanup it needs a Cloudflare token with `Account:Cloudflare Tunnel:Edit` and `Zone:DNS:Edit`. It takes, in order: `--cf-token-file`, the `DOCKIFY_CF_API_TOKEN` variable, `secrets/cf_api_token`, or a hidden prompt on the terminal. Run as a user other than root, the one-line uninstall switches to root with `sudo`, which drops `DOCKIFY_CF_API_TOKEN`: run it as root, or use `--cf-token-file`.
+
+## Flags
+
+| Flag | What it does |
+|---|---|
+| `--dry-run` | Print the plan and change nothing. |
+| `--yes` | Skip the confirmation prompts, for automation. |
+| `--keep-data` | The default. Keeps Dockify's volumes and your apps' volumes and networks. |
+| `--purge` | Also delete every Dockify volume, network and image. Asks a second time. |
+| `--no-backup` | With `--purge`, skip the backup of the master key and secrets. |
+| `--reboot` | Reboot when done, so no firewall rule stays loaded. |
+| `--dir PATH` | Install folder, if not `/opt/dockify`. |
+| `--cf-token-file PATH` | Cloudflare token for the tunnel cleanup. |
+
+Reboot afterwards, or pass `--reboot`, to start from a clean firewall state.
+
+## By hand
+
+If the script cannot run, these commands remove the same files and keep your data. Delete the tunnel and its CNAME in Cloudflare yourself.
+
+```bash
+sudo dockify down
+sudo docker ps -aq --filter label=dockify.managed=true | xargs -r sudo docker rm -f
+sudo docker ps -aq --filter label=dockify.app | xargs -r sudo docker rm -f
+sudo systemctl disable --now dockify-firewall.service
+sudo rm -f /etc/systemd/system/dockify-firewall.service /usr/local/sbin/dockify-firewall
+sudo systemctl daemon-reload
+sudo rm -f /usr/local/bin/dockify /etc/apt/apt.conf.d/52dockify-docker
+sudo mkdir -m 700 /root/dockify-backup
+sudo cp -a /opt/dockify/secrets /opt/dockify/.env /root/dockify-backup/
+sudo rm -rf /opt/dockify
+sudo reboot
+```
+
+## What can go wrong
+
+- **"the Docker daemon is not running".** Containers, volumes and networks cannot be checked or removed. Start it with `sudo systemctl start docker` and run the uninstall again.
+- **"... does not look like a Dockify install".** The folder has no `.env` or `docker-compose.yml` naming `DOCKIFY_PUBLIC_URL`, and no `secrets/master_key`. Check `--dir`.
+- **The tunnel is still there.** No Cloudflare token was given. Delete the tunnel and its CNAME records in the Cloudflare dashboard, as the plan printed.

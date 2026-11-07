@@ -1,0 +1,1755 @@
+/* Shell layer: skip link, sidebar, top bar, command menu, notifications, account menu, phone menu,
+   not found. Geometry: every leading glyph sits in a 24px slot 24px from the sidebar edge (centre
+   x = 36), in both widths (264 open, 72 collapsed). Collapsing clips and fades labels; nothing moves.
+   The sidebar brand cell and the top bar are both 56px, so their bottom rules are one line.
+   Order: base rules, then the tablet-up block and the phone blocks (on the foundation.css scale).
+   Reduced motion is foundation.css's one global block. */
+
+.shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-columns: 264px minmax(0, 1fr);
+}
+
+:root[data-sidebar="collapsed"] .shell {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+/* Transitions switch on a frame after load, so restoring a stored width does not animate. */
+.shell[data-ready="true"] {
+  transition: grid-template-columns 220ms var(--ease);
+}
+
+.shell-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.kbd-ic {
+  width: 20px;
+}
+
+/* -------------- Focus: skip link, main region, scroll padding -------------- */
+
+/* Skip link: the first Tab stop on every console page, out of sight until the keyboard reaches it.
+   Then it is a key over the brand cell, centred on the 56px bar, above the sidebar and the bar. */
+.skip-link:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link:focus {
+  position: fixed;
+  z-index: var(--z-popover);
+  top: 10px;
+  left: 12px;
+}
+
+/* The page's main region takes focus from the skip link and after a navigation, by script only
+   (tabindex -1). It is a landing spot, not a control, so it draws no ring. */
+.shell-main > main:focus {
+  outline: 0;
+}
+
+/* The sticky top bar never covers what focus or an anchor scrolls to: the bar plus a 16px gap. */
+html:has(.shell) {
+  scroll-padding-top: calc(var(--top-h) + 16px);
+}
+
+/* -------------- Sidebar -------------- */
+
+.side {
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+  min-width: 0;
+}
+
+/* Visible overflow so nodes can sit centred on the rail; each cell clips its own content. */
+.side-inner {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+/* Brand cell: 56px, the logo in the 24px slot, then the name. The rule under it is an inset
+   shadow, not a border, so the content box keeps all 56px and the 24px logo sits on whole pixels
+   (a border leaves 55px and centres it at 15.5). */
+.side-brand,
+:root[data-sidebar="collapsed"] .shell .side-brand {
+  position: relative;
+  height: var(--top-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 24px;
+  justify-content: flex-start;
+  box-shadow: inset 0 -1px var(--line);
+}
+
+.logo {
+  width: 33px;
+  height: 24px;
+  flex: none;
+  display: block;
+  object-fit: contain;
+}
+
+.side-mark {
+  position: relative;
+  width: 33px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+}
+
+/* Collapsed, the logo is the expand key: hovered, it shows the sidebar glyph instead. */
+.side-mark-expand {
+  position: absolute;
+  inset: 0;
+  display: none;
+  place-items: center;
+}
+
+.side-mark-expand .ic {
+  width: 18px;
+  height: 18px;
+}
+
+button.side-mark:hover .logo {
+  visibility: hidden;
+}
+
+button.side-mark:hover .side-mark-expand {
+  display: grid;
+  color: var(--ink);
+}
+
+/* Brand word in the pixel face, 18px, exactly as the site's header and the sign-in pages set it
+   (owner: one wordmark everywhere). The pixel face has one weight, so no bold is asked of it. */
+.side-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-pixel);
+  font-feature-settings: "ss09";
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+/* Collapse key: 32px icon key pinned right, so the open width never has to fit it when collapsed.
+   Its centre is x = 228, 36 from the right edge: the right-hand twin of the glyph line at x = 36,
+   shared with the add key, the project dots and the more key. */
+.side-toggle {
+  position: absolute;
+  top: 12px;
+  right: 20px;
+}
+
+/* Its tip: the [data-tip] bubble to the right of the key, plus the Ctrl B chips, like the theme
+   switch's "Toggle theme  D". Shows whole after 150ms and hides at once, as every tip does. */
+.side-key-tip {
+  position: absolute;
+  z-index: var(--z-tip);
+  top: 50%;
+  left: calc(100% + 10px);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  translate: -2px -50%;
+  transition: none;
+}
+
+.side-toggle:hover .side-key-tip,
+.side-toggle:focus-visible .side-key-tip {
+  opacity: 1;
+  translate: 0 -50%;
+  transition: opacity 0s 150ms, translate 0s 150ms;
+}
+
+/* Its key chips are the shared .tip-kbd (foundation.css), as in the theme switch's tip. */
+.side-key-tip-keys {
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* Search cell: a 36px key on the surface-key material, no rule under it. It spans the nav pills'
+   own 12px insets (48px wide when collapsed, like them); the 16px left padding keeps the glyph
+   centred on x = 36, and the right padding ends the K chip on the right-hand line at x = 240. */
+.side-search-cell {
+  position: relative;
+  flex: none;
+  padding: 12px 12px 4px;
+}
+
+.side-search {
+  width: 100%;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 0 16px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: box-shadow 150ms, color 150ms;
+}
+
+.side-search:hover {
+  box-shadow: var(--key-hover-shadow);
+  color: var(--ink);
+}
+
+.side-search:active {
+  translate: 0 1px;
+}
+
+.side-search-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.side-search-keys {
+  flex: none;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.side-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The global thin scrollbar, a little slimmer where WebKit lets it be. */
+.side-scroll::-webkit-scrollbar,
+.cmd-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.side-scroll::-webkit-scrollbar-thumb,
+.cmd-list::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: var(--line-strong);
+}
+
+.side-sec {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 12px 8px;
+}
+
+.side-sec + .side-sec {
+  padding-top: 8px;
+}
+
+.side-cells {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Section label: a quiet 28px header. */
+.side-label {
+  height: 28px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  /* Clip sideways only, with room for the 2px focus ring (offset 2px) on the add key: a label never
+     spills past the folding rail, and the add key's tip can still rise above it. */
+  overflow-x: clip;
+  overflow-clip-margin: 4px;
+}
+
+/* The add key's 24px tile ends on the right-hand line at x = 240, its centre on x = 228. */
+.side-sec-projects .side-label {
+  padding-right: 12px;
+}
+
+.side-add {
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+}
+
+/* Nav row: 36px with an 8px radius. Hover takes the page's row fill (--hover); the current page a
+   firmer one (--active), so the two never read the same, and it also sets the weight and turns its
+   glyph blue. min-width 0: collapsed, the hidden label must not widen the row past the 72px rail. */
+.snav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: color 150ms;
+}
+
+/* Project rows: soft rows with the folder in the same slot. */
+.side-project {
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background-color 150ms, color 150ms;
+}
+
+.snav:hover,
+.side-project:hover {
+  color: var(--ink);
+}
+
+.snav:hover:not([aria-current="page"]),
+.side-project:hover:not([aria-current="page"]) {
+  background-color: var(--hover);
+}
+
+.snav[aria-current="page"],
+.side-project[aria-current="page"] {
+  background-color: var(--active);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.snav[aria-current="page"] .side-slot .ic {
+  color: var(--blue);
+}
+
+.snav:focus-visible,
+.side-project:focus-visible {
+  outline-offset: -2px;
+}
+
+/* The 24px glyph slot. Nav glyphs draw at 18px. */
+.side-slot {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.snav .side-slot .ic {
+  width: 18px;
+  height: 18px;
+}
+
+/* In-flight marker on the Deployments glyph, shown when collapsed (the row's dot says it when open). */
+.snav-flag {
+  position: absolute;
+  top: 0;
+  right: 0;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.snav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snav-extra {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+.side-project .snav-extra {
+  width: 24px;
+  justify-content: center;
+}
+
+/* Project tree: a rail drops from the Projects label and branches into each row, like a file tree.
+   Rows end on the nav pills' right edge (x = 252), which puts each state dot on x = 228. The one
+   flexible column keeps a row to the 48px pill width when the sidebar is collapsed. */
+.side-projects {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0 0 8px 20px;
+}
+
+.side-projects > li {
+  position: relative;
+}
+
+/* Rail: runs the full row plus the 2px gap; the last row stops at its elbow. */
+.side-projects > li::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: -2px;
+  bottom: -2px;
+  border-left: 1px solid var(--line-strong);
+  pointer-events: none;
+}
+
+.side-projects > li:first-child::before {
+  top: -6px;
+}
+
+.side-projects > li:last-child::before {
+  bottom: auto;
+  height: 12px;
+}
+
+.side-projects > li:first-child:last-child::before {
+  height: 16px;
+}
+
+/* Branch: a short tick into the row centre; the last row curves. */
+.side-projects > li::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 17px;
+  width: 7px;
+  border-top: 1px solid var(--line-strong);
+  pointer-events: none;
+}
+
+.side-projects > li:last-child::after {
+  top: 10px;
+  height: 8px;
+  border-top: 0;
+  border-left: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  border-bottom-left-radius: 6px;
+}
+
+/* Footer cell: the account row, on the nav pills' 12px insets so its hover pill lines up with theirs. */
+.side-foot,
+:root[data-sidebar="collapsed"] .shell .side-foot {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* Account row: round avatar (a default person mark until a picture is set), name and role, then
+   the more key. The 8px inset puts the 32px avatar's centre on x = 36, the axis of every glyph,
+   and the more key's on x = 228, the right-hand line. Nothing clips the row, so the key's tip can
+   show: the name and role cut off on their own, and the key sits in the row's right padding, so
+   it fades in place inside the 72px rail instead of sliding past it while the sidebar folds. */
+.side-user {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 48px;
+  padding: 0 52px 0 8px;
+  border-radius: 10px;
+  text-align: left;
+  white-space: nowrap;
+  transition: background-color 150ms;
+}
+
+/* Open, the whole row opens the menu, so it takes the nav rows' hover fill. */
+:root:not([data-sidebar="collapsed"]) .side-user {
+  cursor: pointer;
+}
+
+:root:not([data-sidebar="collapsed"]) .side-user:hover {
+  background-color: var(--hover);
+}
+
+.side-user-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.side-user-name,
+.side-user-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-user-name {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.side-user-role {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.side-user > .side-user-key {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  transition: opacity 150ms ease, background-color 150ms;
+}
+
+.side-user-key.is-open {
+  background: var(--mass);
+  color: var(--ink);
+}
+
+/* Collapsed (Ctrl B): labels fade in place; geometry stays. */
+.side-name,
+.side-toggle,
+.side-search-label,
+.side-search-keys,
+.side-label > *,
+.snav-label,
+.snav-extra,
+.side-user-text {
+  transition: opacity 150ms ease;
+}
+
+:root[data-sidebar="collapsed"] .shell .side-user-key {
+  opacity: 0;
+  pointer-events: none;
+}
+
+:root[data-sidebar="collapsed"] .shell .side-projects {
+  padding-left: 0;
+}
+
+:root[data-sidebar="collapsed"] .shell .side-projects > li::before,
+:root[data-sidebar="collapsed"] .shell .side-projects > li::after {
+  display: none;
+}
+
+/* Collapsed sidebar tooltip: the [data-tip] material, fixed beside the 72px rail so the
+   scrolling nav cannot clip it. */
+.side-tip {
+  position: fixed;
+  z-index: var(--z-tip);
+  left: 82px;
+  translate: 0 -50%;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: side-tip-in 150ms var(--ease) 150ms both;
+}
+
+.side-key-tip::before,
+.side-tip::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -3px; /* centre 2px inside the edge, as the [data-tip] tail */
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--ink);
+  translate: 0 -50%;
+  rotate: 45deg;
+}
+
+/* A key's tip also names its shortcut in chips, as the theme switch's does. */
+.side-tip[data-keys] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 6px;
+}
+
+@keyframes side-tip-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* -------------- Account menu -------------- */
+/* The avatar is the trigger when the sidebar is collapsed; open, it is the more key. */
+.acct-avatar {
+  display: grid;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.acct-avatar .avatar {
+  transition: box-shadow 150ms;
+}
+
+.acct-avatar:hover .avatar {
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+/* The shell popover material, shared with notifications and the command menu: popover fill, 12px
+   radius, the menu shadow (the line-strong ring and one soft drop). */
+.acct-pop {
+  position: absolute;
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: var(--popover);
+  box-shadow: var(--shadow-menu);
+  text-align: left;
+  white-space: normal;
+  animation: drop-in 140ms var(--ease) both;
+}
+
+/* Open sidebar: anchored at the row's left, 8px above it, and a little wider than the rail so a
+   full email fits on one line (it overhangs to the right, like the account menu in Vercel). */
+.acct-pop[data-side="top"] {
+  left: 8px;
+  width: 272px;
+  bottom: calc(100% - 4px);
+}
+
+/* Collapsed: beside the rail, bottom edge level with the account row. */
+.acct-pop[data-side="right"] {
+  left: calc(100% + 8px);
+  bottom: 16px;
+  width: 248px;
+  animation-name: acct-in-right;
+}
+
+@keyframes acct-in-right {
+  from {
+    opacity: 0;
+    translate: -4px 0;
+  }
+}
+
+.acct-hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.acct-hd-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.acct-name,
+.acct-email {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acct-name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.acct-email {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.acct-rows {
+  display: grid;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+}
+
+.acct-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+/* --fill-popover: in dark, --mass is the popover itself and would not show. */
+a.acct-row:hover,
+button.acct-row:hover,
+.acct-row:focus-visible {
+  background: var(--fill-popover);
+  color: var(--ink);
+}
+
+.acct-row:focus-visible {
+  outline-offset: -2px;
+}
+
+.acct-row > .ic {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.acct-row:hover > .ic,
+.acct-row:focus-visible > .ic {
+  color: var(--ink);
+}
+
+.acct-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* -------------- Top bar -------------- */
+
+/* The bottom rule is an inset shadow, not a border, so the cells keep all 56px and the title,
+   theme switch and bell centre on whole pixels, as in the sidebar's brand cell. */
+.top {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-top);
+  height: var(--top-h);
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  background: var(--bg);
+  box-shadow: inset 0 -1px var(--line);
+}
+
+/* The top bar holds an open notifications panel above page content and the sidebar. */
+.top:has(.ntf-panel) {
+  z-index: var(--z-top-open);
+}
+
+/* The title and keys ride on the page's rail, so on wide screens (or with the sidebar collapsed)
+   they line up with the content edges below instead of the bar's own ends. Same geometry as
+   `main.page > *` in foundation.css: whole-pixel left offset, and 4px clear of the clip edge when
+   the column is narrower than the rail. */
+.top-rail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  max-width: min(var(--rail), calc(100% - 4px));
+  margin-inline: max(0px, calc((100% - var(--rail)) / 2)) 0;
+  margin-inline: round(down, max(0px, calc((100% - var(--rail)) / 2)), 1px) 0;
+}
+
+.top-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* A cell's nodes sit on the bar's inset bottom rule, 1px higher than on a border of their own. */
+.top-cell > .node[data-pos] {
+  bottom: -2px;
+}
+
+/* The title cell hugs its text and is the one part of the bar that gives way: on a narrow phone
+   (320px, or 400% zoom) the title ends in an ellipsis so the keys, the burger last, always fit. */
+.top-title-cell {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0 32px;
+  border-right: 1px solid var(--line);
+}
+
+.top-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.top-actions {
+  flex: none;
+  margin-left: auto;
+  gap: 12px;
+  padding: 0 32px 0 16px;
+  border-left: 1px solid var(--line);
+}
+
+/* The phone bar's logo, burger and menu only exist below 761px. */
+.top-brand,
+.menu-key,
+.mnav,
+.mnav-scrim {
+  display: none;
+}
+
+/* -------------- Command menu -------------- */
+
+/* Above every shell layer, the top bar holding an open notifications panel included, and under
+   dialogs. */
+.cmd-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-command);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  padding: round(down, 12vh, 1px) 16px 16px;
+  background: var(--scrim);
+  animation: shell-fade 150ms ease both;
+}
+
+/* The shell popover material (see .acct-pop). */
+.cmd {
+  width: min(640px, 100%);
+  overflow: hidden;
+  border: 0;
+  border-radius: 12px;
+  background: var(--popover);
+  box-shadow: var(--shadow-menu);
+  animation: shell-rise 220ms var(--ease) both;
+}
+
+.cmd-input {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px 0 20px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+}
+
+.cmd-input input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: 15px var(--font-sans);
+}
+
+.cmd-input input::placeholder {
+  color: var(--ink-muted);
+}
+
+/* The close key: the Esc chip itself on a keyboard; on a phone (below) the dialogs' 12px cross. */
+.cmd-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+.cmd-close > .ic {
+  display: none;
+}
+
+.cmd-close:hover,
+.cmd-close:hover .kbd {
+  color: var(--ink);
+}
+
+.cmd-close:focus-visible {
+  outline-offset: 0;
+}
+
+.cmd-list {
+  max-height: min(420px, 56vh);
+  max-height: round(down, min(420px, 56vh), 1px);
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+
+.cmd-section + .cmd-section {
+  margin: 8px -8px 0;
+  padding: 4px 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.cmd-group {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.cmd-item {
+  height: auto;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.cmd-item[aria-selected="true"] {
+  background: var(--fill-popover);
+  color: var(--ink);
+}
+
+.cmd-item[aria-selected="true"] .icon-tile {
+  color: var(--ink);
+}
+
+/* A row under a resting pointer keeps its quiet glyph while the arrow keys select another, so
+   only the selected row ever looks picked. */
+.cmd-item:not([aria-selected="true"]):hover .icon-tile {
+  color: var(--ink-3);
+}
+
+.cmd-slot {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.cmd-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmd-hint {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.cmd-enter {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  color: var(--ink-4);
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.cmd-item[aria-selected="true"] .cmd-enter {
+  opacity: 1;
+}
+
+.cmd-empty {
+  margin: 0;
+  padding: 40px 16px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.cmd-foot {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.cmd-foot-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.cmd-foot-hint .kbd:last-of-type {
+  margin-right: 4px;
+}
+
+.cmd-foot-end {
+  margin-left: auto;
+}
+
+@keyframes shell-fade {
+  from { opacity: 0; }
+}
+
+@keyframes shell-rise {
+  from { opacity: 0; translate: 0 4px; }
+}
+
+/* -------------- Notifications -------------- */
+/* The bell opens a flat panel under the top bar: problems first, then the day's deploy results. */
+.ntf {
+  position: relative;
+}
+
+.ntf-bell .ntf-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--blue);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.ntf-bell .ntf-badge[data-tone="bad"] {
+  background: var(--bad);
+}
+
+/* The dim layer behind the phone sheet; tablet up has none. */
+.ntf-scrim {
+  display: none;
+}
+
+.ntf-panel {
+  position: absolute;
+  z-index: var(--z-popover);
+  top: calc(100% + 8px);
+  right: 0;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: var(--popover);
+  box-shadow: var(--shadow-menu);
+  overflow: hidden;
+  animation: drop-in 140ms var(--ease) both;
+}
+
+.ntf-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ntf-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* "Mark all as read": plain text in the head, muted, ink on hover; nothing to mark leaves it greyed. */
+.ntf-markall {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 150ms;
+}
+
+.ntf-markall:hover {
+  color: var(--ink);
+}
+
+.ntf-markall:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.ntf-markall[aria-disabled="true"] {
+  color: var(--ink-4);
+  cursor: default;
+}
+
+/* Unread count beside the title, hidden at zero: white on the solid red, which white text reads
+   on at 12px (--bad is for dots and rings only). */
+.ntf-count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bad-solid);
+  color: var(--on-solid);
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 500;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ntf-body {
+  max-height: min(420px, calc(100vh - 160px));
+  overflow-y: auto;
+  padding: 4px 0 8px;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+/* Quiet scrollbar: only the thumb, and only while the list is hovered. */
+.ntf-body:hover {
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.ntf-group-hd {
+  margin: 0;
+  padding: 12px 16px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.ntf-list {
+  margin: 0;
+  padding: 0 8px;
+  list-style: none;
+}
+
+.ntf-row {
+  position: relative;
+  display: grid;
+  /* The last 6px column holds the unread dot, kept on every row so the times never shift. */
+  grid-template-columns: 24px minmax(0, 1fr) auto 6px;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 150ms;
+}
+
+/* --fill-popover: in dark, --mass is the panel itself and would not show. */
+.ntf-row:hover,
+.ntf-row:focus-visible {
+  background: var(--fill-popover);
+}
+
+/* Unread: a 6px blue dot at the right edge, after the time, as in most dashboard inboxes. */
+.ntf-row[data-unread="true"]::after {
+  content: "";
+  grid-column: 4;
+  grid-row: 1;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
+.ntf-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ntf-row-title,
+.ntf-row-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ntf-row-title {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.ntf-row-detail {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.ntf-when {
+  font-size: 13px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.ntf-ft {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 44px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: color 150ms, background-color 150ms;
+}
+
+.ntf-ft:hover,
+.ntf-ft:focus-visible {
+  color: var(--ink);
+  background: var(--fill-popover);
+}
+
+/* The footer spans the panel, whose clip would cut a ring drawn outside it, so the ring is inside,
+   its outer edge on the panel's rounded bottom. */
+.ntf-ft:focus-visible {
+  outline-offset: -2px;
+  border-radius: 0 0 12px 12px;
+}
+
+.ntf-ft > .ic {
+  transition: translate 150ms var(--ease);
+}
+
+.ntf-ft:hover > .ic {
+  translate: 2px 0;
+}
+
+/* -------------- Tablet and up -------------- */
+/* One rail between the sidebar and the page. The sidebar draws no border of its own: the top bar
+   and the page each draw the line at the page's left edge, so where the page column fills the
+   rail the two never sit side by side as a 2px line. The page clips sideways at the shell, not at
+   its own edge, so band nodes on that rail keep their full 5px. */
+@media (min-width: 761px) {
+  .shell {
+    overflow-x: clip;
+  }
+
+  .shell > .side {
+    z-index: var(--z-raise);
+    border-right: 0;
+    background: transparent;
+  }
+
+  .shell > .side:has(.acct-pop, .side-tip, [data-tip]:hover, [data-tip]:focus-visible, .side-toggle:hover, .side-toggle:focus-visible) {
+    z-index: var(--z-side);
+  }
+
+  /* The rail line is an inset shadow too, so the bar's content box is the page's full width and
+     the title rail centres exactly as the page column does, never half a pixel off. */
+  .shell-main > .top {
+    box-shadow: inset 1px 0 var(--line), inset 0 -1px var(--line);
+  }
+
+  /* The page column's 1px rails, mirrored, so the cells' 32px insets land on the content's edges. */
+  .top-rail {
+    padding-inline: 1px;
+  }
+
+  .shell-main > main.page {
+    overflow-x: visible;
+    box-shadow: inset 1px 0 var(--line);
+  }
+
+  /* Collapsed: the labels fade out, the in-flight marker on the Deployments glyph shows. */
+  :root[data-sidebar="collapsed"] .shell
+    :is(.side-name, .side-toggle, .side-search-label, .side-search-keys, .side-label > *, .snav-label, .snav-extra, .side-user-text) {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  :root[data-sidebar="collapsed"] .shell .snav-flag {
+    opacity: 1;
+  }
+}
+
+/* -------------- Phone -------------- */
+/* Phones swap the sidebar for one sticky top bar: logo, page title, theme, bell, burger.
+   The burger drops a ruled menu over the page with a dim layer behind it; the bell opens a
+   bottom sheet. */
+@media (max-width: 760px) {
+  .shell,
+  :root[data-sidebar="collapsed"] .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell .side {
+    display: none;
+  }
+
+  /* Phone stacking: the page, the menu's dim layer, the menu, then the top bar over both, at the
+     level it takes with its notifications open (the sheet then covers the menu). */
+  .top {
+    z-index: var(--z-top-open);
+  }
+
+  /* The phone bar has no rail below it, so its cell borders end in plain T joins, no nodes. */
+  .top .node {
+    display: none;
+  }
+
+  .top-brand {
+    position: relative;
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: var(--top-h);
+    border-right: 1px solid var(--line);
+  }
+
+  .top-title-cell {
+    padding: 0 16px;
+    border-right: 0;
+  }
+
+  .top-actions {
+    gap: 8px;
+    padding: 0 0 0 12px;
+  }
+
+  /* A square of the bar's height. Its rule is an inset shadow, so the burger centres in the full
+     width on whole pixels. */
+  .menu-key {
+    display: grid;
+    place-items: center;
+    width: var(--top-h);
+    height: var(--top-h);
+    margin-left: 4px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: inset 1px 0 var(--line);
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .menu-key:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: -4px;
+  }
+
+  /* Two bars that cross into an X when open. */
+  .burger {
+    position: relative;
+    display: block;
+    width: 18px;
+    height: 12px;
+  }
+
+  .burger > span {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    transition: top 300ms var(--ease-key), rotate 300ms var(--ease-key);
+  }
+
+  .burger > span:first-child {
+    top: 1px;
+  }
+
+  .burger > span:last-child {
+    top: 9px;
+  }
+
+  .burger[data-open="true"] > span:first-child {
+    top: 5px;
+    rotate: 45deg;
+  }
+
+  .burger[data-open="true"] > span:last-child {
+    top: 5px;
+    rotate: -45deg;
+  }
+
+  /* The menu panel: grid rows animate 0fr to 1fr, so it unrolls to its natural height. */
+  .mnav {
+    position: fixed;
+    z-index: var(--z-side);
+    top: var(--top-h);
+    left: 0;
+    right: 0;
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 300ms var(--ease-key);
+  }
+
+  .mnav[data-open="true"] {
+    grid-template-rows: 1fr;
+  }
+
+  .mnav-inner {
+    min-height: 0;
+    max-height: calc(100dvh - var(--top-h));
+    overflow-x: hidden;
+    overflow-y: auto;
+    background: var(--bg);
+    overscroll-behavior: contain;
+  }
+
+  .mnav[data-open="true"] .mnav-inner {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mnav-search {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: calc(100% - 32px);
+    height: 44px;
+    margin: 16px 16px 8px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--field);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--ink-3);
+    font: inherit;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .mnav-label-hd {
+    margin: 0;
+    padding: 20px 24px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-3);
+  }
+
+  /* Lists are ruled top and bottom, so each group reads as one framed block. */
+  .mnav-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mnav-list > li + li .mnav-row {
+    border-top: 1px solid var(--line);
+  }
+
+  .mnav-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 48px;
+    padding: 0 24px;
+    color: var(--ink-2);
+    font-size: 15px;
+    text-decoration: none;
+    transition: color 150ms, background-color 150ms;
+  }
+
+  .mnav-row:active {
+    background: var(--hover);
+  }
+
+  /* Rows run edge to edge inside a sideways clip, so the ring is drawn inside them. */
+  .mnav-row:focus-visible {
+    outline-offset: -2px;
+    border-radius: 0;
+  }
+
+  .mnav-row[aria-current="page"] {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .mnav-row[aria-current="page"] .mnav-lead {
+    color: var(--blue);
+  }
+
+  .mnav-row > .ic:last-child {
+    color: var(--ink-4);
+  }
+
+  .mnav-lead {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 20px;
+    color: var(--ink-3);
+  }
+
+  .mnav-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The account block: the signed-in user, then the account rows the menu does not already list,
+     sized for touch. The list above it already closes with a rule, so it draws none of its own. */
+  .mnav-account {
+    margin-top: 16px;
+    padding: 8px 0 16px;
+  }
+
+  .mnav-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 24px;
+  }
+
+  .mnav-account .acct-rows {
+    padding: 4px 12px;
+  }
+
+  .mnav-account .acct-row {
+    height: 44px;
+    font-size: 15px;
+  }
+
+  .mnav-scrim {
+    position: fixed;
+    z-index: calc(var(--z-side) - 1);
+    inset: var(--top-h) 0 0;
+    display: block;
+    background: var(--scrim);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 300ms;
+  }
+
+  .mnav-scrim[data-open="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Notifications become a bottom sheet: full width, a grab bar, a dim layer behind, and larger
+     type with roomier rows. The top bar is solid with no filter, so the fixed sheet is never
+     trapped inside it. */
+
+  .ntf-scrim {
+    position: fixed;
+    z-index: calc(var(--z-popover) - 1);
+    inset: 0;
+    display: block;
+    background: var(--scrim);
+  }
+
+  .ntf-panel {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-width: none;
+    max-height: min(80dvh, 640px);
+    max-height: round(down, min(80dvh, 640px), 1px);
+    /* The dialog sheet's shape and motion (foundation.css), so every phone sheet matches. */
+    padding-top: 8px;
+    border-radius: 12px 12px 0 0;
+    animation: sheet-up 240ms var(--ease-sheet) both;
+  }
+
+  .ntf-hd {
+    height: 52px;
+    padding: 0 20px;
+  }
+
+  .ntf-title {
+    font-size: 16px;
+  }
+
+  .ntf-body {
+    max-height: none;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .ntf-group-hd {
+    padding: 16px 20px 8px;
+    font-size: 13px;
+  }
+
+  .ntf-list {
+    padding: 0 12px;
+  }
+
+  .ntf-row {
+    grid-template-columns: 32px minmax(0, 1fr) auto 6px;
+    gap: 12px;
+    min-height: 56px;
+    padding: 12px 8px;
+  }
+
+  /* The 32px tile (IconTile md) on the roomier phone rows. */
+  .ntf-row > .icon-tile {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+  }
+
+  .ntf-row > .icon-tile .ic {
+    width: 16px;
+    height: 16px;
+  }
+
+  .ntf-row-title {
+    font-size: 15px;
+    line-height: 22px;
+    white-space: normal;
+  }
+
+  .ntf-row-detail {
+    font-size: 14px;
+    line-height: 20px;
+    white-space: normal;
+  }
+
+  .ntf-when {
+    align-self: start;
+    padding-top: 2px;
+    font-size: 13px;
+  }
+
+  .ntf-ft {
+    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(48px + env(safe-area-inset-bottom));
+  }
+
+  /* The sheet's bottom corners are square. */
+  .ntf-ft:focus-visible {
+    border-radius: 0;
+  }
+
+  /* Phones have no keyboard shortcut to offer. */
+  .cmd-foot,
+  .cmd-input .kbd {
+    display: none;
+  }
+
+  /* ...so the command menu's close key is the cross, drawn as every popup's X: a 24px key with the
+     .btn fill and ring (the popover key fill, foundation.css Materials) and a 12px cross. */
+  .cmd-close {
+    width: 24px;
+    border-radius: 8px;
+    background: var(--key-fill);
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+    color: var(--ink-2);
+  }
+
+  .cmd-close > .ic {
+    display: block;
+  }
+
+  .cmd-close:hover {
+    background: var(--key-hover);
+  }
+}
+
+/* Touch screens have no hover, so the collapse key's tip is desktop only, like every [data-tip]. */
+@media (hover: none) {
+  .side-key-tip {
+    display: none;
+  }
+}

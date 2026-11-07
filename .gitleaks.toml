@@ -1,0 +1,21 @@
+# gitleaks configuration for the CI secret scan. The default rules apply; the allowlist below
+# covers fixed test material that is not a secret (documented placeholder keys and fixture tokens).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and documented placeholders"
+paths = [
+  '''\.test\.ts$''',
+  '''\.test\.mjs$''',
+  '''link-keys\.fixture\.ts]
+regexes = [
+  '''dk_[a-z0-9]{4,}''',
+  '''JBSWY3DPEHPK3PXP''',
+]
+'',
+]
+regexes = [
+  '''dk_[a-z0-9]{4,}''',
+  '''JBSWY3DPEHPK3PXP''',
+]

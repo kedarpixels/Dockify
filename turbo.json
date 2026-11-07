@@ -1,0 +1,16 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["generated/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "build"]
+    },
+    "test": {
+      "dependsOn": ["^build", "build"],
+      "env": ["DATABASE_URL_TEST"]
+    }
+  }
+}

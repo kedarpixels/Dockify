@@ -1,0 +1,55 @@
+---
+title: "Teams and roles"
+description: "At the end you will have teammates invited with the right role, and know what each role can and cannot do."
+---
+
+## Roles
+
+There are two roles. Every check happens on the server, on every request, whatever the dashboard shows.
+
+| Role | Can |
+|---|---|
+| **Viewer** | See projects, apps, deployments, logs, metrics, domains, backups, alerts and the server, and which integrations are connected. Manage their own account, two-factor, sessions and API tokens. Not command text, integration details or variable values. |
+| **Admin** | Everything. Create and change projects, apps, variables, domains and databases, reveal and write variable values, deploy, roll back, run and restore backups, manage integrations, alert rules and API tokens, invite teammates, change roles and remove members, change instance settings, apply Dockify updates, and read the activity log. |
+
+Erasing the whole instance is not in the dashboard, for any role: it takes SSH and root on the server. See [Factory reset](/docs/cli#factory-reset).
+
+The first account, created with the setup token at install, is an admin.
+
+There is always at least one admin. The last admin cannot be removed or made a viewer, not even by themselves; make someone else an admin first.
+
+## Invite a teammate
+
+Open **Settings > Team** and invite by email, as an **Admin** or a **Viewer**. When email is set up, Dockify mails the invite for you; either way you get a one-time link you can share yourself. The link expires, and you can revoke a pending invite at any time. Creating an invite asks you to confirm it is you.
+
+The person opens the link, sets their name and a password, and is in. Ask them to turn on two-factor straight away.
+
+## Change a role or remove someone
+
+Only an Admin can open the [web terminal](/docs/terminal), after confirming it is them. Admins can change roles or remove members, after confirming it is them. Removing someone deletes their account, their sessions and their API tokens, and ends any invite they sent that is still open. So does moving an Admin down to Viewer, for the invites.
+
+## Confirm it is you
+
+Some actions ask you to confirm it is you, even when you are signed in: your authenticator code when two-factor is on, otherwise your password. It holds for 5 minutes in this session only. It guards anything that changes what code runs or with what privilege, deletes data or takes production down, so a stolen cookie alone cannot do those.
+
+That is not a full wall. An Admin's cookie alone can still reveal every variable value, deploy, roll back and add a domain. Sign out of browsers you do not trust, and turn on two-factor.
+
+## Your account
+
+Under **Settings > Security**:
+
+- **Password.** At least 12 characters.
+- **Two-factor authentication.** Any authenticator app. Turning it on needs your password first.
+- **Sessions.** Every signed-in device, with its address and when it was last seen. Sign out any one, or all the others at once.
+
+If you lose your authenticator, whoever runs the server turns two-factor off for you over SSH. See [Recovery](/docs/recovery).
+
+## Activity log
+
+Admins can read the activity log under **Activity**. It records sign-ins, deploys, variable changes, secret reveals, restores, token use, team and setting changes, with who did it and from which address.
+
+## What can go wrong
+
+- **The invite link does not work.** It expired or was revoked. Send a new invite.
+- **A teammate cannot deploy.** They are a viewer. An admin can make them an admin.
+- **You are asked to confirm it is you.** Enter your authenticator code, or your password if two-factor is off. It holds for 5 minutes.

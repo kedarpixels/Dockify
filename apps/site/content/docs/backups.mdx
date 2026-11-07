@@ -1,0 +1,105 @@
+---
+title: "Backups and restore"
+description: "At the end your databases will be backed up off the server on a schedule you turn on, encrypted before upload, and Postgres backups restored for real every week by default to prove it."
+---
+
+## Add a destination
+
+Backups go to an S3-compatible bucket you own. Add one under **Settings > Integrations > Storage**:
+
+| Field | Notes |
+|---|---|
+| Provider | `r2` (Cloudflare R2), `s3` (AWS), `minio`, or `custom` for any S3-compatible host such as Backblaze B2. |
+| Endpoint | An https URL. |
+| Bucket and region | As your provider names them. |
+| Access key and secret key | Stored sealed. Only a short hint is ever shown again. |
+| Default | New schedules use the default destination. |
+
+Use **Test** to check the credentials and see the round trip time. Give the key access to this one bucket only.
+
+Until you add a destination, backups, manual and scheduled alike, are kept on this server's own disk, so a fresh install has working backups from the start. That copy is not off the server: a failed disk or a lost server takes it too, and the dashboard marks every such backup and schedule as not off-server. To allow only off-server backups, set `DOCKIFY_ALLOW_LOCAL_BACKUPS=0` in `/opt/dockify/.env` and run `sudo dockify up -d`.
+
+## Schedules
+
+Every database has a schedule, off until you turn it on. Once on, it runs daily at 03:00 (`0 3 * * *`) unless you set a cron. For each one you can set:
+
+- **Cron.** Five fields, for example `0 */6 * * *` for every six hours.
+- **Retention.** 1 to 3650 days.
+- **Destination.** A storage destination, or this server's disk (`local`) unless local backups are turned off.
+- **On or off.**
+
+Changing a schedule asks you to confirm it is you, because a lowered retention is how backup history gets destroyed. Retention follows three rules:
+
+- Manual backups are never removed by a schedule. Someone took them on purpose.
+- The newest **3** good backups always stay, whatever their age, so a stopped schedule or a long outage never ages out your last copies.
+- Everything else older than the retention expires. The stored object is deleted, but the row stays in the history, marked expired.
+
+You can also run a backup now, for one database or all of them.
+
+## What a backup is
+
+| Service | Dump |
+|---|---|
+| Postgres | `pg_dump` |
+| Redis | `redis-cli --rdb` |
+
+Each dump is compressed, then **encrypted on the server** before it is written anywhere. Only ciphertext touches the scratch disk and the bucket. The finished backup records its size, its SHA-256 and the fingerprint of the key that encrypted it.
+
+## Encryption
+
+Backups are encrypted with a backup key that is **not** your storage credential, so a leaked S3 key reads only ciphertext.
+
+- Each backup gets its own data key, wrapped by the backup key with AES-256-GCM and bound to that backup's id, so one blob cannot be passed off as another.
+- The dump is encrypted in chunks. Reordered, dropped, appended or truncated chunks all fail to decrypt. A cut download can never decrypt into a shorter "valid" dump.
+- The backup key itself lives sealed in Dockify's database. So that a lost server does not take it with it, every backup run also writes the key, sealed under your master key, beside the dumps at `keys/backup-key-<fingerprint>.json`.
+
+<Note tone="bad" title="Keep the master key">The dumps in your bucket can only be decrypted with the backup key, and the copy beside them only opens with the master key from `/opt/dockify/secrets/master_key`. Keep a copy of the master key off the server. <Soon /> Restoring these backups on a new server from the dashboard; see [Recovery](/docs/recovery#if-you-lose-the-server).</Note>
+
+## Restore tests
+
+A backup you have not restored is a hope. Dockify restores for real on a schedule, weekly on Sunday at 04:00 by default (`0 4 * * 0`):
+
+- **Postgres** dumps are replayed into a throwaway Postgres on a scratch volume that is deleted afterwards. Dockify counts the tables and rows, records the result on the backup, and throws the database away.
+- **Redis** backups get the full decrypt and format checks.
+
+Each backup shows **Passed**, **Failed**, **Testing** or **Not tested**, with when, how many tables and rows, and the error if it failed. You can run a test on any backup by hand.
+
+## Restore
+
+Open a backup and choose **Restore**. Before anything is replayed, Dockify downloads it and verifies it: the SHA-256 matches, every chunk decrypts, and a tar archive contains no unsafe entries.
+
+### Into a new database (default)
+
+Give it a name. Dockify creates a fresh service in the same environment and replays the dump into it. Your live database is untouched, so you can compare, copy rows across, or switch your app over when ready.
+
+### Replace in place
+
+Type `<project-slug>/<name>` to confirm. Dockify then:
+
+<Steps>
+
+1. Takes a **pre-restore dump** of the current data.
+2. Stops the environment's apps, and records that on the job first, so a crash halfway is undone by recovery.
+3. Empties the database and replays the dump, inside one explicit transaction. Tables added since the backup go, so afterwards the database holds exactly what the backup does. Any failure rolls all of it back.
+4. Starts the apps again. One that will not start is written to Activity as a failure, and tried again each minute.
+
+</Steps>
+
+A Redis restore swaps the snapshot in, restarts Redis, and proves it answers before it reports success. If Redis cannot read the snapshot, the restore fails and says so, and the pre-restore dump holds what it replaced.
+
+Both kinds of restore ask you to confirm it is you. A long restore goes on in the background. The page follows it while it stays open, and the backups list shows the result after.
+
+## Download
+
+You can download any backup. You get a plain gzip, decrypted as it is sent; the stored copy stays encrypted. Downloading asks you to confirm it is you.
+
+## Dockify's own database
+
+The Server page shows the backup of the control plane itself: when it last ran, its size, where it went and whether it is encrypted. Updates also take a dump of it first. See [Updates](/docs/updates).
+
+## What can go wrong
+
+- **"Local backups are turned off on this server".** `DOCKIFY_ALLOW_LOCAL_BACKUPS=0` is set and the backup was sent to this server's disk. Add one, or remove the setting as above.
+- **"Restore test failed".** Open the backup to read the error. A dump that does not replay is the reason the test exists. Take a manual backup and test it, then check the database's logs.
+- **Destination test fails.** Check the endpoint is https, the region is right, and the key can write to the bucket.
+- **Backups of a deleted database.** They are kept and listed as orphans, so deleting an app never silently deletes its history. Remove them on purpose when you are sure.

@@ -1,0 +1,155 @@
+// Writes components/icon-glyphs.ts: the geist-icons drawings the dashboard uses, as plain data, so
+// the browser never loads the whole geist-icons library (about 450 icons in one 600 KB chunk). The
+// same script as the site's scripts/gen-icons.mjs, with this app's names.
+//
+//   node scripts/gen-icons.mjs
+//
+// Add a name to NAMES (dashboard name: geist-icons export), run it, and use <Icon name="..." />.
+// geist-icons stays a devDependency only for this script; nothing at runtime imports it.
+import { writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import * as G from "geist-icons";
+
+const NAMES = {
+  overview: "Home",
+  folder: "FolderClosed",
+  deploy: "CloudUpload",
+  database: "Database",
+  globe: "Globe",
+  activity: "ChartActivity",
+  server: "Servers",
+  archive: "Archive",
+  settings: "SettingsGear",
+  search: "MagnifyingGlass",
+  plus: "Plus",
+  chevronRight: "ChevronRight",
+  chevronDown: "ChevronDown",
+  updown: "ArrowUpDown",
+  bell: "Bell",
+  calendar: "Calendar",
+  branch: "GitBranch",
+  alert: "Warning",
+  sun: "Sun",
+  moon: "Moon",
+  sidebar: "SidebarLeft",
+  arrowRight: "ArrowRight",
+  enter: "CornerDownLeft",
+  box: "Box",
+  clock: "Clock",
+  arrowUp: "ArrowUp",
+  arrowDown: "ArrowDown",
+  grid: "GridSquare",
+  window: "Window",
+  bot: "Robot",
+  bolt: "Lightning",
+  list: "ListUnordered",
+  bars: "BarChart",
+  pie: "ChartPie",
+  checkCircle: "CheckCircle",
+  refresh: "RefreshClockwise",
+  arrowLeft: "ArrowLeft",
+  arrowUpRight: "ArrowUpRight",
+  chevronLeft: "ChevronLeft",
+  chevronUp: "ChevronUp",
+  check: "Check",
+  close: "Cross",
+  closeCircle: "CrossCircle",
+  minus: "Minus",
+  slash: "Slash",
+  info: "Information",
+  external: "External",
+  link: "Link",
+  copy: "Copy",
+  code: "Code",
+  terminal: "Terminal",
+  logs: "Logs",
+  merge: "GitMerge",
+  github: "LogoGithub",
+  discord: "LogoDiscord",
+  rollback: "RotateCounterClockwise",
+  history: "ClockRewind",
+  cloud: "Cloud",
+  upload: "CloudUpload",
+  download: "Download",
+  cpu: "Cpu",
+  layers: "Layers",
+  lock: "LockClosed",
+  key: "Key",
+  shield: "Shield",
+  shieldCheck: "ShieldCheck",
+  webhook: "Webhook",
+  mail: "Envelope",
+  user: "User",
+  users: "Users",
+  logout: "Logout",
+  eye: "Eye",
+  eyeOff: "EyeOff",
+  filter: "Filter",
+  sliders: "SettingsSliders",
+  menu: "Menu",
+  more: "MoreHorizontal",
+  edit: "Pencil",
+  trash: "Trash",
+  play: "Play",
+  pause: "Pause",
+  stop: "Stop",
+  loader: "LoaderCircle",
+  wrap: "CodeWrap",
+  regex: "CodeBracket",
+  desktop: "DesktopDevice",
+  mobile: "PhoneDevice",
+  tablet: "TabletDevice",
+  lockOpen: "LockOpen",
+  userPlus: "UserPlus",
+  book: "BookOpen",
+  command: "Command",
+  org: "Buildings",
+  vercel: "LogoVercel",
+  image: "Image",
+};
+
+/** One React element of an icon as data: [tag, props] or [tag, props, children]. */
+function toData(el) {
+  if (!el || typeof el !== "object" || typeof el.type !== "string") return null;
+  const { children, ...props } = el.props ?? {};
+  const kids = (Array.isArray(children) ? children : [children]).map(toData).filter(Boolean);
+  return kids.length ? [el.type, props, kids] : [el.type, props];
+}
+
+/* A few drawings wrap everything in <g clip-path="url(#clip0_...)"> with a defs clip that is just
+   the whole 16px square. The svg box already is that square, and a fixed id repeats on every use,
+   so the wrapper and its defs are dropped. Any other clip is kept and fails loudly. */
+function unclip(kids) {
+  const defs = kids.find((k) => k[0] === "defs");
+  if (!defs) return kids;
+  const clips = defs[2] ?? [];
+  const full = clips.every((c) => c[0] === "clipPath" && c[2]?.length === 1 && c[2][0][0] === "rect" && c[2][0][1].width === "16" && c[2][0][1].height === "16" && !("x" in c[2][0][1]) && !("y" in c[2][0][1]));
+  if (!full) throw new Error("a drawing has a clip path that is not the whole square");
+  return kids.filter((k) => k !== defs).flatMap((k) => (k[0] === "g" && Object.keys(k[1]).join() === "clipPath" ? (k[2] ?? []) : [k]));
+}
+
+const out = {};
+for (const [name, exp] of Object.entries(NAMES)) {
+  const comp = G[exp];
+  if (!comp?.render) throw new Error(`geist-icons has no ${exp}`);
+  const svg = comp.render({ size: 16 }, null);
+  if (svg.props.viewBox !== "0 0 16 16") throw new Error(`${exp} is not a 16px drawing`);
+  const kids = unclip((Array.isArray(svg.props.children) ? svg.props.children : [svg.props.children]).map(toData).filter(Boolean));
+  if (JSON.stringify(kids).includes("url(#")) throw new Error(`${exp} still references an id`);
+  if (JSON.stringify(kids).includes("var(--ds-")) throw new Error(`${exp} uses a geist design-system colour`);
+  out[name] = kids;
+}
+
+const here = dirname(fileURLToPath(import.meta.url));
+const file = join(here, "..", "components", "icon-glyphs.ts");
+const body = Object.entries(out)
+  .map(([k, v]) => `  ${k}: ${JSON.stringify(v)},`)
+  .join("\n");
+writeFileSync(
+  file,
+  `/* Generated by scripts/gen-icons.mjs from geist-icons. Do not edit: add the name there and run it. */\n\n` +
+    `export type GlyphNode = [string, Record<string, string | number>] | [string, Record<string, string | number>, GlyphNode[]];\n\n` +
+    `export const GLYPHS = {\n${body}\n} satisfies Record<string, GlyphNode[]>;\n`,
+);
+console.log(`wrote ${Object.keys(out).length} icons to components/icon-glyphs.ts`);

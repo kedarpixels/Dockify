@@ -1,0 +1,437 @@
+/* Logs: the runtime log explorer at /logs (the filters, the app picker, the live bar and the
+   virtualised log box). The box's columns follow the box's own width (the `lx-log` container), the
+   toolbars follow the viewport on the shared scale (520, 760, 1100). */
+
+/* -------------- App colours --------------
+   Eight identity colours, one per app: steps of the blue scale and of ink, alternating so the apps
+   next to each other in the list never look alike. Red and amber stay out of the set: they mean an
+   error or a warning line, never an app. Each is a theme token or an srgb mix of two, so both
+   themes hold. */
+.lx {
+  --lx-c0: var(--blue);
+  --lx-c1: var(--ink-2);
+  --lx-c2: var(--heat-3);
+  --lx-c3: color-mix(in srgb, var(--blue) 50%, var(--ink));
+  --lx-c4: var(--ink-4);
+  --lx-c5: color-mix(in srgb, var(--blue) 40%, var(--ink-4));
+  --lx-c6: var(--ink);
+  --lx-c7: var(--ink-3);
+}
+
+.lx-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--lx-app, var(--ink-3));
+}
+
+/* -------------- Filters -------------- */
+/* The regex key sits inside the search, before its clear key. It reads ".*" in the colours of an
+   icon key: muted at rest, ink on hover, blue while on. */
+.lx-regex {
+  flex: none;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+
+.lx-regex:hover {
+  color: var(--ink);
+}
+
+.lx-regex[aria-pressed="true"] {
+  color: var(--blue);
+}
+
+/* The search never pushes past the toolbar, however narrow the screen. */
+.lx-search {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.lx-pick {
+  flex: 0 1 200px;
+  max-width: 220px;
+}
+
+.lx-level {
+  flex: 0 1 152px;
+  max-width: 160px;
+}
+
+.lx-range {
+  flex: 0 1 220px;
+  max-width: 320px;
+  margin-left: auto;
+}
+
+.lx-range-fields {
+  display: grid;
+  gap: 16px;
+}
+
+/* -------------- App picker panel -------------- */
+.lx-pick-panel {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  max-height: 360px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.lx-pick-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  outline: 0;
+}
+
+/* Project rows head their apps; an app row's icon sits under its project's name (the option's
+   10px inset, then the project's 20px icon and its 8px gap). */
+.lx-pick-opt[data-kind="project"] {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.lx-pick-opt[data-kind="app"] {
+  padding-left: 38px;
+}
+
+.lx-pick-opt .env-tag {
+  flex: none;
+  font-size: 12px;
+}
+
+.lx-pick-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 44px;
+  padding: 0 8px 0 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+}
+
+/* -------------- Viewer bar -------------- */
+.lx-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.lx-count {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.lx-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* -------------- Surface -------------- */
+.lx-stage {
+  container: lx-log / inline-size;
+  position: relative;
+}
+
+.lx-box {
+  position: relative;
+  height: min(680px, 72vh);
+  height: round(down, min(680px, 72vh), 1px);
+  min-height: 320px;
+  padding-bottom: 8px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--mass);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Flush with the page's edges, so the focus ring is drawn inside. */
+.lx-box:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Empty or failed, the box is only as tall as what it says, like the build log's. Loading keeps its
+   size, so nothing jumps when a filter changes. */
+.lx-box:has(.lx-status):not(:has(.lx-skel)) {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+}
+
+.lx-status {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+}
+
+/* A search that cannot run: the shared callout, on the page gutter. */
+.lx-callout {
+  padding: 16px var(--gutter);
+}
+
+.lx-vercel {
+  display: grid;
+  gap: 8px;
+}
+
+/* The top edge: Load older lines, or where the range starts. */
+.lx-edge {
+  position: sticky;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  min-width: 100%;
+  max-width: 100%;
+  height: 44px;
+  padding: 0 var(--gutter);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+/* Unwrapped lines keep their width, so the box scrolls sideways and the page never does. */
+.lx-rows {
+  width: max-content;
+  min-width: 100%;
+}
+
+.lx-box[data-wrap] .lx-rows {
+  width: auto;
+}
+
+/* A row's tint lives in --lx-tint so the opaque sticky time can paint the same tint over --mass.
+   The build log (deployments.css) takes the same tints. */
+.lx-line {
+  --lx-tint: transparent;
+  display: flex;
+  gap: 12px;
+  min-height: 20px;
+  padding-right: var(--gutter);
+  background: var(--lx-tint);
+  transition: background-color 150ms var(--ease);
+}
+
+.lx-line:hover {
+  --lx-tint: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.lx-line[data-level="error"] {
+  --lx-tint: color-mix(in srgb, var(--bad) 7%, transparent);
+}
+
+.lx-line[data-level="error"]:hover {
+  --lx-tint: color-mix(in srgb, var(--bad) 11%, transparent);
+}
+
+.lx-line[data-level="warn"] {
+  --lx-tint: color-mix(in srgb, var(--warn) 7%, transparent);
+}
+
+.lx-line[data-level="warn"]:hover {
+  --lx-tint: color-mix(in srgb, var(--warn) 11%, transparent);
+}
+
+/* The line a #L- link points at: a soft blue band that stays. */
+.lx-line[data-target] {
+  --lx-tint: color-mix(in srgb, var(--blue) 10%, transparent);
+}
+
+/* The time is the permalink and stays pinned while the text scrolls sideways under it. The
+   doubled selector keeps it sticky over the tooltip rule's position: relative. */
+.lx-line > .lx-ts {
+  position: sticky;
+  left: 0;
+  z-index: var(--z-raise);
+  flex: none;
+  width: calc-size(auto, round(up, size, 1px));
+  padding-left: var(--gutter);
+  background: linear-gradient(var(--lx-tint), var(--lx-tint)), var(--mass);
+  color: var(--ink-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: color 150ms var(--ease);
+}
+
+.lx-line:hover > .lx-ts {
+  color: var(--ink-2);
+}
+
+/* Flush on the box's left edge, under the next line's sticky stamp: the ring draws inside. */
+.lx-line > .lx-ts:focus-visible {
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+.lx-line[data-target] > .lx-ts {
+  color: var(--blue);
+}
+
+/* "Link copied" shows by itself for a moment, above the rows below it. */
+.lx-line > .lx-ts[data-copied] {
+  z-index: var(--z-node);
+}
+
+.lx-ts[data-copied]::after,
+.lx-ts[data-copied]::before {
+  opacity: 1;
+  translate: 0 -50%;
+  transition-delay: 0ms;
+}
+
+.lx-app {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  width: 200px;
+  min-width: 0;
+  color: var(--ink-3);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.lx-app-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lx-env {
+  flex: none;
+  color: var(--ink-muted);
+}
+
+.lx-lvl {
+  flex: none;
+  width: 4ch;
+  color: var(--ink-muted);
+  user-select: none;
+}
+
+.lx-line[data-level="error"] .lx-lvl {
+  color: var(--bad-ink);
+}
+
+.lx-line[data-level="warn"] .lx-lvl {
+  color: var(--warn-ink);
+}
+
+.lx-tx {
+  white-space: pre;
+  color: var(--ink-2);
+}
+
+.lx-box[data-wrap] .lx-tx {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lx-line[data-level="error"] .lx-tx {
+  color: var(--bad-ink);
+}
+
+.lx-hit {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--warn) 34%, transparent);
+  color: inherit;
+}
+
+/* Loading rows match the real ones: 20px lines in the same columns. */
+.lx-skel {
+  padding: 44px 0 8px;
+}
+
+.lx-skel-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 20px;
+  padding: 0 var(--gutter);
+}
+
+.lx-skel-row > .skel:nth-child(2) {
+  margin-right: 104px;
+}
+
+/* -------------- Responsive -------------- */
+@media (max-width: 1100px) {
+  .lx-range {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .lx-pick-panel {
+    width: min(300px, calc(100vw - 32px));
+  }
+}
+
+@media (max-width: 520px) {
+  .lx-search,
+  .lx-pick,
+  .lx-level,
+  .lx-range {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  .lx-filters .seg2 {
+    display: flex;
+    width: 100%;
+  }
+  .lx-filters .seg2-opt {
+    flex: 1 1 auto;
+  }
+  .lx-box {
+    height: 64vh;
+    height: round(down, 64vh, 1px);
+  }
+  .lx-count {
+    display: none;
+  }
+}
+
+/* A narrow box gives the text its room: the day and then the level go, the app column narrows. */
+@container lx-log (width < 760px) {
+  .lx-day {
+    display: none;
+  }
+  .lx-app {
+    width: 120px;
+  }
+}
+
+@container lx-log (width < 520px) {
+  .lx-lvl {
+    display: none;
+  }
+  .lx-app {
+    width: 88px;
+  }
+}

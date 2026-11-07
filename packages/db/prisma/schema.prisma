@@ -1,0 +1,1900 @@
+// Dockify control-plane schema. Rules: every timestamp is timestamptz, every encrypted value lives
+// in `secrets` and is referenced by id, status-like columns are enums, and nothing important is
+// invisible to Prisma (CHECK constraints in the init migration are the only hand-written SQL).
+// Operational tables carry their retention rule in the model comment; the janitor enforces it.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- enums
+
+enum PreviewAccess {
+  public
+  password
+}
+
+enum Role {
+  admin
+  viewer
+}
+
+enum TokenScope {
+  read
+  deploy
+  admin
+}
+
+enum ActorType {
+  user
+  token
+  system
+  webhook
+}
+
+enum IngressMode {
+  cloudflare_tunnel
+  direct_tls
+}
+
+enum SecretKind {
+  totp
+  env_var
+  env_snapshot
+  env_version
+  integration_token
+  storage_secret_key
+  /// Where a notification webhook posts: its URL (for Telegram, the bot's sendMessage endpoint).
+  channel_url
+  github_private_key
+  github_webhook_secret
+  backup_key
+  database_password
+  /// One queued email (recipient, subject, body), sealed until the worker sends it, then deleted.
+  email_message
+  /// The secret Vercel signs its webhook deliveries with. Opened by the api only, to check a signature.
+  vercel_webhook_secret
+  /// The GitHub App's OAuth client secret, which GitHub hands over once, when it creates the App
+  /// from the manifest. Kept sealed for a later sign-in with GitHub; the api's alone, never shown.
+  github_client_secret
+  /// A notification webhook's second credential: the generic webhook's signing secret, or an ntfy
+  /// access token. The worker opens it to sign or authenticate a delivery.
+  channel_secret
+}
+
+enum IntegrationKind {
+  github_app
+  vercel
+  cloudflare
+  registry
+  storage
+  /// Legacy: the single Discord and generic webhook rows. Migration 0003 moved them to
+  /// notification_webhooks; nothing writes this kind any more.
+  channel
+  /// SMTP, named "default": config { host, port, tlsMode, username, fromName, fromAddress, replyTo }, secretId the password.
+  email
+}
+
+enum IntegrationStatus {
+  connected
+  disconnected
+  error
+}
+
+enum AppKind {
+  frontend
+  backend
+  bot
+  postgres
+  redis
+  s3
+}
+
+/// What the app is doing now, as the daemon reports it: the worker's observe pass writes the
+/// observed container state, a deploy writes deploying, and a first deploy that failed is failed.
+/// degraded: running but failing its health check. restarting: Docker is restarting it, or it is
+/// crash looping. exited: its container stopped on its own while it should run. missing: it should
+/// run and has no container. Values after unknown arrived in migration 0007 (ADD VALUE appends).
+enum AppStatus {
+  running
+  stopped
+  deploying
+  degraded
+  unknown
+  restarting
+  exited
+  missing
+  failed
+}
+
+enum DesiredState {
+  running
+  stopped
+}
+
+enum DeployTarget {
+  server
+  vercel
+}
+
+/// What an app or project shows as its icon: the automatic one (favicon or default) or an upload.
+enum IconChoice {
+  auto
+  upload
+}
+
+enum IconSource {
+  favicon
+  upload
+}
+
+/// Allowlisted Linux capabilities. Anything else cannot be stored, by construction.
+enum Capability {
+  NET_ADMIN
+  NET_RAW
+}
+
+enum EnvScope {
+  project
+  environment
+  app
+}
+
+enum EnvTarget {
+  build
+  runtime
+  both
+}
+
+enum EnvVersionSource {
+  dashboard
+  api
+  rollback
+}
+
+enum DeploymentStatus {
+  queued
+  building
+  deploying
+  ready
+  failed
+  cancelling
+  cancelled
+}
+
+enum DeploymentTrigger {
+  manual
+  push
+  api
+  redeploy
+  rollback
+  preview
+}
+
+/// Where a deployment ran. dockify: built and run on this server. vercel: Vercel built and hosts it,
+/// and the row mirrors Vercel's own record of it.
+enum DeploymentProvider {
+  dockify
+  vercel
+}
+
+/// A provider's own environment for an external deployment: production, or preview for the rest.
+enum ExternalTarget {
+  production
+  preview
+}
+
+enum TlsStatus {
+  active
+  pending
+  failed
+}
+
+enum DnsStatus {
+  ok
+  mismatch
+  missing
+  unchecked
+}
+
+/// The domain ownership probe's last outcome (apps/worker/src/edge/probe.ts): whether asking the
+/// domain itself reached this server. untried while DNS alone settled it.
+enum DomainProbeStatus {
+  untried
+  passed
+  failed
+}
+
+/// A pull request preview's lifecycle. building, ready, asleep and failed hold a slot under the
+/// caps; blocked never ran (disk guard, caps with nothing to evict, a missing base environment).
+enum PreviewStatus {
+  building
+  ready
+  asleep
+  failed
+  blocked
+  closing
+  closed
+}
+
+enum BackupKind {
+  postgres
+  redis
+  volume
+  control_plane
+}
+
+enum BackupTrigger {
+  schedule
+  manual
+  pre_deploy
+  pre_update
+  pre_restore
+}
+
+enum BackupStatus {
+  running
+  ready
+  failed
+}
+
+enum BackupDestinationType {
+  local
+  s3
+}
+
+enum RestoreTestStatus {
+  passed
+  failed
+  running
+  not_tested
+}
+
+enum AlertMetric {
+  disk
+  service
+  down
+  crash_loop
+  memory
+  http_5xx
+}
+
+enum ControlService {
+  any
+  api
+  worker
+  proxy
+  database
+}
+
+/// Where a rule sends besides its webhooks (alert_rule_webhooks). discord and webhook are legacy:
+/// migration 0003 turned them into links to the migrated webhooks, and nothing writes them now.
+enum AlertChannel {
+  discord
+  webhook
+  email
+  bell
+}
+
+/// What a notification webhook talks to, which decides the message format.
+enum WebhookProvider {
+  discord
+  slack
+  teams
+  google_chat
+  telegram
+  mattermost
+  rocket_chat
+  ntfy
+  /// Any https endpoint: JSON signed with HMAC SHA-256 (packages/notify documents the payload).
+  generic
+}
+
+enum AlertState {
+  firing
+  resolved
+}
+
+enum IncidentImpact {
+  minor
+  major
+}
+
+enum IncidentStatus {
+  investigating
+  identified
+  monitoring
+  resolved
+}
+
+/// The steps of a self-update, in order; rollback is appended when one runs.
+enum UpdatePhase {
+  preflight
+  pull
+  backup
+  migrate
+  swap_api
+  swap_worker
+  swap_web
+  health
+  rollback
+}
+
+enum UpdateState {
+  /// Preflight found a deploy or restore in flight; the job retries shortly.
+  waiting
+  running
+  done
+  failed
+  rolled_back
+}
+
+enum UpdateKind {
+  update
+  /// Back to the previous version: the pre-update dump of `rollbackOfId` and its images.
+  rollback
+}
+
+enum UpdateTrigger {
+  manual
+  auto
+  cli
+}
+
+enum UpdateMode {
+  /// Notify only.
+  manual
+  /// Install only releases flagged critical, in the window.
+  security
+  /// Install every release on the channel, in the window.
+  all
+}
+
+enum ReleaseChannel {
+  stable
+  beta
+}
+
+enum JobKind {
+  deploy
+  cancel_deploy
+  remove_app
+  backup
+  restore
+  restore_test
+  prune
+  janitor
+  reconcile
+  preview_cleanup
+  preview_feedback
+  preview_wake
+  preview_dns
+  self_update
+  dns_check
+  vercel_sync
+  edge_route_sync
+  edge_cf_wire
+  edge_cf_unwire
+  alert_notify
+  factory_reset
+  email_send
+  /// Update available, updated, update failed: Discord and email, sent by the worker.
+  update_notify
+  /// Start, stop or restart one app's container, queued by the apps module.
+  app_power
+  /// Fetches a frontend's favicon from its own domains, after a deploy or on request.
+  icon_fetch
+  /// Emails the member who started a deploy that failed, when they asked for it.
+  deploy_notify
+  /// Mirrors one Vercel project's deployments now: queued by a verified Vercel webhook delivery.
+  vercel_mirror
+  /// One message to one notification webhook (update notices), retried on its own.
+  webhook_send
+  /// A newly seen security release: one email to every admin, queued once per release by the updater.
+  security_notify
+  /// Deletes an app's orphaned backups: the worker alone can write the local backups volume.
+  backup_delete
+  /// Checks the dashboard domain being set up, and prepares its switch. Queued by Settings.
+  dashboard_domain
+  /// Switches the dashboard to the checked domain: .env, then api, worker and web. Claimed by the updater.
+  dashboard_domain_apply
+  /// A preview became ready or failed: one email, to the member who opened the pull request or the admins.
+  preview_notify
+  /// One instance event with no rule behind it (a backup failed, a certificate near expiry): admins and webhooks.
+  event_notify
+  /// The commit status of a settled deploy on GitHub, through the App.
+  deploy_status
+  /// Reads a repository's build without deploying it: clone, then Railpack's plan in the BuildKit sandbox.
+  build_detect
+  /// One run of a scheduled job: a short-lived container from the app's current image.
+  scheduled_run
+  /// Changes a managed database's version: backup, then in place, or a new service, restore, verify and switch.
+  service_upgrade
+}
+
+enum EmailCodePurpose {
+  verify
+  change
+  /// Confirms a password change from Settings, Security while email is on.
+  password
+}
+
+enum JobLane {
+  deploy
+  data
+  maintenance
+  /// Claimed only by the self-updater, never by the worker loop.
+  update
+  /// New app's repository read, so it never waits behind a long build.
+  detect
+  /// Scheduled job runs. The worker runs a fixed number of claim loops here: the server's concurrency cap.
+  cron
+}
+
+enum CfDomainState {
+  /// Tunnel mode off, or Cloudflare not connected.
+  none
+  /// Wire job queued.
+  pending
+  /// Dockify created the record and the tunnel rule (ids on the row).
+  managed
+  /// A hand-made record or rule exists; Dockify left it alone.
+  external
+  failed
+}
+
+enum LogStream {
+  stdout
+  stderr
+}
+
+enum LogLevel {
+  error
+  warn
+  info
+  debug
+}
+
+enum ActivityCategory {
+  deploys
+  config
+  access
+  system
+}
+
+enum MetricResolution {
+  raw
+  five_min
+  hour
+}
+
+// ---------------------------------------------------------------- instance and identity
+
+enum ServerState {
+  awaiting_join
+  pending_approval
+  active
+  revoked
+}
+
+/// One machine that runs apps. Reachability is not a state: it is lastSeenAt's age.
+model Server {
+  id            String      @id @default(uuid()) @db.Uuid
+  /// Unique among rows that are not revoked (a partial index in the migration).
+  name          String
+  isPrimary     Boolean     @default(false)
+  state         ServerState
+  joinTokenHash String?     @unique
+  joinExpiresAt DateTime?   @db.Timestamptz(3)
+  /// sha256 of the agent's certificate. The only thing that identifies a server.
+  certPin       String?     @unique
+  joinedIp      String?
+  ingress       IngressMode @default(direct_tls)
+  publicIpv4    String?
+  publicIpv6    String?
+  hostname      String?
+  os            String?
+  kernel        String?
+  dockerVersion String?
+  agentVersion  String?
+  agentProto    Int?
+  cpuCores      Int?
+  memoryBytes   BigInt?
+  clockSkewMs   Int?
+  lastSeenAt    DateTime?   @db.Timestamptz(3)
+  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @db.Timestamptz(3)
+
+  apps          App[]
+  deployments   Deployment[]
+  jobs          Job[]
+  metricSamples MetricSample[]
+
+  @@map("servers")
+}
+
+/// Singleton (id = 1, enforced by a CHECK in the init migration).
+model Instance {
+  id                     Int            @id @default(1)
+  name                   String
+  publicUrl              String
+  masterKeyFingerprint   String
+  ingressMode            IngressMode    @default(cloudflare_tunnel)
+  defaultBranch          String         @default("main")
+  buildConcurrency       Int            @default(1)
+  logRetentionDays       Int            @default(30)
+  /// { deployFailed, appDown, backupFailed, tlsExpiring, previewDeployments } booleans.
+  notifyEvents           Json           @default("{}")
+  setupCompletedAt       DateTime?      @db.Timestamptz(3)
+  /// The signed release this instance runs, and what the release feed last offered.
+  releaseVersion         String?
+  updateCheckedAt        DateTime?      @db.Timestamptz(3)
+  /// The verified feed (ReleaseFeed plus its sha256), written only after the signature checked out.
+  latestRelease          Json?
+  /// The verified feed's generatedAt: an older signed feed is a replay and refused.
+  updateFeedSeenAt       DateTime?      @db.Timestamptz(3)
+  updateNextCheckAt      DateTime?      @db.Timestamptz(3)
+  updateCheckError       String?
+  updateMode             UpdateMode     @default(all)
+  updateChannel          ReleaseChannel @default(stable)
+  /// { days: number[], start: "HH:MM", end: "HH:MM" } or JSON null for any time.
+  updateWindow           Json           @default("{\"days\":[0,1,2,3,4,5,6],\"start\":\"03:00\",\"end\":\"05:00\"}")
+  updateTimeZone         String         @default("Etc/UTC")
+  updateSkipVersion      String?
+  updatePausedUntil      DateTime?      @db.Timestamptz(3)
+  /// The last version an "update available" notice went out for, so each version notifies once.
+  updateNotifiedVersion  String?
+  /// Client-side backup encryption key, separate from every storage credential.
+  backupKeySecretId      String?        @unique @db.Uuid
+  backupKey              Secret?        @relation("InstanceBackupKey", fields: [backupKeySecretId], references: [id], onDelete: Restrict)
+  restoreTestCron        String         @default("0 4 * * 0")
+  buildCacheCapBytes     BigInt         @default(10737418240)
+  pinnedImagesPerApp     Int            @default(3)
+  janitorLastRunAt       DateTime?      @db.Timestamptz(3)
+  janitorLastFreed       BigInt?
+  /// Rotated-out backup keys stay readable: [{ secretId, fingerprint, retiredAt }].
+  backupKeyHistory       Json           @default("[]")
+  /// Worker liveness, stamped every alert tick.
+  workerSeenAt           DateTime?      @db.Timestamptz(3)
+  /// Most pull request previews running at once on this server, across every project.
+  previewServerMax       Int            @default(4)
+  /// Previews answer on pr-<n>-<app>.<previewDomain>. Null derives preview.<parent of the dashboard host>.
+  previewDomain          String?
+  /// Worker-written disk breakdown (apps/worker/src/deploy/disk.ts): [{ id, bytes, reclaimableBytes, count }]
+  /// for images and volumes from Docker and buildCache from BuildKit.
+  hostDisk               Json?
+  /// When the readings in hostDisk began. A sample only ever replaces an older one.
+  hostDiskAt             DateTime?      @db.Timestamptz(3)
+  createdAt              DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime       @updatedAt @db.Timestamptz(3)
+  /// The newest security release every admin was emailed about (security_notify), so each one
+  /// emails once. Last, as migration 0005 adds it.
+  securityNoticeVersion  String?
+  /// The control plane's own containers as the worker last saw them (observe/control-plane.ts):
+  /// [{ service, state, health, startedAt }], read by the server page. After the 0005 column, as
+  /// migration 0007 adds these.
+  controlPlane           Json?
+  controlPlaneAt         DateTime?      @db.Timestamptz(3)
+  /// What the worker reports about itself that stops only part of its work, such as a work folder
+  /// it cannot write: [{ key, summary, message, since }], written with its heartbeat for the server
+  /// page and alerts; null or [] when there is nothing. After the 0007 columns, as migration 0008
+  /// adds it.
+  workerIssues           Json?
+  /// The dashboard domain being set up, with its last check (contracts PendingDashboardDomain).
+  /// DOCKIFY_PUBLIC_URL stays the one source of the current address. After the 0008 column, as
+  /// migration 0010 adds these.
+  dashboardDomain        Json?
+  /// Earlier addresses that still answer: the api path is served, the rest redirects to the current one.
+  dashboardPreviousHosts String[]       @default([])
+  /// The last change of address and what followed it (contracts DashboardLastChange).
+  dashboardLastChange    Json?
+  /// The web terminal's off switch for the whole instance. After the 0010 columns, as migration 0018 adds it.
+  terminalEnabled        Boolean        @default(true)
+  /// The Cloudflare records Dockify itself made for the dashboard's addresses, by host:
+  /// { [host]: { zoneId, recordId } }. Carried from the pending domain when the dashboard moves to it,
+  /// so Stop answering on an old address removes that record and never one the owner made. Last, as
+  /// migration 0025 adds it.
+  dashboardCfRecords     Json?
+
+  @@map("instance")
+}
+
+model User {
+  id                String    @id @default(uuid()) @db.Uuid
+  /// Stored lowercased by the api.
+  email             String    @unique
+  name              String
+  /// argon2id PHC string.
+  passwordHash      String
+  avatarUrl         String?
+  /// Sealed TOTP secret. MFA is on iff totpConfirmedAt is set.
+  totpSecretId      String?   @unique @db.Uuid
+  totpSecret        Secret?   @relation("UserTotp", fields: [totpSecretId], references: [id], onDelete: SetNull)
+  totpConfirmedAt   DateTime? @db.Timestamptz(3)
+  /// Highest TOTP step accepted, so a code is single-use (RFC 6238 5.2).
+  totpLastUsedStep  Int?
+  passwordChangedAt DateTime? @db.Timestamptz(3)
+  /// Set when an emailed code to the current address was confirmed; cleared when the email changes.
+  emailVerifiedAt   DateTime? @db.Timestamptz(3)
+  /// GitHub login, lowercased, so a push by this login shows as this user. One user per login.
+  githubLogin       String?   @unique
+  /// Set when an admin linked their own login or approved this member's. An unverified login
+  /// never attributes a push, never routes a deploy email, and gives way to an admin's claim.
+  githubVerifiedAt  DateTime? @db.Timestamptz(3)
+  /// IANA zone for times in the dashboard; null follows the browser.
+  timeZone          String?
+  hour12            Boolean   @default(false)
+  /// Email when a deploy this user started fails.
+  emailDeployFailed Boolean   @default(true)
+  /// Email about sign ins, password and two-factor changes. Admins always get them.
+  emailSecurity     Boolean   @default(true)
+  disabledAt        DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+  /// The security release alert this member put off ("Remind me in"), as <version>:<level>. A
+  /// newer security release or a raised level has another key, so the popup opens again.
+  securityRemindKey String?
+  /// When the popup for that alert opens again. Last two columns, as migration 0005 adds them.
+  securityRemindAt  DateTime? @db.Timestamptz(3)
+
+  member         Member?
+  sessions       Session[]
+  challenges     LoginChallenge[]
+  trustedDevices TrustedDevice[]
+  apiTokens      ApiToken[]
+  invitesSent    Invite[]         @relation("InviteSender")
+  emailCodes     EmailCode[]
+  passwordResets PasswordReset[]
+
+  @@map("users")
+}
+
+/// One team per instance today; the table exists so roles hang off a real row.
+model Team {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  members Member[]
+  invites Invite[]
+
+  @@map("teams")
+}
+
+model Member {
+  id       String   @id @default(uuid()) @db.Uuid
+  teamId   String   @db.Uuid
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String   @unique @db.Uuid
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     Role
+  joinedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([teamId])
+  @@map("members")
+}
+
+model Invite {
+  id          String    @id @default(uuid()) @db.Uuid
+  teamId      String    @db.Uuid
+  team        Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  email       String
+  role        Role
+  tokenHash   String    @unique
+  invitedById String?   @db.Uuid
+  invitedBy   User?     @relation("InviteSender", fields: [invitedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt   DateTime  @db.Timestamptz(3)
+  usedAt      DateTime? @db.Timestamptz(3)
+  revokedAt   DateTime? @db.Timestamptz(3)
+  /// Null when no email was asked for; else queued, sent or failed, written by the worker that sends it.
+  emailStatus String?
+  /// Why the send failed: the mail server's words with every address taken out.
+  emailError  String?
+
+  @@index([teamId])
+  @@map("invites")
+}
+
+model Session {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @db.Uuid
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash         String    @unique
+  /// Step-up window, bound to this session.
+  elevatedUntil     DateTime? @db.Timestamptz(3)
+  ip                String?
+  userAgent         String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt        DateTime  @default(now()) @db.Timestamptz(3)
+  /// Idle expiry, refreshed on use.
+  expiresAt         DateTime  @db.Timestamptz(3)
+  /// Absolute expiry, never extended.
+  absoluteExpiresAt DateTime  @db.Timestamptz(3)
+  revokedAt         DateTime? @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+/// The pending second-factor step between password and session. Not a session: it can only verify.
+model LoginChallenge {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash      String    @unique
+  failedAttempts Int       @default(0)
+  ip             String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt      DateTime  @db.Timestamptz(3)
+  consumedAt     DateTime? @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("login_challenges")
+}
+
+/// "Remember this browser" after a second factor: skips the code for 30 days.
+model TrustedDevice {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  lastUsedAt DateTime? @db.Timestamptz(3)
+  expiresAt  DateTime  @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("trusted_devices")
+}
+
+/// A 6-digit emailed code: verify the current address, or move the account to `email`. Keyed hash
+/// only, 10 minutes, 5 tries. Kept 1 day after it settles.
+model EmailCode {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @db.Uuid
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose    EmailCodePurpose
+  /// The address the code went to, lowercased.
+  email      String
+  codeHash   String
+  attempts   Int              @default(0)
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+  expiresAt  DateTime         @db.Timestamptz(3)
+  consumedAt DateTime?        @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+  @@map("email_codes")
+}
+
+/// A forgot-password link. SHA-256 of a 256-bit token, 30 minutes, single use. Kept 1 day after it settles.
+model PasswordReset {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  ip        String?
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("password_resets")
+}
+
+model ApiToken {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      String            @db.Uuid
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  tokenHash   String            @unique
+  /// First characters of the token, safe to show ("dk_8f3a").
+  prefix      String
+  scope       TokenScope
+  expiresAt   DateTime?         @db.Timestamptz(3)
+  lastUsedAt  DateTime?         @db.Timestamptz(3)
+  lastUsedIp  String?
+  revokedAt   DateTime?         @db.Timestamptz(3)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  /// Chosen at creation. False means only the ApiTokenProject rows; no rows then means no project at all.
+  allProjects Boolean           @default(false)
+  /// Explicit powers on top of the scope ("env:write"). Validated by the contract, never widened here.
+  grants      String[]          @default([])
+  projects    ApiTokenProject[]
+
+  @@index([userId])
+  @@map("api_tokens")
+}
+
+model ApiTokenProject {
+  tokenId   String   @db.Uuid
+  token     ApiToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  projectId String   @db.Uuid
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([tokenId, projectId])
+  @@index([projectId])
+  @@map("api_token_projects")
+}
+
+// ---------------------------------------------------------------- secrets and integrations
+
+/// The one envelope table. AAD = (id, kind, ownerType:ownerId, kekId), so a value cannot move rows.
+/// Census and rekey are one loop over this table.
+model Secret {
+  id         String     @id @default(uuid()) @db.Uuid
+  kind       SecretKind
+  ownerType  String
+  ownerId    String
+  kekId      String
+  wrappedDek Bytes
+  dekNonce   Bytes
+  ciphertext Bytes
+  ctNonce    Bytes
+  /// Safe display hint (last four characters, or a URL host). Never enough to use.
+  hint       String?
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime   @updatedAt @db.Timestamptz(3)
+
+  userTotp           User?                @relation("UserTotp")
+  instanceBackupKey  Instance?            @relation("InstanceBackupKey")
+  envVar             EnvVar?
+  envVersion         EnvVersion?
+  deploymentEnv      Deployment?
+  integrationPrimary Integration?         @relation("IntegrationSecret")
+  integrationExtra   Integration?         @relation("IntegrationSecondSecret")
+  appPassword        App?
+  webhookPrimary     NotificationWebhook? @relation("WebhookSecret")
+  webhookExtra       NotificationWebhook? @relation("WebhookSecondSecret")
+
+  @@index([ownerType, ownerId])
+  @@index([kekId])
+  @@map("secrets")
+}
+
+/// One table for every outside service. github_app, vercel and cloudflare use the name "default";
+/// registry and storage can have many. Notification webhooks have their own table.
+/// `config` holds non-secret settings, validated by @dockify/contracts.
+model Integration {
+  id             String            @id @default(uuid()) @db.Uuid
+  kind           IntegrationKind
+  name           String
+  config         Json              @default("{}")
+  secretId       String?           @unique @db.Uuid
+  secret         Secret?           @relation("IntegrationSecret", fields: [secretId], references: [id], onDelete: SetNull)
+  /// A second credential where one is needed (an S3 secret key next to its access key).
+  secondSecretId String?           @unique @db.Uuid
+  secondSecret   Secret?           @relation("IntegrationSecondSecret", fields: [secondSecretId], references: [id], onDelete: SetNull)
+  status         IntegrationStatus @default(connected)
+  error          String?
+  lastCheckedAt  DateTime?         @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+
+  backupDestination BackupDestination?
+
+  @@unique([kind, name])
+  @@map("integrations")
+}
+
+model GitHubInstallation {
+  id                  String    @id @default(uuid()) @db.Uuid
+  installationId      BigInt    @unique
+  accountLogin        String
+  accountType         String
+  avatarUrl           String?
+  repositorySelection String
+  selectedCount       Int?
+  suspendedAt         DateTime? @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+
+  projects Project[]
+  apps     App[]
+
+  @@map("github_installations")
+}
+
+// ---------------------------------------------------------------- projects and apps
+
+model Project {
+  id                   String              @id @default(uuid()) @db.Uuid
+  slug                 String              @unique
+  name                 String
+  repoUrl              String?
+  gitInstallationId    String?             @db.Uuid
+  gitInstallation      GitHubInstallation? @relation(fields: [gitInstallationId], references: [id], onDelete: SetNull)
+  gitRepoId            String?
+  defaultBranch        String              @default("main")
+  autoDeploy           Boolean             @default(true)
+  /// Bumped on every env apply; a stale baseVersion answers 409.
+  envVersion           Int                 @default(0)
+  previewEnabled       Boolean             @default(false)
+  /// The environment a preview copies (name). Production is never the default.
+  previewBaseEnv       String              @default("development")
+  previewMaxConcurrent Int                 @default(2)
+  /// Overrides the instance preview domain for this project. Null uses the instance one.
+  previewDomain        String?
+  previewCpuLimit      Float               @default(0.5)
+  previewMemoryMb      Int                 @default(512)
+  previewPidsLimit     Int                 @default(128)
+  /// Containers stop after this many minutes without a request.
+  previewIdleMinutes   Int                 @default(30)
+  /// A preview with no commit for this long is deleted.
+  previewTtlHours      Int                 @default(72)
+  /// PRs from forks build only when on, and never with a secret.
+  previewFromForks     Boolean             @default(false)
+  /// Each preview gets its own throwaway Postgres instead of the base environment's.
+  previewIsolatedDb    Boolean             @default(false)
+  iconChoice           IconChoice          @default(auto)
+  archivedAt           DateTime?           @db.Timestamptz(3)
+  createdAt            DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime            @updatedAt @db.Timestamptz(3)
+  /// The digest the preview database's image tag resolved to on its first pull, as
+  /// "<tag>@sha256:<digest>". Every isolated preview database of the project runs it (worker
+  /// deploy/preview.ts). Last, as migration 0006 adds it.
+  previewDbImage       String?
+  /// Who can open a preview URL. New projects start protected; projects with previews running
+  /// when migration 0018 ran stay public, as they were.
+  previewAccess        PreviewAccess       @default(password)
+  /// The argon2id hash of the generated preview password. The password itself is shown once.
+  previewPasswordHash  String?
+  previewPasswordSetAt DateTime?           @db.Timestamptz(3)
+  /// A same-repo preview of a production base may have production's secrets and network. Off on every
+  /// row, older ones too (migration 0023), so push access alone never reaches them.
+  previewProductionAccess Boolean          @default(false)
+
+  environments Environment[]
+  tokenLimits  ApiTokenProject[]
+  envVersions  EnvVersion[]
+  statusPage   StatusPage?
+  deliveries   WebhookDelivery[]
+  previews     PreviewEnv[]
+  icons        IconImage[]
+
+  @@map("projects")
+}
+
+model Environment {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  branch    String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  apps     App[]
+  previews PreviewEnv[]
+
+  @@unique([projectId, name])
+  @@map("environments")
+}
+
+/// A deployable unit inside an environment. Source is an image XOR a git repo (CHECK in the
+/// migration); managed services (postgres, redis, s3) carry an image. Hard-deleted: backups keep a
+/// snapshot of it and survive.
+model App {
+  id              String       @id @default(uuid()) @db.Uuid
+  environmentId   String       @db.Uuid
+  environment     Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  name            String
+  kind            AppKind
+  status          AppStatus    @default(unknown)
+  desiredState    DesiredState @default(running)
+  deployTarget    DeployTarget @default(server)
+  vercelProjectId String?
+
+  image             String?
+  registryId        String?             @db.Uuid
+  gitRepository     String?
+  gitBranch         String?
+  gitInstallationId String?             @db.Uuid
+  gitInstallation   GitHubInstallation? @relation(fields: [gitInstallationId], references: [id], onDelete: SetNull)
+  gitRepoId         String?
+  /// "auto" or "dockerfile".
+  builder           String              @default("auto")
+  framework         String?
+  rootDir           String?
+  dockerfilePath    String?
+  buildCommand      String?
+  startCommand      String?
+  releaseCommand    String?
+
+  port                  Int?
+  healthCheckPath       String?
+  healthExpectedStatus  Int          @default(200)
+  healthTimeoutSeconds  Int          @default(5)
+  healthGraceSeconds    Int          @default(10)
+  healthIntervalSeconds Int          @default(10)
+  /// Seconds the readiness probe may take after the grace window.
+  healthWindowSeconds   Int          @default(120)
+  replicas              Int          @default(1)
+  cpuLimit              Float?
+  memoryLimitMb         Int?
+  pidsLimit             Int?
+  capAdd                Capability[] @default([])
+  /// Only net.ipv4.* and net.ipv6.conf.* keys; validated by contracts and again by the worker.
+  sysctls               Json         @default("{}")
+  /// In pull request previews. Null follows the kind: frontend and backend yes, the rest no.
+  previewEnabled        Boolean?
+
+  /// Generated credential for a managed postgres, redis or s3 service.
+  passwordSecretId String? @unique @db.Uuid
+  passwordSecret   Secret? @relation(fields: [passwordSecretId], references: [id], onDelete: SetNull)
+
+  containerId         String?
+  currentDeploymentId String?     @unique @db.Uuid
+  currentDeployment   Deployment? @relation("CurrentDeployment", fields: [currentDeploymentId], references: [id], onDelete: SetNull)
+  /// At most one primary domain per app, enforced by this FK being a single column.
+  primaryDomainId     String?     @unique @db.Uuid
+  primaryDomain       Domain?     @relation("PrimaryDomain", fields: [primaryDomainId], references: [id], onDelete: SetNull)
+  pendingDeployAt     DateTime?   @db.Timestamptz(3)
+  /// Set by a restore before it stops this app; reconcile restarts it if the restore died.
+  quiescedByJobId     String?     @db.Uuid
+  /// Vercel target sync state.
+  vercelSync          Json?
+
+  backupEnabled       Boolean            @default(false)
+  backupCron          String?
+  backupTimezone      String             @default("UTC")
+  backupRetentionDays Int                @default(14)
+  backupDestinationId String?            @db.Uuid
+  backupDestination   BackupDestination? @relation(fields: [backupDestinationId], references: [id], onDelete: SetNull)
+  backupLastRunAt     DateTime?          @db.Timestamptz(3)
+
+  iconChoice       IconChoice @default(auto)
+  /// The last favicon attempt and why it found nothing, shown under the Icon control.
+  faviconCheckedAt DateTime?  @db.Timestamptz(3)
+  faviconError     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  /// Managed services only: the digest the configured `image` tag resolved to on its first pull,
+  /// as "<image>@sha256:<digest>". Every later deploy runs this digest until `image` changes.
+  /// Written by the worker (data/images.ts). Here, before 0007's columns, as migration 0006 adds it.
+  pinnedImage String?
+
+  /// When the app's container last started, as the worker's observe pass read it from the daemon.
+  /// The server page's container uptime. Last, as migration 0007 adds it.
+  containerStartedAt DateTime? @db.Timestamptz(3)
+  /// The worker's last reachability probe of the app's public route through the proxy, for the
+  /// public status page: null until probed (only routed apps on a published status page are).
+  reachable          Boolean?
+  reachableAt        DateTime? @db.Timestamptz(3)
+  /// A link to a Vercel project that only reads it: the mirror and logs, and nothing is ever sent to
+  /// Vercel for this app. False with deployTarget vercel is the deploy target: it pushes variables and
+  /// asks Vercel to deploy. Last, as migration 0013 adds it.
+  vercelFollowOnly   Boolean   @default(false)
+  /// Replaces the install step of a build without a Dockerfile. Last, as migration 0017 adds it.
+  installCommand     String?
+  /// The service this one's linked variables resolve to since a version change switched to it. Null for
+  /// the service itself. These three last, as migration 0019 adds them.
+  serviceRedirectId  String?   @db.Uuid
+  serviceRedirect    App?      @relation("ServiceRedirect", fields: [serviceRedirectId], references: [id], onDelete: SetNull)
+  redirectedFrom     App[]     @relation("ServiceRedirect")
+  /// Where a version change stands (worker data/upgrade.ts). Never holds a credential.
+  serviceUpgrade     Json?
+  /// Record the first pull's digest in pinnedImage and redeploy that digest (a template's image app).
+  pinImage           Boolean   @default(false)
+  /// The server this app runs on. A Vercel-hosted app keeps server 1's id, which nothing reads.
+  /// These two last, as migration 0022 adds them.
+  serverId           String    @db.Uuid
+  server             Server    @relation(fields: [serverId], references: [id], onDelete: Restrict)
+
+  volumes         Volume[]
+  domains         Domain[]            @relation("AppDomains")
+  deployments     Deployment[]        @relation("AppDeployments")
+  backups         Backup[]
+  previews        PreviewDeployment[]
+  metrics         MetricSample[]
+  alertRules      AlertRule[]
+  alertEvents     AlertEvent[]
+  alertMute       AlertMute?
+  statusItems     StatusPageItem[]
+  uptimeDays      AppUptimeDay[]
+  terminalTickets TerminalTicket[]
+  runtimeLogs     RuntimeLogLine[]
+  icons           IconImage[]
+  scheduledJobs   ScheduledJob[]
+
+  @@unique([environmentId, name])
+  @@map("apps")
+}
+
+/// A stored icon image: a frontend's fetched favicon or an owner's upload, for one app, one
+/// project or one notification webhook (exactly one owner, CHECK in the migrations). Bytes are
+/// sniffed by magic number before they are written and are served only with the sniffed type. At
+/// most 128 KB. GIF and SVG are a webhook logo's only (CHECK), and an SVG is stored only as the
+/// sanitised text @dockify/contracts rebuilds it into.
+model IconImage {
+  id        String               @id @default(uuid()) @db.Uuid
+  appId     String?              @db.Uuid
+  app       App?                 @relation(fields: [appId], references: [id], onDelete: Cascade)
+  projectId String?              @db.Uuid
+  project   Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source    IconSource
+  mime      String
+  data      Bytes
+  /// Hex sha256 of data; its prefix versions the served URL.
+  sha256    String
+  width     Int
+  height    Int
+  /// Where the image came from: a favicon's https URL, or the link a webhook logo was downloaded from.
+  origin    String?
+  createdAt DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime             @updatedAt @db.Timestamptz(3)
+  webhookId String?              @db.Uuid
+  webhook   NotificationWebhook? @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, source])
+  @@unique([projectId, source])
+  @@unique([webhookId, source])
+  @@map("icon_images")
+}
+
+/// Named Docker volumes only. A bind mount is not representable.
+model Volume {
+  id        String   @id @default(uuid()) @db.Uuid
+  appId     String   @db.Uuid
+  app       App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  name      String   @unique
+  mountPath String
+  sizeBytes BigInt?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([appId, mountPath])
+  @@map("volumes")
+}
+
+model Domain {
+  id             String            @id @default(uuid()) @db.Uuid
+  appId          String            @db.Uuid
+  app            App               @relation("AppDomains", fields: [appId], references: [id], onDelete: Cascade)
+  hostname       String            @unique
+  tlsStatus      TlsStatus         @default(pending)
+  tlsIssuer      String?
+  tlsExpiresAt   DateTime?         @db.Timestamptz(3)
+  dnsStatus      DnsStatus         @default(unchecked)
+  dnsResolved    String[]          @default([])
+  dnsCheckedAt   DateTime?         @db.Timestamptz(3)
+  /// Ids of Cloudflare objects Dockify created, so teardown deletes only those.
+  cfZoneId       String?
+  cfRecordId     String?
+  cfTunnelId     String?
+  cfState        CfDomainState     @default(none)
+  cfMessage      String?
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  // Last because migration 0008 added them to a table that existed, and ADD COLUMN appends.
+  /// The last DNS check in one line: why the domain does not point here, or null.
+  dnsDetail      String?
+  /// Behind a proxy (Cloudflare's), DNS names the proxy, so the worker also asks the domain itself.
+  probeStatus    DomainProbeStatus @default(untried)
+  probeDetail    String?
+  probeCheckedAt DateTime?         @db.Timestamptz(3)
+  /// Dockify generated this name on its own sslip.io address, for trying things out. Migration 0014.
+  testDomain     Boolean           @default(false)
+  /// The tlsExpiresAt already warned about: a renewed certificate has a new date, so warns anew.
+  tlsWarnedFor   DateTime?         @db.Timestamptz(3)
+
+  primaryFor App? @relation("PrimaryDomain")
+
+  @@index([appId])
+  @@map("domains")
+}
+
+/// scopeId is the project, environment or app id named by scopeType. The value is always sealed.
+model EnvVar {
+  id          String    @id @default(uuid()) @db.Uuid
+  scopeType   EnvScope
+  scopeId     String    @db.Uuid
+  key         String
+  secretId    String    @unique @db.Uuid
+  value       Secret    @relation(fields: [secretId], references: [id], onDelete: Cascade)
+  /// Display masking only; every value is sealed regardless.
+  isSecret    Boolean   @default(true)
+  target      EnvTarget @default(both)
+  updatedById String?   @db.Uuid
+  updatedBy   String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([scopeType, scopeId, key])
+  @@index([scopeId])
+  @@map("env_vars")
+}
+
+/// One row per env apply. `changes` holds keys and ops, never values; the sealed snapshot holds the
+/// full resulting set so a rollback can write it back.
+model EnvVersion {
+  id               String           @id @default(uuid()) @db.Uuid
+  projectId        String           @db.Uuid
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version          Int
+  actorType        ActorType
+  actorId          String?
+  actorName        String?
+  source           EnvVersionSource
+  restoredFrom     Int?
+  changes          Json
+  redeployed       Int              @default(0)
+  snapshotSecretId String           @unique @db.Uuid
+  snapshot         Secret           @relation(fields: [snapshotSecretId], references: [id], onDelete: Cascade)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@unique([projectId, version])
+  @@map("env_versions")
+}
+
+// ---------------------------------------------------------------- deployments
+
+/// Retention: the last N ready deployments per app stay (rollback targets); older ones go after 90 d.
+/// A Vercel row's build log is not stored here: it is read from Vercel, which keeps it.
+model Deployment {
+  id                 String             @id @default(uuid()) @db.Uuid
+  appId              String             @db.Uuid
+  app                App                @relation("AppDeployments", fields: [appId], references: [id], onDelete: Cascade)
+  status             DeploymentStatus   @default(queued)
+  trigger            DeploymentTrigger
+  commitSha          String?
+  branch             String?
+  message            String?
+  /// Pinned image id; retries and rollbacks reuse it and never rebuild.
+  imageId            String?
+  imageRef           String?
+  /// Repo digest of a pulled image, next to the pinned imageId.
+  imageDigest        String?
+  /// Set when a readiness failure left the previous container serving.
+  rolledBack         Boolean            @default(false)
+  /// Run-once marker for the release command.
+  releaseRanAt       DateTime?          @db.Timestamptz(3)
+  envSecretId        String?            @unique @db.Uuid
+  envSnapshot        Secret?            @relation(fields: [envSecretId], references: [id], onDelete: SetNull)
+  actorType          ActorType
+  actorId            String?
+  actorName          String?
+  /// Lowercased GitHub login of the commit's author, from the push or the worker's commit lookup.
+  gitAuthor          String?
+  /// That author's GitHub avatar, from the push or the commit lookup; GitHub's avatar host only.
+  gitAuthorAvatarUrl String?
+  rollbackOfId       String?            @db.Uuid
+  previewId          String?            @db.Uuid
+  preview            PreviewDeployment? @relation("PreviewDeployments", fields: [previewId], references: [id], onDelete: SetNull)
+  error              String?
+  /// [{ id, status, startedAt, finishedAt }] for queued, clone, build, push, deploy, health.
+  steps              Json               @default("[]")
+  /// Next log line seq, allocated in the database so cancel and deploy can never collide.
+  logSeq             Int                @default(0)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  startedAt          DateTime?          @db.Timestamptz(3)
+  finishedAt         DateTime?          @db.Timestamptz(3)
+  // The provider fields come last because migration 0004 added them to a table that already
+  // existed, and ADD COLUMN appends: a fresh install and an upgraded one share this column order.
+  /// dockify for a build on this server. vercel when Vercel builds and hosts it: a deploy Dockify
+  /// started there, or one Vercel started itself (its Git integration, the CLI), mirrored.
+  provider           DeploymentProvider @default(dockify)
+  /// The provider's id for this deployment (Vercel's uid). One row per id: the mirror upserts on it.
+  externalId         String?
+  /// The deployment's own address on the provider, https only; null while the provider has none.
+  externalUrl        String?
+  /// The provider's page for this deployment (Vercel's inspector), https only.
+  inspectorUrl       String?
+  /// The provider's environment: production, or preview for every other deployment.
+  externalTarget     ExternalTarget?
+  /// How the provider says it started (Vercel's source: git, cli, redeploy, api-trigger-git-deploy).
+  externalSource     String?
+  /// The provider account that started it (Vercel's creator username).
+  externalCreator    String?
+  /// The commit's git name when its author has no GitHub account; wins over gitAuthor as the author
+  /// shown. A push keeps its pusher in gitAuthor, who still hears about a failure. Last, as
+  /// migration 0012 appends it.
+  gitAuthorName      String?
+  /// The server it ran on: images live on that daemon, so a rollback target is per server. These
+  /// two last, as migration 0022 adds them.
+  serverId           String             @db.Uuid
+  server             Server             @relation(fields: [serverId], references: [id], onDelete: Restrict)
+
+  logChunks     DeploymentLogChunk[]
+  currentFor    App?                 @relation("CurrentDeployment")
+  activePreview PreviewDeployment?   @relation("PreviewCurrent")
+
+  @@unique([provider, externalId])
+  @@index([appId, createdAt])
+  @@index([status])
+  @@index([createdAt])
+  @@map("deployments")
+}
+
+/// Compressed log chunks; lines firstSeq through firstSeq + lineCount - 1.
+model DeploymentLogChunk {
+  deploymentId String     @db.Uuid
+  deployment   Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  firstSeq     Int
+  lineCount    Int
+  gzip         Bytes
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+
+  @@id([deploymentId, firstSeq])
+  @@map("deployment_log_chunks")
+}
+
+/// One pull request's preview: an ephemeral environment pr-<n> cloned from the base environment.
+/// Rows cascade with the project; the worker's reconcile removes any container, route or image
+/// whose row is gone, so a deleted project can never leave a preview running.
+model PreviewEnv {
+  id                String        @id @default(uuid()) @db.Uuid
+  projectId         String        @db.Uuid
+  project           Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  baseEnvironmentId String        @db.Uuid
+  baseEnvironment   Environment   @relation(fields: [baseEnvironmentId], references: [id], onDelete: Cascade)
+  prNumber          Int
+  title             String
+  author            String?
+  branch            String
+  commitSha         String?
+  /// owner/name of the base repository, for the PR comment and the commit status.
+  repo              String
+  /// The effective preview domain when the preview was admitted.
+  domain            String
+  fromFork          Boolean       @default(false)
+  isolatedDb        Boolean       @default(false)
+  status            PreviewStatus @default(building)
+  /// Why it is blocked or was removed: disk, cap, base, evicted, closed, merged, ttl, disabled, deleted.
+  reason            String?
+  /// First line of the build error.
+  error             String?
+  /// The sticky PR comment, once posted.
+  commentId         String?
+  feedbackAt        DateTime?     @db.Timestamptz(3)
+  lastCommitAt      DateTime      @default(now()) @db.Timestamptz(3)
+  lastRequestAt     DateTime?     @db.Timestamptz(3)
+  /// The proxy's request counter at the last idle check, summed over this preview's routes.
+  requestCount      BigInt?
+  sleptAt           DateTime?     @db.Timestamptz(3)
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+  closedAt          DateTime?     @db.Timestamptz(3)
+  /// The state the last preview email was queued for ("ready", "failed:<commit>", "failed"), so a push
+  /// that merely updates a ready preview sends nothing. Cleared when the preview closes.
+  notifiedKey       String?
+
+  apps PreviewDeployment[]
+
+  @@unique([projectId, prNumber])
+  @@index([status])
+  @@map("preview_envs")
+}
+
+/// One wildcard preview domain: the Cloudflare objects Dockify made for *.<domain> (deleted only by
+/// those ids) and the last check that the domain resolves to this server.
+model PreviewDomain {
+  domain      String        @id
+  cfState     CfDomainState @default(none)
+  cfMessage   String?
+  cfZoneId    String?
+  cfRecordId  String?
+  cfTunnelId  String?
+  dnsStatus   DnsStatus     @default(unchecked)
+  dnsDetail   String?
+  dnsResolved String[]      @default([])
+  checkedAt   DateTime?     @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@map("preview_domains")
+}
+
+/// One app inside a preview: its own container, route and hostname. Never the app's own container.
+model PreviewDeployment {
+  id                  String      @id @default(uuid()) @db.Uuid
+  envId               String      @db.Uuid
+  env                 PreviewEnv  @relation(fields: [envId], references: [id], onDelete: Cascade)
+  appId               String      @db.Uuid
+  app                 App         @relation(fields: [appId], references: [id], onDelete: Cascade)
+  hostname            String      @unique
+  currentDeploymentId String?     @unique @db.Uuid
+  currentDeployment   Deployment? @relation("PreviewCurrent", fields: [currentDeploymentId], references: [id], onDelete: SetNull)
+  containerId         String?
+  cpuPct              Float?
+  memoryBytes         BigInt?
+  sampledAt           DateTime?   @db.Timestamptz(3)
+  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime    @updatedAt @db.Timestamptz(3)
+
+  deployments Deployment[] @relation("PreviewDeployments")
+
+  @@unique([envId, appId])
+  @@map("preview_deployments")
+}
+
+// ---------------------------------------------------------------- backups
+
+/// Where backups go: this server's disk (no integration) or one storage integration.
+model BackupDestination {
+  id            String                @id @default(uuid()) @db.Uuid
+  name          String                @unique
+  type          BackupDestinationType
+  integrationId String?               @unique @db.Uuid
+  integration   Integration?          @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  prefix        String                @default("dockify/")
+  isDefault     Boolean               @default(false)
+  createdAt     DateTime              @default(now()) @db.Timestamptz(3)
+
+  apps    App[]
+  backups Backup[]
+
+  @@map("backup_destinations")
+}
+
+/// Outlives its app: appId goes null on delete and `appSnapshot` keeps what a restore needs.
+/// Rows stay until deleted explicitly; files go by the app's retention (expiredAt is then set).
+model Backup {
+  id                String             @id @default(uuid()) @db.Uuid
+  appId             String?            @db.Uuid
+  app               App?               @relation(fields: [appId], references: [id], onDelete: SetNull)
+  /// The app id at backup time, kept after the app is deleted, for orphan grouping.
+  sourceAppId       String             @db.Uuid
+  /// { name, kind, projectSlug, environment, deletedAt? }
+  appSnapshot       Json
+  kind              BackupKind
+  trigger           BackupTrigger
+  status            BackupStatus       @default(running)
+  destinationId     String?            @db.Uuid
+  destination       BackupDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  objectKey         String?
+  sizeBytes         BigInt?
+  sha256            String?
+  encrypted         Boolean            @default(true)
+  /// Fingerprint of the backup key that encrypted it.
+  keyFingerprint    String?
+  error             String?
+  /// Row counts at dump time, so a restore test can compare instead of only counting.
+  sourceTables      Int?
+  sourceRows        BigInt?
+  restoreTestStatus RestoreTestStatus  @default(not_tested)
+  restoreTestedAt   DateTime?          @db.Timestamptz(3)
+  restoreTestTables Int?
+  restoreTestRows   BigInt?
+  restoreTestError  String?
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  finishedAt        DateTime?          @db.Timestamptz(3)
+  expiredAt         DateTime?          @db.Timestamptz(3)
+
+  @@index([appId, createdAt])
+  @@index([sourceAppId])
+  @@index([createdAt])
+  @@map("backups")
+}
+
+// ---------------------------------------------------------------- alerts and status pages
+
+model AlertRule {
+  id          String          @id @default(uuid()) @db.Uuid
+  metric      AlertMetric
+  /// Null means every app, or a control-plane rule when `service` is set.
+  appId       String?         @db.Uuid
+  app         App?            @relation(fields: [appId], references: [id], onDelete: Cascade)
+  service     ControlService?
+  threshold   Float?
+  durationMin Int             @default(5)
+  channels    AlertChannel[]  @default([bell])
+  enabled     Boolean         @default(true)
+  lastFiredAt DateTime?       @db.Timestamptz(3)
+  createdAt   DateTime        @default(now()) @db.Timestamptz(3)
+
+  events   AlertEvent[]
+  webhooks AlertRuleWebhook[]
+
+  @@index([metric])
+  @@map("alert_rules")
+}
+
+/// The webhooks one alert rule sends to. Deleting the rule or the webhook removes the link.
+model AlertRuleWebhook {
+  ruleId    String              @db.Uuid
+  rule      AlertRule           @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  webhookId String              @db.Uuid
+  webhook   NotificationWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@id([ruleId, webhookId])
+  @@index([webhookId])
+  @@map("alert_rule_webhooks")
+}
+
+/// One notification webhook: a named destination for alert messages, and for Dockify's update
+/// notices while `updates` is on. The provider decides the message format. The credential to post
+/// with is sealed: `secretId` the URL (for Telegram, the bot's sendMessage endpoint with its
+/// token), `secondSecretId` the generic webhook's signing secret or an ntfy access token. Plain
+/// columns hold only what is shown back: the host, a Telegram chat id, the logo link.
+model NotificationWebhook {
+  id               String          @id @default(uuid()) @db.Uuid
+  name             String          @unique
+  provider         WebhookProvider
+  enabled          Boolean         @default(true)
+  /// Also sends Dockify update notices (available, updated, failed and rolled back).
+  updates          Boolean         @default(true)
+  /// The URL's host, for display.
+  host             String
+  /// Telegram only (CHECK): the chat, group or channel the bot posts to.
+  chatId           String?
+  secretId         String?         @unique @db.Uuid
+  secret           Secret?         @relation("WebhookSecret", fields: [secretId], references: [id], onDelete: SetNull)
+  secondSecretId   String?         @unique @db.Uuid
+  secondSecret     Secret?         @relation("WebhookSecondSecret", fields: [secondSecretId], references: [id], onDelete: SetNull)
+  /// A generic webhook's icon: auto is its site's favicon, upload a logo the owner uploaded or
+  /// linked. A built-in provider always shows its own mark.
+  iconChoice       IconChoice      @default(auto)
+  /// The https link the logo was downloaded from, once, when the owner gave one.
+  logoUrl          String?
+  faviconCheckedAt DateTime?       @db.Timestamptz(3)
+  faviconError     String?
+  /// Why the last delivery failed; null once one succeeds.
+  error            String?
+  lastSentAt       DateTime?       @db.Timestamptz(3)
+  lastFailedAt     DateTime?       @db.Timestamptz(3)
+  createdAt        DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime        @updatedAt @db.Timestamptz(3)
+
+  icons IconImage[]
+  rules AlertRuleWebhook[]
+
+  @@map("notification_webhooks")
+}
+
+/// Kept 90 days.
+model AlertEvent {
+  id         String          @id @default(uuid()) @db.Uuid
+  ruleId     String?         @db.Uuid
+  rule       AlertRule?      @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  metric     AlertMetric
+  appId      String?         @db.Uuid
+  app        App?            @relation(fields: [appId], references: [id], onDelete: SetNull)
+  service    ControlService?
+  state      AlertState      @default(firing)
+  detail     String
+  href       String
+  muted      Boolean         @default(false)
+  startedAt  DateTime        @default(now()) @db.Timestamptz(3)
+  resolvedAt DateTime?       @db.Timestamptz(3)
+  notifiedAt DateTime?       @db.Timestamptz(3)
+
+  @@index([state, startedAt])
+  @@index([ruleId, startedAt])
+  @@map("alert_events")
+}
+
+model AlertMute {
+  appId     String   @id @db.Uuid
+  app       App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  until     DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("alert_mutes")
+}
+
+/// A project's public status page, served under the project slug once enabled.
+model StatusPage {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @unique @db.Uuid
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  enabled   Boolean  @default(false)
+  title     String?
+  logoUrl   String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  items     StatusPageItem[]
+  incidents StatusIncident[]
+
+  @@map("status_pages")
+}
+
+model StatusPageItem {
+  id           String     @id @default(uuid()) @db.Uuid
+  statusPageId String     @db.Uuid
+  statusPage   StatusPage @relation(fields: [statusPageId], references: [id], onDelete: Cascade)
+  appId        String     @db.Uuid
+  app          App        @relation(fields: [appId], references: [id], onDelete: Cascade)
+  /// The public display name; internal names never leave the API.
+  label        String
+  position     Int        @default(0)
+
+  @@unique([statusPageId, appId])
+  @@map("status_page_items")
+}
+
+model StatusIncident {
+  id           String         @id @default(uuid()) @db.Uuid
+  statusPageId String         @db.Uuid
+  statusPage   StatusPage     @relation(fields: [statusPageId], references: [id], onDelete: Cascade)
+  title        String
+  impact       IncidentImpact
+  status       IncidentStatus
+  /// Display names of the affected components.
+  affects      String[]       @default([])
+  /// [{ at, status, body }], oldest first.
+  updates      Json           @default("[]")
+  startedAt    DateTime       @db.Timestamptz(3)
+  resolvedAt   DateTime?      @db.Timestamptz(3)
+
+  @@index([statusPageId, startedAt])
+  @@map("status_incidents")
+}
+
+/// Daily uptime rollup per app, for status pages and the overview health strip. Kept 400 days.
+model AppUptimeDay {
+  appId           String   @db.Uuid
+  app             App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  day             DateTime @db.Date
+  downMinutes     Int      @default(0)
+  degradedMinutes Int      @default(0)
+  sampledMinutes  Int      @default(0)
+
+  @@id([appId, day])
+  @@map("app_uptime_days")
+}
+
+// ---------------------------------------------------------------- operational
+
+/// Single-use, 30-second ticket for the terminal websocket, bound to one session. Kept 1 day.
+model TerminalTicket {
+  id        String    @id @default(uuid()) @db.Uuid
+  tokenHash String    @unique
+  sessionId String    @db.Uuid
+  appId     String    @db.Uuid
+  app       App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@map("terminal_tickets")
+}
+
+/// A signed self-update run. The dump is taken first; any failure restores it and the old image.
+/// A signed self-update run, and its journal. The updater rewrites the whole row after every step
+/// (an upsert), so a takeover after a crash resumes from it and a dump restore cannot erase it.
+model ReleaseUpdate {
+  id               String        @id @default(uuid()) @db.Uuid
+  kind             UpdateKind    @default(update)
+  trigger          UpdateTrigger @default(manual)
+  actorName        String?
+  fromVersion      String
+  version          String
+  /// sha256 of the signed feed the update was approved from; the updater re-verifies against it.
+  manifestSha256   String?
+  /// { control, web } digests running before, and the ones being installed.
+  fromImages       Json?
+  toImages         Json?
+  phase            UpdatePhase   @default(preflight)
+  state            UpdateState   @default(running)
+  /// The pre-update pg_dump: its id (file name), sha256 and size.
+  dumpBackupId     String?       @db.Uuid
+  dumpSha256       String?
+  dumpBytes        BigInt?
+  /// Set before the migration starts: from then on a rollback also restores the dump.
+  migrationStarted Boolean       @default(false)
+  /// For kind rollback: the update whose dump and previous images are restored.
+  rollbackOfId     String?       @db.Uuid
+  /// [{ id, status, startedAt, finishedAt, detail }] in step order: the dashboard's stepper.
+  steps            Json          @default("[]")
+  attempt          Int           @default(1)
+  error            String?
+  startedAt        DateTime      @default(now()) @db.Timestamptz(3)
+  finishedAt       DateTime?     @db.Timestamptz(3)
+
+  @@index([startedAt])
+  @@map("release_updates")
+}
+
+/// The queue. Claimed with FOR UPDATE SKIP LOCKED plus a lease. Kept 7 days after it settles.
+model Job {
+  id          String    @id @default(uuid()) @db.Uuid
+  kind        JobKind
+  lane        JobLane   @default(deploy)
+  payload     Json
+  /// Collapses duplicate enqueues while one is open (for example one deploy per app).
+  dedupeKey   String?
+  runAfter    DateTime  @default(now()) @db.Timestamptz(3)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  lastError   String?
+  lockedUntil DateTime? @db.Timestamptz(3)
+  lockedBy    String?
+  completedAt DateTime? @db.Timestamptz(3)
+  failedAt    DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  /// Which server's claim loops take it; null for the global ones. CHECK jobs_server_bound says who
+  /// must have one. These two last, as migration 0022 adds them.
+  serverId    String?   @db.Uuid
+  server      Server?   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([lane, serverId, completedAt, failedAt, runAfter])
+  @@index([dedupeKey])
+  @@map("jobs")
+}
+
+/// Inbound webhook deliveries: replay rejection by (provider, deliveryId) and each project's
+/// delivery history. Kept 7 days.
+model WebhookDelivery {
+  id           String   @id @default(uuid()) @db.Uuid
+  provider     String
+  deliveryId   String
+  projectId    String?  @db.Uuid
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  event        String
+  summary      String   @default("")
+  statusCode   Int?
+  durationMs   Int      @default(0)
+  redeliveryOf String?  @db.Uuid
+  receivedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([provider, deliveryId])
+  @@index([projectId, receivedAt])
+  @@index([receivedAt])
+  @@map("webhook_deliveries")
+}
+
+/// appId null means the host. raw kept 24 h, five_min 30 d, hour 1 year.
+model MetricSample {
+  id             BigInt           @id @default(autoincrement())
+  appId          String?          @db.Uuid
+  app            App?             @relation(fields: [appId], references: [id], onDelete: Cascade)
+  resolution     MetricResolution @default(raw)
+  at             DateTime         @db.Timestamptz(3)
+  cpuPct         Float
+  memoryBytes    BigInt
+  pids           Int?
+  restarts       Int?
+  diskBytes      BigInt?
+  netRxBytes     BigInt?
+  netTxBytes     BigInt?
+  /// Host rows only: memory and disk capacity at sample time.
+  memTotalBytes  BigInt?
+  diskTotalBytes BigInt?
+  /// Host rows only: the machine they describe. These two last, as migration 0022 adds them.
+  serverId       String?          @db.Uuid
+  server         Server?          @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([appId, resolution, at])
+  @@index([resolution, at])
+  @@map("metric_samples")
+}
+
+/// Audit log. Kept Instance.logRetentionDays, never less than 90 days for the access category.
+model ActivityLog {
+  id          String           @id @default(uuid()) @db.Uuid
+  at          DateTime         @default(now()) @db.Timestamptz(3)
+  category    ActivityCategory
+  action      String
+  actorType   ActorType
+  actorId     String?
+  actorName   String?
+  verb        String
+  targetType  String?
+  targetId    String?
+  targetLabel String?
+  targetHref  String?
+  suffix      String?
+  failed      Boolean          @default(false)
+  ip          String?
+  userAgent   String?
+  /// Lowercased GitHub login behind a webhook row (a push), shown as the member who linked it.
+  gitAuthor   String?
+  /// [{ key, before, after }], values already masked.
+  changes     Json?
+
+  @@index([at])
+  @@index([category, at])
+  @@index([actorType, actorId, at])
+  @@map("activity_log")
+}
+
+/// Runtime container output, redacted by the worker before insert. Kept DOCKIFY_RUNTIME_LOG_DAYS (default 7).
+model RuntimeLogLine {
+  id     BigInt    @id @default(autoincrement())
+  appId  String    @db.Uuid
+  app    App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+  ts     DateTime  @db.Timestamptz(3)
+  stream LogStream
+  level  LogLevel?
+  text   String
+
+  @@index([appId, id])
+  @@index([ts])
+  @@map("runtime_log_lines")
+}
+
+/// Single-use GitHub install or manifest state, bound to the session that started it.
+model OAuthState {
+  nonce     String   @id
+  sessionId String   @db.Uuid
+  purpose   String   @default("install")
+  expiresAt DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@map("oauth_states")
+}
+
+/// One per app, name unique. Runs in a short-lived container from the app's current image (apps/worker/src/jobs).
+model ScheduledJob {
+  id             String    @id @default(uuid()) @db.Uuid
+  appId          String    @db.Uuid
+  app            App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+  name           String
+  /// Five-field cron, checked against the minimum interval when saved.
+  schedule       String
+  /// IANA name the schedule is read in.
+  timezone       String    @default("UTC")
+  /// Same meaning as an app's start command.
+  command        String
+  timeoutSeconds Int       @default(600)
+  enabled        Boolean   @default(true)
+  /// "skip": a due run is recorded as skipped while one is active. "replace": the active run is stopped first.
+  overlap        String    @default("skip")
+  /// Null while off. Moved forward from the present on every due pass, so downtime never queues a backlog.
+  nextRunAt      DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  runs ScheduledJobRun[]
+
+  @@unique([appId, name])
+  @@index([enabled, nextRunAt])
+  @@map("scheduled_jobs")
+}
+
+/// One run or one decision not to run. The newest 50 per job are kept, for 30 days at most.
+model ScheduledJobRun {
+  id              String       @id @default(uuid()) @db.Uuid
+  jobId           String       @db.Uuid
+  job             ScheduledJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  /// "schedule" or "manual".
+  trigger         String
+  /// queued, running, succeeded, failed, timed_out, cancelled, skipped or missed.
+  status          String
+  /// Why it was skipped or missed, or why it could not run. Redacted.
+  reason          String?
+  exitCode        Int?
+  /// The image it ran, by id.
+  imageId         String?
+  /// The redacted tail of its output, at most 256 KiB.
+  log             String       @default("")
+  /// Set to stop a running run: a replace, or the app going away. The handler polls it.
+  cancelRequested Boolean      @default(false)
+  scheduledFor    DateTime?    @db.Timestamptz(3)
+  startedAt       DateTime?    @db.Timestamptz(3)
+  finishedAt      DateTime?    @db.Timestamptz(3)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([jobId, createdAt])
+  @@index([status, createdAt])
+  @@map("scheduled_job_runs")
+}
+
+/// What New app asked to read, and what came back. Private to who asked; kept 10 minutes.
+model BuildDetection {
+  id             String    @id @default(uuid()) @db.Uuid
+  /// Who asked, with the request: a repeat of the same request answers from this row.
+  requestKey     String    @unique
+  repoUrl        String
+  branch         String
+  rootDir        String    @default("")
+  /// The numeric GitHub App installation id, when the repository was picked from one.
+  installationId String?
+  /// "pending", "done" or "failed".
+  status         String    @default("pending")
+  result         Json?
+  error          String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  finishedAt     DateTime? @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@map("build_detections")
+}

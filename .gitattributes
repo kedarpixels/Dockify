@@ -1,0 +1,10 @@
+# Scripts and configs run on Linux: keep LF on every checkout, Windows included.
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile* text eol=lf
+# Prisma checksums a migration's exact bytes, and installs keep the checksum of what they applied:
+# a CRLF checkout of a released migration would read as an edited one.
+packages/db/prisma/migrations/** text eol=lf
+# Migration checksums are byte exact.
+*.sql text eol=lf

@@ -1,0 +1,464 @@
+/* The project card (components/projects/project-card.tsx), shared by the Projects grid, the
+   Overview strip and the app cards on a project's page; the Projects list rows; and the New project
+   popup. Cells are ruled in the portfolio language: square, with a node on each corner where its
+   lines meet its neighbours'. */
+
+/* -------------- Toolbar -------------- */
+.pj-views {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* Phones: the search takes its own row, and the status filter shrinks and scrolls sideways instead
+   of overflowing, so the layout keys keep their place at the end of its row. */
+@media (max-width: 520px) {
+  .pj-bar .search {
+    max-width: none;
+    flex-basis: 100%;
+  }
+  .pj-bar .seg2 {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .pj-bar .seg2-opt .dot {
+    display: none;
+  }
+}
+
+/* -------------- Grid of cards -------------- */
+/* Cells wrap left-aligned; a short last row leaves clean page white, not a coloured hole.
+   Cells sit 1px apart and each draws a 1px ring just outside itself, so two neighbours' rings
+   land in the same gap pixel and read as one hairline; the outer rings land on the rails, the rule
+   above and the band below. Whole pixels only (no half-pixel outline), so it holds at every zoom.
+   The corner nodes (-3px) centre on those rings. The columns follow the width of the grid itself,
+   so a collapsed sidebar counts. */
+.pj-grid {
+  container: pj-grid / inline-size;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+/* Whole-pixel cells so the lines between them stay crisp at 100% zoom. Each row's last cell takes
+   the pixel or two left over, so the block's right edge stays straight. The 0.1px keeps a width that
+   divides exactly from rounding down on the browser's own fractions. */
+.pj-grid > .pj-cell {
+  flex: 0 0 round(down, calc((100% - 2px) / 3 + 0.1px), 1px);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.pj-grid > .pj-cell:nth-child(3n) {
+  flex-grow: 1;
+}
+
+@container pj-grid (max-width: 1000px) {
+  .pj-grid > .pj-cell {
+    flex-basis: round(down, calc((100% - 1px) / 2 + 0.1px), 1px);
+  }
+  .pj-grid > .pj-cell:nth-child(3n) {
+    flex-grow: 0;
+  }
+  .pj-grid > .pj-cell:nth-child(2n) {
+    flex-grow: 1;
+  }
+}
+
+@container pj-grid (max-width: 640px) {
+  .pj-grid > .pj-cell {
+    flex-basis: 100%;
+  }
+}
+
+/* -------------- The card -------------- */
+.pj-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+
+.pj-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px var(--gutter);
+}
+
+.pj-hd {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pj-hd-link {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.pj-hd-link .aicon {
+  flex: none;
+}
+
+.pj-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* The card's name is its heading (h2 on a page, h3 under a card head). */
+.pj-name {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* The name reads as the link it is: it underlines under the pointer. */
+.pj-hd-link:hover .pj-name,
+.pj-row-lead:hover .pj-name,
+.pj-cell[data-variant="carousel"]:hover .pj-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* On the Overview strip the whole card opens the project: the name's link stretches over it. The
+   refs, the time, the dot and the pips come later in the card, so their links and tips stay above it. */
+.pj-cell[data-variant="carousel"] .pj-hd-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.pj-cell[data-variant="carousel"] .pj-hd-link:focus-visible {
+  outline: none;
+}
+
+.pj-cell[data-variant="carousel"]:has(.pj-hd-link:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+
+/* Environments never clip: a second one that does not fit wraps under the first. */
+.pj-envs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  min-width: 0;
+}
+
+.pj-status {
+  flex: none;
+}
+
+.pj-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Sections after the first sit under a full-width hairline, so Last deployment and Apps read as two blocks. */
+.pj-body > .pj-sec + .pj-sec {
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 20px var(--gutter) 0;
+  border-top: 1px solid var(--line);
+}
+
+.pj-cap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.pj-last-msg,
+.pj-row-last {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.pj-last-msg .dot,
+.pj-row-last .dot {
+  flex: none;
+}
+
+/* Branch, hash, app: one order on every card. */
+.pj-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* Under the message, the refs start where its text starts (past the 6px dot and its 8px gap). */
+.pj-last-msg + .pj-meta {
+  padding-left: 14px;
+}
+
+.pj-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.pj-meta-item .ic {
+  color: var(--ink-4);
+}
+
+/* A missing value reads muted on every card: "No deployments yet", "Internal only". */
+.pj-none {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* Soft rows bleed 8px so the tiles line up with the card's content edge. */
+.pj-apps {
+  margin: 0 -8px;
+}
+
+.pj-app {
+  text-decoration: none;
+}
+
+.pj-app-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+/* "View all N apps": a neutral 20px tile with the more glyph in the icons' column, the label in the
+   names' column, and a 14px arrow centred on the status dots' column (the dot's 4px margin and 6px
+   width put its centre 7px in, as the arrow's is). */
+/* The 20px slot of the icons' column. Its face is drawn at the app icons' own tile size: they draw a
+   20-unit tile in a 24-unit box (preset-tile.tsx), about 16.7px of the 20, so a full 20px face
+   read larger than the icons above it. 16px keeps the face on whole pixels. */
+.pj-more-tile {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--ink-3);
+}
+
+.pj-more-tile::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: 5px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.pj-app-more .pj-app-name {
+  color: var(--ink-3);
+}
+
+.pj-more-arrow {
+  flex: none;
+  color: var(--ink-4);
+}
+
+.pj-app-more:hover :is(.pj-app-name, .pj-more-arrow, .pj-more-tile) {
+  color: var(--ink);
+}
+
+.pj-kind {
+  flex: none;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.pj-app .dot {
+  flex: none;
+  margin-right: 4px;
+}
+
+.pj-ft {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  /* 44px under its 1px rule, so the pips centre on a whole pixel. */
+  height: 45px;
+  padding: 0 var(--gutter);
+  border-top: 1px solid var(--line);
+}
+
+.pj-running {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* -------------- List: skills-style ruled rows -------------- */
+.pj-rows {
+  container: pj-rows / inline-size;
+  display: flex;
+  flex-direction: column;
+}
+
+.pj-row {
+  --lead: 280px;
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--lead) minmax(0, 1fr);
+  border-bottom: 1px solid var(--line);
+}
+
+.pj-row:last-child {
+  border-bottom: 0;
+}
+
+/* Node where the row's top line meets the lead column; the last row has one more where the column
+   meets the band below. */
+.pj-row-node {
+  top: -3px;
+  left: calc(var(--lead) - 3px);
+}
+
+.pj-row > .pj-row-node-end {
+  top: auto;
+  bottom: -3px;
+}
+
+.pj-row-lead {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 24px var(--gutter);
+  border-right: 1px solid var(--line);
+  color: inherit;
+  text-decoration: none;
+}
+
+.pj-row-lead .aicon {
+  flex: none;
+  margin-top: 4px;
+}
+
+/* The name and environments, then the project state on its own line, apart from the app chips. */
+.pj-row-id {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pj-row-id > .two {
+  max-width: 100%;
+}
+
+.pj-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 24px var(--gutter);
+}
+
+.pj-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pj-row-msg {
+  flex: 1;
+  min-width: 0;
+}
+
+.pj-row-last .pj-meta {
+  flex: none;
+}
+
+.pj-row-time {
+  flex: none;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* Measured on the list itself, so a collapsed sidebar keeps the two columns longer. */
+@container pj-rows (max-width: 760px) {
+  .pj-row {
+    --lead: 220px;
+  }
+}
+
+@container pj-rows (max-width: 520px) {
+  .pj-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pj-row-node {
+    display: none;
+  }
+  .pj-row-lead {
+    padding-bottom: 0;
+    border-right: 0;
+  }
+  .pj-row-main {
+    padding-top: 16px;
+  }
+  .pj-row-last {
+    flex-wrap: wrap;
+  }
+  .pj-row-last .pj-meta {
+    flex-basis: 100%;
+    order: 1;
+    padding-left: 14px;
+  }
+}
+
+/* -------------- New project -------------- */
+/* The one-step popup (components/projects/new-project-dialog.tsx): the name, then Create. There is no separate page; /projects/new always opens this popup. */
+.pj-new {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+

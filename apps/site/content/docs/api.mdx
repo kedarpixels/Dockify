@@ -1,0 +1,109 @@
+---
+title: "API tokens and API"
+description: "At the end you will have a scoped API token and know the routes for deploys, status and variables, from a script or CI."
+---
+
+## Create a token
+
+Open **Settings > API tokens** and create one. Creating a token asks you to confirm it is you. Choose:
+
+| Field | Options |
+|---|---|
+| Name | Something you will recognise in the activity log, such as `github-actions`. |
+| Scope | `read`, `deploy` or `admin`. |
+| Projects | **Every project**, chosen on purpose, or only the projects you list. There is no default. |
+| Expiry | 7, 30 or 90 days, a year, or never. Through the API, any number of days from 1 to 365, or none. |
+| Grants | Optional extra powers. Today there is one: `env:write`. |
+
+The token is shown **once**. It starts with `dk_`. Dockify stores only a hash of it, and shows the first few characters afterwards so you can tell tokens apart. You can have up to 25 active tokens. Revoke one at any time.
+
+## What a token can do
+
+A token acts with the **lower** of its scope and the role of the person who made it, and only on the projects it was given. It can never confirm it is you, so it can never reach an elevated route unless that exact power was granted when it was made.
+
+| Scope | Acts as | For example |
+|---|---|---|
+| `read` | Viewer | List projects, read apps, deployments, logs, metrics, domains, backups and alerts. Commands come back blank, since one can hold a pasted token. |
+| `deploy` | Admin, deploys only | Deploy an app, redeploy, roll back or cancel a deployment, start an app, sync a Vercel app. |
+| `admin` | Admin | Also create projects and environments, add and check domains, run backups. |
+
+With the `admin` scope **and** the `env:write` grant, a token can also write, apply and roll back variables, for plain values only. It can never write a secret value or a key such as `NODE_OPTIONS` that changes what runs.
+
+A token's last use and address are kept on the token, and every call that changes something writes an activity entry; a read does not. Admins can see every member's tokens, so a leaked one can be found and revoked.
+
+A password change leaves your tokens working, so check **Settings > API tokens** if the change was because someone else got in. A password reset, from an emailed link or with `dockify admin reset-password`, revokes all of them. Anything that used one needs a new token.
+
+## Calling the API
+
+The api lives on your dashboard's hostname under `/api/v1`, in direct and tunnel mode alike. Send the token as a bearer.
+
+```bash
+curl -fsS https://dockify.example.com/api/v1/projects \
+  -H "Authorization: Bearer $DOCKIFY_TOKEN"
+```
+
+Requests and responses are JSON. Mutations with no body take `{}`.
+
+### Deploy an app
+
+```bash
+curl -fsS -X POST https://dockify.example.com/api/v1/apps/$APP_ID/deploy \
+  -H "Authorization: Bearer $DOCKIFY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+It answers `202` with `{ "deploymentId": "..." }`. If a deploy of that app is already in flight you get `409`.
+
+### Follow a deployment
+
+```bash
+curl -fsS https://dockify.example.com/api/v1/deployments/$DEPLOYMENT_ID \
+  -H "Authorization: Bearer $DOCKIFY_TOKEN"
+```
+
+Poll until the status is `ready`, `failed` or `cancelled`. For the log, `GET /api/v1/deployments/:id/logs` returns a page of lines, and `/logs/stream` is a server-sent event stream with `line`, `done` and `error` events that resumes from `Last-Event-ID`.
+
+### Useful routes
+
+| Route | Scope |
+|---|---|
+| `GET /api/v1/overview` | `read` |
+| `GET /api/v1/projects` and `/projects/:slug` | `read` |
+| `GET /api/v1/deployments` and `/deployments/:id` | `read` |
+| `POST /api/v1/apps/:id/deploy` | `deploy` |
+| `POST /api/v1/deployments/:id/rollback` | `deploy` |
+| `POST /api/v1/deployments/:id/redeploy` | `deploy` |
+| `POST /api/v1/deployments/:id/cancel` | `deploy` |
+| `GET /api/v1/logs` and `/logs/stream` | `read` |
+| `GET /api/v1/server` and `/server/metrics` | `read` |
+| `POST /api/v1/backups/run` | `admin` |
+| `POST /api/v1/projects/:slug/env/apply` | `admin` plus `env:write` |
+
+Every route is defined once, with its request and response schemas, in `packages/contracts/src/endpoints.ts`. That file is the reference.
+
+### Errors
+
+Errors are JSON with a message and often a code:
+
+```json
+{ "error": "This deployment is already the one serving", "code": "ALREADY_CURRENT" }
+```
+
+A rate-limited request carries `retryAfter` in seconds. A variables apply that lost a race answers `409` with the current `version` to rebase on.
+
+## In GitHub Actions
+
+Store the token as a repository secret and call the deploy route after your tests pass. Use it when you want a deploy only after CI is green.
+
+## Command line
+
+<Soon>A `dockify` command line client for deploys, logs and variables on your own machine, built on the same API and tokens.</Soon>
+
+The `dockify` command the installer puts on the server is something else: it runs the stack, updates and account rescue on the server itself. See [The dockify command](/docs/cli).
+
+## What can go wrong
+
+- **401.** The token is wrong, expired or revoked.
+- **403.** The scope or the token's projects do not cover this route, or the role of the person who made it is too low.
+- **The route needs you to confirm it is you.** Tokens cannot. Do it in the dashboard, or mint a token with the grant the route accepts.

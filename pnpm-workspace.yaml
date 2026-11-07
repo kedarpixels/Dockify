@@ -1,0 +1,19 @@
+# apps/web is NOT a workspace member: it keeps its own install and lockfile.
+packages:
+  - "apps/api"
+  - "apps/worker"
+  - "apps/agent"
+  - "packages/*"
+
+allowBuilds:
+  "@prisma/client": true
+  "@prisma/engines": true
+  prisma: true
+  esbuild: true
+
+verifyDepsBeforeRun: false
+
+# Security: @prisma/config pins deepmerge-ts 7, which has a stack exhaustion advisory (GHSA-ggr8-5vv4-36mx).
+# The 8.x line is API compatible for the deepmerge() call it makes; drop this once prisma moves.
+overrides:
+  deepmerge-ts: ">=8.0.0"

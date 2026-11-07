@@ -1,0 +1,54 @@
+---
+title: "Logs and metrics"
+description: "At the end you will know where to read build and runtime logs, what the graphs measure, and how the disk is kept clean."
+---
+
+## Build logs
+
+Every deployment has a live log and a step timeline: queued, clone, build, release, deploy and health. The log streams while the build runs and picks up where it left off if your connection drops. Secret values are redacted before a line is stored.
+
+## Runtime logs
+
+Dockify follows the output of every running app container, timestamps each line, guesses its level, redacts it, and stores it. The **Logs** page and each app's logs tab read from that store.
+
+- Filter by app (up to 64 at once), by text or regular expression, by `stdout` or `stderr`, and by level.
+- Turn on **live** to stream new lines as they arrive.
+- Lines are kept for the **Log retention** setting under **Settings > Instance**, 1 to 365 days, 30 by default. The per-second and per-day caps below apply whatever it says.
+
+Redaction removes the app's own secret values and common token patterns. A noisy app is capped per second and per day, so it cannot flood the database that shares your disk. When lines are dropped, one marker line says how many.
+
+For a shell into an app's container, see [Terminal](/docs/terminal).
+
+## Metrics
+
+A sampler records the host and every running app container on its own clock, so it keeps running while the job queue is busy.
+
+| Range | Resolution | Kept |
+|---|---|---|
+| 1 hour | Raw samples | 24 hours |
+| 24 hours | 5 minute buckets | 30 days |
+| 7 days | Hourly buckets | 365 days |
+
+**Per app:** CPU, memory, network in and out, restarts, and the limits the container runs with. **Server:** CPU, memory, disk and network, plus a disk breakdown into images, build cache and volumes, each with what can be reclaimed.
+
+## Disk cleanup
+
+The janitor runs every 6 hours and keeps the disk from filling without breaking rollback:
+
+- **Images are kept by reference, not age.** Anything a running, in-flight, or one of an app's last **5** good deployments points at stays. Those are your rollback targets. Other Dockify images and dangling images go.
+- **The build cache is capped by size**, not wiped, so builds stay fast.
+- **Old deployments** beyond the kept ones are deleted after 90 days, with their logs.
+
+**Prune** on the Server page's disk card does the same by hand: it removes unused images and unused build cache. It never touches volumes or the images rollback needs.
+
+The Server page shows the cache size against its cap, the pinned rollback images, and when the janitor last ran and how much it freed. To be told before the disk fills, add a disk alert: see [Alerts and notifications](/docs/alerts).
+
+## Activity log
+
+Every sign-in, deploy, variable change, secret reveal, restore, change made with an API token and setting change is written to the activity log, with who did it and from which address. Admins can read it under **Activity**.
+
+## What can go wrong
+
+- **No runtime logs for an app.** It has to be running. Check the app's status, then its last deployment's log.
+- **Old lines are gone sooner than the setting says.** A noisy app reached its size cap, which removes the oldest lines first.
+- **The disk is filling but cleanup freed little.** Look at the disk breakdown. Volumes and database data are never cleaned up for you.

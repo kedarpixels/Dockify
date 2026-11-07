@@ -1,0 +1,320 @@
+# Signed release: build the control and web images for amd64 and arm64, write and sign the channel
+# files, publish the GitHub Release, and update the `releases` branch that installs read from.
+# docs/RELEASING.md is the runbook. Nothing here touches a server.
+#
+# Secrets (environment `release`, required reviewers): MINISIGN_SECRET_KEY, MINISIGN_PASSWORD.
+# Variables used only during a key rotation (docs/RELEASING.md):
+#   MINISIGN_SIGNING_PUBLIC_KEY   the key that signs this release when it differs from deploy/release.pub
+#   MINISIGN_PREVIOUS_PUBLIC_KEY  an older key the currently published feed may still be signed by
+#
+# Third-party actions are pinned by commit SHA. Dependabot (github-actions) keeps them current;
+# check a SHA against the upstream tag before changing it by hand.
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions: {}
+
+# Two tags never publish at once, and a running release is never cancelled halfway.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: check tag, notes and key
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      date: ${{ steps.notes.outputs.date }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Tag is semver and on the default branch
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          printf '%s' "$TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(beta|rc)\.(0|[1-9][0-9]*))?$' \
+            || { echo "::error::tag $TAG is not vX.Y.Z, vX.Y.Z-beta.N or vX.Y.Z-rc.N"; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH" \
+            || { echo "::error::$TAG points at a commit that is not on $DEFAULT_BRANCH"; exit 1; }
+          VERSION="${TAG#v}"
+          case "$VERSION" in *-*) PRE=true ;; *) PRE=false ;; esac
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRE" >> "$GITHUB_OUTPUT"
+
+      - name: Release notes exist and are dated
+        id: notes
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -eu
+          NOTES="docs/releases/$VERSION.md"
+          [ -f "$NOTES" ] || { echo "::error::$NOTES is missing"; exit 1; }
+          HEAD="$(grep -v '^[[:space:]]*$' "$NOTES" | head -n 1 | tr -d '\r')"
+          printf '%s' "$HEAD" | grep -Eq "^## $(printf '%s' "$VERSION" | sed 's/\./\\./g') \([0-9]{4}-[0-9]{2}-[0-9]{2}\)$" \
+            || { echo "::error::$NOTES must start with '## $VERSION (YYYY-MM-DD)', found: $HEAD"; exit 1; }
+          echo "date=$(printf '%s' "$HEAD" | sed 's/.*(\(.*\))$/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: deploy/release.pub matches the installer's pinned key
+        run: |
+          set -eu
+          [ -f deploy/release.pub ] || { echo "::error::deploy/release.pub is missing"; exit 1; }
+          PUB="$(grep -v '^untrusted comment:' deploy/release.pub | tr -d '\r' | grep -v '^[[:space:]]*$' | tail -n 1 | tr -d ' ')"
+          PINNED="$(sed -n 's/^DOCKIFY_DEFAULT_PUBKEY="\(.*\)"[[:space:]]*$/\1/p' installer/install.sh | head -n 1)"
+          [ -n "$PUB" ] || { echo "::error::deploy/release.pub is empty"; exit 1; }
+          [ -n "$PINNED" ] || { echo "::error::DOCKIFY_DEFAULT_PUBKEY in installer/install.sh is empty"; exit 1; }
+          [ "$PUB" = "$PINNED" ] || { echo "::error::deploy/release.pub and installer DOCKIFY_DEFAULT_PUBKEY differ"; exit 1; }
+          printf '%s' "$PUB" | grep -Eq '^[A-Za-z0-9+/]{56}$' || { echo "::error::the public key is not a minisign Ed25519 key line"; exit 1; }
+
+  images:
+    name: build images
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      control-amd64: ${{ steps.digests.outputs.control-amd64 }}
+      control-arm64: ${{ steps.digests.outputs.control-arm64 }}
+      web-amd64: ${{ steps.digests.outputs.web-amd64 }}
+      web-arm64: ${{ steps.digests.outputs.web-arm64 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Image names
+        id: name
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -eu
+          BASE="ghcr.io/$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "control=$BASE/dockify-control" >> "$GITHUB_OUTPUT"
+          echo "web=$BASE/dockify-web" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # No build cache on purpose: a release builds from the commit alone.
+      - name: Build and push control
+        id: control
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: control
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            DOCKIFY_VERSION=${{ needs.prepare.outputs.version }}
+          tags: ${{ steps.name.outputs.control }}:${{ needs.prepare.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and push web
+        id: web
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: web
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            DOCKIFY_VERSION=${{ needs.prepare.outputs.version }}
+          tags: ${{ steps.name.outputs.web }}:${{ needs.prepare.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      # Read from the index digest the build returned, never the tag, so a retag cannot swap images.
+      # Attestation manifests (provenance, SBOM) sit in the same index and are skipped.
+      - name: Per-architecture digests
+        id: digests
+        env:
+          CONTROL_IMAGE: ${{ steps.name.outputs.control }}
+          CONTROL_INDEX: ${{ steps.control.outputs.digest }}
+          WEB_IMAGE: ${{ steps.name.outputs.web }}
+          WEB_INDEX: ${{ steps.web.outputs.digest }}
+        run: |
+          set -eu
+          for target in control web; do
+            if [ "$target" = control ]; then IMAGE="$CONTROL_IMAGE" INDEX="$CONTROL_INDEX"; else IMAGE="$WEB_IMAGE" INDEX="$WEB_INDEX"; fi
+            printf '%s' "$INDEX" | grep -Eq '^sha256:[a-f0-9]{64}$' || { echo "::error::no index digest from the $target build"; exit 1; }
+            docker buildx imagetools inspect --raw "$IMAGE@$INDEX" > "$RUNNER_TEMP/$target-index.json"
+            for arch in amd64 arm64; do
+              D="$(jq -r --arg a "$arch" '
+                [.manifests[]
+                 | select((.annotations["vnd.docker.reference.type"] // "") != "attestation-manifest")
+                 | select(.platform.os == "linux" and .platform.architecture == $a)
+                 | .digest] as $d
+                | if ($d | length) == 1 then $d[0] else error("expected one \($a) manifest, found \($d | length)") end' "$RUNNER_TEMP/$target-index.json")"
+              printf '%s' "$D" | grep -Eq '^sha256:[a-f0-9]{64}$' || { echo "::error::bad $target $arch digest: $D"; exit 1; }
+              echo "$target-$arch=$IMAGE@$D" >> "$GITHUB_OUTPUT"
+              echo "$target $arch: $IMAGE@$D"
+            done
+          done
+
+  publish:
+    name: sign and publish
+    needs: [prepare, images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      TAG: ${{ github.ref_name }}
+      RELEASE_DATE: ${{ needs.prepare.outputs.date }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Install minisign
+        run: |
+          set -eu
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq minisign
+          minisign -v
+
+      - name: Keys for this run
+        env:
+          SIGNING_PUB: ${{ vars.MINISIGN_SIGNING_PUBLIC_KEY }}
+          PREVIOUS_PUB: ${{ vars.MINISIGN_PREVIOUS_PUBLIC_KEY }}
+        run: |
+          set -eu
+          RELEASE_PUB="$(grep -v '^untrusted comment:' deploy/release.pub | tr -d '\r' | grep -v '^[[:space:]]*$' | tail -n 1 | tr -d ' ')"
+          echo "MINISIGN_PUBLIC_KEY=${SIGNING_PUB:-$RELEASE_PUB}" >> "$GITHUB_ENV"
+          echo "PREVIOUS_PUBLIC_KEY=${PREVIOUS_PUB:-}" >> "$GITHUB_ENV"
+
+      - name: Check out the releases branch
+        run: |
+          set -eu
+          if git ls-remote --exit-code --heads origin releases >/dev/null; then
+            git fetch --no-tags origin releases:refs/remotes/origin/releases
+            git worktree add -B releases "$RUNNER_TEMP/feed" origin/releases
+          else
+            echo "No releases branch yet: starting an orphan branch"
+            git worktree add --detach "$RUNNER_TEMP/feed" HEAD
+            git -C "$RUNNER_TEMP/feed" checkout --orphan releases
+            git -C "$RUNNER_TEMP/feed" rm -rfq .
+          fi
+          mkdir -p "$RUNNER_TEMP/feed/releases/notes" "$RUNNER_TEMP/out"
+
+      # Carry over only entries the trusted key signed: verify the published files first.
+      - name: Verify the currently published feed
+        run: |
+          set -eu
+          for ch in stable beta; do
+            F="$RUNNER_TEMP/feed/releases/$ch.json"
+            [ -f "$F" ] || { echo "$ch: nothing published yet"; continue; }
+            if sh scripts/release/verify.sh "$F" "$MINISIGN_PUBLIC_KEY"; then continue; fi
+            if [ -n "$PREVIOUS_PUBLIC_KEY" ] && sh scripts/release/verify.sh "$F" "$PREVIOUS_PUBLIC_KEY"; then continue; fi
+            echo "::error::the published $ch.json does not verify against the signing key or the previous key"
+            exit 1
+          done
+
+      - name: Write and sign the channel files
+        env:
+          CONTROL_AMD64: ${{ needs.images.outputs.control-amd64 }}
+          CONTROL_ARM64: ${{ needs.images.outputs.control-arm64 }}
+          WEB_AMD64: ${{ needs.images.outputs.web-amd64 }}
+          WEB_ARM64: ${{ needs.images.outputs.web-arm64 }}
+          NOTES_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          set -eu
+          [ -n "$MINISIGN_SECRET_KEY" ] || { echo "::error::the MINISIGN_SECRET_KEY secret is not set"; exit 1; }
+          jq -n --arg ca "$CONTROL_AMD64" --arg cr "$CONTROL_ARM64" --arg wa "$WEB_AMD64" --arg wr "$WEB_ARM64" \
+            '{control: {amd64: $ca, arm64: $cr}, web: {amd64: $wa, arm64: $wr}}' > "$RUNNER_TEMP/digests.json"
+          # Security flag and upgrade floor come from trailers in the annotated tag message, which
+          # cannot change once the tag is protected:  "Critical: true"  and  "Min-From: X.Y.Z".
+          git fetch --no-tags --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          MSG="$(git for-each-ref "refs/tags/$TAG" --format='%(contents)')"
+          EXTRA=""
+          if printf '%s\n' "$MSG" | grep -Eq '^Critical:[[:space:]]*true[[:space:]]*$'; then EXTRA="--critical"; echo "critical release"; fi
+          MIN_FROM="$(printf '%s\n' "$MSG" | sed -n 's/^Min-From:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' | tail -n 1)"
+          if [ -n "$MIN_FROM" ]; then echo "minFrom $MIN_FROM"; fi
+          CHANNELS="beta"
+          [ "$PRERELEASE" = true ] || CHANNELS="stable beta"
+          for ch in $CHANNELS; do
+            PREV="$RUNNER_TEMP/feed/releases/$ch.json"
+            set -- --channel "$ch" --version "$VERSION" --out "$RUNNER_TEMP/out/$ch.json" \
+              --date "$RELEASE_DATE" --digests "$RUNNER_TEMP/digests.json" --notes-url "$NOTES_URL"
+            if [ -f "$PREV" ]; then set -- "$@" --previous "$PREV"; fi
+            if [ -n "$EXTRA" ]; then set -- "$@" "$EXTRA"; fi
+            if [ -n "$MIN_FROM" ]; then set -- "$@" --min-from "$MIN_FROM"; fi
+            node scripts/release/make-manifest.mjs "$@"
+            sh scripts/release/sign.sh "$RUNNER_TEMP/out/$ch.json"
+            sh scripts/release/verify.sh "$RUNNER_TEMP/out/$ch.json" "$MINISIGN_PUBLIC_KEY"
+          done
+          ls -l "$RUNNER_TEMP/out"
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          A="$RUNNER_TEMP/assets"
+          mkdir -p "$A"
+          cp "$RUNNER_TEMP"/out/*.json "$RUNNER_TEMP"/out/*.json.minisig "$A/"
+          cp deploy/docker-compose.yml "$A/docker-compose.yml"
+          cp deploy/socket-proxy/haproxy.cfg "$A/haproxy.cfg"
+          cp deploy/release.pub "$A/minisign.pub"
+          set -- --verify-tag --title "Dockify $VERSION" --notes-file "docs/releases/$VERSION.md"
+          if [ "$PRERELEASE" = true ]; then set -- "$@" --prerelease; fi
+          gh release create "$TAG" "$@" "$A"/*
+
+      - name: Publish to the releases branch
+        run: |
+          set -eu
+          F="$RUNNER_TEMP/feed"
+          mkdir -p "$F/releases/$VERSION/socket-proxy"
+          cp "$RUNNER_TEMP"/out/*.json "$RUNNER_TEMP"/out/*.json.minisig "$F/releases/"
+          cp deploy/docker-compose.yml "$F/releases/$VERSION/docker-compose.yml"
+          cp deploy/socket-proxy/haproxy.cfg "$F/releases/$VERSION/socket-proxy/haproxy.cfg"
+          cp "docs/releases/$VERSION.md" "$F/releases/notes/$VERSION.md"
+          cp deploy/release.pub "$F/minisign.pub"
+          cd "$F"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "release $VERSION"
+          git push origin HEAD:refs/heads/releases
+          git log --oneline -n 1

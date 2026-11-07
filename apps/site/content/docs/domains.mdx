@@ -1,0 +1,142 @@
+---
+title: "Domains and TLS"
+description: "At the end your app will answer on its own hostname over HTTPS, with DNS checked and the certificate observed, not assumed."
+---
+
+## The dashboard's own domain
+
+An install started without a domain answers on a temporary address, `https://<server-ip-with-dashes>.sslip.io`, with a real certificate. It depends on sslip.io, a free third-party service, so use your own domain for real use. To move it, open **Settings, Instance, Dashboard domain** and press **Change domain**. It takes an admin, and asks you to confirm it is you.
+
+<Steps>
+
+1. **Enter a domain.** Type it, or with Cloudflare connected pick a name on a zone you let Dockify manage.
+2. **Point it here.** Add the record shown. On a managed zone, press **Create the record** and Dockify adds it; it never replaces a record without showing you which and asking.
+3. **Check.** Three checks turn green: the domain points at this server, answers from this server, and has its certificate. Dockify checks again on its own; **Check now** asks at once. A domain behind Cloudflare's proxy works, with SSL/TLS on Full until the certificate is active.
+4. **Switch.** The key stays off until all three are done, and Dockify checks once more when you press it. The services restart, which takes about a minute. If one does not come back, Dockify returns to the old address by itself.
+
+</Steps>
+
+The old address keeps working the whole time, and afterwards it redirects to the new one, so old links and invites still arrive. Everyone signs in again on the new address: a sign-in belongs to the address it was made on. Invite links, email links, the CSRF origin and cookies all come from `DOCKIFY_PUBLIC_URL`, which the switch rewrites in `/opt/dockify/.env`. A default preview domain follows it too.
+
+Dockify keeps the last three old addresses answering. Stop one from the same page when you no longer need it.
+
+**In tunnel mode** a new name has to be routed through the tunnel, and only Cloudflare's API can do that, so Cloudflare must be connected in Settings, Integrations, with `Account:Cloudflare Tunnel:Edit` on its token.
+
+### A connected GitHub App
+
+Dockify moves the App's webhook URL itself, through GitHub's API. GitHub has no API for the other three, so the page lists them with the exact values to paste into the App's settings on github.com: Homepage URL, Callback URL and Setup URL. Nothing breaks in the meantime: the old address still serves `/api/v1/`, not a redirect, because GitHub does not follow redirects for webhooks. Set them before you stop the old address.
+
+### If you cannot reach the dashboard
+
+Over SSH:
+
+```bash
+sudo dockify admin set-domain dockify.example.com   # move to this address
+sudo dockify admin set-domain --sslip               # back to the sslip.io name (direct mode)
+```
+
+It rewrites `.env` and recreates the api, the worker and the web. If the api is running, it first refuses a name an app or a preview holds. It does not wait for DNS, so the name has to lead here for the certificate to be issued. `--sslip` is refused in tunnel mode. In tunnel mode the worker adds the tunnel's rules if Cloudflare is connected; if not, run `sudo bash install.sh --upgrade --cf-token-file <file>`.
+
+## A free test domain
+
+To try an app before you have a domain, press **Use a free test domain** in Add domain, or turn it on in New app. Dockify makes up a name, `<app>-<short id>.<server-ip-with-dashes>.sslip.io`, with no DNS to set, and it gets a Let's Encrypt certificate the normal way.
+
+It is for trying things out, not for real traffic:
+
+- **It depends on sslip.io**, a free third-party service. If that is down, the domain does not answer and cannot get a certificate. The row says so.
+- **Only when you ask.** Each one is a certificate, so nothing creates them on its own. An app can have one, and a server 20. Remove one to make another.
+- **It is marked** as a test domain, and a real domain added later takes over as the app's main address.
+- **Direct mode, with a public IPv4 only.** Behind a Cloudflare tunnel, or with no public address known, the offer does not appear: nothing could reach the name.
+
+You cannot type a name on sslip.io, nip.io or xip.io that spells another server's address: on those services anyone can spell any address, so Dockify refuses it.
+
+## Add a domain
+
+Open the app, or **Domains**, and add a hostname such as `app.example.com`. Dockify checks DNS and TLS and shows each with its status. The domain gets its route, and asks for its certificate, only once it leads to this server.
+
+The dashboard's own hostname is reserved and can never be routed to an app.
+
+## Tunnel mode
+
+In tunnel mode, `cloudflared` sends every app hostname to Traefik on the server. The DNS record must be **proxied by Cloudflare**, so public DNS answers with Cloudflare's edge addresses. TLS ends at Cloudflare.
+
+If you connected Cloudflare (below), Dockify writes the record and the tunnel rule for you. If not, create a proxied CNAME to the tunnel target shown on the Domains page:
+
+```text
+app.example.com   CNAME   <tunnel-id>.cfargotunnel.com   Proxied
+```
+
+An A record pointing at the server is wrong in tunnel mode: the server has no public port to answer on.
+
+## Direct mode
+
+In direct mode, Traefik listens on 80 and 443 and gets a certificate from Let's Encrypt over HTTP-01. Point an A record at the server:
+
+```text
+app.example.com   A   203.0.113.10
+```
+
+Every A record for the hostname should be the server's IPv4. A CNAME chain is fine as long as it ends there. Records that name something else fail this check, unless the domain answers as [this server](#behind-cloudflares-proxy). When `DOCKIFY_SERVER_IPV4` is set, which the installer does when it can find the address, a domain that does not point here unfolds the exact record to create.
+
+On clouds that put the public address on a NAT (AWS, Google Cloud, Azure), the installer asks the outside what this server's address is. If that check could not run, or the server has its own way out, the address it wrote may be wrong. Set `DOCKIFY_SERVER_IPV4` in `/opt/dockify/.env` to the public address and run `sudo dockify up -d`.
+
+### Behind Cloudflare's proxy
+
+In direct mode, a domain on Cloudflare can be **DNS only** or **proxied**, with or without a token connected.
+
+- **DNS only.** Visitors reach this server directly, and the DNS check sees its address.
+- **Proxied.** Public DNS names Cloudflare, not this server. So Dockify asks the domain itself, on a check path only this server's api can answer. If the right answer comes back, the domain counts as **Points here**, and its TLS status is read from this server, not from Cloudflare's edge. This works for another proxy in front too.
+
+Pick the SSL/TLS mode for a proxied domain:
+
+| SSL/TLS mode | What happens |
+|---|---|
+| Full | Works from the start. Use it until the certificate is active. |
+| Full (strict) | Works once the certificate is active. Before that Cloudflare answers 526, and this server only asks for a certificate after the check passes. |
+| Flexible or Off | Never works. Cloudflare talks http to this server, which redirects to https, so every visitor loops. |
+
+The mode is a setting of the whole zone, so changing it affects the zone's other names too. **Always Use HTTPS** can keep Let's Encrypt from reaching this server for the first certificate: if the domain stays pending, turn it off until the certificate is active.
+
+A live domain keeps its route through one check that gets no answer, so a bad minute at the proxy does not take it down. It loses the route on a second one in a row, or on an answer that is not this server's.
+
+## Cloudflare automation
+
+Connect a Cloudflare API token under **Settings > Integrations > Cloudflare**, then mark the zones Dockify may manage. The token needs `Zone:DNS:Edit`. `Zone:Zone Settings:Read` lets Dockify warn about SSL/TLS modes, and `Account:Cloudflare Tunnel:Edit` is for tunnel mode. When a permission is missing, the page says which.
+
+With that, on a managed zone:
+
+- **Add domain** lets you pick the name and zone instead of typing, and shows what Cloudflare already holds at that name. In direct mode, choose to create the A record, proxied or DNS only. In tunnel mode, adding the domain creates the proxied CNAME and the tunnel rule.
+- **The Domains page** reads each domain's real state from Cloudflare: whether the record is there, what it points to, proxied or DNS only, and the zone's SSL/TLS mode. Unfold a row to see it. **Recheck all** reads it again.
+- **It warns about the combinations that break.** SSL/TLS Flexible or Off with a proxied record in direct mode is a redirect loop. Full (strict) before this server holds the certificate is a 526. Always Use HTTPS can hold the first certificate back.
+- **Fix the record** replaces a wrong record, after a confirmation that names what goes. If the records have changed by then, nothing happens.
+- **Removing a domain** also removes the record Dockify made for it, with a switch in the confirmation to keep it.
+
+Zones you did not switch on are neither read nor written.
+
+It is careful about what it touches:
+
+- **Nothing is adopted or overwritten on its own.** If the hostname already has any DNS record or tunnel rule, Dockify leaves it alone.
+- **Nothing is replaced without a go-ahead that names it.** Only **Fix the record** removes a record Dockify did not make, and only after you confirm exactly which.
+- **Teardown removes only what Dockify recorded.** The record is deleted by its stored id, and only while it is still the tunnel CNAME, or the A record to this server, that Dockify made. The tunnel rule is removed only while it still points at Dockify's proxy.
+- **Only this server's tunnel.** The tunnel is the one the installer created, recorded by id. Dockify never looks one up by name.
+- The token is sent only in the `Authorization` header and is never logged.
+
+DNS and certificate checks run every 15 minutes. A new domain still waiting for DNS is checked more often, from every 30 seconds, backing off to 15 minutes. You can also recheck one domain from its row.
+
+## Status you will see
+
+| Column | Values |
+|---|---|
+| TLS | Active, Waiting for DNS, Pending, Failed or Expired, with a warning in the last two weeks before expiry. Hover it for the issuer. |
+| Expires | When the certificate runs out, and that it renews on its own. Before that, Once DNS points here or Being issued. |
+| DNS | Points here, Points elsewhere, No record or Not checked, from the last lookup. |
+
+TLS is observed: Dockify does a TLS handshake with your hostname as the server name and reads the certificate a visitor would get. In tunnel mode that is Cloudflare's edge certificate, in direct mode Traefik's. The probe only ever goes to a public address or the server's own, so a hostname pointed at an internal address cannot turn it into a scanner.
+
+## What can go wrong
+
+- **TLS fails on `a.b.example.com` in tunnel mode.** Cloudflare's free Universal SSL certificate covers `example.com` and one level of subdomain, such as `b.example.com`, but not `a.b.example.com`. Use a one-level name, or add an advanced certificate on Cloudflare.
+- **Dockify did not write the record.** A record or tunnel rule for the hostname already existed. Use **Fix the record** on its row, or delete it on Cloudflare if it is yours, then recheck.
+- **DNS: Points elsewhere, in direct mode.** An A record points somewhere else, or an AAAA record sends visitors to an old server. Behind a proxy, unfold the row to see what asking the domain found.
+- **"it redirects in a loop", or a 526, behind Cloudflare.** The SSL/TLS mode. See [Behind Cloudflare's proxy](#behind-cloudflares-proxy).
+- **Let's Encrypt fails.** Port 80 must reach Traefik for the HTTP-01 challenge. Check the firewall and any proxy in front.

@@ -1,0 +1,144 @@
+---
+title: "Security model"
+description: "Dockify runs as root-equivalent on your server, so its own code is the biggest risk. This page says what is isolated, who holds which key, and what is not covered."
+---
+
+## The shape of it
+
+```text
+browser -> cloudflared or Traefik -> web -> api ----> Postgres
+                                  /api/v1/ -> api
+                                               ^
+                                  internal secrets routes
+                                               |
+          worker -- pinned link -- agent -- gate -- socket proxy -- Docker
+                                     |-- BuildKit, Traefik files
+          updater (signed update jobs only) -- Docker socket
+```
+
+The dashboard's pages come from `web`, and they reach the `api` through it. The same hostname also sends `/api/v1/` straight to the `api`, which is how [API tokens](/docs/api) and the GitHub and Vercel webhooks arrive. Every slow or privileged action is a job row that the `worker` picks up. The worker has no way to Docker of its own: it asks the `agent`, over a private link with a pinned key, and the agent does the work. Updates run in a separate `updater`.
+
+## Who holds the master key
+
+Only the **api** loads `DOCKIFY_MASTER_KEY`, and it is the only container the key is given to as a secret. The worker, the dashboard and the migration step cannot read it: compromising one of them yields ciphertext. The updater does not load the key, but it mounts the install folder and the Docker socket, so treat it like root.
+
+The worker still needs some plaintext to do its jobs: an app's variables for a deploy, a registry password for a pull, the Cloudflare token, the backup key. It asks the api for exactly the rows it needs, over a private control network:
+
+- Authenticated by an internal token compared in constant time, from a pinned network address.
+- Only for kinds the worker ever needs. Authenticator seeds, variable history and webhook secrets are refused.
+- Only while the job it names is claimed and still leased, and of the kind it says.
+- Every call writes an audit row with the job and the kinds opened. A refused call is audited too.
+
+## Secrets at rest
+
+Every secret is sealed on its own with AES-256-GCM, a fresh key per value, bound to its row so a ciphertext cannot be moved to another row. Integration tokens and storage keys are write-only: after you save one, only a short hint ever comes back.
+
+## Rotating the master key
+
+Each value records which master key sealed it, so a new key can take over while the old one still opens what it sealed. On the server, as root, in the install folder (`/opt/dockify` by default):
+
+1. Back up `secrets/master_key` somewhere safe and offline.
+2. Move the current key into `secrets/master_key_previous`, write a new one, and restart the api:
+
+```bash
+cp secrets/master_key secrets/master_key_previous
+openssl rand -base64 32 | tr -d '\n' > secrets/master_key
+dockify restart api
+```
+
+Restarting the api loads the new key. From then on every new value is sealed with the new key, and older values open with the previous one. Email codes sent before the rotation stop working; ask for a new one.
+
+3. Re-seal everything stored under the new key:
+
+```bash
+sudo dockify admin rewrap-secrets
+```
+
+This runs in one database transaction, and it reads every value back before the first write. If any value fails, it names the value and changes nothing, so every secret stays readable and you can run it again.
+
+4. Empty the previous key file and restart the api:
+
+```bash
+: > secrets/master_key_previous
+dockify restart api
+```
+
+Do not skip step 3: removing the previous key before it has run makes every secret sealed under it unreadable, including the key that opens your backups. If the database has not moved to the new key, the api refuses to start. Keep your offline copy of the old key until a backup run has finished on the new one, since the copy of the backup key already in your bucket stays sealed with the old key until then.
+
+## Every route has a policy
+
+Every api route is declared `anonymous`, `session`, `elevated` or `internal`, with the lowest role it allows and whether an API token may call it. One hook enforces the table, and a test fails if any route has no policy or a new anonymous route appears.
+
+**Elevated** (the step-up) means you confirmed it is you within the last 5 minutes, in this session only: with your authenticator code when two-factor is on, otherwise with your password. Anything that changes what code runs or with what privilege, destroys data or takes production down is elevated. That includes variable writes, app settings, restores, downloads, deletes, token creation, team changes and updates.
+
+## Sign-in
+
+- Passwords of at least 12 characters. Two-factor authentication with an authenticator app is optional.
+- Session cookies are `SameSite=Strict`. Every state-changing request is checked against `Sec-Fetch-Site` and an exact `Origin` match.
+- Sign-in, two-factor and password reset are rate limited.
+- Lost access has no web way around two-factor. With email set up, a forgotten password gets a one-time reset link, and two-factor still applies after it. A lost authenticator, or a forgotten password without email, is reset by whoever runs the server, over SSH, with `dockify admin`. Every reset ends the account's sessions and is in the activity log. A password reset, by email or over SSH, also revokes its API tokens. See [Recovery](/docs/recovery).
+- A password change ends your other sessions and any open reset link. Your API tokens keep working, so someone who may have made one needs a reset instead, or a look at **Settings > API tokens**. An email change also ends open reset links.
+- You can see your sessions, with their address and device, and sign any of them out.
+- First setup needs the one-time setup token printed by the installer, so nobody who finds the server first can claim it.
+
+## Containers
+
+Every container, for builds, apps and managed services alike, is built by one function and checked again on the exact body sent to Docker:
+
+- All capabilities dropped, a fixed minimal add-back, and `no-new-privileges`.
+- Memory, pids and log caps.
+- Never privileged, never the host's network, process or IPC namespace, no devices, no bind mounts, no host ports.
+
+Apps may add only `NET_ADMIN` or `NET_RAW`, and only `net.ipv4.*` and `net.ipv6.conf.*` sysctls.
+
+## Networks
+
+- Each environment gets its own Docker network. Apps reach each other by name only inside it.
+- A host firewall rule drops traffic from tenant networks (`dk-*` bridges) to the host itself.
+- A rule drops container traffic to cloud metadata addresses, so an app cannot read your cloud provider's instance credentials.
+- In tunnel mode Dockify opens no inbound port; ufw allows SSH only. In direct mode it allows SSH, 80 and 443.
+
+## The agent and the Docker socket
+
+Only the `agent` and the `updater` can reach Docker. The worker cannot: it has no network to it, and no BuildKit socket or Traefik folder either.
+
+Every Docker call the agent makes goes through two checks. Its **gate** parses the whole request, refuses anything Dockify's own containers would not ask for, such as privileged mode, host mounts or a control network, and forwards only the copy it checked. Then a **socket proxy** allows the exact method and path pairs Dockify uses and denies the rest. A test keeps the two in step.
+
+What that leaves, plainly:
+
+- **A compromised worker** cannot reach root through the gate. It can still read every app's secrets, run any image within an app's limits, read and delete any app's data, and open a shell in any app's container. It holds Postgres as superuser, so it can also run code inside the Postgres container. The secrets rules above stop it taking the master key, not those.
+- **Code running inside the agent is host root.** The gate is a function in the same process, and the proxy reads no bodies, so whatever controls the process can ask Docker for anything the proxy's paths allow. The agent runs as a plain user, on a read-only filesystem, with no capabilities, and it only speaks to the worker over its link.
+- **The updater holds the raw socket**, and takes only signed update jobs.
+
+## Builds
+
+Builds run in a rootless BuildKit daemon, not through the Docker socket. `RUN` steps run in BuildKit's sandbox, cache mounts are separate per app, a `# syntax=` line may name only the official Dockerfile frontend, and your variables can never set a `BUILDKIT_*` build argument.
+
+## Outbound calls
+
+Calls from the api to GitHub, Vercel, Cloudflare and registries, and calls to alert channels, go through one guard: https only, and the address checked inside the socket's own DNS lookup, so a hostname cannot be pointed at an internal address. Redirects are not followed, with two exceptions: a webhook's logo follows redirects and checks each hop, and the domain ownership probe asks over http and follows one redirect to https on the same name.
+
+Three paths check differently. S3 storage checks the address before it connects, not inside the lookup. The worker's own calls to the GitHub and Cloudflare APIs go to fixed hosts, without the guard. A pull makes Docker fetch from the registry an image names, from the host's network, with Docker's own lookup: Dockify refuses this server's loopback, cloud metadata, link-local addresses and its own control networks, when the image is saved and, written in the name, by the gate at the pull. A registry on your own network is allowed. A name whose DNS answer changes later is not caught.
+
+## Logs
+
+Build and runtime logs are redacted before they are stored: the app's own secret values, plus common token patterns.
+
+## The web terminal
+
+The [web terminal](/docs/terminal) is admin only, needs a step-up per opening, and takes a single-use ticket bound to the session, app and browser, sent over the socket rather than in a URL. The socket checks its origin. The api never touches Docker: the worker takes an app id, derives the container's name, checks what Docker reports about that container through the agent, and compares the exec's container with it before starting anything. The command is fixed, with no added user or privilege. What is typed is not logged. **Settings > Instance** turns it off for the server.
+
+A worker compromise is not contained by any of this; see [the agent and the Docker socket](#the-agent-and-the-docker-socket).
+
+## What is not covered
+
+Be clear about the limits:
+
+- **Containers share the kernel.** Apps on one server are isolated by Docker, not by virtual machines. A kernel escape bug affects every app. Dockify refuses runtimes with known escape bugs and keeps Docker patched, but it cannot fix the kernel.
+- **Dockify is close to root-equivalent.** Whoever controls the agent or the updater controls the server. Whoever controls the api or the worker controls every app, secret and database on it, short of root. That is why those are the most guarded parts.
+- **One server is one failure domain.** If the server is lost, your apps are down until you restore elsewhere. Offsite backups and the master key are what make that possible.
+- **In tunnel mode Cloudflare terminates TLS** and sees your traffic. Use direct mode if that is not acceptable.
+
+## Report a vulnerability
+
+Please report security issues privately. See the [Security](/security#report) page for how.

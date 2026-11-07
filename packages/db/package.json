@@ -1,0 +1,28 @@
+{
+  "name": "@dockify/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "prisma generate",
+    "generate": "prisma generate",
+    "migrate": "prisma migrate deploy",
+    "drift": "prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url \"$SHADOW_DATABASE_URL\" --exit-code",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dockify/crypto": "workspace:*",
+    "@prisma/client": "^6.19.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.15",
+    "@types/node": "^22.15.3",
+    "prisma": "^6.19.0",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

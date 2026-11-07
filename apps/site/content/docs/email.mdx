@@ -1,0 +1,84 @@
+---
+title: "Email"
+description: "At the end your Dockify sends invites, password reset links, confirmation codes and alerts from your own domain, through your own mail server."
+---
+
+## Optional, and yours
+
+Email is off on a fresh install, and Dockify works fully without it: invites are copy links, and a forgotten password is reset on the server over SSH with `sudo dockify admin reset-password <email>`.
+
+Turn it on and Dockify also:
+
+- emails team invites, next to the copy link,
+- offers **Forgot password?** on the sign-in page, with a link that works once and expires after 30 minutes,
+- asks for a 6-digit code sent to a new address before an account's email changes, and tells the old address,
+- can verify the first admin's email during setup,
+- adds **Email** as a channel for alert rules, sent to every admin.
+
+Dockify sends over SMTP, through any mail server or provider you choose. Nothing goes through a shared service.
+
+## 1. Get SMTP details from your provider
+
+You need a host, a port, a username and a password, and a from address your provider lets you send from. Most providers ask you to verify your sending domain with DNS records first, and refuse or junk mail until you do.
+
+The form has presets for these. A preset only fills in the fields:
+
+| Provider | Host | Port | Username | Password |
+|---|---|---|---|---|
+| Resend | `smtp.resend.com` | 465 | `resend` | Your API key |
+| Gmail | `smtp.gmail.com` | 587 | Your full address | An app password |
+| Amazon SES | `email-smtp.<region>.amazonaws.com` | 587 | Your SES SMTP username | Your SES SMTP password |
+| Mailgun | `smtp.mailgun.org` (EU: `smtp.eu.mailgun.org`) | 587 | The SMTP login of your domain | That login's password |
+| Postmark | `smtp.postmarkapp.com` | 587 | Your server API token | The same token |
+| SendGrid | `smtp.sendgrid.net` | 587 | `apikey` | Your API key |
+| Brevo | `smtp-relay.brevo.com` | 587 | Your SMTP login | Your SMTP key |
+
+Any other server with a public host name works the same way: pick **Another server** and enter its details.
+
+## 2. Fill it in
+
+Open **Settings > Integrations > Email** as an admin and fill in:
+
+| Field | Notes |
+|---|---|
+| Host and port | Port 25, 465, 587, 2465, 2525 or 2587. The host must be a public name: private addresses and this server's own names are refused. |
+| TLS | Implicit TLS or STARTTLS. Choosing a port picks the usual one: implicit on 465 and 2465, STARTTLS on the rest. There is no option without TLS, and the server's certificate is always verified. |
+| Username and password | Tried before they are kept, then the password is stored sealed. It is never shown again. Leave it empty to keep the stored one; a changed host or username needs it entered again. |
+| From name | What inboxes show, such as your company or server name. |
+| From address | An address your provider lets you send from, such as `dockify@mail.example.com`. |
+| Reply-to | Optional. Where replies go. |
+
+Saving asks you to confirm it is you. Press **Send test email** to send a test to your own address, with the values in the form, before or after you save.
+
+## If the test fails
+
+The message says what went wrong:
+
+- **Could not reach the host on that port.** Many VPS providers block outbound mail ports, especially 25, and sometimes 465 and 587. Try your provider's alternate port (Resend offers 2465 and 2587), or ask your VPS provider to open it.
+- **The login was refused.** Check the username and password. Some providers need an app password or an API key here, not your sign-in password.
+- **No secure connection.** The TLS mode does not fit the port, the server does not offer TLS, or its certificate is not valid. Nothing was sent.
+- **A refused from address or recipient.** The server's own words follow. Usually the sending domain is not verified with your provider yet.
+
+If a stored login stops working, the Email card turns red and says so. A single refused recipient does not: that message fails, the others go out, and the activity log names the address.
+
+## How sending works
+
+Messages are queued and sent by the worker over SMTP, with retries on busy answers and failed connections. Addresses, codes and links never appear in logs or in the job queue: each message is sealed until it is sent, then deleted. Each address gets at most a short burst of mail before Dockify slows down.
+
+SMTP has no way to drop a repeat, so a retry carries the same Message-ID, and the worker skips what the server already accepted. A copy can still repeat if the server's reply was lost, or the worker restarted between two tries.
+
+Codes are 6 digits, stored only as a keyed hash, valid for 10 minutes and 5 tries. Reset links are stored only as a hash, built from your `DOCKIFY_PUBLIC_URL`, work once, and sign the account out everywhere when used. The forgot password page answers the same way whether or not an address has an account.
+
+## Set it at install
+
+To verify the first admin's email during setup, pass the values on the first install, before you create your account. Dockify reads them once; after that, use **Settings > Integrations > Email**.
+
+```bash
+curl -fsSL https://dockify.sh/install.sh | sudo DOCKIFY_SMTP_HOST=smtp.resend.com DOCKIFY_SMTP_PORT=465 DOCKIFY_SMTP_USER=resend DOCKIFY_SMTP_PASSWORD=re_... DOCKIFY_EMAIL_FROM=dockify@mail.example.com DOCKIFY_EMAIL_FROM_NAME="Acme Cloud" sh
+```
+
+The variables go after `sudo`, so sudo hands them to the installer; set before it, or exported in your shell, sudo drops them. To keep the password out of your shell history, put it in a file and pass `DOCKIFY_SMTP_PASSWORD_FILE=/path/to/file` instead. The port is optional and defaults to 587. The password is written to `/opt/dockify/secrets/`, never to `.env`.
+
+## Turn it off
+
+**Disconnect** in Settings removes the password. Dockify goes back to copy-link invites and the password reset over SSH; nothing else changes.

@@ -1,0 +1,706 @@
+/* new-app: the New app dialog (components/new-app): large option cards, then each source's
+   settings, then the shared details step, and at the end the GitHub repository picker
+   (components/git) its GitHub source uses. Small text sits on the popover, so it uses --ink-muted.
+   Picked cards are foundation's surface-key-picked, which already mixes into the dialog's fill. */
+
+.na-step {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  animation: na-step 160ms var(--ease) both;
+}
+
+@keyframes na-step {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+
+.na-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.na-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/* A lone field fills the row instead of stranding an empty half. */
+.na-pair:has(> :only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* A Select inside a Field fills the field's width. */
+.na-sel {
+  display: flex;
+  width: 100%;
+}
+
+/* -------------- Option cards -------------- */
+.na-cards {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.na-cards[data-layout="grid"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.na-cards[data-layout="row"] {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.na-cards > li {
+  display: flex;
+  min-width: 0;
+}
+
+.na-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 16px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease), box-shadow 150ms var(--ease);
+}
+
+/* Picked is the foundation surface-key-picked; only an unpicked card draws its own ring and hover.
+   The hover is the popover fill, which stays visible on the dark dialog surface. */
+.na-card:not(.surface-key-picked) {
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.na-card:not(.surface-key-picked):hover {
+  background: var(--fill-popover);
+}
+
+/* Inside, because the dialog body scrolls and would clip a ring drawn outside the card. */
+.na-card:focus-visible {
+  outline-offset: -2px;
+}
+
+.na-card .two-sub {
+  color: var(--ink-muted);
+}
+
+/* The source cards stack their copy under a 40px tile, so they read as four equal choices. The
+   rows pack at the top, so every title starts on the same line, and the chevron shares the
+   tile's row instead of dropping into a third one. */
+.na-cards[data-layout="grid"] .na-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-content: start;
+  row-gap: 16px;
+  min-height: 148px;
+}
+
+.na-cards[data-layout="grid"] .na-card > .two {
+  grid-column: 1 / -1;
+}
+
+.na-cards[data-layout="grid"] .na-card-go {
+  grid-row: 1;
+  grid-column: 2;
+  align-self: center;
+}
+
+.na-card-go {
+  color: var(--ink-muted);
+  transition: color 150ms var(--ease);
+}
+
+.na-card:hover .na-card-go,
+.na-card:focus-visible .na-card-go {
+  color: var(--ink);
+}
+
+/* Radio cards: picked is the soft blue tint, never a dark outline. */
+.na-choice {
+  align-items: center;
+}
+
+/* A card that cannot be picked yet reads dimmed, the way every disabled control does. */
+.na-choice[aria-disabled="true"] {
+  cursor: default;
+}
+
+.na-choice[aria-disabled="true"]:hover {
+  background: transparent;
+}
+
+.na-choice[aria-disabled="true"] > :not(.two),
+.na-choice[aria-disabled="true"] .two-main {
+  opacity: var(--disabled-opacity);
+}
+
+/* The card's radio mark is foundation's .radio ring on a span, which cannot be :checked, so the
+   picked card's mark takes the chosen dot here. */
+.na-radio[data-on] {
+  box-shadow: inset 0 0 0 5px var(--blue);
+}
+
+/* -------------- Groups -------------- */
+.na-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.na-legend {
+  padding: 0;
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.na-group > .seg2 {
+  align-self: flex-start;
+}
+
+.na-group a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.na-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: text-decoration-color 150ms var(--ease);
+}
+
+.na-link:hover {
+  text-decoration-color: currentColor;
+}
+
+/* -------------- Compose review -------------- */
+.na-yaml {
+  min-height: 200px;
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 2;
+}
+
+.na-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* A row inside the dialog: its hover is the popover veil, visible on the dark dialog too. */
+.na-svc {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 0 8px;
+  border-radius: 10px;
+  transition: background-color 150ms var(--ease);
+}
+
+.na-svc:hover {
+  background: var(--fill-popover);
+}
+
+.na-svc-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.na-svc[data-off] .na-svc-main > .icon-tile,
+.na-svc[data-off] .two {
+  opacity: var(--disabled-opacity);
+}
+
+.na-svc-name,
+.na-svc-sub {
+  overflow-wrap: anywhere;
+}
+
+.na-svc-sub {
+  color: var(--ink-muted);
+}
+
+.na-svc-kind {
+  flex: none;
+  width: 132px;
+}
+
+.na-svc-tag {
+  flex: none;
+  width: 132px;
+  padding-right: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+  text-align: right;
+}
+
+.na-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 8px 0;
+  list-style: none;
+}
+
+.na-issues > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+}
+
+.na-issues > li > .ic {
+  flex: none;
+  margin-top: 2px;
+}
+
+.na-issue-svc {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* -------------- Details step -------------- */
+.na-summary {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px 12px 12px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.na-summary-line {
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.na-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The popover fill, because in dark --mass is the dialog surface itself and the pill would vanish. */
+.na-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--fill-popover);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.na-name > .ic {
+  color: var(--ink-muted);
+}
+
+.na-name:has(> .aicon) {
+  padding-left: 4px;
+}
+
+/* -------------- Narrow -------------- */
+@media (max-width: 760px) {
+  .na-pair,
+  .na-cards[data-layout="grid"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .na-cards[data-layout="grid"] .na-card {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto;
+    align-items: center;
+    min-height: 0;
+  }
+
+  .na-cards[data-layout="grid"] .na-card > .two {
+    grid-column: auto;
+  }
+
+  .na-cards[data-layout="grid"] .na-card-go {
+    grid-row: auto;
+    grid-column: auto;
+  }
+
+  .na-svc-kind,
+  .na-svc-tag {
+    width: 112px;
+  }
+}
+
+@media (max-width: 420px) {
+  .na-svc {
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+  }
+
+  .na-svc-kind {
+    width: 100%;
+  }
+
+  .na-svc-tag {
+    display: none;
+  }
+}
+
+/* -------------- Repository picker -------------- */
+/* The GitHub repository list, the picked repository and the URL import from components/git,
+   which the GitHub source of the New app flow uses. */
+
+/* The account and the search on one row, the list under them, links at the foot. */
+.git-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.git-pick-hd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.git-account {
+  flex: 0 1 200px;
+  min-width: 160px;
+}
+
+.git-search {
+  display: flex;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.git-search > .search {
+  max-width: none;
+}
+
+.git-skel-account {
+  flex: 0 1 200px;
+}
+
+.git-skel-search {
+  flex: 1 1 240px;
+}
+
+/* Six rows show, the rest scroll inside the list so the dialog around it stays put. */
+.git-list {
+  display: grid;
+  gap: 2px;
+  max-height: calc(6 * 52px + 5 * 2px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+/* Rows inside the dialog take the popover hover fill. */
+.git-row {
+  --cols: 32px minmax(0, 1fr) 96px 72px;
+  gap: 12px;
+  height: 52px;
+  padding: 0 8px;
+  border-radius: 10px;
+  transition: background-color 150ms var(--ease);
+}
+
+.git-row[data-active] {
+  background: var(--fill-popover);
+}
+
+.git-row[data-active] .icon-tile {
+  color: var(--ink);
+}
+
+.git-row-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.git-row-owner {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.git-row-tag {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.git-row-tag > .chip {
+  max-width: 100%;
+}
+
+.git-row > .btn {
+  justify-self: end;
+}
+
+.git-more {
+  display: grid;
+  place-items: center;
+  height: 52px;
+  color: var(--ink-3);
+}
+
+.git-pick-state .empty-panel {
+  padding-bottom: 16px;
+}
+
+/* Flush with the fields above it; under an empty state the link centres below its key. */
+.git-pick-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+}
+
+.git-pick-state .git-pick-foot {
+  justify-content: center;
+}
+
+/* Quiet text links: Change, Import from a URL instead, the App permissions page. */
+.git-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 150ms var(--ease), text-decoration-color 150ms var(--ease);
+}
+
+.git-link:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+.git-link:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+/* The picked repository in a soft container, with its Change link. */
+.git-picked {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px 12px 12px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.git-picked-name {
+  align-self: flex-start;
+  overflow-wrap: anywhere;
+}
+
+.git-valid {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ok-ink);
+}
+
+.git-url {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Narrow: the language chip drops, so the name keeps its room. The skeleton's template rides in an
+   inline --skel-cols that foundation reads at one class, so this rule outweighs it without !important. */
+@media (max-width: 760px) {
+  .git-row {
+    --cols: 32px minmax(0, 1fr) 72px;
+  }
+  .git-skel .skel-row {
+    grid-template-columns: 32px minmax(0, 1fr) 72px;
+  }
+  .git-row-tag,
+  .git-skel .skel-row > :nth-child(3) {
+    display: none;
+  }
+  .git-account,
+  .git-skel-account {
+    flex-basis: 100%;
+  }
+}
+
+/* The search keeps its own height in the dialog column. */
+.na-tpl-search {
+  display: flex;
+  flex: none;
+  min-width: 0;
+}
+
+/* Templates: what will run, before the press. Rows stay readable at phone width: long values wrap. */
+.na-tpl-apps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.na-tpl-app {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--fill-popover);
+}
+
+.na-tpl-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.na-tpl-facts,
+.na-tpl-env dl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.na-tpl-facts > div,
+.na-tpl-env dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.na-tpl-facts > div {
+  grid-template-columns: 80px minmax(0, 1fr);
+}
+
+.na-tpl-facts dt,
+.na-tpl-env dt {
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.na-tpl-facts dd,
+.na-tpl-env dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.na-tpl-env summary {
+  width: fit-content;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.na-tpl-env summary:hover {
+  color: var(--ink);
+}
+
+.na-tpl-env dl {
+  margin-top: 8px;
+}
+
+@media (max-width: 560px) {
+  .na-tpl-env dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+
+/* What the read of a repository found, on one line above the build fields. */
+.na-detect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  min-height: 20px;
+  font-size: 13px;
+}
+.na-detect-main {
+  color: var(--ink);
+  font-weight: 500;
+}
+.na-detect-sub {
+  color: var(--ink-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.na-detect > .btn {
+  margin-left: auto;
+}

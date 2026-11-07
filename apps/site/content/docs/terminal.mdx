@@ -1,0 +1,47 @@
+---
+title: "Web terminal"
+description: "At the end you have a shell inside a running app or database container, from the dashboard, without SSH to the server."
+---
+
+## Open one
+
+Open an app or a database, then the **Terminal** tab, then **Open terminal**. Dockify asks you to confirm it is you, and the shell opens inside that app's own container. It uses `bash` if the image has it, otherwise `sh`.
+
+**Copy** and **Paste** sit at the top of the terminal. Inside it, Ctrl+Shift+C copies the selection and Ctrl+Shift+V pastes. Ctrl+C stays what it is in a shell.
+
+## Who can use it
+
+Admins only, in a browser session, after the step-up. Viewers do not see the tab. API tokens cannot open a terminal, whatever their scope.
+
+To turn it off for the whole server, go to **Settings > Instance** and switch off **Web terminal**. Open sessions close within seconds and new ones are refused.
+
+## What it reaches
+
+The shell runs in that one container, as the user the container already runs as, with the capabilities the container already has. Nothing is added. It cannot reach the server itself, Dockify's own containers, or another project's containers, except over a network that container could already use.
+
+A managed database's container holds its data and its credentials, and an app's container holds its variables, including secrets. A terminal can read what the container can read. That is why it asks for the step-up, and why the opening is logged.
+
+## Limits
+
+| Limit | Value |
+|---|---|
+| No input | Closes after 15 minutes. Output does not count, so a log tail does not keep it open. |
+| Total | Closes after 60 minutes. |
+| At once | 3 per person, 3 per app, 8 on the server. |
+| Paste | 256 KB at a time. Sending much more than that quickly closes the session. |
+
+A session also closes when your sign-in is revoked or expires, your role drops to Viewer, the app is removed, or the container stops. Closing the tab ends the session too, and the shell gets a hangup. Something you started with `nohup` or as a daemon inside the container keeps running, as it would over SSH, until the container is replaced.
+
+There is no reconnecting to an old session. **Open again** starts a new shell.
+
+## What is recorded
+
+**Activity** records who opened and closed a terminal, for which app, from which address, and why it closed. Refused attempts are recorded too. What you type and what the shell prints are not recorded anywhere.
+
+## Good to know
+
+- **Changes do not last.** A deploy or restart replaces the container's filesystem, apart from its volumes. Fix things in your repository or image.
+- **An image with no shell** (distroless, scratch) has nothing to open, and the tab says so.
+- **A stopped app** has no container to open. Start or deploy it first.
+- **Through the dashboard's address only.** The terminal's connection goes to `/api/v1/` on your dashboard's hostname, so it does not work over the SSH tunnel on `127.0.0.1:3000`, even signed in.
+- **If the worker restarts** during a session, the session ends. The shell it leaves behind has no input and sits idle until the container is replaced.

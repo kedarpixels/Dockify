@@ -1,0 +1,100 @@
+---
+title: "Troubleshooting"
+description: "The problems people hit most, what they mean, and what to do. Start with the symptom you see."
+---
+
+## First places to look
+
+- **The deployment log.** Every failed deploy says which step failed and why.
+- **The activity log.** Who changed what, and when.
+- **The Server page.** Disk, memory, and the health of Dockify's own services.
+- **On the server:** `sudo dockify ps` lists the stack, and `sudo dockify logs api`, `sudo dockify logs worker` or `sudo dockify logs updater` show each service.
+
+## A deploy rolled back
+
+The new version did not pass its readiness gate, so it never got traffic and the old version kept serving. The log names the probe:
+
+- **`GET /healthz answered 500, expected 200`.** Your app started but its health route failed. Read the app's runtime log for that deploy.
+- **`did not answer within 5s`.** The app is slow to start, or listens on another port. Check the port setting, raise the grace period, or the timeout.
+- **Crash looping.** The process exits on start. Usually a missing variable or a failed connection. The runtime log shows the exit.
+- **`nothing is listening on port N`.** The app listens on `127.0.0.1`, or on another port, inside the container. Make it listen on `0.0.0.0` on the app's port.
+
+## The build failed
+
+- **"No Dockerfile at ...".** The app's builder is set to Dockerfile. Add one, set its path, or switch the builder in the app's settings.
+- **"Dockify could not work out how to build this repository".** Railpack found nothing it knows, or no way to start the app. Its reason is in the message. Set the commands in the app's settings, or add a Dockerfile.
+- **The build stops at "is not an allowed gateway source".** The server's `docker-compose.yml` is older than this release. Updates leave that file alone, so run `sudo bash install.sh --upgrade`.
+- **"The clone was anonymous".** The repository is private and no GitHub App installation covers it. See [Connect GitHub](/docs/github).
+
+## The release command failed
+
+The deploy stopped before any swap, and nothing changed. Read the release step in the log. Fix the migration and deploy again. Dockify does not retry a release command on its own, on purpose.
+
+## A push did not deploy
+
+Check that **auto deploy** is on for the project, that the branch is the one the environment tracks, and that the app comes from that repository. On GitHub, the App's **Advanced** page lists recent deliveries with their answers. See [Connect GitHub](/docs/github).
+
+## The domain is not live
+
+Open **Domains** and read the TLS and DNS columns:
+
+- **DNS: No record.** No record yet. Add it, or connect Cloudflare and manage the zone.
+- **DNS: Points elsewhere, in tunnel mode.** The record is not proxied by Cloudflare, or it is an A record to the server. Make it a proxied CNAME to the tunnel.
+- **DNS: Points elsewhere, in direct mode.** An A record points somewhere else. Unfold the row to see the record to create. A record proxied by Cloudflare is fine with SSL/TLS on Full: see [Behind Cloudflare's proxy](/docs/domains#behind-cloudflares-proxy).
+- **TLS: Failed on a two-level name**, such as `a.b.example.com` in tunnel mode. Cloudflare's free certificate covers one level only. Use `a-b.example.com`, or buy an advanced certificate.
+- **Dockify did not write the Cloudflare record.** A record or tunnel rule already existed, so Dockify did not touch it. Remove it if it is yours and recheck.
+
+DNS changes can take a few minutes to be seen. Dockify checks every 15 minutes, or recheck now from the row.
+
+## Disk alert
+
+Look at the disk breakdown on the Server page: images, build cache, volumes and logs, with what can be reclaimed.
+
+- **Images and build cache** are cleaned by the janitor every 6 hours, or now with **Prune**. It keeps the images of each app's last 5 good deploys for rollback.
+- **Volumes** hold your databases and app data. Dockify never deletes them for you. Check for a table or a log file that grows.
+- **Local backups** live on the same disk. Move backups to an S3-compatible destination.
+
+Below the larger of 3 GiB or 5 percent free, Dockify refuses new builds and image pulls, so a build cannot take the last of the room. A rollback or redeploy of an image already on the server still works. It also keeps a reserve file of up to 1 GiB, and gives it up below 1 GiB free so Postgres and the worker have room to report it. This buys time and stops nothing: on a common Ubuntu disk (overlay2 on ext4) Docker has no per-container limit, so an app that writes fast can still fill the disk.
+
+## A restore test failed
+
+The backup did not replay into a throwaway database. That is what the test is for. Open the backup to read the error, take a new manual backup, and test it. If new backups also fail, check the database's own logs and its disk.
+
+## A restore failed
+
+A restore verifies the backup before it touches anything: checksum, every encrypted chunk, and the archive's entries. A failure there means the file is damaged or was encrypted with another key, and nothing was changed. If you restored **in place**, a pre-restore dump of your data was taken first.
+
+## The dashboard does not load
+
+- From the server, check the stack: `sudo dockify ps`.
+- In tunnel mode, check `sudo dockify logs cloudflared`. A deleted tunnel or a revoked token stops all traffic.
+- Reach the dashboard over SSH to rule out DNS: `ssh -N -L 3000:127.0.0.1:3000 root@your-server`, then open `http://127.0.0.1:3000`. Signing in works there. See [Install](/docs/install).
+- To give it a working address again: `sudo dockify admin set-domain <host>`, or `--sslip`.
+
+The updater brings back a Dockify service that exited with a code other than 0 or 143, and restarts one that stays unhealthy while the database answers. It waits two minutes first, acts at most once per 10 minutes per service, and writes an audit row. A service you stopped with `sudo dockify stop` stays stopped, unless the stop timed out or you used `docker kill` (exit 137). Set `DOCKIFY_WATCHDOG=off` in `.env` to turn this off.
+
+## An update failed
+
+The updater rolls back on its own if the migration, restart or health check fails, and the update shows **Rolled back** with the reason. If it shows **Failed** with a dump id, the rollback itself failed: that is the copy of Dockify's database taken just before. Read `sudo dockify logs updater` and restore that dump by hand.
+
+## Locked out of an account
+
+There are two ways back in, and a second factor is never skipped from the web:
+
+- **Forgot the password, and email is set up:** use **Forgot password?** on the sign-in page. The link works once, for 30 minutes. If the account has two-factor on, it still asks for the code.
+- **Lost the authenticator, or forgot the password without email:** whoever runs the server resets it over SSH. The sign-in page links to these commands too, under **Lost access?** or **Reset two-factor**.
+
+```bash
+sudo dockify admin disable-mfa you@example.com      # turns two-factor off for that account
+sudo dockify admin reset-password you@example.com   # prints a new password for it
+```
+
+Both run inside the running api container and sign the account out everywhere. A password reset leaves two-factor on, so run both if both are lost. Each one is recorded in the activity log. Once signed in, replace a printed password with your own and turn two-factor back on in **Settings > Security**. `sudo dockify admin revoke-sessions <email>` only signs an account out everywhere. More in [Recovery](/docs/recovery).
+
+## I lost the master key
+
+Without `/opt/dockify/secrets/master_key`, stored secrets and the backup key cannot be opened. Your apps keep running, but secret variables and integrations must be entered again, and offsite backups taken with that key cannot be decrypted. There is no way around this by design. Keep a copy off the server.
+
+## Still stuck
+
+<RepoLink path="issues/new">Open an issue on GitHub</RepoLink> with the deployment log or the service log, with secrets removed.

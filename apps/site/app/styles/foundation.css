@@ -1,0 +1,663 @@
+/* ============== Tokens ============== */
+
+:root {
+  color-scheme: light;
+
+  /* Portfolio palette */
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  /* Muted text: 5.33:1 on the page and 4.72:1 on --mass, so small grey text passes on every grey
+     surface it sits on. */
+  --muted-foreground: #6b6b6b;
+  --popover: #ffffff;
+  --border: #e8e8e8;
+  --mass: #f1f1f1;
+  /* A hovered or selected row inside a popover or dialog. In dark, --mass is the popover's own
+     surface, so .dark lifts it to a white veil instead. */
+  --fill-popover: var(--mass);
+  --node: #d4d4d4;
+  --cloud-core: #ececec;
+
+  /* Type. Code, commands and paths use Geist Mono, so aligned columns in a block stay aligned. */
+  --font-sans: var(--font-geist), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-pixel: var(--font-geist-pixel-square), var(--font-geist), system-ui, sans-serif;
+
+  /* Our names */
+  --bg: var(--background);
+  --panel-2: #fafafa;
+  --line: var(--border);
+  --line-soft: #f0f0f0;
+  --line-strong: #d4d4d4;
+  --ink: var(--foreground);
+  --ink-2: #404040;
+  --ink-3: var(--muted-foreground);
+  /* Decoration only: glyphs, separators, rules. Below 4.5:1, so never small text. */
+  --ink-4: #8f8f8f;
+  /* Small text on --mass or --popover; the same as --ink-3 in light, a step dimmer in dark. */
+  --ink-muted: #6b6b6b;
+  --active: #ebebeb;
+  /* White text and glyphs on the solid blue keys, in both themes. */
+  --on-solid: #ffffff;
+  /* The brand blue of the logo (not a UI accent). */
+
+  /* Accent: primary keys, focus, and the live state in the drawings. */
+  --blue: #0070f3;
+  /* Solid fills under white text: 4.55:1 with #fff in both themes; hover and press step darker. */
+  --blue-solid: #0070f3;
+  --blue-solid-hover: color-mix(in srgb, var(--blue-solid) 88%, #000000);
+  --blue-solid-active: color-mix(in srgb, var(--blue-solid) 80%, #000000);
+  /* Blue text on the page or a blue tint: 5.58:1 on the 12% tint. */
+
+  /* Status */
+  --ok: #16a34a;
+  --ok-ink: #15803d;
+  --warn: #f59e0b;
+  --warn-ink: #b45309;
+  --bad: #e5484d;
+  /* Idle and stopped dots: 3.23:1 on the page, so the dot alone still reads. */
+
+  /* Key material: keys, chips and kbd chips fill with --key-fill and hover with --key-hover. Both
+     are the page's own on the page; popovers re-point them (see the Dialog section). */
+  --key-fill: var(--bg);
+  --key-hover: var(--mass);
+  /* The segmented control's thumb and the theme switch's knob: flat fills, a ring and a soft shadow. */
+  --seg-thumb: var(--bg);
+  --seg-thumb-shadow: 0 0 0 1px var(--line-strong), 0 1px 2px rgb(0 0 0 / 0.06);
+  --knob: #ffffff;
+  --knob-shadow: 0 0 0 1px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.12);
+
+  --shadow-dialog: 0 0 0 1px var(--line-strong), 0 24px 48px -16px rgb(0 0 0 / 0.18), 0 4px 12px -4px rgb(0 0 0 / 0.06);
+  --scrim: rgb(0 0 0 / 0.32);
+
+  --rail: 1200px;
+  --gutter: 32px;
+  /* The sticky top bar. */
+  --top-h: 56px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-key: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Stacking, one scale.
+     Inside main.page, which is a layer of its own (so nothing in it climbs over the top bar):
+       raise 1   page blocks over the bands      line 2  a band nested inside a block
+       node 3    nodes inside a block            lift 30 a block holding an open tooltip
+       rail 31   band nodes and the band's rail segments, over a lifted block too
+       tip 60    tooltip bubbles
+     On the root: the phone menu scrim 44, the phone menu 45, the top bar 46, dialogs 100. */
+  --z-raise: 1;
+  --z-line: 2;
+  --z-node: 3;
+  --z-lift: 30;
+  --z-rail: 31;
+  --z-tip: 60;
+  --z-menu-scrim: 44;
+  --z-menu: 45;
+  --z-top: 46;
+  --z-dialog: 100;
+
+  /* Soft tints: the same 12% strength of each status colour over the page, in both themes. `.dark`
+     sits on this same element, so each resolves against the theme in use. */
+  --ok-soft: color-mix(in srgb, var(--ok) 12%, var(--bg));
+  --warn-soft: color-mix(in srgb, var(--warn) 12%, var(--bg));
+  --blue-soft: color-mix(in srgb, var(--blue) 12%, var(--bg));
+  --bad-soft-mark: color-mix(in srgb, var(--bad) 10%, var(--bg));
+}
+
+.dark {
+  color-scheme: dark;
+  --fill-popover: rgb(255 255 255 / 0.06);
+
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --muted-foreground: #8f8f8f;
+  --popover: #141414;
+  --border: #1e1e1e;
+  --mass: #141414;
+  --node: #333333;
+  --cloud-core: #171717;
+
+  --panel-2: #0f0f0f;
+  --line-soft: #161616;
+  --line-strong: #2a2a2a;
+  --ink-2: #bdbdbd;
+  --ink-4: #6b6b6b;
+  --ink-muted: #858585;
+  --active: #1a1a1a;
+
+  --blue: #0a84ff;
+  /* #0a84ff under white is only 3.6:1, so solid keys keep the deeper blue in dark too. */
+  --blue-solid: #0070f3;
+
+  --ok: #4ade80;
+  --ok-ink: #4ade80;
+  --warn: #fbbf24;
+  --warn-ink: #fbbf24;
+  --bad: #ff6166;
+
+  --seg-thumb: #1c1c1c;
+  --seg-thumb-shadow: 0 0 0 1px #2e2e2e;
+  --knob: #333333;
+  --knob-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
+
+  --shadow-dialog: 0 0 0 1px var(--line-strong), 0 24px 48px -16px rgb(0 0 0 / 0.8);
+  --scrim: rgb(0 0 0 / 0.55);
+}
+
+/* ============== Base ============== */
+
+/* The stable gutter stops the page shifting sideways when a scroll lock hides the scrollbar. The
+   scroll padding keeps an anchor or a control that Tab scrolls to clear of the sticky top bar. */
+
+html {
+  overflow-x: clip;
+  scrollbar-gutter: stable;
+  scroll-padding-top: calc(var(--top-h) + 16px);
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overflow-x: clip;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 22px;
+  font-feature-settings: normal;
+  /* Counts, timers and hashes line up; Geist's zero is plain, never slashed. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quiet scrollbars on inner scrollers (the docs nav, menus, code, tables): a thin rounded thumb in the
+   line colour on no track, a shade darker under the pointer, never arrow keys or an OS bar. Chromium
+   and Safari draw them from the ::-webkit-scrollbar rules, which they honour only while the standard
+   properties stay unset; Firefox takes the standard properties. The page itself keeps the browser's
+   own scrollbar. */
+
+:not(html) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  :not(html) {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+}
+
+:not(html)::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+
+:not(html)::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--line) padding-box;
+}
+
+:not(html)::-webkit-scrollbar-thumb:hover {
+  background: var(--line-strong) padding-box;
+}
+
+:not(html)::-webkit-scrollbar-track,
+:not(html)::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:not(html)::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* ============== Layout: the ruled frame ============== */
+
+/* The column runs between two rails the full page height; rules and dither bands run full bleed
+   and cross the rails at 5px nodes.
+
+   Every rail and node lands on a whole pixel at any width. The column centres the rail with the odd
+   pixel going right. Blocks, band nodes and the header and footer rows share two numbers, M the
+   left offset and B the rail's outer width:
+     M = round(down, max(0px, (100% - var(--rail)) / 2), 1px)
+     B = min(var(--rail), 100% - 4px)
+   Each round() declaration follows a plain one, which a browser without round() keeps. */
+
+main.page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: calc(100vh - var(--top-h));
+  margin: 0;
+  padding: 0;
+  overflow-x: clip;
+  /* Its own stacking layer, so a lifted section never paints over the sticky top bar. */
+  isolation: isolate;
+}
+
+main.page > .sep:first-child::after {
+  top: 0;
+  background:
+    linear-gradient(var(--node), var(--node)) left bottom / 5px 5px no-repeat,
+    linear-gradient(var(--node), var(--node)) right bottom / 5px 5px no-repeat,
+    linear-gradient(var(--line), var(--line)) 2px 0 / 1px 100% no-repeat,
+    linear-gradient(var(--line), var(--line)) calc(100% - 2px) 0 / 1px 100% no-repeat;
+}
+
+main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .tswitch:hover, .tswitch:focus-visible) {
+  z-index: var(--z-lift);
+}
+
+/* -------------- Hover tooltip -------------- */
+
+[data-tip]::after,
+[data-tip]::before {
+  position: absolute;
+  left: 50%;
+  z-index: var(--z-tip);
+  pointer-events: none;
+  opacity: 0;
+  /* Hide is instant: the bubble and its arrow leave together. */
+  transition: none;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  bottom: calc(100% + 9px);
+  translate: -50% 2px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  white-space: nowrap;
+  margin-left: var(--tip-dx, 0px);
+  margin-right: calc(var(--tip-dx, 0px) * -1);
+}
+
+/* The tail: a 10px square with 2px corners turned 45 degrees, its centre 2px inside the bubble
+   edge, so tail and bubble read as one shape at any zoom. */
+
+[data-tip]::before {
+  content: "";
+  bottom: calc(100% + 6px);
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--ink);
+  rotate: 45deg;
+  translate: -50% 2px;
+}
+
+[data-tip]:hover::after,
+[data-tip]:hover::before,
+[data-tip]:focus-visible::after,
+[data-tip]:focus-visible::before {
+  opacity: 1;
+  translate: -50% 0;
+  /* Appears whole after the hover delay, with no fade. */
+  transition: opacity 0s 150ms, translate 0s 150ms;
+}
+
+/* Esc hides the tip on screen until the pointer or focus leaves (tip-guard.tsx). */
+
+[data-tip][data-tip-hidden]::after,
+[data-tip][data-tip-hidden]::before {
+  opacity: 0 !important;
+}
+
+[data-tip][data-tip-side="right"]::after {
+  left: calc(100% + 10px);
+  bottom: auto;
+  top: 50%;
+  translate: -2px -50%;
+}
+
+[data-tip][data-tip-side="right"]::before {
+  left: calc(100% + 7px);
+  bottom: auto;
+  top: 50%;
+  translate: -2px -50%;
+}
+
+[data-tip][data-tip-align="end"]::after {
+  left: auto;
+  right: 0;
+  translate: 0 2px;
+}
+
+/* End-aligned tips keep the tail under the bubble, 12px in from the shared right edge. */
+
+[data-tip][data-tip-align="end"]::before {
+  left: auto;
+  right: 12px;
+  translate: 0 2px;
+}
+
+/* -------------- Button -------------- */
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.btn-primary.btn-icon .ic,
+.btn-primary.btn-icon:hover .ic {
+  color: var(--on-solid);
+}
+
+.btn.btn-primary:not(.btn-icon) > .ic {
+  display: block;
+  margin-left: -2px;
+  color: var(--on-solid);
+}
+
+.btn.btn-primary:not(.btn-icon):hover > .ic {
+  color: var(--on-solid);
+}
+
+/* Popup close keys never carry a tooltip. */
+
+:is([role="dialog"], dialog) .btn-icon:is([aria-label^="Close"], [aria-label^="close"])::after,
+:is([role="dialog"], dialog) .btn-icon:is([aria-label^="Close"], [aria-label^="close"])::before {
+  display: none;
+}
+
+/* -------------- Segmented control -------------- */
+
+.seg2-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  /* Inactive labels sit on --mass, where --ink-3 is under 4.5:1 in dark. */
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 150ms;
+}
+
+.seg2-opt:hover,
+.seg2-opt[aria-checked="true"] {
+  color: var(--ink);
+}
+
+/* -------------- Theme switch -------------- */
+
+.tswitch-tip::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--ink);
+  rotate: 45deg;
+  translate: -50% 0;
+}
+
+/* The key chip inside a tip bubble: the inverted bubble's own colours, 12px. */
+
+.tswitch-tip kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg) 18%, transparent);
+  color: var(--bg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+@media (hover: none) {
+  .tswitch-tip {
+    display: none;
+  }
+}
+
+/* -------------- Copy -------------- */
+
+.copy-key[data-copied]::after,
+.copy-key[data-copied]::before {
+  opacity: 1;
+  translate: -50% 0;
+  transition-delay: 0ms;
+}
+
+/* -------------- Dialog -------------- */
+
+.dlg {
+  --key-fill: var(--popover);
+  --key-hover: var(--fill-popover);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100dvh - 64px);
+  border-radius: 12px;
+  background: var(--popover);
+  box-shadow: var(--shadow-dialog);
+  animation: dlg-in 140ms var(--ease) both;
+}
+
+/* Close: a 24px key with a 12px cross on the same fill and hairline ring as every secondary key
+   (owner: it keeps its background), so it matches Cancel. */
+
+.dlg-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--ink-3);
+}
+
+@keyframes dlg-sheet {
+  from { transform: translateY(100%); }
+}
+
+/* ============== Utilities ============== */
+
+/* Numbers that never jitter. */
+
+time,
+td,
+kbd {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pixel display face: 18px and up only. */
+
+.pixel {
+  font-family: var(--font-pixel);
+  font-feature-settings: "ss09";
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* Status dot: 6px and round. */
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+/* Site: the one inline link inside running text, on every page and in the docs. Ink, with a
+   hairline underline that darkens on hover, so a link never relies on colour alone. */
+
+.link-inline,
+.prose a:not(.dgrid-cell, .doc-anchor) {
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 150ms var(--ease);
+}
+
+.link-inline:hover,
+.prose a:not(.dgrid-cell, .doc-anchor):hover {
+  text-decoration-color: currentColor;
+}
+
+/* ============== Responsive ============== */
+
+@media (max-width: 760px) {
+  /* The mobile --gutter is defined once, in site.css, so the two files cannot disagree. */
+  .shead {
+    padding: 32px var(--gutter) 24px;
+  }
+  .shead-title {
+    font-size: 28px;
+    line-height: 36px;
+  }
+  /* Phones draw no rails and no nodes, the grammar of the phone header and footer: the column runs
+     edge to edge, so a band has no rail to cross, and a corner node would be a stub on the screen
+     edge. Hairlines and bands stay. */
+  main.page > * {
+    max-width: none;
+    margin-inline: 0;
+    border-inline: 0;
+  }
+  main.page :is(.rule, .sep)::after,
+  main.page .node {
+    display: none;
+  }
+  main.page > :not(.rule, .sep) .rule {
+    margin-inline: 0;
+  }
+  /* Dialogs become a bottom sheet with a grab bar, clear of the home indicator. */
+  .dlg-scrim {
+    place-items: end stretch;
+    padding: 0;
+  }
+  .dlg,
+  .dlg[data-size] {
+    position: relative;
+    max-width: none;
+    max-height: min(88dvh, calc(100dvh - 24px));
+    max-height: round(down, min(88dvh, calc(100dvh - 24px)), 1px);
+    padding-top: 8px;
+    border-radius: 12px 12px 0 0;
+    animation: dlg-sheet 240ms var(--ease-sheet) both;
+  }
+  .dlg::before {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    margin-left: -18px;
+    border-radius: 999px;
+    background: var(--line-strong);
+  }
+}
+
+/* ============== Reduced motion ============== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============== Forced colours ============== */
+
+/* High contrast modes drop every box-shadow, which is how keys, chips, the search and dialogs draw
+   their edges. Real borders and outlines take their place. The frame is drawing, not information:
+   it keeps its own greys. */
+
+@media (forced-colors: active) {
+  :is(.btn, .seg2, .seg2-thumb, .kbd, .icon-tile, .dlg, .dsearch-key, .cmdline, .code, .pg-path, .dnote, .tswitch, .ld-chip) {
+    border: 1px solid CanvasText;
+  }
+  /* The top bar's rule is an inset shadow, which forced colours drop. */
+  .st-top {
+    border-bottom: 1px solid CanvasText;
+  }
+  :focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+  }
+  .node,
+  .rule,
+  .rule::after,
+  .sep,
+  .sep::after {
+    forced-color-adjust: none;
+  }
+}
+
+/* ============== Print ============== */
+
+/* Paper gets the content: no header, footer, sidebars or dither, and the light palette's text and
+   lines even from the dark theme, so nothing prints light grey on white. */
+
+@media print {
+  :root.dark {
+    color-scheme: light;
+    --background: #ffffff;
+    --foreground: #0a0a0a;
+    --muted-foreground: #6b6b6b;
+    --border: #e8e8e8;
+    --mass: #f1f1f1;
+    --popover: #ffffff;
+    --panel-2: #fafafa;
+    --ink-2: #404040;
+    --ink-4: #8f8f8f;
+    --ink-muted: #6b6b6b;
+    --line-strong: #d4d4d4;
+    --node: #d4d4d4;
+  }
+  .st-top,
+  .mnav,
+  .mnav-scrim,
+  .st-foot,
+  .skip,
+  .dside,
+  .dtoc,
+  .pager,
+  .copy-key,
+  .sep::before,
+  .doc-band::before {
+    display: none !important;
+  }
+  .docs {
+    display: block;
+  }
+  main.page {
+    min-height: 0;
+  }
+}

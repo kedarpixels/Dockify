@@ -1,0 +1,6 @@
+{
+  "about": "Migrations a release has shipped, with the sha256 of their exact bytes. Installs keep the checksum of every migration they applied and never run one twice, so a listed file must never change: the next change goes in a new migration. A release adds its new migrations here (docs/RELEASING.md); packages/db/src/released-migrations.test.ts enforces it.",
+  "released": [
+    { "name": "0001_init", "sha256": "1a3e285f9dc6d2af1c58f01d99533dcfaaf33e34be1e41ee988b9ece3899d74d" }
+  ]
+}

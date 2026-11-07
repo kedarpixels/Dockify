@@ -1,0 +1,117 @@
+/* Overview, top half: the page head and the project strip that carries the Projects page's card
+   (projects.css). The area sparkline is shared and lives in foundation.css. */
+
+/* -------------- Page head -------------- */
+.ov-head .shead-actions {
+  gap: 12px;
+}
+
+/* -------------- Project strip -------------- */
+/* The portfolio tab strip: ruled cards side by side, snapping, arrow keys in the head. */
+.ovp {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+
+.ovp-hd-row {
+  display: flex;
+  align-items: center;
+}
+
+.ovp-arrows {
+  display: flex;
+  gap: 8px;
+  margin-right: 8px;
+}
+
+/* The strip's own width decides how many cards show, so a collapsed sidebar counts. */
+.ovp-mask {
+  container: ovp / inline-size;
+  position: relative;
+  min-width: 0;
+}
+
+/* Edge fades while there is more to scroll. */
+.ovp-mask::before,
+.ovp-mask::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: var(--z-line);
+  width: 48px;
+  pointer-events: none;
+  transition: opacity 200ms var(--ease);
+}
+
+.ovp-mask::before {
+  left: 0;
+  background: linear-gradient(90deg, var(--bg), transparent);
+}
+
+.ovp-mask::after {
+  right: 0;
+  background: linear-gradient(270deg, var(--bg), transparent);
+}
+
+.ovp-mask[data-start="true"]::before,
+.ovp-mask[data-end="true"]::after {
+  opacity: 0;
+}
+
+/* Three cards per view; fewer stretch to fill, so no orphan gap is left. Cards sit 1px apart and
+   draw their rings into the gap, as on the Projects grid. The scroll box is 3px larger all round
+   than the cards (padding, cancelled by a negative margin), so the corner nodes that sit 3px
+   outside each card stay inside its clip and land whole on the head line, the rails and the band. */
+.ovp-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(max(296px, round(down, calc((100% - 2px) / 3 + 0.1px), 1px)), 1fr);
+  column-gap: 1px;
+  margin: -3px;
+  padding: 3px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 3px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.ovp-track::-webkit-scrollbar {
+  display: none;
+}
+
+.ovp-track > .pj-cell {
+  scroll-snap-align: start;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+/* Phones: one card and the edge of the next, so the strip reads as one that scrolls. */
+@container ovp (max-width: 520px) {
+  .ovp-track {
+    grid-auto-columns: minmax(round(down, 84%, 1px), 1fr);
+  }
+}
+
+/* One project has the strip to itself: its identity and its last deployment sit side by side in
+   one band, instead of stacking into a wide card that is mostly empty. A narrow strip keeps the
+   stacked card. */
+@container ovp (min-width: 960px) {
+  .ovp-track > .pj-cell:only-child > .pj-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+    gap: 0;
+    padding: 0;
+  }
+  .ovp-track > .pj-cell:only-child .pj-hd {
+    align-items: center;
+    padding: 24px var(--gutter);
+  }
+  .ovp-track > .pj-cell:only-child .pj-last {
+    justify-content: center;
+    padding: 24px var(--gutter);
+    border-left: 1px solid var(--line);
+  }
+}

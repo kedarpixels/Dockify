@@ -1,0 +1,810 @@
+/* Pages: compare, install, changelog, security, open source and the 404. Builds on the
+   foundation.css tokens, the ruled frame and .shead; every block here is a direct child of
+   main.page, between the rails. Inner insets are --gutter from rails and from inner dividers. */
+
+/* -------------- Section and body -------------- */
+.pg-lead {
+  max-width: 640px;
+  text-wrap: pretty;
+}
+
+.pg-body {
+  padding: 0 var(--gutter) 40px;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--ink-2);
+}
+
+.pg-body > p {
+  max-width: 680px;
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.pg-body > * + * {
+  margin-top: 16px;
+}
+
+.pg-body > .code {
+  max-width: 880px;
+}
+
+.pg-body > .code:first-child {
+  margin-top: 0;
+}
+
+.pg-body > .cmdline {
+  max-width: 680px;
+}
+
+.pg-body strong {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* A body block that opens on its own rule (it follows a ruled list, not a band). */
+.pg-body-ruled {
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+
+/* A path or a flag in running text, in the code face. */
+.pg-path {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.pg-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--ink-3);
+  transition: color 150ms;
+}
+
+.pg-src:hover {
+  color: var(--ink);
+}
+
+/* Bulleted lines with a round dot, the site's list marker. */
+.pg-ticks {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-ticks > li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.pg-ticks > li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ink-4);
+}
+
+.pg-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 680px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.pg-callout > .ic {
+  flex: none;
+  margin-top: 3px;
+  color: var(--warn-ink);
+}
+
+.pg-callout p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-2);
+}
+
+.pg-callout strong {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.pg-body > .pg-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.pg-state .dot {
+  background: var(--ok);
+}
+
+/* -------------- Tone marks -------------- */
+/* The one yes, partly, no mark (here, on /compare and on the landing table): an 18px tinted square,
+   radius 6, with a 10px glyph; or the Soon chip. */
+.pg-tone {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  vertical-align: middle;
+}
+
+.pg-mark {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+}
+
+.pg-mark .ic {
+  width: 10px;
+  height: 10px;
+}
+
+.pg-tone[data-tone="yes"] .pg-mark { background: var(--ok-soft); color: var(--ok-ink); }
+.pg-tone[data-tone="part"] .pg-mark { background: var(--warn-soft); color: var(--warn-ink); }
+/* The only red on the site: a failed mark, the same as the dashboard's failed status. */
+.pg-tone[data-tone="no"] .pg-mark { background: var(--bad-soft-mark); color: var(--bad); }
+/* A row that does not apply to that product (a hosted platform has no servers of yours). */
+.pg-tone[data-tone="soon"] .pg-mark {
+  width: auto;
+  width: calc-size(auto, round(up, size, 1px));
+  height: 20px;
+  padding: 0 6px;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.cmp-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* -------------- Ruled grid -------------- */
+/* Cells sit on 1px gaps over the line colour; the grid opens on a rule and closes on a band. Every
+   column but the last is a whole number of pixels and the last takes the rest, so every gap lands
+   on a whole pixel. */
+.pg-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border-top: 1px solid var(--line);
+}
+
+.pg-grid[data-cols="2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: round(down, calc((100% - 1px) / 2), 1px) minmax(0, 1fr);
+}
+
+.pg-grid[data-cols="3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, round(down, calc((100% - 2px) / 3), 1px)) minmax(0, 1fr);
+}
+
+.pg-grid[data-cols="4"] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, round(down, calc((100% - 3px) / 4), 1px)) minmax(0, 1fr);
+}
+
+.pg-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 24px var(--gutter);
+  background: var(--bg);
+}
+
+/* The dashboard's icon tile: a 24px tile, no fill, the glyph in --ink-3. */
+.pg-cell-ic {
+  margin: 0 0 4px -5px;
+}
+
+.pg-cell-h {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+
+.pg-cell-body,
+.pg-cell-body p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+
+.pg-cell-body p + p {
+  margin-top: 8px;
+}
+
+.pg-cell-body .pg-ticks {
+  margin-top: 4px;
+}
+
+.pg-cell-foot {
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.pg-stay {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line-strong);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* -------------- Numbered steps -------------- */
+.pg-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  border-top: 1px solid var(--line);
+}
+
+.pg-step-n {
+  padding: 20px 0 20px var(--gutter);
+  font-size: 20px;
+  line-height: 24px;
+  color: var(--ink-3);
+}
+
+.pg-step-body {
+  position: relative;
+  padding: 20px var(--gutter);
+  border-left: 1px solid var(--line);
+}
+
+.pg-step-h {
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.pg-step-text {
+  max-width: 680px;
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+
+.pg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg-chips .pg-path {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+/* -------------- Term rows -------------- */
+.pg-rows {
+  margin: 0;
+}
+
+.pg-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  border-top: 1px solid var(--line);
+}
+
+.pg-row-term {
+  padding: 16px var(--gutter);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.pg-rows[data-mono] .pg-row-term {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+/* A flag with its argument is one piece; two flags in one term wrap between them. */
+.pg-flag {
+  white-space: nowrap;
+}
+
+.pg-row-desc {
+  position: relative;
+  margin: 0;
+  padding: 16px var(--gutter);
+  border-left: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+
+/* -------------- Compare table -------------- */
+.cmp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 0 var(--gutter) 24px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+/* The four product columns are whole pixels; the feature column takes the rest. A table column
+   treats a width that mixes a percentage into calc() or round() as auto, so the width is a share of
+   the section's container width instead, which is a plain length. */
+.cmp {
+  container-type: inline-size;
+}
+
+.cmp-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.cmp-table thead th:not(.cmp-feat) {
+  width: 19.5%;
+  width: round(down, calc(100cqw * 0.195), 1px);
+}
+
+.cmp-table th,
+.cmp-table td {
+  position: relative;
+  padding: 16px 20px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.cmp-table th + th,
+.cmp-table th + td,
+.cmp-table td + td {
+  border-left: 1px solid var(--line);
+}
+
+.cmp-table thead th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.cmp-table .cmp-feat {
+  padding-left: var(--gutter);
+}
+
+.cmp-feat-h {
+  display: block;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.cmp-feat-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.cmp-table td {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.cmp-table td:last-child,
+.cmp-table th:last-child {
+  padding-right: var(--gutter);
+}
+
+.cmp-val {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-wrap: pretty;
+}
+
+.cmp-val .pg-tone {
+  height: 20px;
+}
+
+.cmp-src {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  padding-left: 26px;
+}
+
+.cmp-note {
+  position: relative;
+  margin: 0;
+  padding: 16px var(--gutter);
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* -------------- Changelog entry -------------- */
+.cl {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  border-top: 1px solid var(--line);
+}
+
+.cl-meta {
+  position: relative;
+  padding: 32px var(--gutter);
+}
+
+.cl-ver {
+  margin: 0;
+  font-size: 32px;
+  line-height: 40px;
+  color: var(--ink);
+}
+
+.cl-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.cl-state .dot {
+  background: var(--warn);
+}
+
+.cl-state[data-released] .dot {
+  background: var(--ok);
+}
+
+.cl-signed {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.cl-notes {
+  position: relative;
+  padding: 32px var(--gutter) 40px;
+  border-left: 1px solid var(--line);
+}
+
+.cl-sum {
+  max-width: 640px;
+  margin: 0;
+  font-size: 17px;
+  line-height: 28px;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.cl-group {
+  margin-top: 32px;
+}
+
+.cl-group-h {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+/* -------------- Closing band -------------- */
+.pg-closer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 48px var(--gutter);
+}
+
+.pg-closer-h {
+  max-width: 640px;
+  margin: 0;
+  font-family: var(--font-pixel);
+  font-feature-settings: "ss09";
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.pg-closer-ctas {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* -------------- Not found (the dashboard's 404) -------------- */
+/* Its height is rounded down to an even pixel and every line in it is even, so the centred content
+   and everything under the block start on whole pixels. */
+.nf {
+  min-height: calc(72vh - var(--top-h));
+  min-height: round(down, calc(72vh - var(--top-h)), 2px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px var(--gutter);
+  text-align: center;
+}
+
+.nf-code {
+  margin: 0;
+  font-size: 144px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.nf-title {
+  margin: 24px 0 0;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.nf-text {
+  max-width: 360px;
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--ink-3);
+}
+
+.nf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+/* -------------- 1100 -------------- */
+@media (max-width: 1100px) {
+  /* Three-up grids stay three-up only when they hold exactly three cells. */
+  .pg-grid[data-cols="4"],
+  .pg-grid[data-cols="3"]:not(:has(> .pg-cell:nth-child(3):last-child)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: round(down, calc((100% - 1px) / 2), 1px) minmax(0, 1fr);
+  }
+
+  .pg-row,
+  .cl {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  /* Flags keep their full column, so the longest (--allow-vulnerable-runtime) stays on one line. */
+  .pg-rows[data-mono] .pg-row {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .pg-closer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* -------------- 1000: the comparison stacks -------------- */
+/* Below 1000px five columns leave each cell too narrow to read, so each row becomes a ruled block
+   with the product named on every line. */
+@media (max-width: 1000px) {
+  .cmp-table,
+  .cmp-table tbody,
+  .cmp-table tr,
+  .cmp-table th,
+  .cmp-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .cmp-table thead {
+    display: none;
+  }
+
+  .cmp-table .node {
+    display: none;
+  }
+
+  .cmp-table tbody tr {
+    border-top: 1px solid var(--line);
+    padding: 16px var(--gutter);
+  }
+
+  .cmp-table th,
+  .cmp-table td,
+  .cmp-table .cmp-feat {
+    width: auto;
+    padding: 0;
+    border: 0 !important;
+  }
+
+  .cmp-table td,
+  .cmp-table td:last-child {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    column-gap: 12px;
+    margin-top: 8px;
+    padding: 0;
+  }
+
+  .cmp-table td::before {
+    content: attr(data-label);
+    grid-row: 1 / span 2;
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  .cmp-src {
+    grid-column: 2;
+  }
+
+  .cmp-note > .node {
+    display: none;
+  }
+}
+
+/* -------------- 760 -------------- */
+@media (max-width: 760px) {
+  .pg-grid[data-cols] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pg-cell {
+    padding: 20px var(--gutter) 24px;
+  }
+
+  .pg-body {
+    padding-bottom: 32px;
+  }
+
+  .pg-step {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .pg-step-n {
+    padding: 16px 0 16px var(--gutter);
+    font-size: 18px;
+  }
+
+  .pg-step-body {
+    padding: 16px var(--gutter);
+  }
+
+  /* Term rows stack: the term over its meaning, with no column divider. */
+  .pg-row,
+  .pg-rows[data-mono] .pg-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pg-row-term {
+    padding: 12px var(--gutter) 0;
+  }
+
+  .pg-row-desc {
+    padding: 4px var(--gutter) 12px;
+    border-left: 0;
+  }
+
+  .cl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cl-meta {
+    padding: 24px var(--gutter) 0;
+  }
+
+  .cl-notes {
+    padding: 20px var(--gutter) 32px;
+    border-left: 0;
+  }
+
+  .pg-closer {
+    padding: 40px var(--gutter);
+  }
+
+  .pg-closer-h {
+    font-size: 24px;
+    line-height: 32px;
+  }
+
+  .nf-code {
+    font-size: 112px;
+  }
+}
+
+/* -------------- 420 -------------- */
+@media (max-width: 420px) {
+  .pg-closer-ctas,
+  .pg-closer-ctas .btn {
+    width: 100%;
+  }
+
+  .nf-code {
+    font-size: 96px;
+  }
+}

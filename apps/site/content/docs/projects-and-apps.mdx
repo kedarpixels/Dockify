@@ -1,0 +1,92 @@
+---
+title: "Projects and apps"
+description: "How Dockify organises what runs on your server: projects hold environments, environments hold apps."
+---
+
+## The model
+
+```text
+project            lighthouse
+  environment      production   (branch main)
+    app            web          frontend
+    app            api          backend
+    app            db           postgres
+  environment      development  (branch dev)
+    app            web, api, db
+```
+
+- A **project** groups the apps and databases one product runs. Its apps can come from different repositories, or from none.
+- An **environment** has a name and the branch it tracks. Each environment gets its own private Docker network, so `development` apps cannot reach `production` ones.
+- An **app** is one container: something you build, an image you pull, or a managed service.
+
+## Environments
+
+A new project starts with one environment, Production, on the `main` branch, and the dashboard says nothing about environments until there is a second: each app simply shows its own branch. To add one, open the project's settings and give it a name and a branch; you can copy the variables of another environment to start from. It gets separate variables, domains and an isolated network. A project holds up to ten. Removing down to one hides them again.
+
+Changing an environment's branch or deleting it asks you to confirm it is you, because it changes what code runs.
+
+Inside an environment, apps reach each other by name. If your database app is called `db`, your api connects to `db:5432`. Nothing outside the environment network can.
+
+## App kinds
+
+| Kind | What it is |
+|---|---|
+| `frontend` | A web app with a domain, built from your repository. |
+| `backend` | An api or server, built from your repository or pulled as an image. |
+| `bot` | A worker with no port, such as a Discord bot or a queue consumer. |
+| `postgres` | Managed Postgres. See [Databases](/docs/databases). |
+| `redis` | Managed Redis. |
+
+## Sources
+
+- **GitHub repository.** A repository and a branch. It builds from its Dockerfile when it has one, and otherwise with Railpack, with what it detected shown before you deploy.
+- **Docker image.** Any image reference, by tag or digest. Private registries (GitHub Container Registry, Docker Hub, or your own host) are added once under **Settings > Integrations** and picked per app.
+- **Database or service.** Postgres (17, 16 or 15) or Redis (8.2 or 7.4).
+- **Compose import.** Paste a Compose file and Dockify proposes one app per service, listing everything it did not import, and why.
+
+[Deploy sources](/docs/sources) has every field.
+
+## Settings per app
+
+| Setting | Notes |
+|---|---|
+| Start command | One line. Runs in place of the image's entrypoint, with no shell. Words starting with a flag go to the image's own entrypoint instead. Quotes, variables or `&&` need a shell in the image. Empty runs the image as built. The Dockerfile decides how the app builds. |
+| Dockerfile path | Relative to the root directory. |
+| Port | The port inside the container. Never published on the host. |
+| Health check | Path, expected status, timeout, grace, interval. See [First deploy](/docs/first-deploy#health-checks). |
+| CPU and memory limits | CPU from 0.1 to 64 cores, memory from 64 MB. With no CPU set, an app gets every core but one, at least 1. A pids limit is always set. |
+| Release command | Runs once before traffic moves, for migrations. |
+| Volumes | Named volumes only, up to ten. An app with a volume deploys stop then start. |
+
+Changes to anything that alters what runs, or with what privilege (the release command, the root directory, extra capabilities, sysctls), ask you to confirm it is you. Capabilities come from a short allowlist (`NET_ADMIN`, `NET_RAW`), and sysctls only from `net.ipv4.*` and `net.ipv6.conf.*`.
+
+### Start, stop and restart
+
+An app's page has **Deploy**, **Restart** and **Stop**, and **Start** for a stopped app. Stopping and restarting ask you to confirm it is you, because they take an app down.
+
+### What an app can never do
+
+There is no field for any of these, and the worker checks the final container body again before Docker sees it:
+
+- Publish a host port.
+- Run privileged, or join the host's network, process or IPC namespace.
+- Mount a host path or a device.
+- Add capabilities outside the allowlist. Every container starts with all capabilities dropped except a fixed base set (CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, KILL, NET_BIND_SERVICE), and `no-new-privileges`.
+
+## Deploy targets
+
+An app's target is either **server**, built and run here, or **vercel**, where the app stays on Vercel. By default Dockify only follows its deployments and logs. With **Deploy to Vercel** it also pushes the variables and asks Vercel to deploy. See [Vercel](/docs/vercel).
+
+## Status page
+
+Each project can publish a public status page at `/status/<project>`. The dashboard turns it on or off; its title, logo and app list are set through the [API](/docs/api). It shows current state and a daily history per app.
+
+<Soon>Incident posts on the status page.</Soon>
+
+## Preview deploys
+
+Every pull request can get its own copy of the project, `pr-<n>`, cloned from a base environment, with its own URL and low resource limits, asleep when idle and deleted on close or merge. See [Pull request previews](/docs/previews).
+
+## Deleting
+
+Deleting a project, an environment or an app asks you to type its name and to confirm it is you. Containers, networks and the app's images are removed. Backups are not deleted with a database: they stay in the bucket, listed as orphans, until you remove them on purpose.

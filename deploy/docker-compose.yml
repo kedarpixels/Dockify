@@ -1,0 +1,579 @@
+# Dockify production stack. installer/install.sh writes .env, release/release.env and secrets/ next to this
+# file and runs it through the `dockify` wrapper:
+#
+#   docker compose --project-directory /opt/dockify -f docker-compose.yml --env-file .env --env-file release/release.env ...
+#
+# This file, .env and socket-proxy/haproxy.cfg are root-owned (0640 root:1000); only proxy/ and
+# release/ are writable by uid 1000: the agent writes route files, the updater release.env. The wrapper and the updater refuse to run if that stops being
+# true, and the updater also refuses a compose file whose sha256 differs from DOCKIFY_COMPOSE_SHA256 in .env.
+#
+# Profiles: COMPOSE_PROFILES=tunnel (Cloudflare tunnel, no host ports) or direct (Traefik on :80/:443).
+# Updates run migrate first, then recreate only api, agent, worker and web (`up -d --no-deps`, one at
+# a time), then the updater from a separate one-off container; never the infra services. By hand,
+# `dockify redeploy` does the same on the images release.env pins. A new version of this file (or
+# of the socket proxy config, or of the infra services) is applied by `install.sh --upgrade`.
+# Every image is pinned by digest; release.env pins the two Dockify images the same way.
+
+name: dockify
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+x-control: &control
+  image: ${DOCKIFY_CONTROL_IMAGE:?release.env must pin the control image}
+  restart: unless-stopped
+  logging: *logging
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  read_only: true
+  tmpfs: ["/tmp:size=256m"]
+
+x-control-env: &control-env
+  DOCKIFY_DB_PASSWORD_FILE: /run/secrets/postgres_password
+  # The database by its fixed address, never by name, so nothing a tenant could name ever answers
+  # for it and is handed the database password.
+  DOCKIFY_DB_HOST: 172.30.3.2
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  TZ: Etc/UTC
+  HOME: /tmp
+  CHECKPOINT_DISABLE: "1"
+
+services:
+  postgres:
+    image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: dockify
+      POSTGRES_DB: dockify
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --data-checksums
+    secrets: [postgres_password]
+    volumes: [dockify-db:/var/lib/postgresql/data]
+    networks:
+      # Containers from before this address existed reach it by name on control until they are recreated.
+      control: {}
+      data: { ipv4_address: 172.30.3.2 }
+    mem_limit: 1g
+    shm_size: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dockify -d dockify"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # One shot: applies migrations, then exits. api waits for it.
+  migrate:
+    <<: *control
+    restart: "no"
+    command: migrate
+    environment: *control-env
+    secrets: [postgres_password]
+    networks: [data]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *control
+    command: api
+    environment:
+      <<: *control-env
+      DOCKIFY_MASTER_KEY_FILE: /run/secrets/master_key
+      # Optional, empty by default: the old key(s) while rotating, comma separated, so values
+      # sealed before the rotation still open until `dockify admin rewrap-secrets`. See the security docs.
+      DOCKIFY_MASTER_KEY_PREVIOUS_FILE: /run/secrets/master_key_previous
+      DOCKIFY_SETUP_TOKEN_FILE: /run/secrets/setup_token
+      DOCKIFY_INTERNAL_TOKEN_FILE: /run/secrets/internal_token
+      DOCKIFY_PUBLIC_URL: ${DOCKIFY_PUBLIC_URL:?set by install.sh}
+      DOCKIFY_INGRESS: ${DOCKIFY_INGRESS:-cloudflare_tunnel}
+      # The only hops that may report the client address, each by its fixed edge address: the web
+      # container, Traefik in direct mode (it sends /api/v1/ on the dashboard host here), and
+      # cloudflared in tunnel mode (the same split). Any other peer is the client itself.
+      DOCKIFY_TRUSTED_PROXIES: 172.30.1.20,172.30.1.30,172.30.1.40
+      # The address the web publishes below, the only loopback origin the api accepts (apps/api/src/cookies.ts).
+      DOCKIFY_PORT: ${DOCKIFY_PORT:-3000}
+      # Read by the previews settings page, to say which certificates a preview host gets.
+      DOCKIFY_ACME_DNS01: ${DOCKIFY_ACME_DNS01:-0}
+      DOCKIFY_VERSION: ${DOCKIFY_VERSION:-}
+      DOCKIFY_RELEASE_FEED: ${DOCKIFY_RELEASE_FEED:-}
+      DOCKIFY_RELEASE_PUBKEY: ${DOCKIFY_RELEASE_PUBKEY:-}
+      DOCKIFY_HOST_OS: ${DOCKIFY_HOST_OS:-}
+      # The server's own name for the Server page (install.sh records it); the api's is a container id.
+      DOCKIFY_HOST_NAME: ${DOCKIFY_HOST_NAME:-}
+      DOCKIFY_DOCKER_VERSION: ${DOCKIFY_DOCKER_VERSION:-}
+      DOCKIFY_PUBLIC_IP: ${DOCKIFY_PUBLIC_IP:-}
+      DOCKIFY_REGION: ${DOCKIFY_REGION:-}
+      DOCKIFY_SERVER_IPV4: ${DOCKIFY_SERVER_IPV4:-}
+      DOCKIFY_SERVER_IPV6: ${DOCKIFY_SERVER_IPV6:-}
+      DOCKIFY_CF_TUNNEL_ID: ${DOCKIFY_CF_TUNNEL_ID:-}
+      # The worker's data browser channel, on the control network only.
+      DOCKIFY_WORKER_CHANNEL_URL: http://172.30.2.20:3002
+      # The only peer allowed on the internal secret-opening routes: the worker's control address.
+      DOCKIFY_INTERNAL_PEERS: 172.30.2.20
+      # Extra hostnames no app may claim, comma separated. The worker reads the same list.
+      DOCKIFY_RESERVED_HOSTS: ${DOCKIFY_RESERVED_HOSTS:-}
+      DOCKIFY_ALLOW_LOCAL_BACKUPS: ${DOCKIFY_ALLOW_LOCAL_BACKUPS:-}
+      DOCKIFY_BACKUP_DIR: /var/lib/dockify/backups
+      # Optional email through the owner's mail server, used once on first boot to create the email
+      # settings. The password is a secret file; an empty file means email stays off.
+      DOCKIFY_SMTP_HOST: ${DOCKIFY_SMTP_HOST:-}
+      DOCKIFY_SMTP_PORT: ${DOCKIFY_SMTP_PORT:-}
+      DOCKIFY_SMTP_USER: ${DOCKIFY_SMTP_USER:-}
+      DOCKIFY_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      DOCKIFY_EMAIL_FROM: ${DOCKIFY_EMAIL_FROM:-}
+      DOCKIFY_EMAIL_FROM_NAME: ${DOCKIFY_EMAIL_FROM_NAME:-}
+      # Optional GitHub App, seeded on first boot when all four are set. The private key and the
+      # webhook secret are secret files; empty files mean no App until one is connected in Settings.
+      DOCKIFY_GITHUB_APP_ID: ${DOCKIFY_GITHUB_APP_ID:-}
+      DOCKIFY_GITHUB_APP_SLUG: ${DOCKIFY_GITHUB_APP_SLUG:-}
+      DOCKIFY_GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_private_key
+      DOCKIFY_GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/github_webhook_secret
+      PORT: "3001"
+    secrets: [postgres_password, master_key, master_key_previous, setup_token, internal_token, smtp_password, github_app_private_key, github_webhook_secret]
+    # Read-only, for downloads: the worker writes and deletes backups, so the api cannot destroy one.
+    volumes:
+      - dockify-backups:/var/lib/dockify/backups:ro
+    networks:
+      # Fixed control address so the worker reaches the internal routes over the control network
+      # (not the shared egress one): its source IP is then its pinned control IP, which the
+      # internal-peer check requires. DNS "api" can resolve to the egress IP and break that.
+      control: { ipv4_address: 172.30.2.10 }
+      data: {}
+      egress: {}
+      edge: { ipv4_address: 172.30.1.10 }
+    mem_limit: 768m
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      # Liveness only: readiness must never drive restarts.
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://127.0.0.1:3001/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 60s
+
+  # Holds all the logic and the database, and no way onto the host: no Docker, no BuildKit socket and no
+  # route folder. Everything on a server goes over the link to that server's agent, whose gate decides
+  # what it may ask for. Holds no master key: every secret it needs is opened by the api, per job, over
+  # the control network (DOCKIFY_API_INTERNAL_URL, authenticated by the internal token), and each open
+  # is audited.
+  worker:
+    <<: *control
+    command: worker
+    # Reaps the git helpers a clone leaves behind, which node as PID 1 never would.
+    init: true
+    container_name: dockify-worker
+    environment:
+      <<: *control-env
+      DOCKIFY_INTERNAL_TOKEN_FILE: /run/secrets/internal_token
+      # The api's fixed control address, so the internal call rides the control network and the
+      # worker's source IP is the one DOCKIFY_INTERNAL_PEERS pins. "api" alone can resolve to egress.
+      DOCKIFY_API_INTERNAL_URL: http://172.30.2.10:3001
+      # The worker's boot waits for Docker by reading this network through the agent.
+      DOCKIFY_DEPLOY_NETWORK: dockify-deploy
+      # What this server's agent dials: a private address, so an api restart never cuts it off.
+      DOCKIFY_LINK_BIND: 172.30.5.20
+      DOCKIFY_LINK_PORT: "3003"
+      DOCKIFY_LINK_KEY_FILE: /run/secrets/link_key
+      DOCKIFY_LINK_CERT_FILE: /run/secrets/link_cert
+      DOCKIFY_JOIN_TOKEN_FILE: /run/secrets/primary_join_token
+      DOCKIFY_PUBLIC_URL: ${DOCKIFY_PUBLIC_URL:?set by install.sh}
+      DOCKIFY_INGRESS: ${DOCKIFY_INGRESS:-cloudflare_tunnel}
+      DOCKIFY_SERVER_IPV4: ${DOCKIFY_SERVER_IPV4:-}
+      # Optional: the server's public IPv6, so a domain's AAAA record can be checked against it.
+      DOCKIFY_SERVER_IPV6: ${DOCKIFY_SERVER_IPV6:-}
+      DOCKIFY_ACME_EMAIL: ${DOCKIFY_ACME_EMAIL:-}
+      DOCKIFY_BACKUP_DIR: /var/lib/dockify/backups
+      DOCKIFY_TMP_DIR: /var/lib/dockify/work/tmp
+      # Checkouts go on the volume too: /tmp is 256 MB of RAM, shared by every build, and a pack and its
+      # checkout together outgrow it well before a large repo is done. Swept at worker boot (deploy/git.ts).
+      DOCKIFY_BUILD_ROOT: /var/lib/dockify/work/builds
+      DOCKIFY_DATA_CHANNEL_BIND: 172.30.2.20
+      DOCKIFY_DATA_CHANNEL_PORT: "3002"
+      # The service alert's probe of the api's liveness, on its fixed control address.
+      DOCKIFY_PROBE_API_URL: http://172.30.2.10:3001/healthz
+      # The server's own name for the Server page (install.sh records it).
+      DOCKIFY_HOST_NAME: ${DOCKIFY_HOST_NAME:-}
+      DOCKIFY_ACME_DNS01: ${DOCKIFY_ACME_DNS01:-0}
+      DOCKIFY_RESERVED_HOSTS: ${DOCKIFY_RESERVED_HOSTS:-}
+      DOCKIFY_ALLOW_LOCAL_BACKUPS: ${DOCKIFY_ALLOW_LOCAL_BACKUPS:-}
+    secrets: [postgres_password, internal_token, link_key, link_cert, primary_join_token]
+    volumes:
+      - dockify-backups:/var/lib/dockify/backups
+      - dockify-work:/var/lib/dockify/work
+    networks:
+      control: { ipv4_address: 172.30.2.20 }
+      data: {}
+      egress: {}
+      link: { ipv4_address: 172.30.5.20 }
+    mem_limit: 1g
+    # Fresh while the worker's event loop runs and its heartbeats reach the database (apps/worker/src/health.ts).
+    # Docker only reports this; the updater's watchdog restarts an unhealthy worker.
+    healthcheck:
+      test: ["CMD-SHELL", "find /tmp/dockify-worker-alive -mmin -3 2>/dev/null | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    # SIGTERM stops the running job at its next safe point, restores what it touched, and gives the job
+    # back to run again after the restart. The grace period covers that unwinding, not a whole build.
+    stop_grace_period: 10m
+    depends_on:
+      api: { condition: service_healthy }
+
+  # This server's narrow gate. It dials the worker, then only answers: Docker through its body checks and
+  # the socket proxy behind them, builds, route files, host readings, connections to tenants. No database,
+  # no master key, no internal token, no Docker socket. Its private key is made here and stays in its volume.
+  agent:
+    <<: *control
+    command: agent
+    init: true
+    # A fixed name: it joins tenant networks for a dial, and the Server page finds its project through it.
+    container_name: dockify-agent
+    environment:
+      TZ: Etc/UTC
+      HOME: /tmp
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # By its fixed address: the agent joins tenant networks, whose DNS could answer for a name.
+      DOCKER_HOST: tcp://172.30.4.2:2375
+      BUILDKIT_HOST: unix:///run/buildkit/buildkitd.sock
+      # buildctl writes a Docker config dir for registry metadata; without this it falls to
+      # /home/node/.docker, which the read-only rootfs refuses, failing every build. /tmp is tmpfs.
+      DOCKER_CONFIG: /tmp/.docker
+      DOCKIFY_LINK_URL: ws://172.30.5.20:3003/link
+      DOCKIFY_LINK_CERT_FILE: /run/secrets/link_cert
+      DOCKIFY_JOIN_TOKEN_FILE: /run/secrets/primary_join_token
+      DOCKIFY_AGENT_KEY_DIR: /var/lib/dockify/agent
+      DOCKIFY_PROXY_DIR: /var/lib/dockify/proxy
+      DOCKIFY_BUILD_ROOT: /var/lib/dockify/work/builds
+      # Only this server holds the dashboard, so only here may a route file name these (the api, the web).
+      DOCKIFY_EDGE_UPSTREAMS: http://172.30.1.10:3001,http://172.30.1.20:3000
+      DOCKIFY_INGRESS: ${DOCKIFY_INGRESS:-cloudflare_tunnel}
+      DOCKIFY_VERSION: ${DOCKIFY_VERSION:-}
+      DOCKIFY_HOST_NAME: ${DOCKIFY_HOST_NAME:-}
+      DOCKIFY_HOST_OS: ${DOCKIFY_HOST_OS:-}
+      DOCKIFY_DOCKER_VERSION: ${DOCKIFY_DOCKER_VERSION:-}
+      DOCKIFY_SERVER_IPV4: ${DOCKIFY_SERVER_IPV4:-}
+      DOCKIFY_SERVER_IPV6: ${DOCKIFY_SERVER_IPV6:-}
+    secrets: [link_cert, primary_join_token]
+    volumes:
+      - ./proxy:/var/lib/dockify/proxy
+      - dockify-agent:/var/lib/dockify/agent
+      # A build's context, unpacked here for its length. Swept at the agent's boot.
+      - dockify-agent-work:/var/lib/dockify/work
+      # The BuildKit control socket. Builds go over this, never over a tcp listener.
+      - ./buildkit:/run/buildkit
+    networks:
+      link: { ipv4_address: 172.30.5.30 }
+      docker-api: {}
+      # The proxy by its reserved name, for its ping, its metrics and the certificate check.
+      deploy: {}
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "find /tmp/dockify-agent-alive -mmin -2 2>/dev/null | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      socket-proxy: { condition: service_started }
+
+  # The updater, the host helper for container swaps: claims the leased `update` job lane, checks
+  # the static signed feed every 6 hours (plus jitter) and installs by the policy in Settings.
+  # Holds the socket and this folder, never the master key. It recreates api, worker and web one
+  # at a time and never itself while it works; after an update a one-off copy of it
+  # (`updater-refresh`) moves it onto the new image. `dockify update ...` runs the same code in a
+  # one-off container, so the CLI works when the dashboard does not.
+  updater:
+    <<: *control
+    command: updater
+    group_add: ["${DOCKIFY_DOCKER_GID:?set by install.sh}"]
+    environment:
+      <<: *control-env
+      DOCKIFY_COMPOSE_DIR: ${DOCKIFY_DIR:-/opt/dockify}
+      DOCKIFY_VERSION: ${DOCKIFY_VERSION:-}
+      DOCKIFY_RELEASE_FEED: ${DOCKIFY_RELEASE_FEED:-}
+      DOCKIFY_RELEASE_PUBKEY: ${DOCKIFY_RELEASE_PUBKEY:-}
+      DOCKIFY_UPDATER_READYZ: http://api:3001/readyz
+      DOCKER_CONFIG: /tmp/.docker
+      # off leaves a service Docker's restart policy did not bring back down (updates/watchdog.ts).
+      DOCKIFY_WATCHDOG: ${DOCKIFY_WATCHDOG:-on}
+    secrets: [postgres_password]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKIFY_DIR:-/opt/dockify}:${DOCKIFY_DIR:-/opt/dockify}
+      - dockify-backups:/var/lib/dockify/backups
+    networks: [control, data, egress]
+    mem_limit: 256m
+    # It reads the update tables, which migrate creates: on a first `up` it waits for migrate.
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+  # Exact-endpoint allowlist in front of the Docker socket: socket-proxy/haproxy.cfg names every
+  # method and path Dockify uses and denies the rest (the worker's socket-proxy.test.ts checks the two
+  # agree). The image's own area-level config is replaced by that file. It reads no bodies: the agent's
+  # gate in front of it does (apps/agent/src/docker-gate.ts), and nothing else can reach it.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.4.1@sha256:3400c429c5f9e1b21d62130fb93b16e2e772d4fb7695bd52fc2b743800b9fe9e
+    restart: unless-stopped
+    logging: *logging
+    # Run haproxy against our allowlist directly. The image's own entrypoint regenerates a config
+    # from env vars into /tmp and runs that, which would ignore the mounted allowlist and (with no
+    # env set) deny every call, so the agent could reach the socket for nothing. This is the allowlist.
+    entrypoint: ["haproxy", "-W", "-db", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./socket-proxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      docker-api: { ipv4_address: 172.30.4.2 }
+    read_only: true
+    tmpfs: ["/run", "/var/lib/haproxy", "/tmp"]
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD-SHELL", "pidof haproxy >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
+
+  # Builds run here: no socket, no master key, no control-plane network, internet for RUN steps.
+  buildkit:
+    image: moby/buildkit:v0.25.1-rootless@sha256:0c0ce4929976ace509f7a53878303504b2de8857829aea4932af9f7325a30f51
+    restart: unless-stopped
+    logging: *logging
+    # Never add --oci-worker-no-process-sandbox here: it runs tenant RUN steps in the daemon's pid
+    # namespace, where they can ptrace or kill buildkitd and rewrite the shared cache. The process
+    # sandbox works rootless with the three unconfined options below (buildkit-sandbox.test.ts in the worker).
+    # A unix socket on a folder only the agent shares, never a tcp listener: a rootless RUN step shares the
+    # daemon's network namespace, so a tcp://0.0.0.0:1234 daemon would be reachable from any tenant
+    # build and let it read or poison another tenant's cache. The socket is not in a RUN step's rootfs.
+    # The config (top of the configs: section below) lets the daemon run no frontend but docker/dockerfile and Railpack's.
+    command: ["--config", "/etc/buildkit/buildkitd.toml", "--addr", "unix:///run/buildkit/buildkitd.sock"]
+    configs:
+      - source: buildkitd
+        target: /etc/buildkit/buildkitd.toml
+    # A named bridge, so the host firewall's dk-+ rules apply to RUN steps, which share the daemon's network.
+    networks: [tenant-builds]
+    # Rootless BuildKit needs its own user namespace; it runs as uid 1000 with no added capability.
+    security_opt: ["seccomp=unconfined", "apparmor=unconfined", "systempaths=unconfined"]
+    volumes:
+      - dockify-buildkit:/home/user/.local/share/buildkit
+      - ./buildkit:/run/buildkit
+    mem_limit: 4g
+    pids_limit: 4096
+
+  web:
+    image: ${DOCKIFY_WEB_IMAGE:?release.env must pin the web image}
+    restart: unless-stopped
+    logging: *logging
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    # A web RCE cannot persist: the code is root-owned and the root filesystem is read-only.
+    read_only: true
+    tmpfs: ["/tmp:size=64m", "/app/.next/cache:size=256m,uid=1000"]
+    environment:
+      DOCKIFY_API_URL: http://api:3001
+      DOCKIFY_INGRESS: ${DOCKIFY_INGRESS:-cloudflare_tunnel}
+      TZ: Etc/UTC
+    networks:
+      edge: { ipv4_address: 172.30.1.20 }
+    # Loopback only: the SSH escape hatch. The public front door is the tunnel or the proxy.
+    ports: ["127.0.0.1:${DOCKIFY_PORT:-3000}:3000"]
+    mem_limit: 512m
+    depends_on:
+      api: { condition: service_healthy }
+
+  # Tunnel mode: Traefik routes tenant hosts from the files the worker writes; no host ports.
+  proxy:
+    profiles: [tunnel]
+    image: &traefik traefik:v3.5.3@sha256:d6be8725d21b45bdd84b93ea01438256e0e3c94aa8fa51834fe87f37cd5d4af8
+    container_name: dockify-proxy
+    restart: unless-stopped
+    logging: *logging
+    command:
+      # The folder the worker writes routes into. Traefik's watcher sees only the folder it is
+      # given, not its subfolders, so this is conf/ itself; the worker stages next to it in
+      # .staging/ on the same mount, so each route lands with one atomic rename.
+      - --providers.file.directory=/dynamic/conf
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --api.dashboard=false
+      - --ping=true
+      # Request counters for preview sleep-when-idle, read through the agent on the deploy network.
+      - --entrypoints.metrics.address=:8082
+      - --metrics.prometheus=true
+      - --metrics.prometheus.entrypoint=metrics
+      - --metrics.prometheus.addservicesLabels=true
+      - --metrics.prometheus.addentrypointslabels=false
+      - --log.level=WARN
+    volumes: ["./proxy:/dynamic:ro"]
+    networks:
+      edge: {}
+      # The agent's name for it, as for proxy-direct below.
+      deploy: { aliases: [dk-proxy] }
+    read_only: true
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+
+  # Direct mode: the same proxy, terminating TLS here with Let's Encrypt on :80 and :443.
+  proxy-direct:
+    profiles: [direct]
+    image: *traefik
+    container_name: dockify-proxy
+    restart: unless-stopped
+    logging: *logging
+    command:
+      # The worker's route folder, as for the tunnel proxy above. The worker also writes the
+      # dashboard's own routers there (conf/__dashboard.yml); the installer writes no route file.
+      - --providers.file.directory=/dynamic/conf
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.websecure.address=:443
+      # Every router on websecure terminates TLS. The worker's domain ownership probe router names
+      # no certificate resolver, so it never asks Let's Encrypt for a name that does not lead here.
+      - --entrypoints.websecure.http.tls=true
+      - --certificatesresolvers.le.acme.email=${DOCKIFY_ACME_EMAIL:-}
+      - --certificatesresolvers.le.acme.storage=/acme/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      # Preview wildcard certificates (*.<preview domain>) through DNS-01, used only when
+      # DOCKIFY_ACME_DNS01=1 and secrets/cf_dns_token holds a Cloudflare token with Zone.DNS edit.
+      # Without it every preview host gets its own HTTP-01 certificate (see the previews docs).
+      - --certificatesresolvers.ledns.acme.email=${DOCKIFY_ACME_EMAIL:-}
+      - --certificatesresolvers.ledns.acme.storage=/acme/acme-dns.json
+      - --certificatesresolvers.ledns.acme.dnschallenge.provider=cloudflare
+      - --api.dashboard=false
+      - --ping=true
+      # Request counters for preview sleep-when-idle, read by the worker on the deploy network.
+      - --entrypoints.metrics.address=:8082
+      - --metrics.prometheus=true
+      - --metrics.prometheus.entrypoint=metrics
+      - --metrics.prometheus.addservicesLabels=true
+      - --metrics.prometheus.addentrypointslabels=false
+      - --log.level=WARN
+    ports: ["80:80", "443:443"]
+    environment:
+      CF_DNS_API_TOKEN_FILE: /run/secrets/cf_dns_token
+    secrets: [cf_dns_token]
+    volumes: ["./proxy:/dynamic:ro", "dockify-acme:/acme"]
+    networks:
+      edge: { ipv4_address: 172.30.1.30 }
+      # dk-proxy: a name in Dockify's reserved prefix, so the agent reaches this proxy even while it has
+      # joined a tenant network, where a service may answer to "dockify-proxy".
+      deploy: { aliases: [dk-proxy] }
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+
+  cloudflared:
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:2025.10.0@sha256:396cd2e6f021275ad09969a1b4f1a7e62ca5349fde62781ce082bb2c18105c70
+    restart: unless-stopped
+    logging: *logging
+    command: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    networks:
+      # Fixed, so the api can trust the client address it reports for /api/v1/ on the dashboard
+      # host. The tunnel's rules name the api and the web by their own edge addresses for the same
+      # reason (installer/install.sh, render_tunnel_ingress).
+      edge: { ipv4_address: 172.30.1.40 }
+      egress: {}
+    read_only: true
+    mem_limit: 256m
+    depends_on:
+      web: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  # Database and internal channel. No route out.
+  control:
+    internal: true
+    # Fixed subnet so the data browser channel binds one known address, never 0.0.0.0.
+    ipam:
+      config: [{ subnet: 172.30.2.0/24 }]
+  # Outbound internet for api (GitHub, Cloudflare), worker, updater and cloudflared.
+  egress: {}
+  # web, api, proxy and cloudflared. Fixed subnet so the api can trust exactly the hops in front of
+  # it (web, Traefik in direct mode, cloudflared in tunnel mode) by address.
+  edge:
+    ipam:
+      config: [{ subnet: 172.30.1.0/24 }]
+  # The database, by a fixed address. Fixed subnet; containers given an address by Docker take it from
+  # the upper half, so none can ever hold the address Postgres needs when it starts.
+  data:
+    internal: true
+    ipam:
+      config: [{ subnet: 172.30.3.0/24, ip_range: 172.30.3.128/25 }]
+  # The agent and the socket proxy, by a fixed address, the same way.
+  docker-api:
+    internal: true
+    ipam:
+      config: [{ subnet: 172.30.4.0/24, ip_range: 172.30.4.128/25 }]
+  # The worker and each server's agent on this box: nothing else, and no route out. The api joins it
+  # with stage 5's gateway for agents elsewhere.
+  link:
+    internal: true
+    ipam:
+      config: [{ subnet: 172.30.5.0/24, ip_range: 172.30.5.128/25 }]
+  # BuildKit and so every RUN step: internet, and the host firewall's rules for tenant bridges.
+  tenant-builds:
+    driver_opts:
+      com.docker.network.bridge.name: dk-build
+  # The agent's way to the proxy. A dk-* bridge: the host firewall drops its traffic to the host and metadata.
+  deploy:
+    name: dockify-deploy
+    driver_opts:
+      com.docker.network.bridge.name: dk-deploy
+
+configs:
+  # The frontends the daemon will run, enforced however one is asked for. Only the repository name is
+  # compared, so every tag and digest of these still works. docker/dockerfile is what a Dockerfile may
+  # ask for. railpack-frontend is what a repository with no Dockerfile builds through: the worker names
+  # it by digest (packages/engine/src/railpack.ts) and refuses it in a Dockerfile; published only by Railway, it gives
+  # a plan no more than a RUN step already has. Inline so it is part of this signed and hash-pinned file.
+  buildkitd:
+    content: |
+      [frontend."gateway.v0"]
+        enabled = true
+        allowedRepositories = ["docker.io/docker/dockerfile", "ghcr.io/railwayapp/railpack-frontend"]
+
+secrets:
+  master_key: { file: ./secrets/master_key }
+  # Optional, empty by default: previous master keys during a rotation.
+  master_key_previous: { file: ./secrets/master_key_previous }
+  postgres_password: { file: ./secrets/postgres_password }
+  setup_token: { file: ./secrets/setup_token }
+  internal_token: { file: ./secrets/internal_token }
+  # The worker's end of the link: its key, its certificate, which every agent pins, and the token this
+  # server's agent joins with once.
+  link_key: { file: ./secrets/link_key }
+  link_cert: { file: ./secrets/link_cert }
+  primary_join_token: { file: ./secrets/primary_join_token }
+  # Optional: a Cloudflare token for preview wildcard certificates in direct mode. Empty by default.
+  cf_dns_token: { file: ./secrets/cf_dns_token }
+  # Optional, empty by default: the mail server's password, and the GitHub App's private key and webhook secret.
+  smtp_password: { file: ./secrets/smtp_password }
+  github_app_private_key: { file: ./secrets/github_app_private_key }
+  github_webhook_secret: { file: ./secrets/github_webhook_secret }
+
+volumes:
+  dockify-db:
+  dockify-work:
+  dockify-backups:
+  dockify-buildkit:
+  dockify-agent:
+  dockify-agent-work:
+  dockify-acme:

@@ -1,0 +1,113 @@
+/* App and project icons: the tile family (components/icons), the image frame, and the Icon control. */
+
+/* ============== Icon ============== */
+.aicon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.aicon[data-size="md"] {
+  width: 28px;
+  height: 28px;
+}
+
+.aicon[data-size="lg"] {
+  width: 40px;
+  height: 40px;
+}
+
+.aicon > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* An image sits in the same 20 of 24 units as a tile, with the tile's corner. */
+.aicon > img {
+  display: block;
+  width: 83.333%;
+  height: 83.333%;
+  border-radius: 30%;
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--line-strong);
+  object-fit: cover;
+}
+
+.aicon-tile {
+  --ai-back-top: var(--tile-api-top);
+  --ai-back-bottom: var(--tile-api-bottom);
+  --ai-front-top: color-mix(in srgb, #ffffff var(--tile-glyph-top), var(--ai-back-top));
+  --ai-front-bottom: color-mix(in srgb, #ffffff var(--tile-glyph-bottom), var(--ai-back-top));
+}
+
+.aicon-tile[data-hue="web"] { --ai-back-top: var(--tile-web-top); --ai-back-bottom: var(--tile-web-bottom); }
+.aicon-tile[data-hue="bot"] { --ai-back-top: var(--tile-bot-top); --ai-back-bottom: var(--tile-bot-bottom); }
+.aicon-tile[data-hue="postgres"] { --ai-back-top: var(--tile-postgres-top); --ai-back-bottom: var(--tile-postgres-bottom); }
+.aicon-tile[data-hue="redis"] { --ai-back-top: var(--tile-redis-top); --ai-back-bottom: var(--tile-redis-bottom); }
+.aicon-tile[data-hue="minio"] { --ai-back-top: var(--tile-minio-top); --ai-back-bottom: var(--tile-minio-bottom); }
+
+/* ============== Icon card ============== */
+.ic-card {
+  gap: 24px;
+}
+
+.ic-now {
+  gap: 12px;
+  justify-content: flex-start;
+}
+
+.ic-now .two {
+  flex: 1;
+  min-width: 0;
+}
+
+.ic-now-face {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+}
+
+/* Covers the tile, which fills 20 of the icon's 24 units. */
+.ic-now-busy {
+  position: absolute;
+  inset: 8.333%;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  color: var(--ink-2);
+}
+
+.ic-now-acts {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.ic-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ic-up {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+@media (max-width: 520px) {
+  .ic-now {
+    flex-wrap: wrap;
+  }
+  .ic-now-acts {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

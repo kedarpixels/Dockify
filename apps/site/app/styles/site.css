@@ -1,0 +1,591 @@
+/* Site shell: top bar, phone menu, page heads, the command line and the footer. Builds on the
+   foundation.css tokens and ruled frame. */
+
+/* Hidden until focused; then it floats just under the top bar, clear of the logo and the nav. */
+.skip {
+  position: fixed;
+  z-index: var(--z-dialog);
+  left: 16px;
+  top: -64px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.skip:focus-visible {
+  top: calc(var(--top-h) + 12px);
+}
+
+/* One centred column for the nav, every section and the footer. Above phone width the rails keep
+   at least 32px of page outside them, so the ruled frame never hugs the window edge. */
+@media (min-width: 761px) {
+  html:root {
+    --rail: min(1200px, calc(100vw - 64px));
+  }
+}
+
+/* The logo, as the dashboard draws it: the 131 by 96 mark at 33 by 24. */
+.logo {
+  width: 33px;
+  height: 24px;
+  flex: none;
+  display: block;
+  object-fit: contain;
+}
+
+/* -------------- Top bar -------------- */
+/* Solid, sticky, 56px. The inner row sits between the rails, on the same whole-pixel offset as the
+   page blocks (foundation.css, the frame note); its cells are split by hairlines. Its two bottom
+   corners carry the nodes where its rule crosses the rails. As in the dashboard, the bottom rule is
+   an inset shadow, not a border, so the cells keep all 56px and the logo, links, theme switch and
+   install key centre on whole pixels. */
+.st-top {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-top);
+  height: var(--top-h);
+  background: var(--bg);
+  box-shadow: inset 0 -1px var(--line);
+}
+
+/* The nodes sit on the inset rule, 1px higher than on a border of their own. */
+.st-top-in > .node[data-pos] {
+  bottom: -2px;
+}
+
+.st-top-in {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  max-width: var(--rail);
+  margin-left: max(0px, calc((100% - var(--rail)) / 2));
+  margin-left: round(down, max(0px, calc((100% - var(--rail)) / 2)), 1px);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+
+.st-brand,
+.st-brand-sm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.st-brand {
+  flex: none;
+  padding: 0 var(--gutter);
+  border-right: 1px solid var(--line);
+}
+
+.st-brand:focus-visible {
+  outline-offset: -4px;
+  border-radius: 0;
+}
+
+.st-word {
+  font-family: var(--font-pixel);
+  font-feature-settings: "ss09";
+  font-size: 18px;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+}
+
+.st-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 16px;
+}
+
+.st-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-3);
+  transition: color 150ms, background-color 150ms;
+}
+
+.st-link:hover {
+  color: var(--ink);
+  background: var(--mass);
+}
+
+.st-link.is-on {
+  color: var(--ink);
+}
+
+.st-keys {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  padding: 0 var(--gutter) 0 16px;
+  border-left: 1px solid var(--line);
+}
+
+.menu-key,
+.mnav,
+.mnav-scrim {
+  display: none;
+}
+
+/* -------------- Phone: burger and menu, the same as the dashboard -------------- */
+@media (max-width: 760px) {
+  .st-top-in {
+    margin-left: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+
+  /* No rails on a phone, so no crossings to mark. */
+  .st-top .node {
+    display: none;
+  }
+
+  .st-brand {
+    padding: 0 var(--gutter);
+  }
+
+  .st-nav,
+  .st-install {
+    display: none;
+  }
+
+  .st-keys {
+    gap: 8px;
+    padding: 0 0 0 12px;
+  }
+
+  .menu-key {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 100%;
+    margin-left: 4px;
+    /* One past the 1px rule, so the 18px burger centres on a whole pixel. */
+    padding: 0 1px 0 0;
+    border: 0;
+    border-left: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .menu-key:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: -4px;
+    border-radius: 0;
+  }
+
+  .burger {
+    position: relative;
+    display: block;
+    width: 18px;
+    height: 12px;
+  }
+
+  .burger > span {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    transition: top 300ms var(--ease-key), rotate 300ms var(--ease-key);
+  }
+
+  .burger > span:first-child {
+    top: 1px;
+  }
+
+  .burger > span:last-child {
+    top: 9px;
+  }
+
+  .burger[data-open="true"] > span:first-child {
+    top: 5px;
+    rotate: 45deg;
+  }
+
+  .burger[data-open="true"] > span:last-child {
+    top: 5px;
+    rotate: -45deg;
+  }
+
+  /* The panel's grid row animates 0fr to 1fr, so it unrolls to its natural height. */
+  .mnav {
+    position: fixed;
+    z-index: var(--z-menu);
+    top: var(--top-h);
+    left: 0;
+    right: 0;
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 300ms var(--ease-key);
+  }
+
+  .mnav[data-open="true"] {
+    grid-template-rows: 1fr;
+  }
+
+  .mnav-inner {
+    min-height: 0;
+    max-height: calc(100dvh - var(--top-h));
+    overflow-x: hidden;
+    overflow-y: auto;
+    background: var(--bg);
+    overscroll-behavior: contain;
+  }
+
+  .mnav[data-open="true"] .mnav-inner {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mnav-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mnav-list > li + li .mnav-row {
+    border-top: 1px solid var(--line);
+  }
+
+  .mnav-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 48px;
+    padding: 0 var(--gutter);
+    color: var(--ink-2);
+    font-size: 15px;
+    transition: color 150ms, background-color 150ms;
+  }
+
+  .mnav-row:focus-visible {
+    outline-offset: -2px;
+    border-radius: 0;
+  }
+
+  .mnav-row:active {
+    background: var(--mass);
+  }
+
+  .mnav-row[aria-current="page"] {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .mnav-row[aria-current="page"] .mnav-lead {
+    color: var(--ink);
+  }
+
+  .mnav-row > .ic:last-child {
+    color: var(--ink-4);
+  }
+
+  .mnav-lead {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 20px;
+    color: var(--ink-3);
+  }
+
+  .mnav-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mnav-cta {
+    padding: 16px var(--gutter);
+  }
+
+  .mnav-cta .btn {
+    width: 100%;
+    height: 40px;
+  }
+
+  .mnav-scrim {
+    position: fixed;
+    z-index: var(--z-menu-scrim);
+    inset: var(--top-h) 0 0;
+    display: block;
+    background: var(--scrim);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 300ms;
+  }
+
+  .mnav-scrim[data-open="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* -------------- Page head -------------- */
+.phead {
+  padding: 64px var(--gutter) 48px;
+}
+
+.phead-eyebrow {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.phead-title {
+  margin: 0;
+  font-family: var(--font-pixel);
+  font-feature-settings: "ss09";
+  font-size: 48px;
+  line-height: 52px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.phead-lead {
+  max-width: 640px;
+  margin: 16px 0 0;
+  font-size: 17px;
+  line-height: 28px;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+
+.phead-cmd {
+  padding: 0 var(--gutter) 48px;
+}
+
+.phead-cmd > .cmdline {
+  max-width: 680px;
+}
+
+.phead-note {
+  max-width: 680px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.phead-note + .cmdline {
+  margin-top: 8px;
+}
+
+.phead-callout {
+  margin-top: 16px;
+}
+
+/* -------------- Command line -------------- */
+/* A copyable shell command in Geist Mono. It wraps at its spaces rather than being cut, so the
+   whole command is always readable; the copy key copies it as one line. */
+.cmdline {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 10px 10px 16px;
+  border-radius: 10px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.cmdline-prompt {
+  flex: none;
+  padding-top: 4px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cmdline-text {
+  flex: 1;
+  min-width: 0;
+  padding-top: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+/* A flag, or a pipe with the word after it, wraps as one piece. */
+.cmdline-nw {
+  white-space: nowrap;
+}
+
+/* -------------- Footer -------------- */
+/* The rows sit between the rails on the same whole-pixel offset as the page. The brand column takes
+   what the three link columns leave, each of those a whole number of pixels. */
+.st-foot {
+  border-top: 1px solid var(--line);
+  overflow-x: clip;
+}
+
+.st-foot-in {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) repeat(3, round(down, calc(100% / 5), 1px));
+  max-width: var(--rail);
+  margin-left: max(0px, calc((100% - var(--rail)) / 2));
+  margin-left: round(down, max(0px, calc((100% - var(--rail)) / 2)), 1px);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+
+.st-foot-in > * {
+  position: relative;
+  padding: 40px var(--gutter);
+}
+
+.st-foot-in > * + * {
+  border-left: 1px solid var(--line);
+}
+
+.st-foot-brand p {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.st-foot-hd {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.st-foot-col ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-foot-col a {
+  font-size: 14px;
+  color: var(--ink-3);
+  transition: color 150ms;
+}
+
+.st-foot-col a:hover {
+  color: var(--ink);
+}
+
+.st-foot-base {
+  border-top: 1px solid var(--line);
+}
+
+.st-foot-base-in {
+  max-width: var(--rail);
+  margin-left: max(0px, calc((100% - var(--rail)) / 2));
+  margin-left: round(down, max(0px, calc((100% - var(--rail)) / 2)), 1px);
+  padding: 16px var(--gutter);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* -------------- Responsive -------------- */
+/* Tablet: a fifth of the rail is too narrow for "Report a vulnerability", so the brand takes the
+   first row and the three link columns share the second, each a whole number of pixels. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .st-foot-in {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, round(down, calc(100% / 3), 1px)) minmax(0, 1fr);
+  }
+
+  .st-foot-brand {
+    grid-column: 1 / -1;
+  }
+
+  .st-foot-in > * + * {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .st-foot-col + .st-foot-col {
+    border-left: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --gutter: 16px;
+  }
+
+  .phead {
+    padding: 40px var(--gutter) 32px;
+  }
+
+  .phead-title {
+    font-size: 34px;
+    line-height: 38px;
+  }
+
+  .st-foot-in {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) round(down, 50%, 1px);
+    margin-left: 0;
+    border: 0;
+  }
+
+  .st-foot-in > * {
+    padding: 24px var(--gutter);
+  }
+
+  .st-foot-brand {
+    grid-column: 1 / -1;
+  }
+
+  .st-foot-in > * + * {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .st-foot-col:nth-child(3) {
+    border-left: 1px solid var(--line);
+  }
+
+  /* The last column takes the whole row, so its top rule closes under both columns above. */
+  .st-foot-col:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+
+  /* No rails in the stacked footer, so no crossings to mark. */
+  .st-foot .node {
+    display: none;
+  }
+
+  .st-foot-base-in {
+    margin-left: 0;
+    border: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mnav,
+  .burger > span,
+  .mnav-scrim {
+    transition: none;
+  }
+}

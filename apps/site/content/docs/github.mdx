@@ -1,0 +1,63 @@
+---
+title: "Connect GitHub"
+description: "Public repositories deploy by their URL. Private ones, deploy on push and pull request previews need a GitHub App that belongs to your instance."
+---
+
+## Public repositories
+
+A public repository needs nothing connected. In **New app**, choose **GitHub repository**, then use a URL such as `https://github.com/owner/repo`. Dockify clones it without credentials.
+
+## What a GitHub App adds
+
+Each Dockify instance uses a **GitHub App** of its own. It asks for the least it needs:
+
+| Permission or event | Why |
+|---|---|
+| Contents: read | Clone the branch you deploy. |
+| Metadata: read | List repositories and branches. |
+| Pull requests: write | The sticky preview comment on pull requests. |
+| Commit statuses: write | The "Dockify preview" check on the head commit. |
+| `push` event | Deploy the branch an environment tracks. |
+| `pull_request` event | [Preview deploys](/docs/previews) per pull request. |
+
+With the App installed on an account or organization, its repositories show in a list in **New app**, private ones included, and a clone uses a short-lived token for that installation only.
+
+Deploy on push, pull request previews, and installing the App on your accounts all need GitHub to reach the api at `https://<your dashboard>/api/v1/`, which the dashboard's hostname routes in both ingress modes. An address GitHub cannot reach from outside will not receive them.
+
+## Create the App
+
+Open **Settings > Integrations > GitHub** and press **Create GitHub App**. Choose whose account it belongs to, yours or an organization's. GitHub shows the App with its URLs, permissions and events filled in, and sends you back. The card then shows **Connect** until you install the App on your accounts from the same card.
+
+### From the installer
+
+To have the App connected before the first sign-in, create it by hand and pass it to the first install. The installer's values are read only before the first account exists; after that, use the card above.
+
+<Steps>
+
+1. **Create the App on GitHub.** Open **Settings > Developer settings > GitHub Apps > New GitHub App** on the account or organization that will own it. Give it a name, and set:
+   - Homepage URL: `https://<your dashboard>`
+   - Webhook: active, with the URL `https://<your dashboard>/api/v1/webhooks/github` and a long random secret
+   - Setup URL: `https://<your dashboard>/api/v1/git/setup`
+   - The permissions and events in the table above
+   - Where it can be installed: only on this account
+2. **Generate a private key.** On the App's page, generate one. GitHub downloads a `.pem` file. Note the App ID on the same page, and the slug: the last part of the App's public link, `github.com/apps/<slug>`.
+3. **Copy both to the server.** Put the `.pem` file and a file holding the webhook secret on the server, for example in `/root`.
+4. **Pass all four values on the first install.** The installer refuses a partial set.
+
+</Steps>
+
+```bash
+curl -fsSL https://dockify.sh/install.sh | sudo DOCKIFY_GITHUB_APP_ID=123456 DOCKIFY_GITHUB_APP_SLUG=my-dockify DOCKIFY_GITHUB_APP_PRIVATE_KEY_FILE=/root/app.pem DOCKIFY_GITHUB_WEBHOOK_SECRET_FILE=/root/webhook-secret sh
+```
+
+The variables go after `sudo`, so sudo hands them to the installer. Set before it (or exported in your shell), sudo drops them. The private key and the webhook secret are copied into `/opt/dockify/secrets/` and sealed when the api first starts.
+
+## Check the connection
+
+Open **Settings > Integrations > GitHub**. It lists the accounts and organizations the App can read, with **Manage** to change the repositories it sees on GitHub, and **Disconnect** to uninstall it.
+
+## What can go wrong
+
+- **The repository list is empty.** No App is configured, or it is not installed on the account that owns the repository. Public repositories still work by URL.
+- **"The clone was anonymous".** The repository is private and no App installation covers it. Install the App on the owning account, or make the repository public.
+- **Installer values set after setup do nothing.** They are read only before the first account exists. Use **Create GitHub App** instead.

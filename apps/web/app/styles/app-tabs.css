@@ -1,0 +1,690 @@
+/* app-tabs: the app page's Metrics, Domains, Data, Backups, Terminal and Settings tabs
+   (components/app-detail). Every tab is one or more TabCards, and each TabCard is the `at-tab`
+   container, so a tab's grids follow the card's own width with the sidebar open or collapsed.
+   The tab strip lives with TabStrip in project-detail.css, shared with the project page. */
+
+/* -------------- Shared bits -------------- */
+.at-tab {
+  container: at-tab / inline-size;
+}
+
+.at-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* A reload dims what is on screen instead of blanking it. */
+:is(.at-mgrid, .at-rows, .at-keys)[data-loading] {
+  opacity: 0.6;
+  transition: opacity 150ms var(--ease);
+}
+
+/* -------------- Metrics -------------- */
+/* The metric cards are KpiCells (foundation's KPI cell): head, figure and lead, then the chart at
+   the cell's full width and its averages under it. */
+.kpi-cell .at-mchart {
+  position: relative;
+  height: 72px;
+}
+
+/* Over the KPI cell's own 112px sparkline: this one spans the cell. */
+.kpi-cell .at-mchart > .sparkarea {
+  width: 100%;
+  height: 100%;
+}
+
+.at-mfoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 20px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* Each cell carries a chart, so a narrow card stacks them, one per row. */
+@container kpi (max-width: 520px) {
+  .kpi .kpi-grid.at-mgrid {
+    --kpi-cols: 1;
+    --kpi-tpl: var(--kpi-tpl-1);
+  }
+}
+
+/* Limit usage rows. */
+.at-lim {
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+.at-lim-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 8px;
+}
+
+/* The labels take one fixed column, so every bar starts at the same edge and fills the rest. */
+.at-lim-row > .two {
+  flex: 0 0 200px;
+  min-width: 0;
+}
+
+.at-lim-meter {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A basis other than auto wins over the bar's own inline width, so the bar grows into the row. */
+.at-lim-meter .bar {
+  flex: 1 1 0;
+  min-width: 48px;
+}
+
+.at-lim-meter .gauge-val {
+  min-width: 64px;
+  text-align: right;
+}
+
+/* -------------- Data -------------- */
+.at-browser {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 360px;
+}
+
+.at-tables {
+  align-content: start;
+  padding: 12px 8px 16px calc(var(--gutter) - 8px);
+  border-right: 1px solid var(--line);
+}
+
+.at-table {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.at-table > .ic {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.at-table[aria-current] {
+  background: var(--hover);
+}
+
+.at-table[aria-current] > .ic {
+  color: var(--blue);
+}
+
+.at-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px var(--gutter) 24px;
+}
+
+.at-browser .at-rows {
+  padding-left: 24px;
+}
+
+.at-rows-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* The global focus ring (foundation) draws outside the 10px corners. */
+.at-grid-wrap {
+  max-height: 520px;
+  overflow: auto;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.at-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.at-grid th,
+.at-grid td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.at-grid tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.at-grid th {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-raise);
+  background: var(--mass);
+  font-weight: 500;
+}
+
+.at-grid th:first-child { border-top-left-radius: 10px; }
+.at-grid th:last-child { border-top-right-radius: 10px; }
+
+.at-grid tbody tr:hover td {
+  background: var(--hover);
+}
+
+.at-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.at-col-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+}
+
+.at-col-name .ic {
+  color: var(--ink-muted);
+}
+
+.at-col-type {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.at-null {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+/* The terminal: its own colours, whole-pixel padding, and a fixed height so nothing jumps as it fills. */
+.at-term-card {
+  --term-bg: var(--panel-2);
+  --term-fg: var(--ink);
+  --term-sel: var(--blue-ring-soft);
+  --term-black: var(--ink);
+  --term-white: var(--ink-3);
+  --term-bright-black: var(--ink-3);
+  --term-bright-white: var(--ink);
+  --term-red: #c62828;
+  --term-green: #1b7f3b;
+  --term-yellow: #9a6700;
+  --term-blue: var(--blue-ink);
+  --term-magenta: #8250df;
+  --term-cyan: #0a7ea4;
+}
+:root[data-theme="dark"] .at-term-card {
+  --term-black: #6b6b6b;
+  --term-white: var(--ink-2);
+  --term-red: #ff6b6b;
+  --term-green: #4cc38a;
+  --term-yellow: #e2b93d;
+  --term-magenta: #c297ff;
+  --term-cyan: #5ccfe6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .at-term-card {
+    --term-black: #6b6b6b;
+    --term-white: var(--ink-2);
+    --term-red: #ff6b6b;
+    --term-green: #4cc38a;
+    --term-yellow: #e2b93d;
+    --term-magenta: #c297ff;
+    --term-cyan: #5ccfe6;
+  }
+}
+.at-term {
+  height: clamp(320px, 60vh, 640px);
+  height: round(down, clamp(320px, 60vh, 640px), 1px);
+  padding: 8px 0 8px var(--gutter);
+  background: var(--term-bg);
+  border-top: 1px solid var(--line);
+  overflow: hidden;
+}
+.at-term[data-ended] {
+  opacity: 0.72;
+}
+.at-term-screen {
+  width: 100%;
+  height: 100%;
+}
+.at-term-screen .xterm {
+  height: 100%;
+}
+.at-term-screen .xterm-viewport {
+  background: transparent !important;
+}
+.at-term-note {
+  padding: 16px var(--gutter);
+}
+.at-term-open {
+  padding-bottom: 24px;
+}
+
+.px-prev-secret {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+.px-prev-secret code {
+  min-width: 0;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.at-query {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px var(--gutter) 0;
+}
+
+.at-query + .at-rows {
+  margin-top: 8px;
+}
+
+.at-query:last-child {
+  padding-bottom: 24px;
+}
+
+/* A failed query: the shared bad Callout, under the box. */
+.at-q-out {
+  padding: 0 var(--gutter) 24px;
+}
+
+.at-query + .at-q-out {
+  margin-top: 16px;
+}
+
+.at-sql {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* Redis keys: one grid shared by the head and every row. */
+.at-keys {
+  padding: 4px calc(var(--gutter) - 8px) 16px;
+}
+
+.at-key {
+  --cols: minmax(0, 1fr) 104px 96px 72px;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 20px;
+  transition: background-color 150ms var(--ease);
+}
+
+li.at-key:hover {
+  background: var(--hover);
+}
+
+.at-key-hd {
+  min-height: 36px;
+  color: var(--ink-3);
+}
+
+.at-key-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.at-key-text {
+  overflow-wrap: anywhere;
+}
+
+.at-key-size {
+  text-align: right;
+}
+
+.at-key-hd > :last-child {
+  text-align: right;
+}
+
+/* -------------- Backups summary -------------- */
+.at-facts {
+  display: grid;
+  grid-template-columns: repeat(3, round(down, calc((100% - 3px) / 4), 1px)) minmax(0, 1fr);
+  gap: 1px;
+  margin: 0;
+  background: var(--line);
+}
+
+.at-fact {
+  min-width: 0;
+  margin: 0;
+  padding: 20px var(--gutter) 24px;
+  background: var(--bg);
+}
+
+.at-fact dd {
+  margin: 0;
+}
+
+.at-fact .two-main {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.at-fact a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* -------------- Settings -------------- */
+.at-trio {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.at-sync {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+
+.at-sync dd {
+  margin: 0;
+}
+
+/* A state chip, then when it was. */
+.at-sync-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* -------------- Narrow cards -------------- */
+/* Measured on the tab's own card (at-tab), on the 520 and 760 steps of the breakpoint scale
+   (foundation.css header); the four backup facts need about 240px each, so they pair up sooner. */
+@container at-tab (max-width: 960px) {
+  .at-facts {
+    grid-template-columns: round(down, calc((100% - 1px) / 2), 1px) minmax(0, 1fr);
+  }
+}
+
+@container at-tab (max-width: 760px) {
+  .at-browser {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .at-tables {
+    padding: 12px calc(var(--gutter) - 8px);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .at-browser .at-rows {
+    padding-left: var(--gutter);
+  }
+}
+
+@container at-tab (max-width: 520px) {
+  .at-facts,
+  .at-trio,
+  .at-sync {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .at-key {
+    --cols: minmax(0, 1fr) auto;
+    row-gap: 4px;
+    padding: 8px;
+  }
+  .at-key-hd {
+    display: none;
+  }
+  .at-key-name {
+    grid-column: 1 / -1;
+  }
+  .at-key-size {
+    text-align: left;
+  }
+
+  .at-lim-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .at-lim-row > .two {
+    flex: none;
+  }
+  .at-lim-meter {
+    align-self: stretch;
+  }
+}
+
+
+/* Jobs: one row per job, the picked job's runs, and a run's output in a dialog. Columns are fixed so
+   every row lines up with the one above it; the middle text cuts with an ellipsis and its title holds the rest. */
+.jb-stack {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.jb-rows {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  min-width: 0;
+}
+.jb-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 208px 104px 148px;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  padding: 0 12px;
+  min-width: 0;
+}
+.jb-row[aria-current="true"] {
+  background: var(--hover);
+}
+.jb-row-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.jb-name {
+  color: var(--ink);
+  font-size: 13px;
+}
+.jb-cmd,
+.jb-sub {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.jb-sched {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+}
+.jb-last {
+  display: flex;
+  min-width: 0;
+}
+.jb-acts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.jb-run {
+  display: grid;
+  grid-template-columns: 104px 96px minmax(0, 1fr) 64px 64px 16px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  min-width: 0;
+}
+button.jb-run {
+  cursor: pointer;
+}
+.jb-run-status {
+  display: flex;
+}
+.jb-run-time,
+.jb-run-why,
+.jb-run-exit,
+.jb-run-dur {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.jb-run-exit,
+.jb-run-dur {
+  text-align: right;
+}
+.jb-run-more {
+  display: flex;
+  justify-content: flex-end;
+  color: var(--ink-3);
+}
+.jb-run-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.jb-run-reason {
+  margin: 12px 0 0;
+  font-size: 13px;
+}
+.jb-none {
+  margin: 12px 0 0;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.jb-log {
+  margin: 12px 0 0;
+  padding: 12px;
+  max-height: 360px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--mass);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.jb-enabled {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.jb-enabled > span:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.jb-enabled-title {
+  font-size: 13px;
+}
+.jb-enabled-sub {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+@container at-tab (max-width: 720px) {
+  .jb-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    padding: 10px 12px;
+  }
+  .jb-sched {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .jb-last {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+  }
+  .jb-acts {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .jb-run {
+    grid-template-columns: 96px minmax(0, 1fr) 16px;
+    gap: 2px 8px;
+    padding: 8px 12px;
+  }
+  .jb-run-time {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .jb-run-more {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .jb-run-why {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    white-space: normal;
+  }
+  .jb-run-exit,
+  .jb-run-dur {
+    display: none;
+  }
+}

@@ -1,0 +1,44 @@
+---
+title: "Getting started"
+description: "What you need before you install, and the path from a fresh server to your first app live on its own domain."
+---
+
+## What you need
+
+- A fresh **Ubuntu 22.04 or 24.04** server, on amd64 (x86_64) or arm64 (aarch64). Ubuntu 26.04 is accepted but untested; other Ubuntu versions get a warning, and other distributions are refused.
+- **Root**, or sudo over SSH.
+- A **hostname** for the dashboard, for real use. To try Dockify first, skip it: the dashboard starts on a temporary sslip.io address, and you can move it later.
+- **One way in for traffic:**
+  - Direct mode: ports 80 and 443 free on the server and a public IPv4, plus an A record pointing at it if you give a hostname. An email address for Let's Encrypt is optional.
+  - Tunnel mode (the default when you pass `--domain`): a domain on Cloudflare and an API token with `Zone:DNS:Edit` and `Account:Cloudflare Tunnel:Edit`.
+- **Docker**, or nothing: the installer adds Docker Engine from Docker's own repository when it is missing. An existing Docker must be Engine 25.0 or newer, with Compose 2.24 or newer.
+
+### Size
+
+We tested on 2 vCPU, 4 GB of memory and 49 GB of disk, on Ubuntu 22.04. Leave room for your apps and their builds: BuildKit alone may use up to 4 GB of memory while it builds.
+
+### SSH on another port
+
+The installer turns the `ufw` firewall on with incoming traffic denied, and allows the SSH port it finds. If SSH listens on a port other than 22, allow it before you install, or pass `--no-ufw`:
+
+```bash
+sudo ufw allow 2222/tcp
+```
+
+## The path
+
+<Steps>
+
+1. **Install.** Run the one-line installer on the server. It asks for a dashboard hostname, which you can skip with Enter, and in tunnel mode for your Cloudflare token. See [Install](/docs/install).
+2. **Create your account.** Open the setup link it prints and paste the one-time setup token. That account is the first admin.
+3. **Back up the master key.** Copy `/opt/dockify/secrets/master_key` somewhere that is not this server. Without it, stored secrets and offsite backups cannot be opened.
+4. **Add a repository.** A public repository works by its https URL. Private repositories need a GitHub App for your instance: see [Connect GitHub](/docs/github).
+5. **Deploy.** Create a project, add an app from a repository, and deploy it. See [First deploy](/docs/first-deploy).
+6. **Add a domain.** Point a hostname at the app. See [Domains and TLS](/docs/domains).
+7. **Add a backup destination.** Until you add an S3-compatible bucket, backups stay on this server's own disk, which is not off the server. See [Backups and restore](/docs/backups).
+
+</Steps>
+
+## Before 1.0
+
+Dockify 1.0 is not released yet. The one-line install works once the first signed release is out; until then it stops early, after asking for the domain, with "no release source". The [Introduction](/docs#project-status) says what has run on a real server so far.

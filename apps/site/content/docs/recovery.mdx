@@ -1,0 +1,68 @@
+---
+title: "Recovery"
+description: "How to get back into an account, how to sign a stolen session out, and what to keep so that losing the server is not losing your data."
+---
+
+## Locked out of an account
+
+There is no web way around two-factor, and there are no recovery codes: the way back in goes through email, or through the server itself.
+
+- **Forgot the password, and email is set up.** Use **Forgot password?** on the sign-in page. The link works once, for 30 minutes, and signs the account out everywhere. If the account has two-factor on, it still asks for the authenticator code.
+- **Lost the authenticator, or forgot the password without email.** Whoever runs the server resets it over SSH. The sign-in page links to these commands too, under **Lost access?** or **Reset two-factor**.
+
+```bash
+sudo dockify admin disable-mfa you@example.com      # turns two-factor off for that account
+sudo dockify admin reset-password you@example.com   # prints a new password, ends its sessions and revokes its API tokens
+```
+
+A password reset leaves two-factor on, so run both if both are lost. Once signed in, replace a printed password with your own and turn two-factor back on in **Settings > Security**.
+
+## Sign a session out everywhere
+
+If a device is lost or a session may be stolen, sign out the ones you do not recognise from **Settings > Security**. If you cannot sign in, end every session of the account from the server:
+
+```bash
+sudo dockify admin revoke-sessions you@example.com
+```
+
+These account commands, this one, `disable-mfa` and `reset-password`, run inside the running api container. Each one also ends the account's sessions, its remembered browsers and any sign-in in progress, and writes a line to the activity log, so whoever held a stolen cookie is out at once. `disable-mfa` on an account with no two-factor changes nothing. `set-domain` and `factory-reset` run on the host instead.
+
+## If the dashboard's address is gone
+
+A domain that lapsed, or a DNS record that went away, takes the dashboard's address with it. Over SSH, move it back:
+
+```bash
+sudo dockify admin set-domain --sslip                # a temporary sslip.io address, direct mode
+sudo dockify admin set-domain dockify.example.com    # or another domain that points here
+```
+
+You can also still sign in over SSH while you decide: see the tunnel under [Install](/docs/install).
+
+## If this server's agent is lost or compromised
+
+`sudo dockify admin reset-link` forgets the agent's key and makes a new join token, so a new agent can join. If the agent's volume was lost, that is all it takes. If the agent may be compromised, first stop it and remove its volume, because it keeps its key there and would join again with the new token:
+
+```bash
+sudo dockify stop agent
+sudo dockify rm -f agent
+sudo docker volume rm dockify_dockify-agent
+sudo dockify admin reset-link
+sudo dockify up -d agent
+```
+
+## If you lose the server
+
+Keep two things off the server, and you keep your data:
+
+- **Your backup bucket.** Every backup is encrypted on the server before it is uploaded, with a backup key that is not your storage credential.
+- **A copy of `/opt/dockify/secrets/master_key`.** Every backup run writes the backup key, sealed under the master key, beside the dumps, so the dumps can be decrypted later.
+
+<Soon>Restoring those backups on a new server from the dashboard. A fresh install lists only the backups it made itself, and no `dockify` command opens the sealed backup key yet. Until then, keep the bucket and the master key safe: they are what that restore will need.</Soon>
+
+## If you lose the master key
+
+Without `/opt/dockify/secrets/master_key`, stored secrets and the backup key cannot be opened. Your apps keep running, but secret variables and integrations must be entered again, and offsite backups taken with that key cannot be decrypted. There is no way around this by design. Keep a copy off the server, and see [Security model](/docs/security#rotating-the-master-key) to rotate it.
+
+## If an update fails
+
+The updater rolls back on its own. When even the rollback fails, it names the dump of Dockify's database it took first. See [Updates](/docs/updates#what-can-go-wrong).

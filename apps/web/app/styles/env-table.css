@@ -1,0 +1,281 @@
+/* -------------- Variables table, shared by the project and app Variables tabs -------------- */
+/* The table stacks by its own width (the named ev-vars container), so it holds up beside the
+   sidebar at any viewport. */
+.ev-vars-wrap {
+  container: ev-vars / inline-size;
+  display: flex;
+  flex-direction: column;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+.ev-vars {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Key, value, updated, then three 28px keys; a "used at" column joins with ev-var-t. The columns
+   are fixed, so read rows, the edit row and the add row all line up. */
+.ev-var {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) round(down, calc((100% - 224px) * 0.64), 1px) 96px 92px;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 20px;
+  transition: background-color 150ms var(--ease);
+}
+
+.ev-var-t {
+  grid-template-columns: minmax(0, 1fr) round(down, calc((100% - 324px) * 0.625), 1px) 96px 88px 92px;
+}
+
+/* A table that mixes apps: the app column is carved out of the key track (0.9 of 2.4 of what the
+   324px of fixed tracks and gaps leave), so value, used at, updated and keys line up with ev-var-t.
+   Where that leaves the key under 168px, the key keeps 168px and the value gives way. */
+.ev-var-t.ev-var-a {
+  grid-template-columns: 120px max(168px, round(down, calc((100% - 324px) * 0.375 - 132px), 1px)) minmax(0, 1fr) 96px 88px 92px;
+}
+
+.ev-var-a {
+  position: relative;
+}
+
+.ev-var-app {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.ev-var-app[data-cont] {
+  visibility: hidden;
+}
+
+.ev-var-appname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Each app's run after the first opens on a hairline in the 4px row gap. A 1px line cannot sit on
+   the gap's half pixel, so it takes the gap's second row. */
+.ev-vars > .ev-var-a[data-start] ~ .ev-var-a[data-start]::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: 8px;
+  left: 8px;
+  height: 1px;
+  background: var(--line);
+  pointer-events: none;
+}
+
+li.ev-var:hover {
+  background: var(--hover);
+}
+
+.ev-var-head {
+  min-height: 36px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* Keys and values in the app's mono face; tags after a key stay in the sans face. */
+.ev-var-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.ev-var-key .chip,
+.ev-var-note {
+  flex: none;
+  font-family: var(--font-sans);
+}
+
+.ev-var-keytext,
+.ev-var-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ev-var-lock {
+  flex: none;
+  color: var(--ink-4);
+}
+
+.ev-var-val {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 2px 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+
+.ev-var-target {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Where a variable is read: build is tinted, runtime stays quiet. Text on the blue tint takes the
+   blue ink, which keeps 4.5:1 on it. */
+.ev-target {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  background: var(--mass);
+}
+
+.ev-target[data-target="build"],
+.ev-target[data-target="both"] {
+  color: var(--blue-ink);
+  background: var(--blue-soft);
+}
+
+.ev-var-when {
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.ev-var-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.ev-var-gap {
+  width: 28px;
+  height: 28px;
+}
+
+/* Staged rows: a removed one fades and strikes its key; it keeps its place so Undo stays put. */
+.ev-var[data-state="removed"] .ev-var-keytext {
+  text-decoration: line-through;
+  text-decoration-color: var(--bad-ink);
+  color: var(--ink-3);
+}
+
+.ev-var[data-state="removed"] .ev-var-val,
+.ev-var[data-state="removed"] .ev-var-target {
+  opacity: 0.5;
+}
+
+/* The inline editor: a soft fill marks it. Its inputs are the compact 32px field (data-size="sm")
+   on the page colour, so they stand off the fill. */
+li.ev-var-edit,
+li.ev-var-edit:hover {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  background: var(--mass);
+}
+
+.ev-var-edit .field {
+  background: var(--bg);
+}
+
+.ev-var-edit .ev-var-target > * {
+  width: 100%;
+}
+
+.ev-var-secret {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--ink-3);
+}
+
+.ev-var-err {
+  grid-column: 1 / -1;
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--bad-ink);
+}
+
+/* Narrow: rows stack, the keys stay on the right. "Used at" takes the meta line when shown,
+   otherwise the updated time does. 760px is the narrowest an app table fits in columns, so the
+   table stacks below it. */
+@container ev-vars (width < 760px) {
+  .ev-var-head {
+    display: none;
+  }
+  .ev-var {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "key acts"
+      "val acts"
+      "meta acts";
+    gap: 4px 12px;
+    padding: 12px 8px;
+  }
+  .ev-var-key { grid-area: key; }
+  .ev-var-val { grid-area: val; }
+  .ev-var-target { grid-area: meta; }
+  .ev-var > .ev-var-when { grid-area: meta; text-align: left; }
+  .ev-var-t > .ev-var-when { display: none; }
+  .ev-var-acts { grid-area: acts; align-self: center; }
+  .ev-var-edit {
+    grid-template-areas:
+      "key key"
+      "val val"
+      "when acts";
+    gap: 8px 12px;
+  }
+  .ev-var-edit.ev-var-t {
+    grid-template-areas:
+      "key key"
+      "val val"
+      "meta meta"
+      "when acts";
+  }
+  .ev-var-edit > .ev-var-when { display: flex; grid-area: when; justify-content: flex-start; }
+  /* With apps, every row names its app; app and key share the full first line. */
+  .ev-var-t.ev-var-a {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "app key key"
+      "val val acts"
+      "meta meta acts";
+  }
+  .ev-var-app { grid-area: app; }
+  .ev-var-app[data-cont] { visibility: visible; }
+  .ev-var-edit.ev-var-t.ev-var-a {
+    grid-template-areas:
+      "app key key"
+      "val val val"
+      "meta meta meta"
+      "when when acts";
+  }
+}

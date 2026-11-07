@@ -1,0 +1,1709 @@
+/* Activity and Settings: what these two pages add on top of foundation's tokens and primitives. */
+
+/* ============== Shared pieces (as-) ============== */
+/* What Activity and Settings add on top of the shared field, dialog and copy primitives. */
+
+/* A field with a key beside it (Send test). */
+.as-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.as-inline .field {
+  flex: 1;
+}
+
+/* Token reach, Selected projects: one checkbox row per project in a soft ruled box, as the import
+   preview lists what moves. The whole row flips its checkbox. */
+.as-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.as-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+
+.as-pick-row:hover {
+  background: var(--fill-popover);
+}
+
+.as-pick-row > input {
+  flex: none;
+}
+
+.as-pick-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Two-factor setup: the QR area beside three steps. */
+.as-tfa {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.as-qr {
+  display: grid;
+  place-items: center;
+  width: 168px;
+  height: 168px;
+  margin: 0;
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.as-qr img {
+  width: 144px;
+  height: 144px;
+}
+
+.as-qr-empty {
+  display: grid;
+  place-items: center;
+  width: 144px;
+  height: 144px;
+  border-radius: 8px;
+  background: var(--mass);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.as-tfa-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each step: the shared 20px round number (.step-n), then its body. */
+.as-tfa-steps > li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.as-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Key facts about something just made (a token): label over value pairs, in a row. */
+.as-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* The shared dropdown is inline by default; in a filter or the section picker it fills the width. */
+.act-actor-filter > .sel,
+.set-pick > .sel {
+  display: flex;
+  width: 100%;
+}
+
+/* Rows and bars that appear rise 4px into place. */
+@keyframes as-bar-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+
+/* ============== Activity (act-) ============== */
+
+.act-cats {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.act-actor-filter {
+  width: 220px;
+  margin-left: auto;
+}
+
+/* Wraps the search only to catch Down; the search itself is the toolbar's flex item. */
+.act-search {
+  display: contents;
+}
+
+.act-card {
+  container: act / inline-size;
+  /* "N new" scrolls the log back under the sticky top bar, not behind it. */
+  scroll-margin-top: calc(var(--top-h) + 8px);
+}
+
+/* Live updates. The shared "N new" pill rides 12px under the top bar while the top of the log is
+   out of view; its wrap takes no height, so nothing below it moves when it appears. */
+.act-new-wrap {
+  position: sticky;
+  top: calc(var(--top-h) + 12px);
+  z-index: var(--z-hover);
+  height: 0;
+  display: flex;
+  justify-content: center;
+}
+
+/* A row that arrived by polling opens downward into place, then its soft blue tint fades. */
+.act-fresh {
+  overflow: hidden;
+  animation: act-fresh-in 320ms var(--ease) backwards;
+}
+
+.act-fresh > .act-row {
+  animation: act-fresh-tint 2000ms var(--ease) backwards;
+}
+
+@keyframes act-fresh-in {
+  from {
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    max-height: 160px;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes act-fresh-tint {
+  from {
+    background: color-mix(in srgb, var(--blue) 10%, transparent);
+  }
+}
+
+.act-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+/* 44px for one line; a long sentence wraps onto more lines instead of cutting off, with the tile,
+   place, time and key held on the first line. The time column fits the widest relative time. */
+.act-row {
+  --cols: var(--col-status) minmax(0, 1fr) 176px var(--col-time) var(--col-key);
+  align-items: start;
+  gap: 12px;
+  min-height: 44px;
+  padding: 12px 8px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.act-row > .icon-tile {
+  margin: -2px 0;
+}
+
+.act-row > .act-exp {
+  margin: -4px 0;
+}
+
+.act-row[data-expandable] {
+  cursor: pointer;
+}
+
+.act-text {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-3);
+}
+
+/* The actor's avatar rides the first line of the sentence, so a wrapped row stays aligned. */
+.act-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  vertical-align: top;
+}
+
+.act-actor,
+.act-target {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+a.act-target {
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+a.act-target:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+}
+
+.act-suffix {
+  color: var(--ink-3);
+}
+
+.act-where {
+  font-size: 13px;
+  color: var(--ink-3);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.act-time {
+  justify-self: end;
+  font-size: 13px;
+  color: var(--ink-3);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.act-exp {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.act-exp-key .ic {
+  transition: rotate 160ms var(--ease);
+}
+
+.act-exp-key[aria-expanded="true"] .ic {
+  rotate: 180deg;
+}
+
+.act-item[data-open] > .act-row {
+  background: var(--hover);
+}
+
+/* Diff: key, old masked value, an arrow, new masked value. */
+.act-diff {
+  margin: 4px 8px 8px 44px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  animation: as-bar-in 160ms var(--ease) both;
+}
+
+.act-diff-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.act-diff-row {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+}
+
+.act-diff-key {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.act-diff-vals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.act-diff-old {
+  color: var(--ink-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--ink-4);
+}
+
+.act-diff-new {
+  color: var(--ink);
+}
+
+.act-diff-none {
+  letter-spacing: 0;
+}
+
+.act-diff-arrow {
+  color: var(--ink-4);
+}
+
+.act-foot-keys {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.act-foot-error {
+  margin-right: auto;
+  font-size: 13px;
+}
+
+.act-foot-end {
+  margin-right: 4px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* Narrow list: the sentence wraps and the place and time drop under it. */
+@container act (max-width: 640px) {
+  .act-row {
+    --cols: 24px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "tile text exp"
+      "tile where time";
+    row-gap: 2px;
+  }
+  .act-row > .icon-tile { grid-area: tile; }
+  .act-text { grid-area: text; }
+  .act-where {
+    grid-area: where;
+    text-align: left;
+    white-space: normal;
+    line-height: 18px;
+  }
+  .act-time { grid-area: time; justify-self: end; line-height: 18px; }
+  .act-row > .act-exp { grid-area: exp; }
+  .act-diff { margin-left: 8px; }
+  .act-diff-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 8px 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .act .toolbar .search {
+    max-width: none;
+    flex-basis: 100%;
+  }
+  .act-cats {
+    flex-basis: 100%;
+  }
+  .act-cats .seg2 {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .act-actor-filter {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+/* ============== Settings (set-) ============== */
+/* Under the head rule: the grouped sub-nav, then a content column to the frame edge. A section is
+   ruled blocks (a CardTitle head, then 56px setting rows ruled between) with one sticky save bar at
+   its foot. */
+
+.set-layout {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+
+.set-layout > .set-snav {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.set-layout > .set-main {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.set-pick {
+  display: none;
+}
+
+/* The page is a size container, so the sub-nav folds into the picker by the room the page really
+   has (sidebar open or collapsed), not by the viewport width. */
+main.page:has(> .set-layout) {
+  container: set-page / inline-size;
+}
+
+/* A fixed panel (owner): the sub-nav alone sets the block's height, so it never has a gap above its
+   footer and the block keeps one size across sections. The content column is out of flow, so it
+   adds no height, and scrolls inside the panel. Rows and tables fold by the column's own width
+   (set-main below). */
+.set-main {
+  container: set-main / inline-size;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--line);
+}
+
+.set-col {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* What scrolls is the list itself (owner): the tabs and a block's head hold still, and the scrollbar
+   runs only beside the rows. A segment or section of one block scrolls its body; one with several
+   blocks scrolls those blocks, still under the tabs. Nothing scrolls, and no bar shows, when it fits. */
+.set-pane:not([hidden]) {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.set-tabpanel,
+.set-pane:not(:has(> .set-tabs)) {
+  overflow-y: auto;
+}
+
+.set-tabpanel {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.set-seg:not([hidden]):has(> .set-group:only-child) {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+:is(.set-seg > .set-group:only-child, .set-pane > .set-group:only-of-type) {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+:is(.set-seg > .set-group:only-child, .set-pane > .set-group:only-of-type) > .set-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* A 6px thumb with no arrow keys. Chromium ignores these pseudo-elements while the global thin
+   scrollbar properties apply, so they are reset here; Firefox keeps the global thin bar. */
+@supports selector(::-webkit-scrollbar) {
+  :is(.set-tabpanel, .set-pane, .set-body) {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+}
+
+:is(.set-tabpanel, .set-pane, .set-body)::-webkit-scrollbar {
+  width: 6px;
+}
+
+:is(.set-tabpanel, .set-pane, .set-body)::-webkit-scrollbar-button {
+  display: none;
+}
+
+:is(.set-tabpanel, .set-pane, .set-body)::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: var(--line-strong);
+}
+
+
+/* A section's segments (section-tabs.tsx): the shared strip, ruled off above the blocks. */
+.set-tabs {
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+/* These strips are two or three short words, so they stay a strip on a phone instead of turning
+   into a second dropdown under the section one. */
+.set-tabs .tabs {
+  overflow-x: auto;
+}
+
+.set-tabs .tabs > .tabs-list {
+  display: inline-flex;
+}
+
+.set-tabs .tabs > .tabs-sel {
+  display: none;
+}
+
+/* In the fixed panel the strip and the block heads hold still while a long list scrolls under them,
+   so the rule above the column never has cut-off content under it. Rows lift to --z-hover on hover,
+   and the save bar sits one over these. */
+/* A list's column labels hold still at the top of the scrolling body. */
+.set-col .set-body > .set-ss-head,
+.set-col .set-body > .set-tk-head {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-hover);
+  background: var(--bg);
+}
+
+.set-tabs,
+.set-group > .card-hd {
+  flex: none;
+}
+
+.set-group + .set-group {
+  border-top: 1px solid var(--line);
+}
+
+.set-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Card head subs wrap instead of cutting off. */
+.set-group .ctitle-sub.ellipsis {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+.set-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--gutter);
+}
+
+/* One setting: label over description on the left (kept to a readable measure), the control on the
+   right edge, 56px, ruled. */
+.set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 24px;
+  min-height: 56px;
+  padding: 8px 0;
+}
+
+/* A lead (a picture, a status tile) takes the Team row geometry: a 32px column 12px from the
+   text, so the text starts on the card head title edge. The control keeps its 24px gap. */
+.set-row-lead {
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  column-gap: 12px;
+}
+
+.set-row-lead > .set-ctl {
+  margin-left: 12px;
+}
+
+.set-row > .two {
+  max-width: 560px;
+}
+
+.set-row-pic {
+  display: flex;
+}
+
+.set-row + .set-row {
+  border-top: 1px solid var(--line);
+}
+
+.set-row-toggle,
+.set-row-label {
+  cursor: pointer;
+}
+
+.set-row-toggle:has(.switch:disabled),
+.set-row-toggle:has(.switch:disabled) .set-row-label {
+  cursor: default;
+}
+
+/* A section link inside a row's sub line: "You can change roles in Team". */
+.set-inline-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.set-inline-link:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+/* A chip after a row label: Verified after Email in Profile. */
+.set-row .two-main > .chip {
+  margin-left: 8px;
+  vertical-align: top;
+}
+
+.set-ctl {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.set-ctl > .field,
+.set-ctl > .field-unit,
+.set-ctl > .as-inline,
+.set-ctl > .sel {
+  width: clamp(240px, 40cqi, 360px);
+  width: round(down, clamp(240px, 40cqi, 360px), 1px);
+}
+
+/* What a viewer reads where an admin gets a control (Settings, Updates): plain text on the right. */
+.set-ro {
+  font-size: 14px;
+  line-height: 20px;
+  text-align: right;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+/* Words that wrap as one piece, so a time never starts a line alone at the column edge. */
+.set-keep {
+  white-space: nowrap;
+}
+
+/* The loading block head's two bars, centred on the 20px title and 18px sub lines they stand for,
+   so the head keeps its loaded height. */
+.set-skel-title {
+  gap: 12px;
+  padding-block: 5px;
+}
+
+/* Sticky save bar: only rendered while the section has unsaved edits. */
+.set-savebar {
+  position: sticky;
+  bottom: 0;
+  /* Over rows lifted on hover. */
+  z-index: calc(var(--z-hover) + 1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 12px var(--gutter) calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  animation: as-bar-in 160ms var(--ease) both;
+}
+
+.set-savebar-text {
+  margin-right: auto;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+/* Phone columns: controls drop under their label and fill the width; switches stay beside it.
+   Head keys wrap under the title at the same column width, so a head and its rows agree. */
+@container set-main (max-width: 520px) {
+  .set-row:not(.set-row-toggle) {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px 0;
+  }
+  .set-row-lead:not(.set-row-toggle) {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .set-row-lead > .set-ctl {
+    grid-column: 2;
+    margin-left: 0;
+  }
+  .set-row:not(.set-row-toggle) > .set-ctl {
+    justify-content: flex-start;
+  }
+  .set-ctl > .field,
+  .set-ctl > .field-unit,
+  .set-ctl > .as-inline,
+  .set-ctl > .sel {
+    width: 100%;
+  }
+  .set-ro {
+    text-align: left;
+  }
+  .set-group .card-hd {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 520px) {
+  .as-tfa {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+  .as-tfa-steps {
+    width: 100%;
+  }
+  .as-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* -------------- Integrations -------------- */
+/* One ruled setting row per service (set-row): a 32px tile, the name over what is connected or
+   what it is for, then the status chip and its key on the shared right edge. A long status wraps
+   in its own row and never stretches the others. Dialog lists share one row too (int-row). */
+.int-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.int-item-name {
+  margin: 0;
+}
+
+.int-item-sub {
+  overflow-wrap: anywhere;
+}
+
+/* A load warning above the rows: clear of the head rule, then the rows keep their own rhythm. */
+.int-load-note {
+  margin: 16px 0 8px;
+}
+
+/* A stored secret: the mask, then its last four characters in the same muted line. */
+.int-hint .secret-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 0;
+  color: inherit;
+}
+
+.int-hint-tail {
+  letter-spacing: 0.02em;
+}
+
+.int-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+  margin: 0;
+}
+
+.int-facts dd {
+  margin: 0;
+}
+
+/* Dialog lists: rows sit flush with the dialog body's 24px padding. */
+.int-list {
+  gap: 2px;
+  margin: 0 -8px;
+}
+
+.int-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+}
+
+.int-row-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.int-row-keys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Zone rows: no tile, the switch on the right, the label flips it. */
+.int-toggle {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+}
+
+.int-toggle label {
+  cursor: pointer;
+}
+
+/* A sub line of several parts, comma separated, wrapping between parts. The comma hangs back over
+   the gap so it sits against the part before it ("Slack, hooks.slack.com"), then the gap follows. */
+.int-sub-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+}
+
+.int-sub-line > * + *::before {
+  content: ",";
+  margin: 0 4px 0 -4px;
+}
+
+.int-sub-line > .int-hint::before {
+  content: none;
+}
+
+.int-wrap {
+  overflow-wrap: anywhere;
+}
+
+/* Disconnect sits on the left of a dialog foot, away from Done. */
+.int-ft-start {
+  margin-right: auto;
+}
+
+.int-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.int-form-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* What an import moves: keys over their mask, then domains, in one soft container. */
+.int-preview {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.int-preview-list {
+  margin: 0 0 4px;
+  padding: 0 8px;
+  list-style: none;
+}
+
+.int-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.int-preview-key {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.int-preview-none {
+  margin: 0 0 4px;
+  padding: 6px 16px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* A stored webhook URL or secret in the field box: host and hint, then its keys. */
+.int-stored {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.int-stored-value {
+  display: flex;
+  flex: 1 1 200px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.int-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.int-switch-row label {
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .int-form-grid-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .int-facts,
+  .int-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .int-row:not(.int-toggle) {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+  .int-row:not(.int-toggle) > :first-child {
+    align-self: start;
+  }
+  .int-row-keys {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+
+/* ============== Webhooks (wh-) ============== */
+
+/* What the URL field recognised, in its hint line: the service's mark, then the words. */
+.wh-detect {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* A generic webhook's own logo, or its site's icon, in place of a glyph: kept whole, never cropped. */
+.wh-logo {
+  display: block;
+  flex: none;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+/* A failing webhook's last error can be a long provider answer. */
+.wh-state {
+  overflow-wrap: anywhere;
+}
+
+/* Where the logo comes from, then the link field or the upload row under it. The choice keeps its
+   own width, like every other segmented choice in a form. */
+.wh-logo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wh-logo-field > .seg2 {
+  align-self: flex-start;
+}
+
+.wh-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wh-upload-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wh-switches {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Two marks keep their brand colours in both themes except where the colour sinks into the dark
+   surface: there they take a lighter tint of the same hue. */
+.dark .mk-mattermost path {
+  fill: #3f8cff;
+}
+
+.dark .mk-ntfy path {
+  fill: #3fa78f;
+}
+
+/* ============== Email (int-mail-, as-code-) ============== */
+
+/* The server row in the email form: the host takes the room, the port needs little. */
+.int-mail-server {
+  grid-template-columns: minmax(0, 1fr) 120px;
+}
+
+.int-mail-port-error {
+  grid-column: 1 / -1;
+  margin-top: -10px;
+}
+
+/* Send test email and Preview emails, with the fine print after them. */
+.int-mail-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+/* The email code dialog: the sending placeholder holds the code field's height. */
+.as-code-wait {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 92px;
+}
+
+.as-code-resend {
+  align-self: flex-start;
+}
+
+/* "Forgot your current password?" under its field: the quiet underlined link of the sign-in pages. */
+/* The Current password field's note: 8px under the input like every field note (the body's 16px gap
+   less 8). */
+.as-forgot {
+  align-self: flex-start;
+  margin-top: -8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 150ms, text-decoration-color 150ms;
+}
+
+.as-forgot:hover {
+  color: var(--ink);
+  text-decoration-color: var(--ink-3);
+}
+
+.as-forgot:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============== Settings: Team, API tokens, sessions and the sub-nav (set-tm-, set-tk-, set-ss-, set-snav-) ============== */
+/* Team, token and session rows are 56px tables with fixed end columns, so role picks, copy keys
+   and more keys line up row to row. */
+
+.set-tm-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Lead 32 (avatar or tile), the two-line main, a 112px role cell, a 28px key cell. */
+.set-tm-row {
+  --cols: 32px minmax(0, 1fr) 112px 28px;
+  grid-template-areas: "lead main role end";
+  column-gap: 12px;
+  min-height: 56px;
+  padding: 8px 0;
+}
+
+.set-tm-row + .set-tm-row {
+  border-top: 1px solid var(--line);
+}
+
+/* A list where no row has a key (what a viewer sees, or an admin alone) drops the key column, so
+   the role cell ends on the right edge like every other control. */
+.set-tm-list:not(:has(.set-tm-end > *)) > .set-tm-row {
+  --cols: 32px minmax(0, 1fr) 112px;
+  grid-template-areas: "lead main role";
+}
+
+.set-tm-list:not(:has(.set-tm-end > *)) > .set-tm-row > .set-tm-end {
+  display: none;
+}
+
+.set-tm-row > .avatar,
+.set-tm-row > .icon-tile {
+  grid-area: lead;
+}
+
+.set-tm-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.set-tm-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.set-tm-name,
+.set-tk-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The linked GitHub login beside the name, in the sub line's type. */
+.set-tm-gh {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.set-tm-gh > .ic {
+  flex: none;
+}
+
+.set-tm-gh-login {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.set-tm-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+
+.set-tm-email,
+.set-ss-where {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.set-tm-role {
+  grid-area: role;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.set-tm-pick,
+.set-tm-pick > .sel {
+  display: flex;
+  width: 100%;
+}
+
+/* A value you cannot change here (your own role in Team and Profile, every role for a viewer): a
+   quiet 32px box that hugs its text (owner: no padding past the 12px sides), with no chevron, so it
+   never reads as a picker. In Team it sits at the right of the role cell, under the pickers' edge. */
+.set-readonly {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.set-tm-copy {
+  display: inline-flex;
+}
+
+.set-tm-end {
+  grid-area: end;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Send invite email: a checkbox beside its label over the note. */
+.set-tm-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+}
+
+/* The shared 16px checkbox, dropped 2px to centre on the label's 20px first line. */
+.set-tm-check > input {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* Tokens: token, access, usage, key. The head uses the row template. */
+.set-tk-head,
+.set-tk-row {
+  --cols: minmax(0, 1fr) 200px 152px 28px;
+  grid-template-areas: "main acc use end";
+  column-gap: 16px;
+}
+
+/* Sessions: the session, when it was last active, the key. The same table as Tokens, so the group
+   head (tile, title, sub line, key) and its rows never share one shape. */
+.set-ss-head,
+.set-ss-row {
+  --cols: minmax(0, 1fr) 152px 28px;
+  grid-template-areas: "main seen end";
+  column-gap: 16px;
+}
+
+.set-tk-head,
+.set-ss-head {
+  height: 36px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.set-tk-row,
+.set-ss-row {
+  min-height: 56px;
+  padding: 8px 0;
+}
+
+.set-tk-row + .set-tk-row,
+.set-ss-row + .set-ss-row {
+  border-top: 1px solid var(--line);
+}
+
+.set-tk-main { grid-area: main; min-width: 0; }
+.set-tk-acc { grid-area: acc; min-width: 0; }
+.set-tk-use { grid-area: use; min-width: 0; }
+.set-tk-row > .set-tm-end { grid-area: end; }
+.set-ss-main { grid-area: main; min-width: 0; }
+.set-ss-seen { grid-area: seen; min-width: 0; }
+.set-ss-row > .set-tm-end { grid-area: end; }
+
+/* The device glyph rides before the name, as the GitHub mark does on a Team row. */
+.set-ss-device {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.set-ss-device > .ic {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.set-tk-main > .set-tm-sub {
+  gap: 0 8px;
+}
+
+/* The stored prefix plus one fixed ellipsis, as a small mono chip on the 18px sub line. */
+.set-tk-prefix {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--mass);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.01em;
+  color: var(--ink-2);
+}
+
+.set-tk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Admin scope: a touch stronger than Read only and Deploy, never a warning colour. */
+.chip.set-tk-admin {
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--ink);
+}
+
+.set-tk-reach {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.set-tk-reach > .ic {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.set-tk-used,
+.set-ss-seen {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+/* Narrow columns: tokens stack, the name and key on top, access and usage side by side. Sessions
+   put the last active time under the name, as the third line of the same block. */
+@container set-main (max-width: 640px) {
+  .set-tk-head,
+  .set-ss-head {
+    display: none;
+  }
+  .set-tk-row {
+    --cols: minmax(0, 1fr) minmax(0, 1fr) 28px;
+    grid-template-areas:
+      "main main end"
+      "acc use use";
+    row-gap: 12px;
+    padding: 12px 0;
+  }
+  .set-tk-row > .set-tm-end {
+    align-self: start;
+  }
+  .set-ss-row {
+    --cols: minmax(0, 1fr) 28px;
+    grid-template-areas:
+      "main end"
+      "seen seen";
+    row-gap: 2px;
+    padding: 12px 0;
+  }
+  .set-ss-row > .set-tm-end {
+    align-self: start;
+  }
+  .set-ss-seen {
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--ink-3);
+  }
+}
+
+/* Phone columns: the role cell drops under the name, at its fixed width. */
+@container set-main (max-width: 520px) {
+  .set-tm-row {
+    --cols: 32px minmax(0, 1fr) 28px;
+    grid-template-areas:
+      "lead main end"
+      "lead role role";
+    row-gap: 8px;
+    padding: 12px 0;
+  }
+  .set-tm-row > .avatar,
+  .set-tm-row > .icon-tile,
+  .set-tm-row > .set-tm-end {
+    align-self: start;
+  }
+  .set-tm-role {
+    justify-content: flex-start;
+  }
+  .set-tm-role:empty {
+    display: none;
+  }
+  .set-tm-pick {
+    width: 112px;
+  }
+  .set-tm-list:not(:has(.set-tm-end > *)) > .set-tm-row {
+    --cols: 32px minmax(0, 1fr);
+    grid-template-areas:
+      "lead main"
+      "lead role";
+  }
+  .set-tk-row {
+    --cols: minmax(0, 1fr) 28px;
+    grid-template-areas:
+      "main end"
+      "acc acc"
+      "use use";
+  }
+}
+
+/* Sub-nav: ruled group heads across the column, then rows set like the app sidebar beside it (36px,
+   8px radius, a soft fill on hover and when current), a quiet meta, a ruled footer. */
+/* As tall as the frame, with Docs on its last row: lists are capped (below), so a section runs
+   only a little past the nav, and that bit becomes room above Docs instead of an empty box. It is
+   not sticky and paints no background: a sticky nav is a layer of its own, and the content column
+   then paints over the right half of every node on the column rule, which reads as chipped corners. */
+.set-snav {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.set-nav-dirty {
+  margin-left: auto;
+}
+
+.set-snav-hd {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  margin: 0;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--ink-muted);
+}
+
+.set-snav-group + .set-snav-group > .set-snav-hd {
+  border-top: 1px solid var(--line);
+}
+
+.set-snav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 8px 12px 16px;
+  list-style: none;
+}
+
+.set-snav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: background-color 150ms, color 150ms;
+}
+
+/* Glyphs draw at 18px, as the sidebar nav draws its own. */
+.set-snav-item > .ic {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--ink-3);
+  transition: color 150ms;
+}
+
+.set-snav-item:hover {
+  color: var(--ink);
+}
+
+.set-snav-item:hover:not([aria-current="page"]) {
+  background: var(--hover);
+}
+
+.set-snav-item:hover > .ic {
+  color: var(--ink-2);
+}
+
+.set-snav-item[aria-current="page"] {
+  background: var(--active);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* The ring sits inside the row, as in the sidebar, so the column edge never clips it. */
+.set-snav-item:focus-visible {
+  outline-offset: -2px;
+}
+
+.set-snav-item[aria-current="page"] > .ic {
+  color: var(--blue);
+}
+
+.set-snav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.set-snav-meta {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.set-snav-item[aria-current="page"] .set-snav-meta {
+  color: var(--ink-2);
+}
+
+/* The foot closes the column: the version when the build reports one, then the docs, ruled above.
+   At least the list's own 16px sits above it. */
+.set-snav-foot {
+  position: relative;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.set-snav-ver {
+  font-variant-numeric: tabular-nums;
+}
+
+.set-snav-docs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  border-radius: 6px;
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: color 150ms;
+}
+
+.set-snav-docs:hover {
+  color: var(--ink);
+}
+
+
+/* -------------- Updates -------------- */
+/* The maintenance window's day toggles and its two time selects. */
+.set-upd-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.set-upd-hours {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.set-upd-to {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+
+/* ============== Layout breakpoints (after every base rule, so they win) ============== */
+@media (max-width: 1100px) {
+  .set-layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+  .set-snav-hd {
+    padding: 0 16px;
+  }
+  .set-snav-foot {
+    padding: 12px 16px;
+  }
+  .set-snav-list {
+    padding-inline: 8px;
+  }
+}
+
+/* A narrow page (a phone, or a tablet with the sidebar open): the sub-nav becomes the section
+   dropdown at the top of the column. Measured on the page, not the viewport, so the content column
+   beside the sub-nav is never narrower than on a phone. */
+@container set-page (max-width: 880px) {
+  .set-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .set-snav {
+    display: none;
+  }
+  .set-layout > .set-main {
+    grid-column: 1;
+  }
+  .set-main {
+    border-left: 0;
+  }
+  /* No nav to set the height: the column returns to the flow and the page scrolls. */
+  .set-col {
+    position: relative;
+    inset: auto;
+    overflow: visible;
+  }
+  /* The page scrolls here, so nothing scrolls or holds still inside the column. */
+  .set-pane:not([hidden]),
+  .set-tabpanel,
+  .set-seg:not([hidden]):has(> .set-group:only-child),
+  :is(.set-seg > .set-group:only-child, .set-pane > .set-group:only-of-type),
+  :is(.set-seg > .set-group:only-child, .set-pane > .set-group:only-of-type) > .set-body {
+    flex: none;
+    overflow: visible;
+  }
+  .set-col .set-body > .set-ss-head,
+  .set-col .set-body > .set-tk-head {
+    position: static;
+  }
+  .set-pick {
+    display: block;
+    padding: 12px var(--gutter);
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+/* Ruled rows run edge to edge, like the card heads and group rules around them; only their content
+   keeps the gutter. A list of rows reaches the edges as one box. Last in the file so it wins over
+   each row's own padding, phone sizes included. Rows inside a dialog keep the dialog's own insets. */
+.set-body :is(.set-row, .set-tk-head, .set-ss-head, .set-tm-list):not(.dlg *) {
+  margin-inline: calc(-1 * var(--gutter));
+}
+
+.set-body :is(.set-row, .set-tm-row, .set-tk-head, .set-tk-row, .set-ss-head, .set-ss-row):not(.dlg *) {
+  padding-inline: var(--gutter);
+}

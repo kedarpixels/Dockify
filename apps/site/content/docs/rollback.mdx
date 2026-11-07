@@ -1,0 +1,51 @@
+---
+title: "Deploys and rollback"
+description: "At the end you will know what each deploy status means, and how to get back to a version that worked, from its image, without a rebuild."
+---
+
+## Deploy statuses
+
+| Status | Meaning |
+|---|---|
+| `queued` | Waiting for the build before it. |
+| `building` | Cloning and building the image. |
+| `deploying` | Running the release command, starting the new container, checking its health. |
+| `ready` | Serving traffic. |
+| `failed` | Stopped before the swap. What was running is still running. |
+| `cancelling`, `cancelled` | You stopped it. The deploy unwinds and leaves the old version in place. |
+
+Builds run one at a time; a queued deploy waits for the one before it.
+
+## Automatic rollback
+
+A new version that fails readiness never gets traffic, always. The new container is removed, the old one keeps its name and route, and the deploy is marked failed with the probe that failed. To hear about it, turn on the **Deploy failed** notification or an email for your own deploys: see [Alerts and notifications](/docs/alerts).
+
+This is not a second deploy. For a stateless app the old version was never stopped, so there is no gap. An app with a volume, and a database, deploys stop then start: the old container is started again, after a short gap.
+
+## Roll back by hand
+
+Open **Deployments**, find a version that went ready, and choose **Roll back**. Dockify deploys that deployment's image again, by its image id:
+
+- **No rebuild.** The image is already on the disk.
+- **The same readiness gate** runs before traffic moves.
+- **The same commit and image**, pinned when that deployment shipped. Plain variables return to what it shipped with. Secrets and keys such as `NODE_OPTIONS` keep their current values, and keys removed since then stay removed.
+
+The janitor keeps the images of each app's last 5 good deployments for this reason. Older ones are removed to save disk, and rolling back to them means a redeploy, which builds again.
+
+## Redeploy
+
+**Redeploy** runs a deployment again with the same commit, and the same image while it still exists, but with the variables as they are now. Use it after changing variables when you want the same code with the new config.
+
+## Cancel
+
+**Cancel** stops a queued or running deploy. The worker sees it, unwinds what it started, and marks it cancelled. Nothing is swapped.
+
+## Code rollback and variables
+
+A code rollback brings back the plain variables that deployment shipped with, for that app only. Secrets and keys such as `NODE_OPTIONS` keep their current values. It does not change the project's saved variables, so the next deploy uses them again. To go back to earlier variables for good, see [Environment variables](/docs/env-vars#rollback).
+
+## What can go wrong
+
+- **"A deployment of this app is already in progress".** Only one deploy per app runs at a time. Wait, or cancel it.
+- **"... is no longer on this server".** The image of that deployment was cleaned up, so the rollback fails. Redeploy it to build again.
+- **The rollback also failed its check.** Something outside the image changed, such as a database migration or a variable. Check the release command and the variables history.

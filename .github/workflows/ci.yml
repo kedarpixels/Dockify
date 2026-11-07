@@ -1,0 +1,134 @@
+# CI gates: install from the frozen lockfile, typecheck, test (with a throwaway Postgres for the
+# database-backed suites), audit the production dependency tree (high or critical fails), do the
+# same for the web app and the site from their own lockfiles, and scan the history for committed
+# secrets. Nothing here touches a server.
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  monorepo:
+    name: api, worker, packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_USER: dockify
+          POSTGRES_PASSWORD: dockify-ci
+          POSTGRES_DB: dockify_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dockify -d dockify_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://dockify:dockify-ci@127.0.0.1:5432/dockify_test
+      DATABASE_URL_TEST: postgresql://dockify:dockify-ci@127.0.0.1:5432/dockify_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        # The version comes from "packageManager" in package.json.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Migrate the test database
+        run: pnpm db:migrate
+      - name: Test packages
+        run: pnpm turbo run test --filter='!@dockify/api' --filter='!@dockify/worker'
+      # These two hold the database-backed suites, which share one database: one file at a time.
+      - name: Test api
+        run: pnpm --filter @dockify/api exec vitest run --no-file-parallelism
+      - name: Test worker
+        run: pnpm --filter @dockify/worker exec vitest run --no-file-parallelism
+      - name: Audit production dependencies (high or critical fails)
+        run: pnpm audit --prod --audit-level=high
+
+  web:
+    name: web (own lockfile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      # --ignore-workspace: the root workspace file would otherwise claim this folder's install.
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile --ignore-workspace
+      - name: Typecheck
+        run: npx tsc --noEmit -p .
+      - name: Lint
+        run: npx eslint .
+      - name: Test
+        run: node --test "tests/*.test.mjs"
+      - name: Audit production dependencies (high or critical fails)
+        run: pnpm audit --prod --audit-level=high --ignore-workspace
+
+  site:
+    name: site (own lockfile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/site/package-lock.json
+      - name: Install (frozen lockfile)
+        run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit -p .
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+      # The prebuild also checks the shared UI primitives against apps/web.
+      - name: Build
+        run: npm run build
+      - name: Audit production dependencies (high or critical fails)
+        run: npm audit --omit=dev --audit-level=high
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Organisation repositories need a license; personal repositories run without one.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

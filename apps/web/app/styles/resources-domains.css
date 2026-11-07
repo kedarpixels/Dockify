@@ -1,0 +1,766 @@
+/* Resources and Domains pages. Foundation owns the primitives (dialog, fields, search, KPI strip,
+   two-line cells, toolbar, meter, secret, copy, skeleton); this file only lays them out.
+
+   The lists measure themselves (the rd-list container), so a collapsed sidebar counts as well as
+   the window: the full table, then a narrower one, then the one compact row every list uses on a
+   small screen (the name and its project on two lines, the status on the right). */
+
+/* ============== Shared pieces ============== */
+
+/* A whole row or cell is one link; keys and timed values inside sit above it. */
+.rd-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+}
+
+.rd-cover:focus-visible {
+  outline-offset: -2px;
+}
+
+.rd-strong {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* Long names and image references wrap instead of truncating. */
+.rd-wrap {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* "project, Dev" under a name; production rows show the project alone. The 20px env tag centres
+   on the 18px line so the row stays 56. */
+.rd-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  min-width: 0;
+  min-height: 18px;
+}
+
+/* Toolbar: filters in the middle, the view keys or Recheck all at the right end. It measures itself
+   so the search takes its own row once the filters would crowd it. */
+.rd-tools {
+  container: rd-tools / inline-size;
+}
+
+.rd-views,
+.dm-recheck-all {
+  margin-left: auto;
+}
+
+.rd-views {
+  display: flex;
+  align-items: center;
+}
+
+.rd-list {
+  container: rd-list / inline-size;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+/* -------------- Dialog content -------------- */
+.rd-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The shared Select fills its field. */
+.rd-fields .sel {
+  display: flex;
+  width: 100%;
+}
+
+/* ============== Resources ============== */
+
+.two-main.rs-name-lg {
+  font-size: 15px;
+}
+
+/* A timed value (the uptime) sits over the row's link, so its tip shows on hover. */
+.rs-row .when,
+.rs-cell .when {
+  position: relative;
+  z-index: var(--z-raise);
+}
+
+/* -------------- List -------------- */
+.rs-head,
+.rs-row {
+  /* One flexible column takes the leftover; the other is rounded, so every column starts on a whole pixel. */
+  --cols: minmax(0, 1fr) 112px round(down, calc((100% - 440px - var(--col-time)) * 0.5385), 1px) 112px 136px var(--col-time);
+  gap: 16px;
+}
+
+.rs-head,
+.dm-head {
+  height: 36px;
+  padding: 0 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* Cells set the 13/20 line of their content, so a status or meter keeps the uptime's baseline. */
+.rs-row {
+  position: relative;
+  min-height: 56px;
+  padding: 8px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.rs-row:has(.rd-cover:focus-visible) {
+  background: var(--hover);
+}
+
+.rs-col-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rs-col-up {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* -------------- Grid -------------- */
+/* Same ruled cells as the projects grid: cells sit 1px apart and each draws a 1px ring just outside
+   itself, so neighbours' rings share the gap pixel and the outer rings land on the rails and rules.
+   The columns follow the width of the grid itself, so a collapsed sidebar counts as well as the window. */
+.rs-grid {
+  container: rs-grid / inline-size;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+.rs-cell {
+  position: relative;
+  display: flex;
+  flex: 0 0 calc((100% - 2px) / 3);
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.rs-cell-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px var(--gutter);
+}
+
+.rs-cell-hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rs-cell-hd .two {
+  flex: 1;
+}
+
+.rs-cell-status {
+  flex: none;
+}
+
+.rs-cell-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.rs-cell-facts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 28px;
+}
+
+.rs-cell-facts dt {
+  flex: none;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.rs-cell-facts dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink);
+  text-align: right;
+}
+
+.rs-cell-ft {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 var(--gutter);
+  border-top: 1px solid var(--line);
+  color: var(--ink-4);
+}
+
+.rs-cell-up {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+/* ============== Domains ============== */
+
+.dm-head,
+.dm-row {
+  --cols: minmax(0, 1fr) 168px 136px round(down, calc((100% - 472px) * 0.3846), 1px) 104px;
+  gap: 16px;
+}
+
+.dm-rows {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dm-row {
+  min-height: 64px;
+  padding: 8px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 20px;
+  transition: background-color 150ms;
+}
+
+.dm-row:hover,
+.dm-row:focus-within {
+  background: var(--hover);
+}
+
+.dm-row > span {
+  min-width: 0;
+}
+
+/* DNS and the keys keep their columns even on a row that leaves one out (the project page knows no DNS). */
+.dm-col-dns {
+  grid-column: 4;
+}
+
+.dm-col-host {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* The hostname and app links are 20 and 18px lines; on touch screens 3px more above and below makes
+   each a 24px target without moving the text. A mouse hovers the text itself. */
+@media (pointer: coarse) {
+  .dm-host,
+  .dm-app {
+    padding-block: 3px;
+    margin-block: -3px;
+  }
+}
+
+.dm-host {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.dm-host:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line-strong);
+}
+
+.dm-app {
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: color 150ms;
+}
+
+.dm-app:hover {
+  color: var(--ink);
+}
+
+/* The countdown line of the Expires cell, in the status scale of the TLS and DNS columns. */
+.dm-main {
+  align-self: flex-start;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.dm-main.none {
+  color: var(--ink-3);
+}
+
+.dm-col-act {
+  grid-column: 5;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.dm-col-act .btn {
+  position: relative;
+  z-index: var(--z-raise);
+}
+
+/* -------------- DNS fix fold -------------- */
+/* Folded by default; the chevron unrolls it with a grid-rows animation and turns 180 degrees. */
+.dm-expand .ic {
+  transition: rotate 200ms var(--ease);
+}
+
+.dm-expand[aria-expanded="true"] .ic {
+  rotate: 180deg;
+}
+
+.dm-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 240ms var(--ease-sheet);
+}
+
+.dm-fold[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.dm-fold-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* A domain waiting for DNS: why, then the records it needs, then what asking the domain found. */
+.dm-fix {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 2px 0 8px 44px;
+}
+
+/* Marks a generated test domain, so it never reads as the app's real address. */
+.dm-test-tag {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.dm-test-offer {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+/* The quiet note while the dashboard is on its temporary sslip.io address. */
+.dd-temp {
+  display: block;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.dd-temp a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--line-strong);
+}
+
+.dd-temp a:hover {
+  color: var(--ink);
+}
+
+/* A line under the DNS chip: how Cloudflare carries the name. */
+.dm-dns-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+/* What Cloudflare says about a hostname. */
+.cf-state {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cf-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin: 0;
+  padding: 0 16px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cf-facts > div {
+  display: flex;
+  gap: 8px;
+}
+
+.cf-facts dt {
+  color: var(--ink-3);
+}
+
+.cf-facts dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.cf-rec-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cf-ours {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.cf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* One choice with its explanation, in a dialog: the words left, the switch right. */
+.cf-proxy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+/* A name and a zone side by side, the way out to a typed hostname under them. */
+.cf-pick {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px 12px;
+}
+
+.cf-switch {
+  display: inline-flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--line-strong);
+  cursor: pointer;
+}
+
+.cf-switch:hover {
+  color: var(--ink);
+}
+
+/* Moving the dashboard to its own domain: Settings' dialog and setup's last step. */
+.dd-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dd-host {
+  white-space: nowrap;
+}
+
+.dd-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.dd-check {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+.dd-check + .dd-check {
+  border-top: 1px solid var(--line);
+}
+
+.dd-check-why {
+  display: block;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.dd-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.dd-foot-start {
+  margin-right: auto;
+}
+
+.dd-foot-auth {
+  justify-content: stretch;
+}
+
+.dd-foot-auth > * {
+  flex: 1 1 auto;
+}
+
+.dd-github {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dd-urls {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.dd-urls dt {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.dd-urls dd {
+  margin: -8px 0 0;
+}
+
+.dd-after {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+}
+
+/* What asking the domain found: a quiet line under the records, its glyph and text on the callout's columns. */
+.dm-probe {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0;
+  padding: 0 16px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.dm-probe .ic {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* -------------- DNS records: the add dialog, the fix fold, the preview domain -------------- */
+.dm-recs {
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+
+.dm-rec {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) minmax(0, 1.5fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 8px 0 12px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.dm-rec + .dm-rec {
+  border-top: 1px solid var(--line);
+}
+
+/* The popover fill, because in dark --mass is the dialog surface itself and the band would vanish. */
+.dm-rec-hd {
+  min-height: 32px;
+  background: var(--fill-popover);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+.dm-rec-type {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dm-rec-or {
+  margin-right: 4px;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.dm-rec-val {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dm-rec-val .copy-key {
+  flex: none;
+  margin-left: auto;
+}
+
+.dm-rec-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ============== Loading ============== */
+.rd-skel-lead {
+  display: inline-block;
+  max-width: 70%;
+  vertical-align: middle;
+}
+
+/* ============== Responsive ============== */
+
+/* Narrower table: Resources drops the image column, Domains tightens its fixed columns. */
+@container rd-list (max-width: 880px) {
+  .rs-head,
+  .rs-row {
+    --cols: minmax(0, 1fr) 104px 104px 128px 64px;
+    gap: 12px;
+  }
+  .rs-col-image {
+    display: none;
+  }
+  .dm-head,
+  .dm-row {
+    --cols: minmax(0, 1fr) 152px 120px round(down, calc((100% - 424px) * 0.4167), 1px) 104px;
+    gap: 12px;
+  }
+}
+
+/* The compact row, the same model as a deployment row on a phone: the name and its project on two
+   lines with the status on the right. Resources leave the meters to the grid view and the app page;
+   Domains keep both states on one line under the hostname, and the record fix under that. */
+@container rd-list (max-width: 720px) {
+  .rs-head,
+  .dm-head {
+    display: none;
+  }
+  .rs-row {
+    --cols: minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+  .rs-row > :is(.rs-col-image, .rs-col-cpu, .rs-col-mem, .rs-col-up) {
+    display: none;
+  }
+  .dm-row {
+    --cols: 164px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "host host act"
+      "tls dns dns";
+    gap: 8px 12px;
+  }
+  .dm-col-host { grid-area: host; }
+  .dm-col-act { grid-area: act; }
+  .dm-col-tls { grid-area: tls; align-self: start; padding-left: 36px; }
+  .dm-col-dns { grid-area: dns; align-self: start; }
+  .dm-col-exp {
+    display: none;
+  }
+  .dm-fix {
+    margin-left: 8px;
+  }
+}
+
+@container rd-tools (max-width: 720px) {
+  .rd-tools .search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+/* The kind filter shrinks and scrolls sideways, so the layout keys keep their place at the end of
+   its row; the summary above has the counts. */
+@container rd-tools (max-width: 520px) {
+  .rd-tools .seg2 {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+}
+
+@container rs-grid (max-width: 1000px) {
+  .rs-cell {
+    flex-basis: calc((100% - 1px) / 2);
+  }
+}
+
+@container rs-grid (max-width: 640px) {
+  .rs-cell {
+    flex-basis: 100%;
+  }
+}
+
+/* The records table in a dialog or a fold on a phone: the value takes its own line. */
+@media (max-width: 520px) {
+  .dm-rec {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .dm-rec > :nth-child(3) {
+    grid-column: 1 / -1;
+    padding-bottom: 8px;
+  }
+  .dm-rec-hd > :nth-child(3) {
+    display: none;
+  }
+}

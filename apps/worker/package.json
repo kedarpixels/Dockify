@@ -1,0 +1,30 @@
+{
+  "name": "@dockify/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dockify/contracts": "workspace:*",
+    "@dockify/crypto": "workspace:*",
+    "@dockify/db": "workspace:*",
+    "@dockify/email": "workspace:*",
+    "@dockify/engine": "workspace:*",
+    "@dockify/net-guard": "workspace:*",
+    "@dockify/notify": "workspace:*",
+    "@dockify/redact": "workspace:*",
+    "pg": "8.16.3",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/pg": "8.15.5",
+    "@types/ws": "8.18.1",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

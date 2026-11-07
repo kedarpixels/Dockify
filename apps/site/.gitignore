@@ -1,0 +1,13 @@
+node_modules
+.next
+*.tsbuildinfo
+next-env.d.ts
+content/releases/
+
+# Written from installer/ by scripts/publish-installer.mjs before every build and dev server.
+public/install.sh
+public/installer.sh
+public/installer.sh.sha256
+public/uninstall.sh
+public/uninstaller.sh
+public/uninstaller.sh.sha256

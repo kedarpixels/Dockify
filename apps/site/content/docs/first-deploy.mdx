@@ -1,0 +1,71 @@
+---
+title: "First deploy"
+description: "At the end you will have an app built from a GitHub repository on your server, live behind a health check."
+---
+
+## Before you start
+
+You need a repository. It needs no Dockerfile: Dockify uses one when it is there, and otherwise builds Next.js, Node, Python, Go, static sites and more with no setup (see [Deploy sources](/docs/sources#without-a-dockerfile)). A public repository works by its URL; a private one needs a GitHub App for your instance (see [Connect GitHub](/docs/github)).
+
+## Create the project and the app
+
+<Steps>
+
+1. **New project.** Choose **New project**, give it a name (lowercase letters, numbers and hyphens). It also becomes the project's slug in URLs, which cannot change later; the name itself can, in the project's settings. It starts with one environment on the `main` branch; change the branch, or add another environment, in the project's settings.
+2. **New app.** In the project, choose **New app**, then **GitHub repository**. Pick the repository from the list, or use its URL, then its branch.
+3. **Pick the folder.** For a monorepo, set the root directory, such as `apps/web`. Paths are relative and may not leave the repository.
+4. **Check what was detected.** New app reads the repository and shows the framework and the commands it would use. Leave them blank to follow what is detected, or set your own. A repository with a Dockerfile keeps using it, with the choice to build with Railpack instead.
+5. **Check the port.** The port your app listens on inside the container, filled in from what was detected and passed to it as `PORT`. Dockify never publishes it on the host: traffic reaches it through the proxy.
+6. **Pick the environment and create.** Then open the app and choose **Deploy**. Watch the live log and the step timeline on the deployment page.
+
+</Steps>
+
+You can also add apps from a container image (with a registry login for private images), as a managed Postgres or Redis, or from a Docker Compose file. See [Deploy sources](/docs/sources).
+
+## How a build runs
+
+Builds run in a rootless BuildKit daemon, never through the Docker socket and never in a process that holds the master key. Each `RUN` step is sandboxed, cache mounts are kept separate per app, and the build cache persists between deploys, so later builds are fast.
+
+The commit is pinned as soon as it is cloned and the image as soon as it is built. A retry never rebuilds and never picks up a newer commit by accident.
+
+### Release command
+
+Set a **release command**, for example `npx prisma migrate deploy`, to run once in a one-off container from the new image, before any traffic moves. If it exits non-zero or times out, the deploy stops and nothing is swapped. It is not retried, because re-running a migration that was killed half way is worse than failing.
+
+## Health checks
+
+Before the route moves to the new version, it has to pass a readiness gate:
+
+- The container is running and is not crash looping.
+- Its own Docker `HEALTHCHECK`, if it has one, is not unhealthy.
+- When the app has a port, a TCP connect to it succeeds.
+- When you set a health path, a `GET` to it returns the expected status.
+
+| Setting | Range |
+|---|---|
+| Path | Empty for TCP only, or a path such as `/healthz` |
+| Expected status | 100 to 599 |
+| Timeout per probe | 1 to 120 seconds |
+| Grace period | 0 to 600 seconds. Failures inside it do not count. |
+
+The probe runs every 2 seconds. Apps with no port are accepted after running for a few seconds without crashing. Give every web app a health path. It is the difference between "the process started" and "the app answers".
+
+## Zero downtime
+
+For a stateless app, the old container keeps serving while the new one starts. Only after the new one passes its checks does the route flip, atomically, and then the old one is removed. If anything fails before the flip, the new container is scrapped and the old one keeps its name and route.
+
+Some apps cannot run two copies at once. An app that mounts a volume, or a managed database, gets **stop then start** instead. Dockify says so in the deploy log and on the app page before you deploy, with the reason.
+
+## Push to deploy
+
+With **auto deploy** on for the project, a push to the branch an environment tracks deploys every app in that environment that comes from that repository. It needs the GitHub App (see [Connect GitHub](/docs/github)). You can also deploy from the dashboard, or call the deploy route from your CI.
+
+One deploy per app runs at a time. A click on **Deploy** while one is in flight is refused with a clear message.
+
+## What can go wrong
+
+- **"Dockify could not work out how to build this repository".** Set the commands in the app's settings, or add a Dockerfile.
+- **"No Dockerfile at ...".** The builder is set to Dockerfile, and it looked for `Dockerfile` in the root directory, or at the path you set. Add one, or fix the path in the app's settings.
+- **The deploy rolled back.** The new version failed its health check. The log names the probe that failed, for example `GET /healthz answered 500, expected 200`. The old version is still live.
+- **"The clone was anonymous".** The repository is private and no GitHub App installation covers it. See [Connect GitHub](/docs/github).
+- **The build is slow the first time.** The cache is empty. Later builds reuse layers.

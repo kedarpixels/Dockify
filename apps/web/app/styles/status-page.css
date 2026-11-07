@@ -1,0 +1,373 @@
+/* The public status page: its narrow frame, the overall state, component uptime bars and the
+   incident history, on foundation's tokens and primitives. */
+
+/* -------------- Frame -------------- */
+/* A narrower column than the console: a status page is read, not worked in. */
+main.page.stp {
+  --rail: min(960px, calc(100% - 32px));
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+main.page > .stp-fill {
+  flex: 1 1 0;
+  min-height: 24px;
+}
+
+/* 56px like the console top bar and the sign-in head. */
+.stp-top,
+.stp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  gap: 12px;
+  height: 56px;
+  padding: 0 var(--gutter);
+}
+
+.stp-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.stp-logo {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.stp-top .folder {
+  flex: none;
+}
+
+.stp-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Without a project the head shows Dockify itself: the one wordmark, as the sidebar and the
+   sign-in pages set it (pixel face, 18px, one weight). */
+.stp-name[data-wordmark] {
+  font-family: var(--font-pixel);
+  font-feature-settings: "ss09";
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.stp-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.stp-foot {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.stp-credit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The Dockify mark at 16px tall keeps its 33 by 24 shape. */
+.stp-credit img {
+  flex: none;
+  width: 22px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.stp-msg .empty-panel {
+  padding: 48px var(--gutter);
+}
+
+/* -------------- Overall state -------------- */
+.stp-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* The one dot above 6px: it stands beside the 32px headline, so it scales with that type. */
+.stp-state .dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+}
+
+.stp-head .shead-lead .when {
+  color: var(--ink-3);
+}
+
+/* -------------- Components -------------- */
+.stp-comps {
+  margin: 0;
+  padding: 0 var(--gutter);
+  list-style: none;
+}
+
+/* Each row measures its own width, so the bar's days can be whole-pixel squares (below). */
+.stp-comp {
+  container: stp-comp / inline-size;
+  padding: 20px 0;
+}
+
+.stp-comp + .stp-comp {
+  border-top: 1px solid var(--line);
+}
+
+.stp-comp-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stp-comp-name {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.stp-comp-state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* The bar: one square per UTC day, filling the column exactly; the heatmap's 2px radius. */
+.stp-bar {
+  --days: 90;
+  display: grid;
+  grid-template-columns: repeat(var(--days), minmax(0, 1fr));
+  gap: 2px;
+  margin-top: 12px;
+  border-radius: 4px;
+  touch-action: pan-y;
+}
+
+.stp-bar:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 4px;
+}
+
+.stp-cell {
+  display: block;
+  border-radius: 2px;
+  background: var(--heat-0);
+}
+
+/* As tall as a day is wide, rounded to the nearest whole pixel, so the card and every band and
+   rule under it stay on whole pixels (a square aspect ratio gave 7.98px rows). */
+.stp-bar .stp-cell {
+  height: 8px;
+  height: round(nearest, calc((100cqw - (var(--days) - 1) * 2px) / var(--days)), 1px);
+}
+
+/* A health strip, not a chart: a healthy day is green like the "operational" dots beside it. */
+.stp-cell[data-s="ok"] { background: var(--ok); }
+.stp-cell[data-s="minor"] { background: var(--warn); }
+.stp-cell[data-s="major"] { background: var(--bad); }
+
+.stp-bar .stp-cell[data-on="true"] {
+  position: relative;
+  z-index: var(--z-raise);
+  outline: 1px solid color-mix(in srgb, var(--ink) 60%, transparent);
+  outline-offset: 1px;
+}
+
+.stp-comp-ft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.stp-comp-ft i {
+  margin-bottom: 1px;
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.stp-span-45,
+.stp-span-30 {
+  display: none;
+}
+
+.stp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 12px var(--gutter);
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.stp-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stp-legend .stp-cell {
+  width: 10px;
+  height: 10px;
+}
+
+/* -------------- Incidents -------------- */
+.stp-inc {
+  padding: 20px var(--gutter);
+  scroll-margin-top: 16px;
+}
+
+.stp-inc + .stp-inc {
+  border-top: 1px solid var(--line);
+}
+
+.stp-inc:target {
+  background: color-mix(in srgb, var(--blue) 5%, transparent);
+}
+
+.stp-inc-hd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.stp-inc-title {
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.stp-inc-tags {
+  display: inline-flex;
+  flex: none;
+  gap: 8px;
+}
+
+.stp-inc-meta {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.stp-upd {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--mass);
+  list-style: none;
+}
+
+.stp-upd-item {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.stp-upd-status {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.stp-upd-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stp-upd-body p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.stp-upd-at {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+}
+
+/* -------------- Narrow screens -------------- */
+/* Fewer, larger days: 45 under 760px, 30 under 520px. The earliest days drop off. */
+@media (max-width: 760px) {
+  .stp-bar {
+    --days: 45;
+  }
+
+  .stp-bar .stp-cell:nth-child(-n + 45) {
+    display: none;
+  }
+
+  .stp-span-90 { display: none; }
+  .stp-span-45 { display: inline; }
+
+  .stp-upd-item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
+@media (max-width: 520px) {
+  .stp-bar {
+    --days: 30;
+  }
+
+  .stp-bar .stp-cell:nth-child(-n + 60) {
+    display: none;
+  }
+
+  .stp-span-45 { display: none; }
+  .stp-span-30 { display: inline; }
+
+  .stp-foot {
+    flex-wrap: wrap;
+    justify-content: center;
+    height: auto;
+    padding: 16px var(--gutter);
+  }
+}

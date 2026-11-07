@@ -1,0 +1,468 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Topbar } from "@/components/shell/topbar";
+import { wasCancelled } from "@/components/step-up/step-up";
+import { Empty } from "@/components/ui/empty";
+import { KpiStrip, type KpiData } from "@/components/ui/kpi";
+import { NoSource } from "@/components/ui/no-source";
+import { PendingButton } from "@/components/ui/pending";
+import { Rule, Spacer } from "@/components/ui/rule";
+import { SectionHead } from "@/components/ui/section-head";
+import { toast } from "@/components/ui/toast";
+import { Updating } from "@/components/ui/updating";
+import { When } from "@/components/ui/when";
+import { deriveNotices } from "@/lib/derive";
+import { describe, errText } from "@/lib/feedback";
+import { bytes, firstNames, plural } from "@/lib/format";
+import { useTimeFormat, useUtcAt } from "@/lib/time-prefs";
+import { useNow, useOverview } from "@/lib/hooks";
+import type { BackupRun, BackupSchedule, BackupsResult, OrphanDeleteResult, RestoreAccepted, RestoreOutcome, RestoreRequest } from "@/lib/pages/server-backups";
+import { isOrphan } from "@/lib/pages/server-backups-shared";
+import type { OverviewResult } from "@/lib/types";
+import { useCan } from "@/lib/viewer";
+import { DeleteOrphansDialog, RestoreDialog, RunDialog, testLine } from "./backup-dialogs";
+import { History, Orphans, type RunActions } from "./backup-runs";
+import { Schedules, StorageCard } from "./backup-schedules";
+import { track, useSecond, useTween } from "./live";
+import { followRestore } from "./restore-follow";
+import { readRestore, send, usePoll } from "./use-poll";
+import { cronText, dbLabel, dueIn, offServer } from "./util";
+
+const DAY = 86_400_000;
+
+/** Backups run on UTC schedules, so every absolute time on this page reads in UTC. */
+
+/** "18.4 GB" as a KPI figure and its small unit. */
+function sized(n: number): Pick<KpiData, "value" | "unit"> {
+  const [value = "0", unit] = bytes(n).split(" ");
+  return { value, unit };
+}
+
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// -------------- KPI strip --------------
+
+function Kpis({ runs, schedules, now }: { runs: BackupRun[]; schedules: BackupSchedule[]; now: number }) {
+  const month = runs.filter((r) => now - Date.parse(r.createdAt) < 30 * DAY && r.status !== "running");
+  const ok = month.filter((r) => r.status === "ready").length;
+  const rate = month.length ? Math.floor((ok / month.length) * 100) : null;
+  const last = runs.find((r) => r.status === "ready");
+  const kept = runs.filter((r) => r.status === "ready" && !r.expired);
+  const size = kept.reduce((n, r) => n + (r.sizeBytes ?? 0), 0);
+  const off = kept.filter(offServer).length;
+  const next = schedules
+    .filter((s) => s.enabled && s.nextRunAt)
+    .sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0];
+  const failed = month.length - ok;
+  // Rate and size ease to their new values when a run lands; the next run counts down live.
+  const rateShown = Math.floor(useTween(rate ?? 0));
+  const sizeShown = useTween(size);
+  const tick = useSecond(now);
+  const time = useTimeFormat();
+  const due = next ? dueIn(next.nextRunAt!, tick) : "";
+  const tested = last?.restoreTest.status;
+  const running = runs.some((r) => r.status === "running");
+  const anyOn = schedules.some((s) => s.enabled);
+
+  // A missing figure reads muted, and its lead adds a fact instead of saying "none" twice.
+  const cells: KpiData[] = [
+    {
+      icon: "history",
+      label: "Last backup",
+      value: last ? <When iso={last.finishedAt ?? last.createdAt} now={now} utc /> : <span className="none">None yet</span>,
+      lead: last
+        ? `${dbLabel(last.database)}, ${bytes(last.sizeBytes ?? 0)}${tested === "passed" ? ", test passed" : tested === "failed" ? ", test failed" : ""}`
+        : running
+          ? "The first one is running"
+          : "Nothing to restore yet",
+      tone: running ? "live" : undefined,
+    },
+    {
+      icon: "checkCircle",
+      label: "Success rate, 30 days",
+      value: rate === null ? <span className="none">None yet</span> : `${rateShown}%`,
+      lead: month.length ? `${ok} of ${plural(month.length, "run")}${failed ? `, ${failed} failed` : ""}` : "Counts runs once they finish",
+      tone: failed ? "bad" : undefined,
+    },
+    {
+      icon: "archive",
+      label: "Total size",
+      ...sized(sizeShown),
+      lead: kept.length ? `${plural(kept.length, "backup")} kept, ${off === kept.length ? "all" : off.toLocaleString("en-US")} off-server` : "Nothing kept yet",
+      tone: off < kept.length ? "warn" : undefined,
+    },
+    {
+      icon: "calendar",
+      label: "Next scheduled",
+      value: next ? due.charAt(0).toUpperCase() + due.slice(1) : <span className="none">{anyOn ? "Not planned" : "None"}</span>,
+      lead: next ? `${dbLabel(next.database)} at ${time.clock(next.nextRunAt!, { utc: true })} UTC` : anyOn ? "Not scheduled yet" : "Every schedule is off",
+    },
+  ];
+
+  return <KpiStrip label="Backup summary" cells={cells} />;
+}
+
+// -------------- Page --------------
+
+/** A failed read keeps the last good snapshot on screen, and any dialog open over it. */
+const hasBackups = (r: BackupsResult) => r.data !== null;
+
+export function BackupsView({ overview, initial }: { overview: OverviewResult; initial: BackupsResult }) {
+  const utcAt = useUtcAt();
+  const router = useRouter();
+  const { result: ov } = useOverview(overview);
+  const [fast, setFast] = useState(false);
+  const { result, setResult, refreshing, hold } = usePoll(initial, "/api/backups", fast ? 4_000 : 20_000, hasBackups);
+  const now = useNow(30_000, initial.fetchedAt);
+  const [restoring, setRestoring] = useState<BackupRun | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [removing, setRemoving] = useState<BackupRun[] | null>(null);
+  const [restoringDbs, setRestoringDbs] = useState<Map<string, string>>(() => new Map());
+  const [testing, setTesting] = useState<Set<string>>(() => new Set());
+  const [deleting, setDeleting] = useState<Set<string>>(() => new Set());
+  const [launching, setLaunching] = useState(false);
+  // Refs are set synchronously, so a second confirm in the same frame cannot start the work twice.
+  const launchLock = useRef(false);
+  const restoreLock = useRef(new Set<string>());
+  const testLock = useRef(new Set<string>());
+  // Restore tests started here, so their result toasts when a poll (or the preview) lands it.
+  const watched = useRef(new Set<string>());
+  // Per schedule: the last value the API confirmed, the newest toggle's number, and the save chain.
+  const saved = useRef(new Map<string, boolean>());
+  const latest = useRef(new Map<string, number>());
+  const chain = useRef(new Map<string, Promise<unknown>>());
+  const d = result.data;
+  const preview = result.source === "preview";
+  const can = useCan();
+
+  const notices = useMemo(() => (ov.data ? deriveNotices(ov.data, now) : null), [ov.data, now]);
+  const liveRuns = useMemo(() => d?.runs.filter((r) => !isOrphan(r)) ?? [], [d]);
+  const orphans = useMemo(() => d?.runs.filter(isOrphan) ?? [], [d]);
+  const backingUp = d?.runs.some((r) => r.status === "running") ?? false;
+  const testRunning = d?.runs.some((r) => r.restoreTest.status === "running") ?? false;
+
+  // Poll faster while a backup or a restore test runs, so its row settles soon after it finishes.
+  // Adjusted while rendering, as soon as the runs say so.
+  if (fast !== (backingUp || testRunning)) setFast(backingUp || testRunning);
+
+  const patchRuns = (fn: (r: BackupRun) => BackupRun) =>
+    setResult((prev) => (prev.data ? { ...prev, data: { ...prev.data, runs: prev.data.runs.map(fn) } } : prev));
+
+  // The design preview has no worker: a started backup finishes on its own after a few seconds,
+  // sized like that database's last good dump.
+  useEffect(() => {
+    if (result.source !== "preview" || !backingUp) return;
+    const t = setTimeout(() => {
+      setResult((prev) => {
+        if (!prev.data) return prev;
+        const at = Date.now();
+        const runs = prev.data.runs.map((r) => {
+          if (r.status !== "running") return r;
+          const ref = prev.data!.runs.find((x) => x.resourceId === r.resourceId && x.status === "ready");
+          const size = ref?.sizeBytes ?? 64 * 1024 ** 2;
+          return { ...r, status: "ready" as const, sizeBytes: size, finishedAt: new Date(Math.max(at, Date.parse(r.createdAt) + 4000)).toISOString() };
+        });
+        return { ...prev, data: { ...prev.data, runs } };
+      });
+    }, 4500);
+    return () => clearTimeout(t);
+  }, [result.source, backingUp, setResult]);
+
+  // The preview's restore tests pass after a few seconds with the counts of that database's last passed test.
+  useEffect(() => {
+    if (result.source !== "preview" || !testRunning) return;
+    const t = setTimeout(() => {
+      setResult((prev) => {
+        if (!prev.data) return prev;
+        const runs = prev.data.runs.map((r) => {
+          if (r.restoreTest.status !== "running") return r;
+          const ref = prev.data!.runs.find((x) => x.resourceId === r.resourceId && x.restoreTest.status === "passed");
+          return {
+            ...r,
+            restoreTest: { status: "passed" as const, testedAt: new Date().toISOString(), tables: ref?.restoreTest.tables ?? 12, rows: ref?.restoreTest.rows ?? 48_200, error: null },
+          };
+        });
+        return { ...prev, data: { ...prev.data, runs } };
+      });
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [result.source, testRunning, setResult]);
+
+  // A watched test that left "running" reports how it went.
+  useEffect(() => {
+    if (!d) return;
+    for (const r of d.runs) {
+      if (!watched.current.has(r.id) || r.restoreTest.status === "running") continue;
+      watched.current.delete(r.id);
+      const what = `${dbLabel(r.database)}, from ${utcAt(r.createdAt)}`;
+      if (r.restoreTest.status === "passed") toast.success("Restore test passed", { description: describe([what, testLine(r)], { preview }) });
+      else toast.error("Restore test failed", { description: describe([what, r.restoreTest.error ?? "The restore did not match the backup"], { preview }) });
+    }
+  }, [d, preview, utcAt]);
+
+  /*
+   * Optimistic: the switch flips at once and stays usable. Saves for one schedule run in order,
+   * only the newest toggle's outcome is shown, and a failure rolls back to the last value the API
+   * confirmed, with an error toast. Polls hold off until every save settles.
+   */
+  const toggle = async (s: BackupSchedule, enabled: boolean) => {
+    const set = (patch: Partial<BackupSchedule>) =>
+      setResult((prev) =>
+        prev.data ? { ...prev, data: { ...prev.data, schedules: prev.data.schedules.map((x) => (x.id === s.id ? { ...x, ...patch } : x)) } } : prev,
+      );
+    const name = dbLabel(s.database);
+    if (!saved.current.has(s.id)) saved.current.set(s.id, s.enabled);
+    const n = (latest.current.get(s.id) ?? 0) + 1;
+    latest.current.set(s.id, n);
+    const release = hold();
+    set({ enabled });
+    const save = (chain.current.get(s.id) ?? Promise.resolve()).then(() =>
+      send<BackupSchedule>(`/api/backups/schedules/${encodeURIComponent(s.id)}`, "PATCH", { enabled }),
+    );
+    chain.current.set(s.id, save.catch(() => undefined));
+    const settle = () => {
+      saved.current.delete(s.id);
+      latest.current.delete(s.id);
+      chain.current.delete(s.id);
+    };
+    try {
+      const next = await save;
+      saved.current.set(s.id, next.enabled);
+      if (latest.current.get(s.id) !== n) return;
+      settle();
+      set(next);
+      const at = next.nextRunAt ?? s.nextRunAt;
+      const words = cronText(s.cron);
+      toast.success(enabled ? "Schedule on" : "Schedule paused", {
+        description: describe(
+          enabled
+            ? `${name}, ${words === s.cron ? `cron ${s.cron}` : words.toLowerCase()}${at ? `, next ${utcAt(at)}` : ""}`
+            : `${name} is not backed up until you turn it on`,
+          { preview },
+        ),
+      });
+    } catch (e) {
+      if (latest.current.get(s.id) !== n) return;
+      set({ enabled: saved.current.get(s.id) ?? !enabled });
+      settle();
+      // Closing "Confirm it is you" only rolls the switch back: nothing failed, so no toast.
+      if (wasCancelled(e)) return;
+      toast.error(enabled ? "Could not turn the schedule on" : "Could not pause the schedule", {
+        description: describe(`${name}, ${errText(e)}`, { preview }),
+      });
+    } finally {
+      release();
+    }
+  };
+
+  const showHistory = () => document.getElementById("sb-hist")?.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" });
+
+  // Starting closes the dialog; the toast follows the request and offers a jump to the history.
+  const launch = async (pick: string) => {
+    if (!d || launchLock.current) return;
+    launchLock.current = true;
+    setStarting(false);
+    setLaunching(true);
+    const one = d.schedules.find((s) => s.resourceId === pick);
+    await track(send<{ runs: BackupRun[] }>("/api/backups/run", "POST", pick === "all" ? {} : { resourceId: pick }), {
+      preview,
+      loading: "Starting backup",
+      description: one ? dbLabel(one.database) : "Every enabled database",
+      success: (r) => {
+        setResult((prev) => (prev.data ? { ...prev, data: { ...prev.data, runs: [...r.runs, ...prev.data.runs] } } : prev));
+        return {
+          title: r.runs.length === 1 ? "Backup started" : `${r.runs.length.toLocaleString("en-US")} backups started`,
+          description: [firstNames(r.runs.map((x) => dbLabel(x.database))), "Each shows in the history as it runs"],
+          action: { label: "View", onClick: showHistory },
+        };
+      },
+      error: "Could not start the backup",
+    });
+    launchLock.current = false;
+    setLaunching(false);
+  };
+
+  // The restore runs behind a toast; the row's button spins until it settles, and no other run
+  // of the same database can start a second restore meanwhile.
+  const restore = async (run: BackupRun, req: RestoreRequest) => {
+    setRestoring(null);
+    if (restoreLock.current.has(run.resourceId)) return;
+    restoreLock.current.add(run.resourceId);
+    setRestoringDbs((m) => new Map(m).set(run.resourceId, run.id));
+    const name = dbLabel(run.database);
+    const stamp = utcAt(run.createdAt);
+    await track(send<RestoreOutcome | RestoreAccepted>(`/api/backups/${encodeURIComponent(run.id)}/restore`, "POST", req).then((first) => followRestore(first, readRestore(run.id))), {
+      preview,
+      loading: req.mode === "new" ? "Restoring into a new database" : "Restoring database",
+      description: req.mode === "new" ? `${run.database.projectSlug} / ${req.name}, from ${stamp}` : `${name}, from ${stamp}. Keep this page open`,
+      success: (out) => {
+        const target = `${out.database.projectSlug} / ${out.database.name}`;
+        return req.mode === "new"
+          ? {
+              title: "Database restored",
+              description: `${target} created from the backup of ${name}, ${stamp}`,
+              // The preview's new database is not a real app, so there is nowhere to go.
+              action: preview ? undefined : { label: "View", onClick: () => router.push(`/apps/${encodeURIComponent(out.database.resourceId)}`) },
+            }
+          : { title: "Database restored", description: `${target} now matches the backup from ${stamp}` };
+      },
+      error: "Could not restore the backup",
+    });
+    restoreLock.current.delete(run.resourceId);
+    setRestoringDbs((m) => {
+      const next = new Map(m);
+      next.delete(run.resourceId);
+      return next;
+    });
+  };
+
+  // The test runs on the worker; the row shows "Testing" until a poll brings the result.
+  const test = async (run: BackupRun) => {
+    if (testLock.current.has(run.id)) return;
+    testLock.current.add(run.id);
+    setTesting((s) => new Set(s).add(run.id));
+    const what = `${dbLabel(run.database)}, from ${utcAt(run.createdAt)}`;
+    try {
+      const next = await send<BackupRun>(`/api/backups/${encodeURIComponent(run.id)}/test`, "POST", {});
+      // Watched either way: a result that is already in toasts on this render, a running one when it lands.
+      watched.current.add(run.id);
+      patchRuns((r) => (r.id === run.id ? { ...r, restoreTest: next.restoreTest } : r));
+      if (next.restoreTest.status === "running") {
+        toast.info("Restore test started", { description: describe([what, "It restores into a throwaway container"], { preview }) });
+      }
+    } catch (e) {
+      toast.error("Could not start the restore test", { description: describe([what, errText(e)], { preview }) });
+    } finally {
+      testLock.current.delete(run.id);
+      setTesting((s) => {
+        const next = new Set(s);
+        next.delete(run.id);
+        return next;
+      });
+    }
+  };
+
+  // ConfirmDialog stays open while this runs and closes when it resolves; a failure keeps it open.
+  const removeOrphans = async (resourceId: string) => {
+    const rows = orphans.filter((r) => r.resourceId === resourceId);
+    const name = rows[0] ? dbLabel(rows[0].database) : "Deleted database";
+    setDeleting((s) => new Set(s).add(resourceId));
+    try {
+      const out = await send<OrphanDeleteResult>(`/api/backups/orphans/${encodeURIComponent(resourceId)}`, "DELETE", {});
+      setResult((prev) => (prev.data ? { ...prev, data: { ...prev.data, runs: prev.data.runs.filter((r) => r.resourceId !== resourceId) } } : prev));
+      toast.success(`Deleted ${plural(out.deleted, "backup")}`, { description: describe([name, `${bytes(out.freedBytes)} freed`], { preview }) });
+      setRemoving(null);
+    } catch (e) {
+      // A closed "Confirm it is you" is no failure: no toast, and the question stays open.
+      if (!wasCancelled(e)) toast.error("Could not delete the backups", { description: describe([name, errText(e)], { preview }) });
+      throw e;
+    } finally {
+      setDeleting((s) => {
+        const next = new Set(s);
+        next.delete(resourceId);
+        return next;
+      });
+    }
+  };
+
+  const actions: RunActions = { onRestore: setRestoring, onTest: (r) => void test(r), restoring: restoringDbs, testing };
+
+  const hasDbs = (d?.schedules.length ?? 0) > 0;
+  const lead = d
+    ? hasDbs
+      ? `${plural(d.schedules.length, "database")}, ${d.schedules.filter((s) => s.enabled).length} on a schedule, ${plural(liveRuns.length, "run")} in 30 days.`
+      : "No databases to back up yet."
+    : "Encrypted database dumps on a schedule, kept off this server.";
+
+  return (
+    <>
+      <Topbar trail={["Backups"]} notices={notices} now={now} />
+      <main className="page" id="main" tabIndex={-1}>
+        <SectionHead
+          level={1}
+          title="Backups"
+          lead={lead}
+          actions={
+            refreshing || can.manage ? (
+              <>
+                {refreshing ? <Updating /> : null}
+                {can.manage ? (
+                  <PendingButton className="btn btn-primary" onClick={() => setStarting(true)} pending={launching} disabled={!hasDbs} icon="archive">
+                    Back up now
+                  </PendingButton>
+                ) : null}
+              </>
+            ) : null
+          }
+        />
+        <Rule />
+
+        {!d ? (
+          <>
+            <NoSource error={result.error} polling={result.source === "api"} />
+            <Spacer end />
+          </>
+        ) : !hasDbs && orphans.length === 0 ? (
+          <>
+            <div className="card">
+              <Empty
+                icon="box"
+                title="No databases yet"
+                body={
+                  can.manage
+                    ? "Add a Postgres service to a project. It gets a daily backup schedule here, and every run is listed with a restore."
+                    : "Postgres services get a daily backup schedule here once an admin adds them to a project."
+                }
+              />
+            </div>
+            <Spacer end />
+          </>
+        ) : (
+          <>
+            {hasDbs ? (
+              <>
+                {/* The summary waits for something to sum up: a run, or a schedule that will make one. */}
+                {liveRuns.length > 0 || d.schedules.some((s) => s.enabled) ? (
+                  <>
+                    <Kpis runs={liveRuns} schedules={d.schedules} now={now} />
+                    <Spacer />
+                  </>
+                ) : null}
+                <Schedules schedules={d.schedules} runs={liveRuns} now={now} onToggle={(s, on) => void toggle(s, on)} />
+                <Spacer />
+              </>
+            ) : null}
+            {d.config ? (
+              <>
+                <StorageCard config={d.config} schedules={d.schedules} now={now} />
+                <Spacer />
+              </>
+            ) : null}
+            {hasDbs ? <History runs={liveRuns} schedules={d.schedules} now={now} actions={actions} /> : null}
+            {orphans.length ? (
+              <>
+                {hasDbs ? <Spacer /> : null}
+                <Orphans runs={orphans} now={now} actions={actions} onDelete={setRemoving} deleting={deleting} />
+              </>
+            ) : null}
+            <Spacer end />
+            {restoring ? <RestoreDialog key={restoring.id} run={restoring} onClose={() => setRestoring(null)} onConfirm={(r, req) => void restore(r, req)} /> : null}
+            {starting ? <RunDialog onClose={() => setStarting(false)} schedules={d.schedules} onConfirm={(p) => void launch(p)} /> : null}
+            {removing ? (
+              <DeleteOrphansDialog
+                key={removing[0]!.resourceId}
+                runs={removing}
+                onClose={() => setRemoving(null)}
+                onConfirm={removeOrphans}
+                // The deleted group took its key with it: the card's title, else the history's.
+                returnFocus={() => document.getElementById("bk-orphans-title") ?? document.getElementById("sb-hist-title")}
+              />
+            ) : null}
+          </>
+        )}
+      </main>
+    </>
+  );
+}

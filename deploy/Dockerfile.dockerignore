@@ -1,0 +1,33 @@
+# Build context for deploy/Dockerfile. Allowlist: nothing reaches the build unless
+# it is named here, so a workstation checkout and a fresh clone send the same bytes.
+# Keep deploy/Dockerfile.dockerignore identical (BuildKit prefers that file).
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!turbo.json
+!tsconfig.base.json
+!apps/api
+!apps/worker
+!apps/agent
+!apps/web
+!packages
+!deploy/entrypoint.sh
+!deploy/release.pub
+!deploy/prisma-cli
+# The api typecheck covers release-toolkit.test.ts, which imports the release toolkit. Build stage only.
+!scripts/release/make-manifest.mjs
+!scripts/release/make-manifest.d.mts
+
+# Never from the build machine: installs, build output, caches, local secrets.
+**/node_modules
+**/.next
+**/.turbo
+**/generated
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/next-env.d.ts
+**/.env*
+**/*.log
+**/.DS_Store

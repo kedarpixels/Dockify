@@ -1,0 +1,410 @@
+/* Maintenance and Updates on /server. The markdown of the release notes is in foundation.css. */
+
+/* -------------- Maintenance -------------- */
+.srv-mt {
+  display: flex;
+  flex-direction: column;
+  container: srv-mt / inline-size;
+}
+
+.srv-mt-list {
+  flex: 1;
+  grid-auto-rows: minmax(56px, auto);
+  /* Rows keep their height and stack from the top: a taller neighbour never spreads them. */
+  align-content: start;
+  padding: 8px calc(var(--gutter) - 8px) 16px;
+}
+
+.srv-mt-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 56px;
+}
+
+.srv-mt-id {
+  min-width: 0;
+}
+
+.srv-mt-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.srv-mt-read {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.srv-mt-foot {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* A full-width card would leave a wide gap between each label and its reading: pair the rows. */
+@container srv-mt (min-width: 1000px) {
+  .srv-mt-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+  }
+}
+
+@container srv-mt (max-width: 520px) {
+  .srv-mt-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: start;
+    row-gap: 8px;
+  }
+  .srv-mt-end {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .srv-mt-read {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+/* -------------- Updates -------------- */
+.srv-up {
+  display: flex;
+  flex-direction: column;
+  container: srv-up / inline-size;
+}
+
+.srv-up-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px var(--gutter) 24px;
+}
+
+.srv-up-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+
+@container srv-up (min-width: 640px) {
+  .srv-up-facts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.srv-up-facts .chip {
+  vertical-align: top;
+}
+
+.srv-up-release {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px 16px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.srv-up-rel-hd {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.srv-up-rel-hd .two {
+  min-width: 0;
+}
+
+.srv-up-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* Release notes: the summary, the rest folded behind Show notes. No inner scroller. */
+.srv-up-notes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.srv-up-notes .md {
+  align-self: stretch;
+}
+
+/* The release and its actions beside the policy rows, then the history across the full width. */
+.srv-up-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.srv-up-main,
+.srv-up-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* The side rows are ruled against each other, so they stack with no gap between them. */
+.srv-up-side {
+  gap: 0;
+}
+
+@container srv-up (min-width: 800px) {
+  .srv-up-cols {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px 24px;
+  }
+  .srv-up-side > .srv-up-row:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+
+.srv-up-acts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Side rows share the History rhythm: the sub line wraps before the key drops below it. */
+.srv-up-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.srv-up-row .two {
+  flex: 1;
+  min-width: 0;
+}
+
+@container srv-up (max-width: 520px) {
+  .srv-up-row {
+    flex-wrap: wrap;
+  }
+}
+
+.srv-up-row .chip {
+  flex: none;
+}
+
+/* The settings pointer sits 12px under the last row. */
+.srv-up-row + .srv-up-foot {
+  margin-top: 12px;
+}
+
+.srv-up-act {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.srv-up-key {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.srv-up-when {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.srv-up-when .ic {
+  flex: none;
+  color: var(--ink-4);
+}
+
+/* Release notes and advisory links (the shared ExternalLink): note size, at the start of the column. */
+.srv-up-link {
+  align-self: flex-start;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.srv-up .fld-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.srv-up .fld-note a:hover {
+  color: var(--ink);
+}
+
+/* History: one ruled row per update, the result chip on the right. */
+.srv-up-hist {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.srv-up-sec {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.srv-up-hist-list {
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.srv-up-hist-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.srv-up-hist-row + .srv-up-hist-row {
+  border-top: 1px solid var(--line);
+}
+
+.srv-up-hist-row .two {
+  min-width: 0;
+}
+
+.srv-up-hist-row .chip {
+  flex: none;
+  margin-top: 2px;
+}
+
+.srv-up-hist-ver {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.srv-up-hist-ver .ic {
+  color: var(--ink-4);
+}
+
+.srv-up-hist-kind {
+  margin-right: 2px;
+  color: var(--ink-3);
+}
+
+/* The failure reason: muted, two lines at most; its title holds the full text. */
+.srv-up-hist-err {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.srv-up-more {
+  margin-top: 4px;
+}
+
+.srv-up-latest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.srv-up-latest .ic {
+  color: var(--ok);
+}
+
+/* The update's phases as deploy status tiles, one 32px row each. */
+.srv-up-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.srv-up-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 32px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.srv-up-step[data-state="pending"],
+.srv-up-step[data-state="skipped"] {
+  color: var(--ink-3);
+}
+
+.srv-up-step-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 6px 0;
+}
+
+.srv-up-step-detail {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.srv-up-step > span[aria-hidden] {
+  display: flex;
+  padding-top: 4px;
+}
+
+.srv-up-step[data-state="failed"] .srv-up-step-text > span:first-child {
+  color: var(--bad-ink);
+}
+
+/* The confirm dialog's plan reuses the prune list, numbered. */
+.srv-up-plan {
+  counter-reset: srv-step;
+}
+
+.srv-up-plan li {
+  padding: 8px 16px;
+}
+
+.srv-up-plan .sb-dlg-li-hd {
+  justify-content: flex-start;
+  font-weight: 400;
+}
+
+.srv-up-plan .sb-dlg-li-hd::before {
+  counter-increment: srv-step;
+  content: counter(srv-step);
+  min-width: 16px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,99 @@
+---
+title: "The dockify command"
+description: "The command the installer puts on your server: the stack, updates, account rescue and uninstall, from SSH, even when the dashboard is down."
+---
+
+## What it is
+
+The installer writes `/usr/local/bin/dockify`. Run it as root, with `sudo`. Before it runs anything it checks that nothing a non-root user could change is about to run as root: the install folder, `docker-compose.yml` and `.env` must belong to root and be writable by root only, and `release/release.env` may only pin the two Dockify images by digest. If a check fails it says which file, and the command to fix it.
+
+## The stack
+
+Anything that is not one of the words below goes to `docker compose` for the install folder, with both env files:
+
+```bash
+sudo dockify ps                  # every Dockify service and its state
+sudo dockify logs api            # one service's log (api, worker, agent, updater, web, proxy-direct or proxy, cloudflared)
+sudo dockify logs -f worker      # and follow it
+sudo dockify up -d               # start what is stopped, apply a changed .env
+sudo dockify restart api         # restart one service
+sudo dockify exec api sh         # a shell inside a service
+```
+
+## Updates
+
+```bash
+sudo dockify update status              # where this install stands
+sudo dockify update check               # fetch and verify the feed now
+sudo dockify update apply               # install the newest release you can reach
+sudo dockify update apply 1.2.0         # install a specific version
+sudo dockify update rollback            # roll back the last update
+sudo dockify update rollback <update-id>
+```
+
+These run the updater in a one-off container, so they work when the dashboard, or the updater service itself, does not. They follow the same steps and the same automatic rollback as an update from the dashboard. See [Updates](/docs/updates).
+
+## Recreate the services
+
+```bash
+sudo dockify redeploy
+```
+
+Recreates Dockify's own services on the images `release/release.env` pins, for when you pinned them by hand. Migrations run first, and if they fail nothing is recreated. Then the api, the agent, the worker and the web, one at a time, each waited for, then the updater. It stops at the first service that does not come up healthy.
+
+It fetches nothing and takes no dump, and it does not touch your apps. To apply a new compose file, use [`install.sh --upgrade`](/docs/install#upgrade-an-install).
+
+## Account rescue
+
+```bash
+sudo dockify admin disable-mfa <email>       # turn two-factor off for an account
+sudo dockify admin reset-password <email>    # print a new password for it
+sudo dockify admin revoke-sessions <email>   # sign it out everywhere
+```
+
+These three run inside the running api container. Each one writes a line to the activity log and ends the account's sessions. `disable-mfa` on an account with no two-factor changes nothing. See [Recovery](/docs/recovery).
+
+## Rotating the master key
+
+```bash
+sudo dockify admin rewrap-secrets
+```
+
+Re-seals every stored secret under the current master key, as the last step of a rotation, in one transaction: if it fails, nothing changes. See [Rotating the master key](/docs/security#rotating-the-master-key).
+
+## The dashboard's address
+
+```bash
+sudo dockify admin set-domain dockify.example.com   # move the dashboard to this address
+sudo dockify admin set-domain --sslip               # back to the temporary sslip.io address
+```
+
+The way back in when the dashboard cannot be reached. It rewrites `DOCKIFY_PUBLIC_URL` in `.env` and recreates the services that read it. From the dashboard, Settings, Instance does the same after checking the new domain first. See [Domains and TLS](/docs/domains#if-you-cannot-reach-the-dashboard).
+
+## Factory reset
+
+```bash
+sudo dockify admin factory-reset
+sudo dockify admin factory-reset --delete-backups
+```
+
+Erases every app, database, domain, variable, user, token and integration, and returns the server to first-run setup with a new setup token. It shows the plan, then asks you to type the dashboard's address. Anything else changes nothing.
+
+A copy of `secrets/`, `.env` and `release.env` goes to `/root/dockify-backup-<time>/` first. It keeps Docker, the images, the master key, the dashboard's address, its certificates, and the backups on this server, unless you add `--delete-backups`. It never touches your S3 storage, and it changes nothing at Cloudflare, Vercel or GitHub, so remove what you connected there by hand.
+
+There is no button for this in the dashboard, on purpose. A stolen session or API token cannot erase your server, because no web route can. To remove Dockify itself, use uninstall.
+
+## Uninstall
+
+```bash
+sudo dockify uninstall --dry-run
+sudo dockify uninstall
+```
+
+Runs the uninstaller the installer saved in the install folder, after the same ownership checks, or the published one, checked against its SHA-256, when the folder has none. See [Uninstall](/docs/uninstall).
+
+## What can go wrong
+
+- **"... must be owned by uid 0".** A file in the install folder changed owner. Run the `chown` the message prints, after checking nobody else changed it.
+- **"... is writable by group or others".** Run the `chmod go-w` the message prints.
+- **"release.env may only pin DOCKIFY_CONTROL_IMAGE and DOCKIFY_WEB_IMAGE by digest".** Something added a line to `release/release.env`. Only the updater writes that file; restore its two lines from your backup.
