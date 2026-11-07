@@ -298,6 +298,14 @@ async function pump(req: FastifyRequest, reply: FastifyReply, token: string, use
     release();
   };
   raw.on("close", leave);
+  // A viewer who left while the handler was still reading the database closed the socket before the
+  // listener above existed, so no close event will ever come: give the slot back now.
+  if (raw.destroyed || req.raw.destroyed || req.raw.socket?.destroyed) {
+    leave();
+    reply.hijack();
+    if (!raw.writableEnded) raw.end();
+    return;
+  }
   reply.hijack();
   raw.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
@@ -306,16 +314,23 @@ async function pump(req: FastifyRequest, reply: FastifyReply, token: string, use
     "x-content-type-options": "nosniff",
     connection: "keep-alive",
   });
+  // A write that cannot reach the viewer means the viewer is gone: the slot and the upstream go with it,
+  // rather than waiting for a close event that a half-open connection may never send.
   const send = async (frame: string): Promise<boolean> => {
-    if (closed || raw.destroyed || raw.writableEnded) return false;
+    if (closed || raw.destroyed || raw.writableEnded) {
+      leave();
+      return false;
+    }
     if (raw.write(frame)) return true;
-    return new Promise((resolve) => {
+    const drained = await new Promise<boolean>((resolve) => {
       const t = setTimeout(() => resolve(false), 10_000);
       raw.once("drain", () => {
         clearTimeout(t);
         resolve(true);
       });
     });
+    if (!drained) leave();
+    return drained;
   };
   const beat = setInterval(() => {
     void send(": ping\n\n");
@@ -474,13 +489,28 @@ export async function streamRuntimeLog(
 
 const TAIL_WAIT_MS = 3_000;
 
+/**
+ * Aborts when the viewer's connection closes before the answer was sent, so a read for a page that
+ * has gone (a tab switched or closed) stops at once instead of holding its slot for the full read.
+ */
+export function viewerLeft(reply: FastifyReply): AbortSignal {
+  const ctrl = new AbortController();
+  const raw = reply.raw;
+  raw.once("close", () => {
+    if (!raw.writableFinished) ctrl.abort();
+  });
+  if (raw.destroyed || reply.request.raw.socket?.destroyed) ctrl.abort();
+  return ctrl.signal;
+}
+
 /** What arrives in a short read of the runtime stream: Vercel has no way to ask for the last N. */
-export async function tailRuntime(db: Db, ring: Keyring, d: { appId: string; externalId: string; vercelProjectId: string; projectId: string }, tail: number) {
+export async function tailRuntime(db: Db, ring: Keyring, d: { appId: string; externalId: string; vercelProjectId: string; projectId: string }, tail: number, signal?: AbortSignal) {
   const link = await linkFor(db, ring, d.projectId);
   const url = withTeam(`/v1/projects/${encodeURIComponent(d.vercelProjectId)}/deployments/${encodeURIComponent(d.externalId)}/runtime-logs`, link.teamId);
   let res: Awaited<ReturnType<StreamClient>>;
   try {
-    res = await client().stream({ url, headers: { Authorization: `Bearer ${link.token}` }, maxMs: TAIL_WAIT_MS, idleMs: TAIL_WAIT_MS, timeoutMs: 10_000, maxBytes: 8 * 1024 * 1024 });
+    // The viewer's signal ends the read the moment they leave, so the read slot is free at once.
+    res = await client().stream({ url, headers: { Authorization: `Bearer ${link.token}` }, signal, maxMs: TAIL_WAIT_MS, idleMs: TAIL_WAIT_MS, timeoutMs: 10_000, maxBytes: 8 * 1024 * 1024 });
   } catch (e) {
     throw unreachable(e);
   }

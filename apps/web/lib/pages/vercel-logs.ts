@@ -62,9 +62,9 @@ const previewLine = (appId: string, at: number, i: number): VercelRuntimeLine =>
   };
 };
 
-export async function getVercelRuntimeTail(appId: string, deployment: string | null): Promise<RouteAnswer<{ data: VercelLogPage | null; error?: string }>> {
+export async function getVercelRuntimeTail(appId: string, deployment: string | null, signal?: AbortSignal): Promise<RouteAnswer<{ data: VercelLogPage | null; error?: string }>> {
   if (process.env.DOCKIFY_API_URL) {
-    const r = await apiRequest<VercelLogPage>(`/api/v1/apps/${enc(appId)}/vercel/logs`, { query: { deployment: deployment ?? undefined } });
+    const r = await apiRequest<VercelLogPage>(`/api/v1/apps/${enc(appId)}/vercel/logs`, { query: { deployment: deployment ?? undefined }, signal });
     if (!r.ok) return { status: upstreamStatus(r.status), body: { data: null, error: plainError(r) } };
     return r.data ? { status: 200, body: { data: r.data } } : { status: 502, body: { data: null, error: UNREADABLE } };
   }

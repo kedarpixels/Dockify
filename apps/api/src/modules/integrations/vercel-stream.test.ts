@@ -149,4 +149,57 @@ describe("streamRuntimeLog", () => {
     stop.abort();
     await expect.poll(() => openVercelStreams(), { timeout: 5_000 }).toBe(0);
   }, 20_000);
+
+  /** Vercel holds the connection and sends nothing, as it does for a static site served from cache. */
+  const silent = () =>
+    vercel(async (r) => {
+      await new Promise<void>((res) => r.signal?.addEventListener("abort", () => res(), { once: true }));
+      return streamOf([], 200, "aborted");
+    });
+
+  it("frees the slot the moment the viewer disconnects, with Vercel silent", async () => {
+    const db = await fakeDb();
+    silent();
+    const base = await serve(async (req, reply) => streamRuntimeLog(db, ring, req, reply, d, allowed, "u7"));
+    const stop = new AbortController();
+    const res = await fetch(`${base}/s`, { signal: stop.signal });
+    expect(res.status).toBe(200);
+    expect(openVercelStreams()).toBe(1);
+    stop.abort();
+    await expect.poll(() => openVercelStreams(), { timeout: 1_000 }).toBe(0);
+  }, 10_000);
+
+  it("never answers 429 to one viewer opening and leaving the Logs tab again and again", async () => {
+    const db = await fakeDb();
+    silent();
+    const base = await serve(async (req, reply) => streamRuntimeLog(db, ring, req, reply, d, allowed, "u8"));
+    for (let i = 0; i < 12; i++) {
+      const stop = new AbortController();
+      const res = await fetch(`${base}/s`, { signal: stop.signal });
+      expect(res.status).toBe(200);
+      stop.abort();
+      await expect.poll(() => openVercelStreams(), { timeout: 1_000 }).toBe(0);
+    }
+  }, 20_000);
+
+  it("gives the slot back when the viewer left before the stream began", async () => {
+    const db = await fakeDb();
+    silent();
+    let ran!: Promise<void>;
+    const base = await serve(async (req, reply) => {
+      // The handler's own reads are slow, and the viewer is gone by the time the stream would start.
+      const r = req as unknown as { raw: { socket: { destroyed: boolean; once(e: string, f: () => void): void } } };
+      await new Promise<void>((res) => (r.raw.socket.destroyed ? res() : r.raw.socket.once("close", () => res())));
+      ran = streamRuntimeLog(db, ring, req, reply, d, allowed, "u9");
+      await ran;
+    });
+    const stop = new AbortController();
+    const asked = fetch(`${base}/s`, { signal: stop.signal }).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 100));
+    stop.abort();
+    await asked;
+    await expect.poll(() => ran !== undefined, { timeout: 2_000 }).toBe(true);
+    await ran;
+    expect(openVercelStreams()).toBe(0);
+  }, 10_000);
 });
