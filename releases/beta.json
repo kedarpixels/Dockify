@@ -1,0 +1,29 @@
+{
+  "schema": 2,
+  "channel": "beta",
+  "generatedAt": "2026-11-07T14:12:30.208Z",
+  "releases": [
+    {
+      "version": "1.0.0",
+      "date": "2026-11-07",
+      "publishedAt": "2026-11-07T14:12:30.208Z",
+      "minFrom": "0.0.0",
+      "migration": "0025_dashboard_cf_records",
+      "critical": false,
+      "notesUrl": "https://github.com/kedarpixels/Dockify/releases/tag/v1.0.0",
+      "notes": "## 1.0.0 (2026-11-07)\n\nThe first release: one server, safe deploys, tested backups and a locked-down control plane.\n\n### Added\n- Install on one fresh Ubuntu 22.04 or 24.04 server with one command. The installer checks the signed release and pulls images by digest.\n- Push to deploy from GitHub, per branch, with live build logs and a step timeline.\n- Zero-downtime deploys for stateless apps, gated on a health check, with automatic rollback.\n- Rollback by image id, with no rebuild.\n- Release commands for migrations, run before traffic moves.\n- Managed Postgres and Redis, plus S3 storage, private by default.\n- Six templates: Gotify, ntfy, Memos, SeaweedFS, Uptime Kuma and Miniflux.\n- Preview deploys per pull request, removed when it closes. Forks build only if you opt in, and never get secrets.\n- Encrypted backups to local disk or your S3-compatible bucket, with scheduled restore tests.\n- Restore from the dashboard, into a new database by default.\n- Alert rules per app for down, crash loops and memory, plus host disk, sent to Discord, Slack, Teams, a signed webhook and more, or by email.\n- Email over your own SMTP server for invites, password resets, security notices, alerts and failed deploys.\n- Disk cleanup that keeps rollback images, and a disk alert at 85% by default.\n- Domains through a Cloudflare tunnel with DNS done for you, or direct mode with Let's Encrypt.\n- Env vars per environment, with history and rollback.\n- Streaming logs, and CPU, memory and disk graphs per app.\n- Import of projects and env vars from Vercel.\n- Teams with Admin and Viewer roles.\n- API tokens with expiry, scopes and a project limit.\n- Signed self-updates that dump the database first and roll back on their own.\n\n### Security\n- 2FA, a session list and an audit log. Changing what runs asks for your 2FA code again.\n- Builds and deploys reach Docker only through a gate that allows the calls they need and refuses the rest, including pulls from internal and cloud metadata addresses.\n- One container builder: capabilities dropped, never privileged, no host network, folders or ports.\n- Each secret sealed on its own with AES-256-GCM. The master key never enters the database.\n- Every API route has a declared policy, and a test fails if one is missing.\n- The installer refuses a runtime with known escape bugs and blocks containers from cloud metadata addresses.\n",
+      "images": {
+        "control": {
+          "amd64": "ghcr.io/kedarpixels/dockify-control@sha256:b05c77eecb719325e5454ae33477d6db3f32b077bd657e616623fc8f6213f415",
+          "arm64": "ghcr.io/kedarpixels/dockify-control@sha256:593891f79f1527affcd432b3d9a6b3a3053976bba2e3a84caed4113f3d363bcd"
+        },
+        "web": {
+          "amd64": "ghcr.io/kedarpixels/dockify-web@sha256:fda1483b981d25c079f05cf78c3a8b2f2833a8ee13a4cacc5ca22c9e2dee8980",
+          "arm64": "ghcr.io/kedarpixels/dockify-web@sha256:dc81b724c606ebccf7cdc4b62299a163ad985904b61de8e86eee2c0f75c6e5d6"
+        }
+      },
+      "composeSha256": "7742d0c095f02b1d16c26806b9087931bc4fd7f4471f05d551b87c64062956f0",
+      "socketProxySha256": "19d55ffbf94bef940073b91432131ce3a87bce08401076fbd26b4a5967243e98"
+    }
+  ]
+}
