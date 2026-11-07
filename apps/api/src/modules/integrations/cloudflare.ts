@@ -69,8 +69,10 @@ export class CloudflareApi {
   /** A user token verifies at /user/tokens/verify; an account token at its account. */
   async verify(): Promise<{ id: string; name: string }> {
     const accounts = await this.call<Array<{ id: string; name: string }>>("/accounts?per_page=5");
-    const first = accounts.result[0];
-    if (!first) throw new HttpError(400, "This token cannot see any Cloudflare account", "CLOUDFLARE_TOKEN");
+    // A token with only zone permissions lists no account, but each zone names the one it is in.
+    const first = accounts.result[0]
+      ?? (await this.call<Array<{ account?: { id: string; name: string } }>>("/zones?per_page=1")).result[0]?.account;
+    if (!first) throw new HttpError(400, "This token cannot see any Cloudflare zone. Give it Zone, DNS, Edit on the zones Dockify should manage", "CLOUDFLARE_TOKEN");
     const status = await this.call<{ status: string }>("/user/tokens/verify")
       .catch(() => this.call<{ status: string }>(`/accounts/${encodeURIComponent(first.id)}/tokens/verify`));
     if (status.result.status !== "active") throw new HttpError(400, `This token is ${status.result.status}`, "CLOUDFLARE_TOKEN");
