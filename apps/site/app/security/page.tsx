@@ -130,7 +130,7 @@ export default function Page() {
       <Section
         id="signing"
         title="How updates are signed"
-        lead="From the release feed to your server, every Dockify image is checked before it runs. The first signed release ships with 1.0."
+        lead="From the release feed to your server, every Dockify image is checked before it runs. The first signed release is 1.0.0."
       >
         <Steps items={SIGNING} />
         <Body className="pg-body-ruled">

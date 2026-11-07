@@ -23,7 +23,7 @@ Run this on the server:
 curl -fsSL https://dockify.sh/install.sh | sh
 ```
 
-<Note tone="warn" title="Not released yet">Dockify 1.0 is not released yet. This command works once the first signed release is out. Until then the installer stops early, after asking for the domain, with "no release source".</Note>
+<Note title="Signed release">The command installs the newest signed release. The installer checks the release feed's signature against the key pinned in it, then pulls the images by digest. Every release is in the [changelog](/changelog).</Note>
 
 It asks for a domain. Give yours if you have it ready. Or press Enter to start on a **temporary address**, `https://<your-server-ip-with-dashes>.sslip.io`, with a real Let's Encrypt certificate: `203.0.113.10` becomes `https://203-0-113-10.sslip.io`. With no terminal attached the script does the same. It stops if it cannot find the server's public IPv4.
 
@@ -173,7 +173,7 @@ sudo bash /root/dockify-src/installer/install.sh --upgrade --from-checkout
 - **"no docker-compose.yml: use a feed whose manifest has composeSha256 and socketProxySha256, or pass --from-checkout in a repository root owns".** There is no feed to take these files from. Run from a checkout with `--from-checkout`, or wait for a release that publishes them.
 - **"--from-checkout: ... must be owned by root and not writable by group or others".** Run the `chown` and `chmod` the message prints.
 
-- **"no release source: pass --release-feed and --release-pubkey, or --control-image and --web-image".** No signed release is pinned in this installer yet. See the note under the one-liner.
+- **"no release source: pass --release-feed and --release-pubkey, or --control-image and --web-image".** This installer has no release feed or key pinned, which a script taken from the repository before 1.0 has. Use the one-liner above, which serves the current installer.
 - **"port 80 is already in use; direct mode needs it".** Another web server is running. Stop it, or use tunnel mode.
 - **"the token sees 2 accounts; pass --cf-account-id".** Add the account id from the Cloudflare dashboard.
 - **"dockify.example.com already has a CNAME record".** Pick another hostname, or pass `--replace-dns` if that record is yours to replace.

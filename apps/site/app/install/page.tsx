@@ -7,6 +7,7 @@ import { Body, Rows, Section, Steps } from "@/components/pages/kit";
 import { Closer } from "@/components/pages/closer";
 import { INSTALL_CMD, INSTALL_DRY_RUN_CMD, repoHref, UNINSTALL_CMD } from "@/lib/site";
 import { pageMetadata } from "@/components/seo/metadata";
+import { loadReleases } from "@/lib/releases";
 
 export const metadata = pageMetadata({
   path: "/install",
@@ -115,8 +116,10 @@ sudo cp -a /opt/dockify/secrets /opt/dockify/.env /root/dockify-backup/
 sudo rm -rf /opt/dockify
 sudo reboot`;
 
-export default function Page() {
+export default async function Page() {
   const script = repoHref("blob/main/installer/install.sh");
+  // Released means dated notes: the release workflow refuses to publish without them.
+  const latest = (await loadReleases()).find((r) => r.date !== null && !r.version.includes("-"));
   return (
     <main id="main" className="page">
       <Spacer />
@@ -130,10 +133,18 @@ export default function Page() {
         <CommandLine command={INSTALL_DRY_RUN_CMD} what="dry run command" />
         <div className="pg-callout phead-callout" role="note">
           <Icon name="info" />
-          <p>
-            <strong>Dockify 1.0 is not released yet.</strong> This command works once the first signed release is out. Until then the installer
-            stops early with &ldquo;no release source&rdquo;.
-          </p>
+          {latest ? (
+            <p>
+              <strong>Dockify {latest.version} is released.</strong> The command installs the newest signed release: it checks the feed&rsquo;s
+              signature against the pinned key, then pulls the images by digest.{" "}
+              {latest.signed ? <a href={latest.signed}>See the signed release</a> : <Link href="/changelog">See the changelog</Link>}.
+            </p>
+          ) : (
+            <p>
+              <strong>Dockify 1.0 is not released yet.</strong> This command works once the first signed release is out. Until then the installer
+              stops early with &ldquo;no release source&rdquo;.
+            </p>
+          )}
         </div>
       </section>
       <Spacer />
