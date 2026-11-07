@@ -76,6 +76,31 @@ describe.skipIf(!haveBash)("--upgrade holds the feed's release to the updater's 
     expect(up).toContain(`SELECT "releaseVersion" FROM instance`);
     expect(up.indexOf('if [ "$EXPLICIT_IMAGES" = 1 ]; then')).toBeLessThan(up.indexOf("upgrade_refusal"));
   });
+  it("points the updater at the feed and key that checked the new images, and only for feed images", () => {
+    const s = src();
+    const up = s.slice(s.indexOf("upgrade() {"), s.indexOf('if [ "${DOCKIFY_INSTALL_LIB:-}" = 1 ]'));
+    const guard = up.indexOf('if [ -n "$VERSION" ]; then\n    { env_set "$DIR/.env" DOCKIFY_RELEASE_FEED "$FEED" && env_set "$DIR/.env" DOCKIFY_RELEASE_PUBKEY "$PUBKEY"; }');
+    expect(guard).toBeGreaterThan(0);
+    // After the files are backed up, so a failure puts .env back; before anything is pulled or recreated.
+    expect(guard).toBeGreaterThan(up.indexOf('cp -p "$DIR/docker-compose.yml" "$DIR/.env"'));
+    expect(guard).toBeLessThan(up.indexOf("dockify pull --quiet"));
+    expect(up.slice(guard, guard + 400)).toContain("restore_files; die");
+    // Images given by hand name no version, so they leave the feed and key as they were.
+    expect(up.indexOf('if [ "$EXPLICIT_IMAGES" = 1 ]; then\n      VERSION=""')).toBeGreaterThan(0);
+  });
+  it("writes a feed URL and a minisign key line that env_set accepts", () => {
+    const d = scratch();
+    const env = path.join(d, ".env");
+    writeFileSync(env, "DOCKIFY_RELEASE_FEED=\nDOCKIFY_RELEASE_PUBKEY=RWQold+key/AAA=\nOTHER=1\n");
+    const key = readFileSync(path.resolve(import.meta.dirname, "../../../deploy/release.pub"), "utf8").trim().split("\n").at(-1)!.trim();
+    const r = lib(`env_set '${posixPath(env)}' DOCKIFY_RELEASE_FEED "$DOCKIFY_DEFAULT_FEED" && env_set '${posixPath(env)}' DOCKIFY_RELEASE_PUBKEY "$DOCKIFY_DEFAULT_PUBKEY"`);
+    expect(r.code).toBe(0);
+    const out = readFileSync(env, "utf8");
+    expect(out).toContain("DOCKIFY_RELEASE_FEED=https://raw.githubusercontent.com/kedarpixels/Dockify/releases\n");
+    expect(out).toContain(`DOCKIFY_RELEASE_PUBKEY=${key}\n`);
+    expect(out).toContain("OTHER=1\n");
+    expect(out.match(/^DOCKIFY_RELEASE_PUBKEY=/gm)).toHaveLength(1);
+  });
   it("records the version once migrate passed, so the dashboard stops offering what already runs", () => {
     const s = src();
     expect(s.indexOf('record_release_version "$VERSION"')).toBeGreaterThan(s.indexOf('dockify run --rm --no-deps migrate || { restore_files; die "migrations failed'));

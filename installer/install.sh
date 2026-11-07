@@ -57,8 +57,11 @@
 #                            --from-checkout), the container firewall rules, the one-time fixes an older
 #                            install needs, migrations first, then each service recreated and
 #                            waited for. With --control-image/--web-image (or a feed) it also moves
-#                            to those images. Takes --cf-token-file to add the dashboard's api rule
-#                            to a tunnel made before it existed. Nothing else in .env or secrets/
+#                            to those images; images from the feed also set DOCKIFY_RELEASE_FEED and
+#                            DOCKIFY_RELEASE_PUBKEY in .env to the feed and key that checked them, so
+#                            the dashboard's updates follow them. Takes --cf-token-file to add the
+#                            dashboard's api rule to a tunnel made before it existed. Nothing else in
+#                            .env or secrets/
 #                            changes, and the previous files are kept in upgrade-backups/, the last
 #                            three upgrades' worth.
 #
@@ -993,6 +996,13 @@ upgrade() {
   cp "$TMP/haproxy.cfg" "$DIR/socket-proxy/haproxy.cfg"
   env_set "$DIR/.env" DOCKIFY_COMPOSE_SHA256 "$(sha256sum "$DIR/docker-compose.yml" | cut -d' ' -f1)" || die "cannot pin the new docker-compose.yml in .env"
   [ -z "$VERSION" ] || env_set "$DIR/.env" DOCKIFY_VERSION "$VERSION"
+  # Images from the signed feed: the updater follows the feed and key they were checked against, so an
+  # install made without them (from a checkout, or with images given by hand) takes signed updates from
+  # here on, and one pinned to another key cannot refuse the release it now runs.
+  if [ -n "$VERSION" ]; then
+    { env_set "$DIR/.env" DOCKIFY_RELEASE_FEED "$FEED" && env_set "$DIR/.env" DOCKIFY_RELEASE_PUBKEY "$PUBKEY"; } \
+      || { restore_files; die "cannot record the release feed and key in .env; the previous files are back"; }
+  fi
   if [ -z "$(envget DOCKIFY_SERVER_IPV6)" ]; then
     V6="$(server_ipv6)"
     [ -z "$V6" ] || env_set "$DIR/.env" DOCKIFY_SERVER_IPV6 "$V6" || true
