@@ -13,7 +13,7 @@ import { toast } from "@/components/ui/toast";
 import { When } from "@/components/ui/when";
 import { report } from "@/lib/feedback";
 import type { VercelCheck, VercelIntegration, VercelProject, VercelWebhookState } from "@/lib/pages/integrations";
-import { Facts, FormKeys, Hint, IntegrationCard, ItemRow, ProviderDialog, TokenField, Unavailable, useProviderCard, useTokenForm } from "./card";
+import { Facts, FormKeys, Hint, IntegrationCard, ItemRow, ProviderDialog, TokenField, useProviderCard, useTokenForm } from "./card";
 import { ExternalLink } from "@/components/ui/external-link";
 import { clause, plural } from "@/lib/format";
 import { intFetch } from "./client";
@@ -29,7 +29,7 @@ import { VercelImportDialog, type ImportTarget } from "./vercel-import";
 
 const PERSONAL = "personal";
 
-function ConnectForm({ onDone, onCancel, preview }: { onDone: (v: VercelIntegration) => void; onCancel: () => void; preview: boolean }) {
+function ConnectForm({ onDone, onCancel, preview, current }: { onDone: (v: VercelIntegration) => void; onCancel: () => void; preview: boolean; current?: VercelIntegration | null }) {
   const { elevate } = useStepUp();
   const form = useTokenForm();
   const { token, busy, setBusy } = form;
@@ -43,7 +43,9 @@ function ConnectForm({ onDone, onCancel, preview }: { onDone: (v: VercelIntegrat
       setBusy(false);
       if (!r.ok) return void toast.error("Could not check the token", { description: r.error });
       setCheck(r.data);
-      setScope(r.data.teams[0]?.id ?? PERSONAL);
+      // Connecting again keeps the scope it had, so the links, webhook and mirror carry on as they were.
+      const keep = current ? (current.team ? r.data.teams.find((t) => t.id === current.team?.id)?.id : PERSONAL) : undefined;
+      setScope(keep ?? r.data.teams[0]?.id ?? PERSONAL);
       return;
     }
     const r = await elevate(() => intFetch<VercelIntegration>("/vercel", { method: "POST", body: { token: token.trim(), teamId: scope === PERSONAL ? null : scope } }), { what: "Connecting Vercel" });
@@ -56,8 +58,8 @@ function ConnectForm({ onDone, onCancel, preview }: { onDone: (v: VercelIntegrat
     <Dialog
       open
       onClose={onCancel}
-      title="Connect Vercel"
-      sub={check ? `Signed in as ${check.account.username}` : "Deployments, logs and moving projects"}
+      title={current ? "Connect Vercel again" : "Connect Vercel"}
+      sub={check ? `Signed in as ${check.account.username}` : current ? "A new token for the same account, nothing else changes" : "Deployments, logs and moving projects"}
       icon="vercel"
       size="sm"
       busy={busy}
@@ -152,7 +154,8 @@ function DeploymentSync({ value, onChange, now, preview }: { value: VercelIntegr
   return (
     <>
       <GroupHead label="Deployments" icon="deploy" />
-      {mirror?.error ? (
+      {/* A refused token is said once, at the top of the dialog, with its Connect again key. */}
+      {mirror?.error && !value.error ? (
         <Callout tone="warn" icon="alert">
           {clause(mirror.error)}.
         </Callout>
@@ -210,7 +213,8 @@ export function VercelCard({ value, onChange, targets, now, preview }: { value: 
   const { elevate } = useStepUp();
   const { open, setOpen, leaving, setLeaving, list: projects, setList: setProjects, load, openManage } = useProviderCard<VercelProject>(value !== null, "/vercel/projects");
   const [importing, setImporting] = useState<VercelProject | null>(null);
-
+  // A refused token is replaced in place: disconnecting would stop following deployments and drop the webhook.
+  const [renewing, setRenewing] = useState(false);
 
   const disconnect = async () => {
     const r = await elevate(() => intFetch<{ ok: true }>("/vercel", { method: "DELETE" }), { what: "Disconnecting Vercel" });
@@ -239,20 +243,35 @@ export function VercelCard({ value, onChange, targets, now, preview }: { value: 
         </button>
       </IntegrationCard>
 
-      {open && !value ? (
+      {(open && !value) || renewing ? (
         <ConnectForm
           preview={preview}
-          onCancel={() => setOpen(false)}
+          current={renewing ? value : null}
+          onCancel={() => (renewing ? setRenewing(false) : setOpen(false))}
           onDone={(v) => {
             onChange(v);
+            setRenewing(false);
             void load();
           }}
         />
       ) : null}
 
-      <ProviderDialog open={open && value !== null} onClose={() => setOpen(false)} onDisconnect={() => setLeaving(true)} title="Vercel" sub={scope} icon="vercel" error={value?.error}>
+      <ProviderDialog open={open && value !== null && !renewing} onClose={() => setOpen(false)} onDisconnect={() => setLeaving(true)} title="Vercel" sub={scope} icon="vercel">
         {value ? (
           <>
+            {value.error ? (
+              <Callout
+                tone="warn"
+                icon="alert"
+                action={
+                  <button type="button" className="btn btn-sm" onClick={() => setRenewing(true)}>
+                    Connect again
+                  </button>
+                }
+              >
+                {value.error}
+              </Callout>
+            ) : null}
             <Facts
               items={[
                 { label: "Account", value: value.account.name ? `${value.account.name} (${value.account.username})` : value.account.username },
@@ -264,7 +283,16 @@ export function VercelCard({ value, onChange, targets, now, preview }: { value: 
             <DeploymentSync value={value} onChange={onChange} now={now} preview={preview} />
             <GroupHead label="Projects" icon="layers" count={projects.state === "ready" ? projects.list.length : undefined} noun="project" />
             {projects.state === "error" ? (
-              <Unavailable icon="vercel" title="Vercel projects are unavailable" error={projects.error} onRetry={() => void load()} />
+              <Empty
+                icon="vercel"
+                title="Vercel projects are unavailable"
+                body={/[.!?]$/.test(projects.error.trim()) ? projects.error.trim() : `${clause(projects.error)}. Try again in a moment.`}
+                action={
+                  <button type="button" className="btn btn-sm" onClick={() => void load()}>
+                    Try again
+                  </button>
+                }
+              />
             ) : projects.state !== "ready" ? (
               <SkelRows rows={3} height={56} template="24px minmax(0,1fr) 176px" cols={[24, { w: "45%", lines: 2 }, 168]} label="Loading Vercel projects" />
             ) : !projects.list.length ? (

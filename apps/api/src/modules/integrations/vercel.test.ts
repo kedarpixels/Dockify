@@ -400,6 +400,24 @@ describe("tailRuntime", () => {
     fakeClients(async () => res(200), async () => streamOf([], 403));
     await expect(tailRuntime(db, ring, d, 10)).rejects.toMatchObject({ code: "VERCEL_TOKEN" });
   });
+
+  it("stops the moment the viewer leaves, so its read slot is free for the next view at once", async () => {
+    const { db } = await fakeDb();
+    // Vercel holds the connection and sends nothing, as it does for a quiet static site.
+    fakeClients(async () => res(200), async (r) => {
+      await new Promise<void>((ok) => r.signal?.addEventListener("abort", () => ok(), { once: true }));
+      throw new Error("aborted");
+    });
+    const { withLogReadSlot } = await import("../deployments/handlers.ts");
+    // A viewer who opens and leaves the Logs tab over and over never meets the two-read limit.
+    for (let i = 0; i < 6; i++) {
+      const left = new AbortController();
+      const read = withLogReadSlot("viewer", () => tailRuntime(db, ring, d, 10, left.signal));
+      setTimeout(() => left.abort(), 20);
+      await expect(read).rejects.toMatchObject({ code: "UPSTREAM" });
+    }
+    expect(await withLogReadSlot("viewer", async () => "free")).toBe("free");
+  });
 });
 
 describe("mapping a Vercel row", () => {

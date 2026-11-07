@@ -136,6 +136,92 @@ export const VercelImportResult = z.object({
   domainsSkipped: z.number(),
 });
 
+/**
+ * One Vercel deployment as an app that follows a Vercel project shows it, read live from Vercel.
+ * `deploymentId` is Dockify's mirrored row of it, when the mirror has one, so the page can link there.
+ */
+export const VercelDeploymentView = z.object({
+  id: z.string(),
+  /** Its own https address on Vercel. */
+  url: z.string().nullable(),
+  /** Vercel's inspector page, https on vercel.com. */
+  inspectorUrl: z.string().nullable(),
+  status: z.enum(["queued", "building", "ready", "failed", "cancelled"]),
+  target: z.enum(["production", "preview"]),
+  branch: z.string().nullable(),
+  commit: z.string().nullable(),
+  /** The commit message's first line. */
+  message: z.string().nullable(),
+  /** The commit on its Git host, https only. */
+  commitUrl: z.string().nullable(),
+  /** The Git login that wrote the commit, else the Vercel user that started it. */
+  author: z.string().nullable(),
+  createdAt: Iso,
+  readyAt: Iso.nullable(),
+  /** Build start to ready, as Vercel reports both; null while either is missing. */
+  durationMs: z.number().nullable(),
+  /** The hostnames Vercel assigned it: custom domains first, then its vercel.app names. */
+  aliases: z.array(z.string()),
+  deploymentId: z.string().nullable(),
+});
+/** A domain on the Vercel project. Read only: domains of a followed app are managed on Vercel. */
+export const VercelProjectDomain = z.object({
+  name: z.string(),
+  verified: z.boolean(),
+  /** Where it redirects to, when it is a redirect. */
+  redirect: z.string().nullable(),
+  redirectStatusCode: z.number().nullable(),
+  /** Set when the domain serves one branch's preview rather than production. */
+  gitBranch: z.string().nullable(),
+  createdAt: Iso.nullable(),
+});
+/** Links into the Vercel dashboard for this project, https on vercel.com. */
+export const VercelProjectLinks = z.object({ project: z.string(), deployments: z.string(), domains: z.string(), env: z.string(), settings: z.string() });
+/** What Vercel knows about the project an app follows, for its Overview and Domains tabs. */
+export const VercelProjectView = z.object({
+  id: z.string(),
+  name: z.string(),
+  framework: z.string().nullable(),
+  nodeVersion: z.string().nullable(),
+  rootDirectory: z.string().nullable(),
+  buildCommand: z.string().nullable(),
+  installCommand: z.string().nullable(),
+  outputDirectory: z.string().nullable(),
+  repo: z.object({ provider: z.enum(["github", "gitlab", "bitbucket"]), slug: z.string(), url: z.string().nullable(), productionBranch: z.string().nullable() }).nullable(),
+  links: VercelProjectLinks,
+  production: VercelDeploymentView.nullable(),
+  domains: z.array(VercelProjectDomain),
+  /** Why the domain list could not be read; the rest of the project still shows. */
+  domainsError: z.string().nullable(),
+  fetchedAt: Iso,
+});
+/**
+ * A Vercel project's environment variable. `value` is set only for a plain variable, as Vercel
+ * returns it without decrypting, and only to an admin; Dockify never asks Vercel to decrypt one.
+ */
+export const VercelEnvVar = z.object({
+  id: z.string(),
+  key: z.string(),
+  targets: z.array(VercelTarget),
+  /** plain, encrypted, sensitive or system, as Vercel names it. */
+  type: z.string(),
+  gitBranch: z.string().nullable(),
+  /** The comment on Vercel; for admins only. */
+  comment: z.string().nullable(),
+  updatedAt: Iso.nullable(),
+  value: z.string().nullable(),
+});
+export const VercelEnvList = z.object({
+  variables: z.array(VercelEnvVar),
+  /** Production variables Vercel holds back from this token. */
+  hiddenProductionCount: z.number(),
+  /** Whether plain values are included for this caller. */
+  values: z.boolean(),
+  /** The project's environment variables page on vercel.com. */
+  manageUrl: z.string(),
+  fetchedAt: Iso,
+});
+
 export const CloudflareIntegration = z.object({
   account: z.object({ id: z.string(), name: z.string() }),
   tokenHint: z.string(),

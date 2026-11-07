@@ -19,6 +19,7 @@ import { completeAppManifest, completeInstall, gitHandlers } from "./github/hand
 import { registryHandlers, registryView } from "./registries.ts";
 import { storageHandlers, storageView } from "./storage.ts";
 import { enqueueVercelSync, followOnly, VERCEL_WEBHOOK_MAX_BYTES, vercelHandlers, vercelView } from "./vercel.ts";
+import { vercelProjectHandlers } from "./vercel-project.ts";
 import { assertProjectScope } from "../../actor.ts";
 import { audit } from "../../audit.ts";
 import { requireSession, who } from "./deps.ts";
@@ -48,7 +49,7 @@ export const INTEGRATION_ENDPOINTS = [
   "integrations.summary",
   "integrations.vercel.connect", "integrations.vercel.delete", "integrations.vercel.projects", "integrations.vercel.import",
   "integrations.vercel.webhook.create", "integrations.vercel.webhook.delete", "integrations.vercel.sync",
-  "apps.vercel.logs", "apps.vercel.logs.stream",
+  "apps.vercel.logs", "apps.vercel.logs.stream", "apps.vercel.project", "apps.vercel.env",
   "integrations.cloudflare.connect", "integrations.cloudflare.delete", "integrations.cloudflare.zones", "integrations.cloudflare.zone",
   "integrations.cloudflare.domains", "integrations.cloudflare.lookup", "integrations.cloudflare.record",
   "settings.domain.get", "settings.domain.start", "settings.domain.check", "settings.domain.record", "settings.domain.switch", "settings.domain.cancel", "settings.domain.previous.delete",
@@ -63,6 +64,7 @@ export function createIntegrationHandlers(deps: IntegrationDeps = defaultDeps())
   return {
     ...gitHandlers(deps),
     ...vercelHandlers(deps),
+    ...vercelProjectHandlers(deps),
     ...cloudflareHandlers(deps),
     ...dashboardDomainHandlers(deps),
     ...registryHandlers(deps),

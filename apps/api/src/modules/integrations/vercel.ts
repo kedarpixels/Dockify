@@ -22,7 +22,7 @@ import { createReauthorizer } from "../../reauth.ts";
 import { enforce } from "../../actor.ts";
 import { POLICIES } from "../../policy.ts";
 import { enqueueTx } from "@dockify/db";
-import { retentionNote, streamRuntimeLog, tailRuntime } from "./vercel-logs.ts";
+import { retentionNote, streamRuntimeLog, tailRuntime, viewerLeft } from "./vercel-logs.ts";
 import { withLogReadSlot } from "../deployments/handlers.ts";
 import { IN_FLIGHT } from "../deployments/mapping.ts";
 import { enqueueEdge, usableHostname } from "../domains/handlers.ts";
@@ -79,12 +79,23 @@ export class VercelApi {
   }
 
   async call<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: unknown, team = true): Promise<T> {
-    const res = await this.http({
-      method,
-      url: this.url(path, team),
-      headers: { Authorization: `Bearer ${this.token}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    const send = () =>
+      this.http({
+        method,
+        url: this.url(path, team),
+        headers: { Authorization: `Bearer ${this.token}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    let res = await send();
+    // A read Vercel asks to slow down is tried once more after a short wait; a longer wait is the caller's answer.
+    if (res.status === 429 && method === "GET") {
+      const wait = vercelRetryAfter(res.headers);
+      if (wait <= INLINE_RETRY_S) {
+        await new Promise((r) => setTimeout(r, Math.max(250, wait * 1000)));
+        res = await send();
+      }
+    }
+    if (res.status === 429) throw vercelRateLimited(vercelRetryAfter(res.headers));
     if (res.status === 401 || res.status === 403) throw new HttpError(400, "Vercel refused this token", "VERCEL_TOKEN");
     if (res.status === 404) throw new HttpError(404, "Vercel could not find that", "NOT_FOUND");
     if (res.status < 200 || res.status >= 300) throw new HttpError(502, `Vercel returned ${res.status}`, "UPSTREAM");
@@ -162,6 +173,34 @@ export class VercelApi {
     if (res.status === 404) throw new HttpError(404, "Vercel could not find that", "NOT_FOUND");
     throw new HttpError(502, `Vercel returned ${res.status}`, "UPSTREAM");
   }
+}
+
+/** The longest wait a read sits out by itself before trying Vercel once more. */
+const INLINE_RETRY_S = 2;
+
+/**
+ * Seconds until Vercel takes this token's calls again: Retry-After when it sends one, else its
+ * X-RateLimit-Reset (epoch seconds). Bounded, and a minute when it says neither.
+ */
+export function vercelRetryAfter(headers: Record<string, string | string[] | undefined>, now = Date.now()): number {
+  const one = (h: string) => {
+    const v = headers[h];
+    return typeof v === "string" ? v.trim() : Array.isArray(v) ? (v[0]?.trim() ?? "") : "";
+  };
+  const ra = one("retry-after");
+  let s = /^\d+$/.test(ra) ? Number(ra) : ra && !Number.isNaN(Date.parse(ra)) ? Math.ceil((Date.parse(ra) - now) / 1000) : NaN;
+  if (!Number.isFinite(s)) {
+    const reset = one("x-ratelimit-reset");
+    s = /^\d+$/.test(reset) ? Math.ceil(Number(reset) - now / 1000) : NaN;
+  }
+  return Number.isFinite(s) ? Math.min(3600, Math.max(0, s)) : 60;
+}
+
+/** Vercel's 429, as Dockify answers it: a clear sentence and when to try again. */
+export function vercelRateLimited(retryAfter: number): HttpError {
+  const wait = Math.max(1, retryAfter);
+  const when = wait < 90 ? `${wait} second${wait === 1 ? "" : "s"}` : `${Math.ceil(wait / 60)} minutes`;
+  return new HttpError(429, `Vercel is limiting requests from this token. Try again in ${when}.`, "VERCEL_RATE_LIMITED", { retryAfter: wait });
 }
 
 export function normaliseTargets(t: string[] | string | undefined): VercelTarget[] {
@@ -251,6 +290,11 @@ export function webhookState(w: VercelWebhookRecord | null | undefined, linked: 
   return { state: "active" as const, projects: linked.filter((p) => covered.has(p)).length, missingProjects: linked.filter((p) => !covered.has(p)).length, registeredAt: w.registeredAt, reason: null };
 }
 
+/** What the card says once Vercel refuses the stored token. */
+export const TOKEN_DEAD = "Vercel no longer accepts the stored token. Connect again with a new token; your links and deployments stay.";
+/** The mirror's words for a refused token (worker/integrations/vercel-mirror.ts). */
+const tokenRefused = (e: string | null | undefined) => typeof e === "string" && /refused the stored token/i.test(e);
+
 export async function vercelView(db: Tx) {
   const row = await findIntegration(db, "vercel");
   if (!row || row.status === "disconnected") return null;
@@ -261,7 +305,8 @@ export async function vercelView(db: Tx) {
     team: c.team ?? null,
     tokenHint: await hintOfSecret(db, row.secretId),
     connectedAt: row.createdAt.toISOString(),
-    error: row.error,
+    // The mirror is what notices first when Vercel stops taking the token; the card then asks for a new one.
+    error: row.error ?? (tokenRefused(c.mirror?.error) ? TOKEN_DEAD : null),
     webhook: webhookState(c.webhook, linked),
     mirror: { syncedAt: c.mirror?.syncedAt ?? null, error: c.mirror?.error ?? null, projects: linked.length },
   };
@@ -363,13 +408,13 @@ async function currentRetention(db: Tx) {
 }
 
 /** apps.vercel.logs, and apps.logs for an app Vercel hosts. */
-export async function vercelRuntimeTail(db: Db, ring: Keyring, appId: string, deployment: string | undefined, tail: number) {
+export async function vercelRuntimeTail(db: Db, ring: Keyring, appId: string, deployment: string | undefined, tail: number, signal?: AbortSignal) {
   const { app, dep } = await logTarget(db, appId, deployment);
   const fetchedAt = new Date().toISOString();
   const retention = await currentRetention(db);
   const projectId = app.vercelProjectId;
   if (!dep?.externalId || !projectId) return { lines: [], nextCursor: null, deployment: dep?.externalId ? logDeployment(dep) : null, retention, fetchedAt };
-  const lines = await tailRuntime(db, ring, { appId: app.id, externalId: dep.externalId, vercelProjectId: projectId, projectId: app.environment.projectId }, tail);
+  const lines = await tailRuntime(db, ring, { appId: app.id, externalId: dep.externalId, vercelProjectId: projectId, projectId: app.environment.projectId }, tail, signal);
   return { lines, nextCursor: null, deployment: logDeployment(dep), retention, fetchedAt };
 }
 
@@ -430,7 +475,9 @@ export function vercelHandlers(deps: IntegrationDeps): Handlers {
         // cannot be reached with this token, so the owner removes it on Vercel (the docs say so).
         const before = existing ? configOf<VercelConfig>(existing) : null;
         const sameScope = (before?.team?.id ?? null) === (team?.id ?? null);
-        const merged = before && sameScope ? asJson({ ...before, username: account.username, name: account.name, team: team ?? null }) : config;
+        // A new token answers the old one's refusal: the mirror's error goes with it, so the card stops asking.
+        const mirror = before?.mirror ? { ...before.mirror, error: tokenRefused(before.mirror.error) ? null : (before.mirror.error ?? null) } : before?.mirror;
+        const merged = before && sameScope ? asJson({ ...before, ...(mirror ? { mirror } : {}), username: account.username, name: account.name, team: team ?? null }) : config;
         if (existing && !sameScope && existing.secondSecretId) {
           await tx.integration.update({ where: { id: existing.id }, data: { secondSecretId: null } });
           await tx.secret.delete({ where: { id: existing.secondSecretId } }).catch(() => undefined);
@@ -541,11 +588,12 @@ export function vercelHandlers(deps: IntegrationDeps): Handlers {
       return undefined;
     },
 
-    "apps.vercel.logs": async ({ params, query, actor, ctx }) => {
+    "apps.vercel.logs": async ({ params, query, actor, reply, ctx }) => {
       const a = requireActor(actor);
+      const left = viewerLeft(reply);
       const { app } = await logTarget(ctx.db, params.id, query.deployment);
       assertProjectScope(a, app.environment.projectId);
-      return withLogReadSlot(a.userId, () => vercelRuntimeTail(ctx.db, ctx.ring, params.id, query.deployment, query.tail ?? 256));
+      return withLogReadSlot(a.userId, () => vercelRuntimeTail(ctx.db, ctx.ring, params.id, query.deployment, query.tail ?? 256, left));
     },
 
     "apps.vercel.logs.stream": async ({ params, query, actor, req, reply, ctx }) => {
@@ -570,7 +618,12 @@ export function vercelHandlers(deps: IntegrationDeps): Handlers {
       for (let i = 0; i < projects.length; i += 5) {
         const slice = projects.slice(i, i + 5);
         out.push(...(await Promise.all(slice.map(async (p) => {
-          const [envs, domains] = await Promise.all([api.envs(p.id).catch(() => []), api.domains(p.id).catch(() => [])]);
+          // One project's read failing leaves its lists empty; Vercel slowing the token down stops them all.
+          const soft = (e: unknown): never[] => {
+            if (e instanceof HttpError && (e.code === "VERCEL_RATE_LIMITED" || e.code === "VERCEL_TOKEN")) throw e;
+            return [];
+          };
+          const [envs, domains] = await Promise.all([api.envs(p.id).catch(soft), api.domains(p.id).catch(soft)]);
           return {
             id: p.id,
             name: p.name,

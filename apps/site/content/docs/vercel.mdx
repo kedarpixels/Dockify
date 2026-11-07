@@ -34,6 +34,14 @@ To see a project's deployments and logs here while it stays exactly as it is on 
 
 A followed app gets the deployment list, build and runtime logs, and shows what Vercel is serving. Dockify only reads Vercel for it: it sends no variables, asks for no deploys and changes no project setting. Deploy, Cancel and the variable push are not offered, and the API and worker refuse them too. A push to the repository does not start a build on your server. The app does not need a repository in Dockify.
 
+Its tabs read the Vercel project live, and each has a **Manage on Vercel** key for anything you change:
+
+- **Overview**: what production serves (its domains, commit, branch, author, when it was built and how long it took), the project's framework, Node.js version, root directory and Git repository, and the latest previews.
+- **Variables**: the project's environment variables on Vercel, with the environments each applies to, its branch, its comment and when it changed. Dockify never asks Vercel to decrypt one. An admin sees the value of a **plain** variable as Vercel lists it; encrypted and sensitive values are never shown, and a viewer sees the keys only.
+- **Domains**: the project's domains on Vercel, whether Vercel has verified each, and which redirect or serve one branch. The **Domains** page does not take a domain for the app, since Vercel serves it.
+
+Dockify keeps each read for a minute, so moving between tabs does not ask Vercel again. If Vercel limits your token, the tab says when to try again.
+
 The optional [webhook](#how-they-stay-current) is the one thing Dockify can add to your Vercel team, and only when you press **Register**. Without it Dockify polls.
 
 ## Vercel as a deploy target
@@ -108,7 +116,7 @@ With polling only, a notice can lag by up to 2 minutes.
 
 Nothing of the app runs on your server, so its page leaves out what would do nothing:
 
-- **Metrics** and the **Domains** tab. Its domains stay on Vercel, and the API refuses a new one for it. Domains you imported earlier stay on the **Domains** page and apply if the app moves to your server.
+- **Metrics**, **Jobs** and the **Terminal**. Its **Domains** tab lists the Vercel project's domains instead, read only; the API refuses a new Dockify domain for it. Domains you imported earlier stay on the **Domains** page and apply if the app moves to your server.
 - In **Settings**: the Dockerfile path, start command and port, **Health check**, **Resource limits** and **Release command**. What you saved is kept for a move back. The **Branch** stays for an app with a repository: a deploy target asks Vercel to build it, and it decides which previews show on which app when several link one project.
 - **Pull request previews.** Vercel builds its own, so Dockify never builds a second copy. Preview settings name the app and do not offer it. In a project with server apps too, those still get previews.
 
@@ -118,6 +126,7 @@ Nothing of the app runs on your server, so its page leaves out what would do not
 - **Some domains were not imported.** They are `vercel.app` names, redirects, already in use, not allowed on an app, or there was no single app on this server to attach them to. Add them by hand on the Domains page.
 - **The app on Dockify fails at build.** Vercel injects some variables itself, such as `VERCEL_URL`. Set the ones your app reads by hand.
 - **No deployments show on a linked app.** Open the Vercel card: it says when Dockify last read Vercel, and what went wrong. **Sync now** reads again.
-- **Vercel refused the stored token.** Disconnect and connect again with a new token. Deployments already listed stay.
+- **Vercel refused the stored token.** The Vercel card says so. Press **Connect again** and paste a new token for the same scope: links, the webhook and deployments already listed stay.
+- **Vercel is limiting requests.** Vercel caps how often a token may call it. Dockify waits a moment and tries once, then says when to try again.
 - **You connected another team.** Its token cannot reach the old team's webhook, so remove that one on Vercel by hand.
 - **Disconnecting Vercel.** Dockify removes its webhook first, then forgets the token. Deployments already listed stay, and any still building are marked cancelled here, since nothing follows them any more. They keep running on Vercel.

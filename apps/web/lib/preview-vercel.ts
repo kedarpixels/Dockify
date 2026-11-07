@@ -1,5 +1,6 @@
 import "server-only";
 import type { DeploymentStep } from "./pages/deployments";
+import type { VercelEnvList, VercelProjectView } from "./pages/project-detail";
 import type { RecentDeployment } from "./types";
 
 /*
@@ -35,6 +36,77 @@ export function previewVercelRows<T extends RecentDeployment>(rows: T[]): T[] {
       },
     };
   });
+}
+
+/**
+ * The Vercel project that app follows, as the API reads it from Vercel. Production is the newest
+ * ready production row of the app's own list, so the Overview and the Deployments tab agree.
+ */
+const COMMIT = "4f9c2a1e7b3d5f8a0c6e2b4d9f1a3c5e7b9d0f2a";
+
+export function previewVercelProject(rows: RecentDeployment[]): VercelProjectView {
+  const base = "https://vercel.com/acme-labs/inkwell-web";
+  const prod = rows.find((d) => d.status === "ready" && d.external?.target === "production");
+  const at = prod ? Date.parse(prod.createdAt) : Date.now() - 3 * 3_600_000;
+  const id = prod?.external?.id ?? "dpl_4kq2m8vtx";
+  return {
+    id: PREVIEW_VERCEL_PROJECT,
+    name: "inkwell-web",
+    framework: "nextjs",
+    nodeVersion: "22.x",
+    rootDirectory: "apps/web",
+    buildCommand: "pnpm build",
+    installCommand: null,
+    outputDirectory: null,
+    repo: { provider: "github", slug: "acme-labs/inkwell", url: "https://github.com/acme-labs/inkwell", productionBranch: "main" },
+    links: { project: base, deployments: `${base}/deployments`, domains: `${base}/settings/domains`, env: `${base}/settings/environment-variables`, settings: `${base}/settings` },
+    production: {
+      id,
+      url: prod?.external?.url ?? null,
+      inspectorUrl: prod?.external?.inspectorUrl ?? `${base}/${id.replace(/^dpl_/, "")}`,
+      status: "ready",
+      target: "production",
+      branch: prod?.branch ?? "main",
+      // With no ready production row in the fixture's window, a fictional one stands in for it.
+      commit: prod ? prod.commit : COMMIT,
+      message: prod ? prod.message : "Cache the raffle results page for a minute",
+      commitUrl: prod && !prod.commit ? null : `https://github.com/acme-labs/inkwell/commit/${prod?.commit ?? COMMIT}`,
+      author: prod?.author?.login ?? "rowanpike",
+      createdAt: new Date(at).toISOString(),
+      readyAt: new Date(at + 96_000).toISOString(),
+      durationMs: 94_800,
+      aliases: ["inkwell.example", "www.inkwell.example", "inkwell-web.vercel.app", "inkwell-web-git-main-acme-labs.vercel.app"],
+      deploymentId: prod?.id ?? null,
+    },
+    domains: [
+      { name: "inkwell.example", verified: true, redirect: null, redirectStatusCode: null, gitBranch: null, createdAt: "2026-09-14T10:12:00.000Z" },
+      { name: "www.inkwell.example", verified: true, redirect: "inkwell.example", redirectStatusCode: 308, gitBranch: null, createdAt: "2026-09-14T10:12:00.000Z" },
+      { name: "beta.inkwell.example", verified: false, redirect: null, redirectStatusCode: null, gitBranch: "beta", createdAt: "2026-11-02T16:40:00.000Z" },
+      { name: "inkwell-web.vercel.app", verified: true, redirect: null, redirectStatusCode: null, gitBranch: null, createdAt: "2026-09-14T09:58:00.000Z" },
+    ],
+    domainsError: null,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+/** Its environment variables as an admin reads them: plain values shown, the rest never. */
+export function previewVercelEnv(): VercelEnvList {
+  const day = 86_400_000;
+  const ago = (d: number) => new Date(Date.now() - d * day).toISOString();
+  return {
+    values: true,
+    hiddenProductionCount: 0,
+    manageUrl: "https://vercel.com/acme-labs/inkwell-web/settings/environment-variables",
+    fetchedAt: new Date().toISOString(),
+    variables: [
+      { id: "env_1", key: "DATABASE_URL", targets: ["production", "preview"], type: "encrypted", gitBranch: null, comment: null, updatedAt: ago(12), value: null },
+      { id: "env_2", key: "NEXT_PUBLIC_SITE_URL", targets: ["production"], type: "plain", gitBranch: null, comment: "Canonical address for links and the sitemap", updatedAt: ago(40), value: "https://inkwell.example" },
+      { id: "env_3", key: "NEXT_PUBLIC_SITE_URL", targets: ["preview"], type: "plain", gitBranch: "beta", comment: null, updatedAt: ago(3), value: "https://beta.inkwell.example" },
+      { id: "env_4", key: "REDIS_URL", targets: ["production", "preview"], type: "encrypted", gitBranch: null, comment: null, updatedAt: ago(12), value: null },
+      { id: "env_5", key: "SESSION_SECRET", targets: ["production"], type: "sensitive", gitBranch: null, comment: "Rotated each quarter", updatedAt: ago(21), value: null },
+      { id: "env_6", key: "NEXT_PUBLIC_ANALYTICS_ID", targets: ["production", "preview", "development"], type: "plain", gitBranch: null, comment: null, updatedAt: ago(64), value: "ink-web-3f9a" },
+    ],
+  };
 }
 
 export function previewVercelSteps(d: RecentDeployment, now: Date): DeploymentStep[] {
