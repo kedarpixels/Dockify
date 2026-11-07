@@ -8,3 +8,4 @@ Dockerfile* text eol=lf
 packages/db/prisma/migrations/** text eol=lf
 # Migration checksums are byte exact.
 *.sql text eol=lf
+*.cfg text eol=lf

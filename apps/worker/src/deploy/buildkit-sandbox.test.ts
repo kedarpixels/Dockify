@@ -35,7 +35,9 @@ describe("buildkit daemon sandbox", () => {
 
   it("keeps the options rootless BuildKit needs to run its sandbox", async () => {
     const svc = await buildkitService();
-    for (const opt of ["seccomp=unconfined", "apparmor=unconfined", "systempaths=unconfined"]) expect(svc).toContain(opt);
+    // AppArmor: unconfined, or the installer's dockify-buildkit profile (unconfined plus userns) where the
+    // kernel restricts user namespaces (installer-apparmor.test.ts in the api).
+    for (const opt of ["seccomp=unconfined", "apparmor=${DOCKIFY_BUILDKIT_APPARMOR:-unconfined}", "systempaths=unconfined"]) expect(svc).toContain(opt);
     expect(svc).toMatch(/image: moby\/buildkit:[^\s@]*-rootless@sha256:[a-f0-9]{64}/);
   });
 

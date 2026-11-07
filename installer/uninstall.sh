@@ -13,7 +13,8 @@
 #   1. a backup of the master key, secrets/, .env and release.env in /root/dockify-backup-<ts>/
 #   2. the Dockify stack (compose project "dockify"), then every dockify.managed=true container
 #   3. dockify-firewall.service, /usr/local/sbin/dockify-firewall and its live iptables rules
-#   4. the `dockify` wrapper in /usr/local/bin and /etc/apt/apt.conf.d/52dockify-docker
+#   4. the `dockify` wrapper in /usr/local/bin, /etc/apt/apt.conf.d/52dockify-docker and the AppArmor
+#      profile /etc/apparmor.d/dockify-buildkit (Ubuntu 24.04), unloaded first
 #   5. tunnel mode: the Cloudflare tunnel dockify-<host>-<id> and every CNAME pointing at it,
 #      through the Cloudflare API when a token is available, else it prints what to delete by hand
 #   6. with --purge only: every Dockify volume, network, built image and Dockify's own images
@@ -55,6 +56,7 @@ W_WRAPPER="$ROOT/usr/local/bin/dockify"
 W_FWBIN="$ROOT/usr/local/sbin/dockify-firewall"
 W_UNIT="$ROOT/etc/systemd/system/dockify-firewall.service"
 W_APT="$ROOT/etc/apt/apt.conf.d/52dockify-docker"
+W_AA="$ROOT/etc/apparmor.d/dockify-buildkit"
 DAEMON_JSON="$ROOT/etc/docker/daemon.json"
 BACKUP_PARENT="$ROOT/root"
 PROJECT=dockify
@@ -155,6 +157,7 @@ fi
 item "$(exists "$W_UNIT" "$W_FWBIN")" "dockify-firewall.service, /usr/local/sbin/dockify-firewall and their iptables rules"
 item "$(exists "$W_WRAPPER")" "/usr/local/bin/dockify"
 item "$(exists "$W_APT")" "/etc/apt/apt.conf.d/52dockify-docker"
+item "$(exists "$W_AA")" "the AppArmor profile /etc/apparmor.d/dockify-buildkit"
 if [ -n "$CF_TUNNEL" ]; then
   item 1 "Cloudflare tunnel $CF_TUNNEL and the DNS records pointing at $CF_TUNNEL.cfargotunnel.com"
   if [ -n "$(cf_token_source)" ]; then note "    using the Cloudflare token from $(cf_token_source)"
@@ -265,9 +268,13 @@ drop_rules
 
 # ------------------------------------------------------------------ 4. wrapper and apt rule
 
-say "Removing the dockify command and the apt rule"
+say "Removing the dockify command, the apt rule and the AppArmor profile"
 removed=0
-for f in "$W_WRAPPER" "$W_APT"; do
+# The BuildKit container that used the profile is gone with the stack, so it can be unloaded.
+if [ -e "$W_AA" ] && [ -z "$ROOT" ] && command -v apparmor_parser >/dev/null 2>&1; then
+  apparmor_parser -R "$W_AA" >/dev/null 2>&1 || true
+fi
+for f in "$W_WRAPPER" "$W_APT" "$W_AA"; do
   if [ -e "$f" ] || [ -L "$f" ]; then try "$f" rm -f "$f"; removed=1; fi
 done
 if [ "$removed" = 1 ]; then note "removed"; else note "already gone"; fi
@@ -579,7 +586,7 @@ on_exit() {
   if [ "$STARTED" = 1 ] && [ "$FINISHED" = 0 ]; then
     printf '\n\033[31mStopped before finishing.\033[0m Still on this server, as far as it got:\n' >&2
     [ -e "$DIR" ] && printf '  %s\n' "$DIR" >&2
-    for f in "$W_WRAPPER" "$W_UNIT" "$W_FWBIN" "$W_APT"; do [ ! -e "$f" ] || printf '  %s\n' "$f" >&2; done
+    for f in "$W_WRAPPER" "$W_UNIT" "$W_FWBIN" "$W_APT" "$W_AA"; do [ ! -e "$f" ] || printf '  %s\n' "$f" >&2; done
     if [ "$DOCKER" = 1 ]; then
       printf '  %s container(s) labelled dockify.managed=true\n' "$(containers | wc -l | tr -d ' ')" >&2
     fi

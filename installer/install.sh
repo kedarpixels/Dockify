@@ -18,7 +18,9 @@
 #   4. refuses a runc or containerd with known container-escape bugs
 #   5. a DOCKER-USER rule that drops container traffic to cloud metadata addresses, and an INPUT
 #      rule that drops tenant bridges (dk-*) reaching the host, except the control plane's own
-#      deploy bridge on 80 and 443 only, kept across reboots by systemd
+#      deploy bridge on 80 and 443 only, kept across reboots by systemd. Where the kernel restricts
+#      user namespaces (Ubuntu 24.04), an AppArmor profile so rootless BuildKit can create its own
+#      (dockify-buildkit, for that container only)
 #   6. the signed release: the static feed (<feed>/releases/stable.json), its minisign signature
 #      checked with openssl against the pinned key before it is parsed, images by per-architecture digest
 #   7. ingress: direct mode, or a NEW uniquely named Cloudflare tunnel (never an existing one)
@@ -728,6 +730,49 @@ widen_address_pools() {
   warn "Docker did not start with the widened address pools, so its previous settings are back"
 }
 
+# Rootless BuildKit starts in a user namespace of its own. Ubuntu 23.10 and later (24.04 included) stop
+# unconfined processes from creating one (kernel.apparmor_restrict_unprivileged_userns=1), and the
+# daemon then restarts for ever with "fork/exec /proc/self/exe: permission denied". This profile is
+# unconfined like before, plus userns, for the BuildKit container alone: the host keeps its restriction.
+# Elsewhere (22.04, or the restriction off) the container stays plain unconfined, as it always was.
+BUILDKIT_APPARMOR_PROFILE=dockify-buildkit
+APPARMOR_USERNS_SYSCTL="${APPARMOR_USERNS_SYSCTL:-/proc/sys/kernel/apparmor_restrict_unprivileged_userns}"
+APPARMOR_DIR="${APPARMOR_DIR:-/etc/apparmor.d}"
+
+render_buildkit_apparmor() {
+  cat <<EOF
+# Written by the Dockify installer: rootless BuildKit's user namespace (docker-compose.yml, buildkit).
+abi <abi/4.0>,
+include <tunables/global>
+
+profile $BUILDKIT_APPARMOR_PROFILE flags=(unconfined) {
+  userns,
+}
+EOF
+}
+
+# Prints the AppArmor setting for the buildkit service (DOCKIFY_BUILDKIT_APPARMOR in .env): the
+# profile above, loaded now and from $APPARMOR_DIR at every boot, or "unconfined" where none is needed.
+buildkit_apparmor() {
+  if [ ! -r "$APPARMOR_USERNS_SYSCTL" ] || [ "$(cat "$APPARMOR_USERNS_SYSCTL" 2>/dev/null)" != 1 ]; then
+    echo unconfined
+    return 0
+  fi
+  if [ "$DRY" = 1 ]; then
+    note "[dry-run] would load the AppArmor profile $BUILDKIT_APPARMOR_PROFILE so rootless BuildKit may create its user namespace" >&2
+    echo "$BUILDKIT_APPARMOR_PROFILE"
+    return 0
+  fi
+  command -v apparmor_parser >/dev/null 2>&1 || die "this kernel restricts user namespaces (kernel.apparmor_restrict_unprivileged_userns=1), so BuildKit needs an AppArmor profile, and apparmor_parser is missing: apt-get install apparmor, then run this again"
+  install -d -m 0755 "$APPARMOR_DIR"
+  render_buildkit_apparmor > "$APPARMOR_DIR/$BUILDKIT_APPARMOR_PROFILE.new"
+  chmod 0644 "$APPARMOR_DIR/$BUILDKIT_APPARMOR_PROFILE.new"
+  mv "$APPARMOR_DIR/$BUILDKIT_APPARMOR_PROFILE.new" "$APPARMOR_DIR/$BUILDKIT_APPARMOR_PROFILE"
+  apparmor_parser -r -W "$APPARMOR_DIR/$BUILDKIT_APPARMOR_PROFILE" >/dev/null \
+    || die "AppArmor refused the profile $APPARMOR_DIR/$BUILDKIT_APPARMOR_PROFILE that lets rootless BuildKit create its user namespace"
+  echo "$BUILDKIT_APPARMOR_PROFILE"
+}
+
 # The signed release: the static feed's manifest, its signature checked before jq reads a byte of
 # it. Sets VERSION, COMPOSE_SHA and PROXY_CFG_SHA, and the images unless they were given.
 resolve_release() {
@@ -936,6 +981,9 @@ upgrade() {
 
   install_firewall
   widen_address_pools
+  # Installs from before the profile existed run on Ubuntu 24.04 with BuildKit restarting for ever.
+  BUILDKIT_AA="$(buildkit_apparmor)" || exit 1
+  env_set "$DIR/.env" DOCKIFY_BUILDKIT_APPARMOR "$BUILDKIT_AA" || die "cannot set DOCKIFY_BUILDKIT_APPARMOR in .env"
   apply_layout dir "$DIR"
   make_route_folder
   # Empty until the owner sets email up in Settings: the row, not this file, is what sends.
@@ -1292,6 +1340,8 @@ fi
 
 install_firewall
 widen_address_pools
+BUILDKIT_AA="$(buildkit_apparmor)"
+[ "$BUILDKIT_AA" = unconfined ] || note "AppArmor profile $BUILDKIT_AA loaded: this kernel restricts user namespaces, and rootless BuildKit needs one"
 
 # ------------------------------------------------------------------ 6. signed release
 
@@ -1419,6 +1469,7 @@ PUBLIC_IP6="$(server_ipv6)"
   [ -z "$HN" ] || echo "DOCKIFY_HOST_NAME=$HN"
   echo "DOCKIFY_DOCKER_VERSION=$(docker version --format '{{.Server.Version}}')"
   echo "DOCKIFY_PUBLIC_IP=${PUBLIC_IP:-}"
+  echo "DOCKIFY_BUILDKIT_APPARMOR=$BUILDKIT_AA"
   # The A record target for direct mode; only an IPv4 address is accepted by the api and worker.
   if printf '%s' "${PUBLIC_IP:-}" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then echo "DOCKIFY_SERVER_IPV4=$PUBLIC_IP"; fi
   # The AAAA target, when the server has a global IPv6 address.

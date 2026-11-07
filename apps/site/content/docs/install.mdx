@@ -51,7 +51,7 @@ curl -fsSL https://dockify.sh/install.sh | sh -s -- --dry-run
 2. **Host hardening.** Turns on unattended security upgrades, including Docker's own packages so runc and containerd fixes land on their own. Sets up `ufw` to allow SSH, plus 80 and 443 in direct mode.
 3. **Docker.** Installs Docker Engine from Docker's signed apt repository, after checking the key fingerprint.
 4. **Runtime check.** Refuses a runc or containerd version with known container escape bugs. Pass `--allow-vulnerable-runtime` only if you must, and it will warn instead.
-5. **Network guards.** Adds a rule that drops container traffic to cloud metadata addresses, and one that stops tenant networks (bridges named `dk-*`) from reaching the host. Both survive reboots.
+5. **Network guards.** Adds a rule that drops container traffic to cloud metadata addresses, and one that stops tenant networks (bridges named `dk-*`) from reaching the host. Both survive reboots. On Ubuntu 24.04, whose kernel restricts user namespaces, it also loads a small AppArmor profile, `dockify-buildkit`, that lets the BuildKit container alone create the one it builds in.
 6. **Signed release.** Downloads the release manifest, verifies its minisign signature against the pinned public key, and pins every image by digest.
 7. **Ingress.** In direct mode, prepares Traefik for Let's Encrypt. In tunnel mode, creates a **new**, uniquely named Cloudflare tunnel and the DNS record for your hostname. It never reuses or edits an existing tunnel.
 8. **Secrets and start.** Writes `.env`, `release/release.env` and `secrets/` under `/opt/dockify` with generated values, then starts the stack.

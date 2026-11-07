@@ -358,7 +358,9 @@ services:
     # A named bridge, so the host firewall's dk-+ rules apply to RUN steps, which share the daemon's network.
     networks: [tenant-builds]
     # Rootless BuildKit needs its own user namespace; it runs as uid 1000 with no added capability.
-    security_opt: ["seccomp=unconfined", "apparmor=unconfined", "systempaths=unconfined"]
+    # Where the kernel restricts user namespaces (Ubuntu 24.04), the installer loads the profile
+    # dockify-buildkit, unconfined plus userns, and names it in .env; elsewhere it is plain unconfined.
+    security_opt: ["seccomp=unconfined", "apparmor=${DOCKIFY_BUILDKIT_APPARMOR:-unconfined}", "systempaths=unconfined"]
     volumes:
       - dockify-buildkit:/home/user/.local/share/buildkit
       - ./buildkit:/run/buildkit
