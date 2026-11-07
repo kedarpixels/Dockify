@@ -184,9 +184,10 @@ describe("make-manifest refuses a bad release", () => {
     expect(checkNotes(notesFor("1.0.0", "2026-11-03"), "v1.0.0", "2026-11-03")).toContain("### Fixed");
   });
 
-  it("keeps the committed 1.0.0 notes unpublishable until they are dated", () => {
+  it("keeps the committed 1.0.0 notes dated and publishable", () => {
     const text = readFileSync(join(ROOT, "docs", "releases", "1.0.0.md"), "utf8");
-    expect(parseNotesHeading(text)).toMatchObject({ version: "1.0.0", unreleased: true });
+    expect(parseNotesHeading(text)).toMatchObject({ version: "1.0.0", date: "2026-11-07", unreleased: false });
+    expect(checkNotes(text, "1.0.0", "2026-11-07")).toContain("### Added");
   });
 
   it("keeps a prerelease out of stable", () => {

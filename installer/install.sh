@@ -77,8 +77,8 @@ umask 077
 # the release workflow refuses to publish when they differ. An empty key means: pass
 # --release-pubkey or --control-image/--web-image. The feed is static files only: the raw
 # `releases` branch of the repository, or the same bytes mirrored at https://dockify.sh.
-DOCKIFY_DEFAULT_FEED=""
-DOCKIFY_DEFAULT_PUBKEY=""
+DOCKIFY_DEFAULT_FEED="https://raw.githubusercontent.com/kedarpixels/Dockify/releases"
+DOCKIFY_DEFAULT_PUBKEY="RWQMt8NepFW/8+8stTUCxZiJZRx6me6P7D9/KZOPpQOy5txCetMlolRT"
 DOCKER_GPG_FINGERPRINT="9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
 CF_API="https://api.cloudflare.com/client/v4"
 

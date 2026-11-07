@@ -1,1 +1,2 @@
-untrusted comment: Dockify release signing key. NOT SET: generate it in the key ceremony (docs/RELEASING.md), then replace this file with the minisign.pub it prints.
+untrusted comment: minisign public key F3BF55A45EC3B70C
+RWQMt8NepFW/8+8stTUCxZiJZRx6me6P7D9/KZOPpQOy5txCetMlolRT
