@@ -286,12 +286,29 @@ export function composeToSpecs(doc: unknown): ComposeResult {
   return refusals.length ? { specs: [], refusals, warnings } : { specs, refusals, warnings };
 }
 
+const MAX_FLOW_DEPTH = 64;
+
+/** The deepest run of open `[` and `{` in the text. */
+function flowDepth(text: string): number {
+  let depth = 0;
+  let max = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 91 || c === 123) max = Math.max(max, ++depth);
+    else if ((c === 93 || c === 125) && depth > 0) depth--;
+  }
+  return max;
+}
+
 /**
  * Parses Compose text, YAML or JSON (JSON is YAML). Anchors are capped so an alias bomb cannot
  * expand, duplicate keys are refused, and only the core schema is used (no custom tags).
  */
 export function parseComposeText(text: string): ComposeResult {
   if (text.length > 256 * 1024) return { specs: [], refusals: [{ field: "compose", reason: "The file is larger than 256 KB" }], warnings: [] };
+  // Deep flow nesting overflows the parser's stack on Linux and kills the process, so it is
+  // refused before parsing. Brackets inside quotes count too: no real Compose file nests this deep.
+  if (flowDepth(text) > MAX_FLOW_DEPTH) return { specs: [], refusals: [{ field: "compose", reason: `Not a valid Compose file: nested more than ${MAX_FLOW_DEPTH} levels` }], warnings: [] };
   let doc: unknown;
   try {
     doc = parseYaml(text, { schema: "core", uniqueKeys: true, maxAliasCount: 100, prettyErrors: false });

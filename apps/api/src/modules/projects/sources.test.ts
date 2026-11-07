@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { projects as P } from "@dockify/contracts";
 import { appColumns, checkSpec, dockerVolumeName, STORAGE_UNAVAILABLE, type AppSpec } from "./app-source.ts";
-import { parse as parseYaml, YAMLParseError } from "yaml";
 import { composeToSpecs, parseComposeText } from "./compose.ts";
 import { registryHost as registryHostOf } from "@dockify/contracts";
 import { isBlockedHost } from "./host-rule.ts";
@@ -148,10 +147,14 @@ describe("compose import", () => {
     expect(composeToSpecs({ services: { Web: { image: "nginx:1.27" }, web: { image: "nginx:1.27" } } }).refusals[0]?.reason).toMatch(/Two services/);
   });
 
-  it("a deeply nested file is a parse error from a yaml with GHSA-48c2-rrv3-qjmp fixed, and a refusal here", () => {
-    const deep = `${"[".repeat(100_000)}${"]".repeat(100_000)}`;
-    expect(() => parseYaml(deep)).toThrow(YAMLParseError);
-    expect(parseComposeText(deep).refusals[0]?.field).toBe("compose");
+  it("refuses a deeply nested file before the parser sees it", () => {
+    // The parser overflows its stack on this on Linux, so it must never be handed it.
+    for (const deep of [`${"[".repeat(100_000)}${"]".repeat(100_000)}`, `${"{a: ".repeat(65)}1${"}".repeat(65)}`]) {
+      const r = parseComposeText(deep);
+      expect(r.specs).toEqual([]);
+      expect(r.refusals[0]).toMatchObject({ field: "compose", reason: expect.stringMatching(/nested more than 64/) });
+    }
+    expect(parseComposeText(`services:\n  web:\n    image: nginx:1.27\n    environment: ${"[".repeat(3)}${"]".repeat(3)}\n`).refusals[0]?.reason ?? "").not.toMatch(/nested/);
   });
 
   it("reads JSON and YAML text, and refuses broken, duplicate-key or alias-bomb YAML", () => {
