@@ -130,7 +130,7 @@ export const endpoints = {
   "statusPage.get": ep({ method: "GET", path: `${V1}/projects/:slug/status-page`, params: P.SlugParams, response: P.StatusPageState }),
   "statusPage.patch": ep({ method: "PATCH", path: `${V1}/projects/:slug/status-page`, params: P.SlugParams, body: P.StatusPagePatch, response: P.StatusPageState }),
   "projects.icon.get": ep({ method: "GET", path: `${V1}/projects/:slug/icon`, params: Ic.ProjectIconParams, query: Ic.IconQuery, kind: "file" }),
-  "projects.icon.put": ep({ method: "PUT", path: `${V1}/projects/:slug/icon`, params: Ic.ProjectIconParams, body: Ic.SetIconBody, response: Ic.IconState }),
+  "projects.icon.put": ep({ method: "PUT", path: `${V1}/projects/:slug/icon`, params: Ic.ProjectIconParams, body: Ic.SetProjectIconBody, response: Ic.IconState }),
 
   // ---------------------------------------------------------------- apps
   "apps.detect": ep({ method: "POST", path: `${V1}/apps/detect`, body: P.DetectBody, response: P.DetectResult }),

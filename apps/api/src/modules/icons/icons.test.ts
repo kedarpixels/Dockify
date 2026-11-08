@@ -26,17 +26,29 @@ const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
 interface Img { id?: string; appId?: string; projectId?: string; source: "favicon" | "upload"; mime: string; data: Buffer; sha256: string; width: number; height: number; origin: string | null; updatedAt: Date }
 
-function fakeDb(opts: { kind?: string; choice?: "auto" | "upload"; images?: Img[]; appMissing?: boolean; frontends?: Array<{ env: string; id: string; primary?: boolean; fav?: Img }> } = {}) {
+/** A frontend of the fake project: `primary` is its primary domain (true for a custom one), `domains` its other names. */
+interface Front { env: string; id: string; name?: string; displayName?: string; primary?: boolean | string; test?: boolean; domains?: string[]; born?: number; fav?: Img }
+const hostOf = (f: Front) => (f.primary === true ? `${f.id}.example.com` : f.primary || null);
+
+function fakeDb(opts: { kind?: string; choice?: "auto" | "upload"; images?: Img[]; appMissing?: boolean; frontends?: Front[]; projectChoice?: "auto" | "upload"; pick?: string | null } = {}) {
   let images = (opts.images ?? []).map((i, n) => ({ ...i, id: i.id ?? `img${n}` }));
   const app = {
     id: APP, name: "web", kind: opts.kind ?? "frontend", iconChoice: opts.choice ?? "auto",
     faviconCheckedAt: null as Date | null, faviconError: null as string | null,
     environment: { name: "production", projectId: PROJECT, project: { slug: "shop" } },
   };
-  const project = { id: PROJECT, slug: "shop", iconChoice: "auto" as string };
+  const project = { id: PROJECT, slug: "shop", iconChoice: (opts.projectChoice ?? "auto") as string, iconAppId: opts.pick ?? (null as string | null) };
   const envs = () => [...new Set((opts.frontends ?? []).map((f) => f.env))].map((name) => ({
     name,
-    apps: (opts.frontends ?? []).filter((f) => f.env === name).map((f) => ({ id: f.id, primaryDomainId: f.primary ? "d" : null, icons: f.fav ? [{ ...f.fav, id: `fav-${f.id}` }] : [] })),
+    apps: (opts.frontends ?? []).filter((f) => f.env === name).map((f) => {
+      const host = hostOf(f);
+      const primaryDomain = host ? { hostname: host, testDomain: !!f.test } : null;
+      return {
+        id: f.id, name: f.name ?? f.id, displayName: f.displayName ?? null, createdAt: new Date(Date.UTC(2026, 0, 1) + (f.born ?? 0) * 60_000),
+        primaryDomain, domains: [...(primaryDomain ? [primaryDomain] : []), ...(f.domains ?? []).map((hostname) => ({ hostname, testDomain: false }))],
+        icons: f.fav ? [{ ...f.fav, id: `fav-${f.id}` }] : [],
+      };
+    }),
   }));
   const jobs: Array<Record<string, unknown>> = [];
   const audits: Array<Record<string, unknown>> = [];
@@ -297,6 +309,108 @@ describe("projects.icon.put and icons.list", () => {
     const plain = (await call("icons.list", none.db).out) as unknown as { projects: Record<string, { image: unknown }> };
     expect(plain.projects.shop?.image).toBeNull();
     await expect(call("projects.icon.get", none.db, { slug: true }).out).rejects.toMatchObject({ status: 404 });
+  });
+
+  // A common shape: an admin panel made first on a test domain, the public site on a custom one, and its dev copy.
+  const DASH = "0f0e0d0c-0000-4000-8000-0000000000d1";
+  const SITE = "0f0e0d0c-0000-4000-8000-0000000000d2";
+  const DEV = "0f0e0d0c-0000-4000-8000-0000000000d3";
+  const dashFav = favicon(png(40, 40));
+  const siteFav = favicon(png(48, 48));
+  const v = (b: Buffer) => sha(b).slice(0, 12);
+  const siteShape = (extra: Parameters<typeof fakeDb>[0] = {}) => fakeDb({
+    frontends: [
+      { env: "production", id: DASH, name: "dashboard", displayName: "Admin panel", primary: "dashboard-4f5e6d.203-0-113-10.sslip.io", test: true, born: 0, fav: dashFav },
+      { env: "production", id: SITE, name: "frontend", primary: "brand.example", born: 1, fav: siteFav },
+      { env: "development", id: DEV, name: "frontend", primary: "dev.brand.example", born: 2, fav: favicon(png(36, 36)) },
+    ],
+    ...extra,
+  });
+  type Listed = { projects: Record<string, { image: { version: string } | null; favicon: { origin: string | null } | null; borrow?: { pick: string | null; auto: string | null; from: string | null; apps: Array<{ id: string; name: string; host: string | null }> } }> };
+
+  it("borrows the favicon of the most public frontend: the public site on its custom domain, not an older admin panel on a test domain", async () => {
+    const f = siteShape();
+    const map = (await call("icons.list", f.db).out) as unknown as Listed;
+    expect(endpoints["icons.list"].response.safeParse(map).success).toBe(true);
+    expect(map.projects.shop?.image?.version).toBe(v(png(48, 48)));
+    expect(map.projects.shop?.borrow).toEqual({
+      pick: null, auto: SITE, from: SITE,
+      apps: [
+        { id: SITE, name: "frontend", environment: "production", host: "shop.example.com" },
+        { id: DEV, name: "frontend", environment: "development", host: "shop.example.com" },
+        { id: DASH, name: "Admin panel", environment: "production", host: "shop.example.com" },
+      ],
+    });
+    // The image route lands on the same favicon, so the map's version is the one it caches for good.
+    const got = call("projects.icon.get", f.db, { slug: true, query: { v: v(png(48, 48)) } });
+    await got.out;
+    expect(got.r.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
+    expect(got.r.headers.etag).toBe(`"${sha(png(48, 48))}"`);
+  });
+
+  it("treats an sslip name as a test domain even when its row was never flagged", async () => {
+    const f = fakeDb({
+      frontends: [
+        { env: "production", id: DASH, primary: "admin-1a2b3c.203-0-113-10.sslip.io", born: 0, fav: dashFav },
+        { env: "production", id: SITE, primary: "brand.example", born: 1, fav: siteFav },
+      ],
+    });
+    const map = (await call("icons.list", f.db).out) as unknown as Listed;
+    expect(map.projects.shop?.borrow?.auto).toBe(SITE);
+  });
+
+  it("uses the frontend the owner picked, stores it on the project and audits the change", async () => {
+    const f = siteShape();
+    const state = await call("projects.icon.put", f.db, { slug: true, body: { choice: "auto", appId: DASH } }).out;
+    expect(endpoints["projects.icon.put"].response.safeParse(state).success).toBe(true);
+    expect(state).toMatchObject({ choice: "auto", image: { version: v(png(40, 40)), source: "favicon" }, borrow: { pick: DASH, auto: SITE, from: DASH } });
+    expect(f.project.iconAppId).toBe(DASH);
+    expect(f.audits[0]).toMatchObject({ action: "project.icon", targetLabel: "shop", changes: { choice: "auto", favicon: { from: "automatic", to: "production/dashboard" } } });
+
+    // Every reader follows the pick: the map, the image route and the mail rule.
+    const map = (await call("icons.list", f.db).out) as unknown as Listed;
+    expect(map.projects.shop?.image?.version).toBe(v(png(40, 40)));
+    const got = call("projects.icon.get", f.db, { slug: true, query: { v: v(png(40, 40)) } });
+    await got.out;
+    expect(got.r.headers.etag).toBe(`"${sha(png(40, 40))}"`);
+
+    // Back to the automatic pick.
+    const back = await call("projects.icon.put", f.db, { slug: true, body: { choice: "auto", appId: null } }).out;
+    expect(back).toMatchObject({ image: { version: v(png(48, 48)) }, borrow: { pick: null, from: SITE } });
+    expect(f.project.iconAppId).toBeNull();
+    expect(f.audits[1]).toMatchObject({ changes: { favicon: { from: "production/dashboard", to: "automatic" } } });
+  });
+
+  it("refuses a pick that is not one of the project's frontends with a favicon, writing nothing", async () => {
+    for (const appId of ["0f0e0d0c-0000-4000-8000-0000000000ff", APP]) {
+      const f = siteShape({ frontends: [{ env: "production", id: SITE, primary: "brand.example", fav: siteFav }, { env: "production", id: APP }] });
+      await expect(call("projects.icon.put", f.db, { slug: true, body: { choice: "auto", appId } }).out).rejects.toMatchObject({ status: 400, code: "INVALID_REQUEST", extra: { field: "appId" } });
+      expect(f.project.iconAppId).toBeNull();
+      expect(f.audits).toHaveLength(0);
+    }
+    // Only a project names an app to borrow from; an app's automatic is its own favicon.
+    expect(endpoints["apps.icon.put"].body.safeParse({ choice: "auto", appId: SITE }).success).toBe(false);
+    expect(endpoints["projects.icon.put"].body.safeParse({ choice: "auto", appId: SITE }).success).toBe(true);
+    expect(endpoints["projects.icon.put"].body.safeParse({ choice: "auto", appId: "dashboard" }).success).toBe(false);
+  });
+
+  it("falls back to the automatic pick when the picked frontend no longer has a favicon", async () => {
+    const f = siteShape({ pick: DEV, frontends: [{ env: "production", id: SITE, primary: "brand.example", fav: siteFav }, { env: "development", id: DEV }] });
+    const map = (await call("icons.list", f.db).out) as unknown as Listed;
+    expect(map.projects.shop?.image?.version).toBe(v(png(48, 48)));
+    expect(map.projects.shop?.borrow).toMatchObject({ pick: DEV, from: SITE });
+  });
+
+  it("an upload clears the pick, and leaving the upload for a frontend drops it", async () => {
+    const f = siteShape({ pick: DASH });
+    const img = png(64, 64);
+    const up = await call("projects.icon.put", f.db, { slug: true, body: { choice: "upload", image: img.toString("base64") } }).out;
+    expect(up).toMatchObject({ choice: "upload", image: { source: "upload" }, borrow: { pick: null } });
+    expect(f.project.iconAppId).toBeNull();
+    const to = await call("projects.icon.put", f.db, { slug: true, body: { choice: "auto", appId: DEV } }).out;
+    expect(to).toMatchObject({ choice: "auto", image: { version: v(png(36, 36)) }, borrow: { pick: DEV } });
+    expect(f.images().filter((i) => i.projectId === PROJECT)).toHaveLength(0);
+    expect(f.audits[1]).toMatchObject({ changes: { favicon: { from: "upload", to: "development/frontend" } } });
   });
 
   it("limits the map to a token's projects", async () => {

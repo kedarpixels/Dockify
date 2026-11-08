@@ -955,6 +955,11 @@ model Project {
   /// A same-repo preview of a production base may have production's secrets and network. Off on every
   /// row, older ones too (migration 0023), so push access alone never reaches them.
   previewProductionAccess Boolean          @default(false)
+  /// The frontend whose favicon the project shows while its icon is automatic, as the owner picked
+  /// it. Null, or an app without a favicon, uses the most public frontend (db icons.ts). Last, as
+  /// migration 0028 adds it.
+  iconAppId            String?             @db.Uuid
+  iconApp              App?                @relation("ProjectIconApp", fields: [iconAppId], references: [id], onDelete: SetNull)
 
   environments Environment[]
   tokenLimits  ApiTokenProject[]
@@ -1107,6 +1112,7 @@ model App {
   runtimeLogs     RuntimeLogLine[]
   icons           IconImage[]
   scheduledJobs   ScheduledJob[]
+  iconOfProjects  Project[]           @relation("ProjectIconApp")
 
   @@unique([environmentId, name])
   @@map("apps")

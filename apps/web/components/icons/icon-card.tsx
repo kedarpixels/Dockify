@@ -4,10 +4,12 @@ import { useRef, useState } from "react";
 import { CardTitle } from "@/components/card-title";
 import { Icon } from "@/components/icon";
 import { KIND_LABEL } from "@/components/project-detail/shared";
+import { ConfirmDialog } from "@/components/ui/dialog";
 import { PendingButton } from "@/components/ui/pending";
+import { Select, type SelectOption } from "@/components/ui/select";
 import { When } from "@/components/ui/when";
 import { report } from "@/lib/feedback";
-import type { IconBody, IconState, IconTarget } from "@/lib/icons";
+import { PROJECT_AUTO as AUTOMATIC, PROJECT_UPLOAD as UPLOADED, projectIconLine, projectIconPick, type IconBody, type IconState, type IconTarget } from "@/lib/icons";
 import type { AppKind } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
 import { AppIcon, ProjectIcon, useIcons } from "./app-icon";
@@ -15,8 +17,9 @@ import { prepareUpload, sendIcon } from "./upload";
 
 /*
  * The Icon card in app and project settings: what shows now, Automatic (a frontend's favicon or
- * the kind's default; for a project, its frontend's favicon or the folder), an upload, and Reset.
- * Each action saves at once; a refused upload says why under the card.
+ * the kind's default), an upload, and Reset. A project picks in a dropdown instead: Automatic (its
+ * most public frontend's favicon, or the folder), one of its frontends with a favicon, or the
+ * upload while it has one. Each action saves at once; a refused upload says why under the card.
  */
 
 type Busy = "auto" | "upload" | null;
@@ -34,10 +37,7 @@ function hostOf(url: string | null) {
 function statusLine(state: IconState | undefined, kind: AppKind | undefined, domain: string | null, now: number): React.ReactNode {
   if (state?.choice === "upload") return state.image ? `Uploaded image, ${state.image.width} by ${state.image.height}` : "Uploaded image";
   const fav = state?.favicon;
-  if (!kind) {
-    const host = hostOf(fav?.origin ?? null);
-    return state?.image && host ? `Favicon of ${host}, from this project’s frontend` : "The project folder, until a frontend has a favicon";
-  }
+  if (!kind) return projectIconLine(state);
   if (kind !== "frontend") return `The ${KIND_LABEL[kind]} icon`;
   const from = hostOf(fav?.origin ?? null) ?? domain;
   if (state?.image && fav?.fetchedAt) {
@@ -102,6 +102,29 @@ export function IconCard({
 
   const auto = (success: string) => void run(() => save({ choice: "auto" }, "auto", success));
 
+  // A project's dropdown: the upload while it has one, else the picked frontend, else Automatic.
+  const project = target.target === "project";
+  const { value: picked, auto: autoApp, apps } = projectIconPick(state);
+  // The pick waiting on "remove the upload?", since leaving an upload deletes it as Reset does.
+  const [leaving, setLeaving] = useState<string | null>(null);
+  const appName = (id: string) => apps.find((a) => a.id === id)?.name ?? "the app";
+  const sendPick = (value: string) =>
+    run(() => save({ choice: "auto", appId: value === AUTOMATIC ? null : value }, "auto", value === AUTOMATIC ? "Icon set to Automatic" : `Icon set to the favicon of ${appName(value)}`));
+  const pick = (value: string) => {
+    if (value === UPLOADED || value === picked) return;
+    if (choice === "upload") setLeaving(value);
+    else void sendPick(value);
+  };
+  const options: SelectOption<string>[] = project
+    ? [
+        ...(choice === "upload"
+          ? [{ value: UPLOADED, label: "Uploaded image", hint: state?.image ? `${state.image.width} by ${state.image.height}` : undefined, glyph: <ProjectIcon slug={target.slug} /> }]
+          : []),
+        { value: AUTOMATIC, label: "Automatic", hint: autoApp?.name ?? "Project folder", glyph: autoApp ? <AppIcon id={autoApp.id} kind="frontend" /> : <ProjectIcon /> },
+        ...apps.map((a) => ({ value: a.id, label: a.name, hint: a.host ?? a.environment, glyph: <AppIcon id={a.id} kind="frontend" /> })),
+      ]
+    : [];
+
   const upload = (f: File) =>
     void run(async () => {
       setError(null);
@@ -131,17 +154,24 @@ export function IconCard({
               </span>
             ) : null}
           </span>
-          <span className="two">
-            <span className="two-main">{choice === "auto" ? "Automatic" : "Uploaded"}</span>
-            <span className="two-sub">{statusLine(state, kind, domain, now)}</span>
-          </span>
+          {project ? (
+            <span className="ic-pick">
+              <Select label={`Icon of ${name}`} value={picked} options={options} onChange={pick} disabled={!can.manage || busy !== null} />
+              <span className="two-sub">{statusLine(state, kind, domain, now)}</span>
+            </span>
+          ) : (
+            <span className="two">
+              <span className="two-main">{choice === "auto" ? "Automatic" : "Uploaded"}</span>
+              <span className="two-sub">{statusLine(state, kind, domain, now)}</span>
+            </span>
+          )}
           <span className="ic-now-acts">
             {can.manage && choice === "auto" && frontend && domain ? (
               <PendingButton className="btn btn-sm" pending={busy === "auto"} disabled={busy !== null} onClick={() => auto("Fetching the favicon")}>
                 Fetch again
               </PendingButton>
             ) : null}
-            {can.manage && choice !== "auto" ? (
+            {can.manage && choice !== "auto" && !project ? (
               <PendingButton className="btn btn-sm" pending={busy === "auto"} disabled={busy !== null} onClick={() => auto("Icon reset")}>
                 Reset
               </PendingButton>
@@ -179,6 +209,28 @@ export function IconCard({
         </div>
         ) : null}
       </div>
+      {project ? (
+        <ConfirmDialog
+          open={leaving !== null}
+          onClose={() => setLeaving(null)}
+          title="Remove the uploaded image"
+          sub={name}
+          body={
+            <p className="dlg-text">
+              {leaving === AUTOMATIC || leaving === null
+                ? "The project shows its automatic favicon instead."
+                : `The project shows the favicon of ${appName(leaving)} instead.`}{" "}
+              The uploaded image is deleted; upload it again to bring it back.
+            </p>
+          }
+          confirmLabel="Remove and switch"
+          onConfirm={async () => {
+            const value = leaving;
+            if (value) await sendPick(value);
+            setLeaving(null);
+          }}
+        />
+      ) : null}
     </section>
   );
 }

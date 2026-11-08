@@ -11,6 +11,7 @@ import { isPreviewMode } from "@/lib/preview-mode";
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 const SLUG = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
 const VERSION = /^[a-f0-9]{12}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 const pathOf = (t: IconTarget) => (t.target === "app" ? `/api/v1/apps/${t.id}/icon` : `/api/v1/projects/${t.slug}/icon`);
@@ -35,7 +36,11 @@ function parseIconRequest(raw: unknown): { target: IconTarget; body: IconBody } 
         : null;
   const b = r.body as Record<string, unknown> | undefined;
   if (!target || !b || typeof b !== "object") return null;
-  if (b.choice === "auto") return { target, body: { choice: "auto" } };
+  if (b.choice === "auto") {
+    // Only a project borrows a favicon from one of its apps; an app's automatic is its own.
+    if (b.appId === undefined || b.appId === null) return { target, body: target.target === "project" && b.appId === null ? { choice: "auto", appId: null } : { choice: "auto" } };
+    return target.target === "project" && typeof b.appId === "string" && UUID.test(b.appId) ? { target, body: { choice: "auto", appId: b.appId } } : null;
+  }
   if (b.choice === "upload" && typeof b.image === "string" && b.image.length <= 174_764 && BASE64.test(b.image)) {
     return { target, body: { choice: "upload", image: b.image } };
   }

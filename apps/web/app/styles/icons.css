@@ -26,15 +26,14 @@
   height: 100%;
 }
 
-/* An image sits in the same 20 of 24 units as a tile, with the tile's corner. */
+/* An image fills the whole icon box with the tile's corner, and nothing behind it, so a logo with
+   a transparent background stays transparent. */
 .aicon > img {
   display: block;
-  width: 83.333%;
-  height: 83.333%;
-  border-radius: 30%;
-  background: var(--panel);
-  box-shadow: 0 0 0 1px var(--line-strong);
-  object-fit: cover;
+  width: 100%;
+  height: 100%;
+  border-radius: 25%;
+  object-fit: contain;
 }
 
 .aicon-tile {
@@ -63,6 +62,15 @@
 .ic-now .two {
   flex: 1;
   min-width: 0;
+}
+
+/* A project's dropdown, with the line naming where its icon comes from under it. */
+.ic-pick {
+  display: grid;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+  max-width: 360px;
 }
 
 .ic-now-face {
