@@ -37,7 +37,7 @@ export const FaviconFacts = z.object({
   error: z.string().nullable(),
 });
 
-/** A frontend a project can borrow its favicon from: its display name and the host the favicon came from. */
+/** A frontend a project can show the favicon of: its display name and the host the favicon came from. */
 export const FaviconApp = z.object({
   id: Uuid,
   name: z.string(),
@@ -46,13 +46,16 @@ export const FaviconApp = z.object({
 });
 export type FaviconApp = z.infer<typeof FaviconApp>;
 
-/** Projects only: which frontend's favicon shows while automatic, and which ones it could be. */
+/** What a project's icon is: the folder (the default), the favicon of an app the owner chose, or an upload. */
+export const ProjectIconMode = z.enum(["folder", "app", "upload"]);
+export type ProjectIconMode = z.infer<typeof ProjectIconMode>;
+
+/** Projects only: the icon's mode, the app chosen, and the frontends the owner can choose from. */
 export const ProjectFavicon = z.object({
-  /** The app the owner picked, or null for the automatic pick. */
+  mode: ProjectIconMode,
+  /** The app the owner chose, or null. */
   pick: Uuid.nullable(),
-  /** The app the automatic pick lands on today (the most public frontend), shown next to Automatic. */
-  auto: Uuid.nullable(),
-  /** The app the shown favicon comes from now: the pick while it has a favicon, else the automatic one. */
+  /** The app the shown favicon comes from: the chosen one while it has a favicon, else null (the folder shows). */
   from: Uuid.nullable(),
   /** Every frontend of the project with a fetched favicon, the most public first. */
   apps: z.array(FaviconApp),
@@ -62,14 +65,13 @@ export type ProjectFavicon = z.infer<typeof ProjectFavicon>;
 export const IconState = z.object({
   choice: IconChoice,
   /**
-   * The image shown now: the upload, or a favicon while the choice is auto (an app's own; for a
-   * project, the picked frontend's, else its most public frontend's). Null shows the kind's tile
-   * or the project folder.
+   * The image shown now: the upload, an app's own favicon while its choice is auto, or a project's
+   * chosen app's favicon. Null shows the kind's tile, or for a project the folder.
    */
   image: IconImageRef.nullable(),
-  /** A frontend's last favicon fetch, or for a project the app its favicon comes from. */
+  /** A frontend's last favicon fetch, or for a project the chosen app's favicon. */
   favicon: FaviconFacts.nullable(),
-  /** Projects only: the frontends it can borrow a favicon from, and the one it does. */
+  /** Projects only: the mode, the chosen app and the frontends to choose from. */
   borrow: ProjectFavicon.optional(),
 });
 export type IconState = z.infer<typeof IconState>;
@@ -90,12 +92,10 @@ export const SetIconBody = z.discriminatedUnion("choice", [
 ]);
 export type SetIconBody = z.infer<typeof SetIconBody>;
 
-/**
- * A project's icon write: automatic may name the frontend whose favicon to show (null or left out
- * goes back to the automatic pick), or an upload.
- */
+/** A project's icon write: the folder, the favicon of one of its frontends, or an upload. */
 export const SetProjectIconBody = z.discriminatedUnion("choice", [
-  z.strictObject({ choice: z.literal("auto"), appId: Uuid.nullable().optional() }),
+  z.strictObject({ choice: z.literal("folder") }),
+  z.strictObject({ choice: z.literal("app"), appId: Uuid }),
   z.strictObject({ choice: z.literal("upload"), image: Base64 }),
 ]);
 export type SetProjectIconBody = z.infer<typeof SetProjectIconBody>;

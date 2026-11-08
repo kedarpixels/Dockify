@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkFavicon, checkIconUpload, IconMap, SetIconBody, sniffImage } from "./icons.ts";
+import { checkFavicon, checkIconUpload, IconMap, SetIconBody, SetProjectIconBody, sniffImage } from "./icons.ts";
 
 function pngOf(w: number, h: number, pad = 0): Uint8Array {
   const b = new Uint8Array(33 + pad);
@@ -107,6 +107,18 @@ describe("icon schemas", () => {
     expect(SetIconBody.safeParse({ choice: "auto", preset: "bot" }).success).toBe(false);
     expect(SetIconBody.safeParse({ choice: "upload", image: "<svg>" }).success).toBe(false);
     expect(SetIconBody.safeParse({ choice: "upload", image: "A".repeat(200_000) }).success).toBe(false);
+  });
+
+  it("takes a project's icon as the folder, one app's favicon or an upload, never automatic", () => {
+    const app = "0f0e0d0c-0000-4000-8000-0000000000aa";
+    expect(SetProjectIconBody.safeParse({ choice: "folder" }).success).toBe(true);
+    expect(SetProjectIconBody.safeParse({ choice: "app", appId: app }).success).toBe(true);
+    expect(SetProjectIconBody.safeParse({ choice: "upload", image: "iVBORw0KGgo=" }).success).toBe(true);
+    expect(SetProjectIconBody.safeParse({ choice: "auto" }).success).toBe(false);
+    expect(SetProjectIconBody.safeParse({ choice: "auto", appId: app }).success).toBe(false);
+    expect(SetProjectIconBody.safeParse({ choice: "app" }).success).toBe(false);
+    expect(SetProjectIconBody.safeParse({ choice: "app", appId: "frontend" }).success).toBe(false);
+    expect(SetProjectIconBody.safeParse({ choice: "folder", appId: app }).success).toBe(false);
   });
 
   it("keys the map by app id and project slug", () => {

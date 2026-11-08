@@ -1,7 +1,7 @@
 /**
  * The project icon rules against a really migrated Postgres (DATABASE_URL_TEST), since the handler
- * tests fake the database: the icon map lists a project that only borrows a favicon, the most
- * public frontend wins, an explicit pick is stored and served, and deleting the picked app clears it.
+ * tests fake the database: a project shows the folder by default and lists its frontends to choose
+ * from, the app chosen is stored and served, and deleting that app brings the folder back.
  */
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -73,27 +73,28 @@ describe.skipIf(!url)("project icons against a migrated Postgres", () => {
     await db?.$disconnect();
   });
 
-  it("lists a project that only borrows a favicon, with the public site's image, and serves that same image", async () => {
-    const map = (await run("icons.list").out) as unknown as { projects: Record<string, { choice: string; image: { version: string } | null; borrow: { auto: string; from: string } }> };
+  it("lists a project on the folder with its frontends to choose from, and serves no image for it", async () => {
+    const map = (await run("icons.list").out) as unknown as { projects: Record<string, { choice: string; image: unknown; borrow: { mode: string; pick: unknown; from: unknown; apps: Array<{ id: string }> } }> };
     const state = map.projects[slug];
-    expect(state).toMatchObject({ choice: "auto", image: { version: sha(png(48)).slice(0, 12) }, borrow: { auto: ids.site, from: ids.site } });
-    const got = run("projects.icon.get", { params: { slug }, query: { v: state!.image!.version } });
-    await got.out;
-    expect(got.r.status).toBe(200);
-    expect(got.r.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
-    expect(got.r.headers.etag).toBe(`"${sha(png(48))}"`);
+    expect(state).toMatchObject({ choice: "auto", image: null, borrow: { mode: "folder", pick: null, from: null } });
+    expect(state?.borrow.apps.map((a) => a.id)).toEqual([ids.site, ids.dash]);
+    await expect(run("projects.icon.get", { params: { slug } }).out).rejects.toMatchObject({ status: 404 });
   });
 
-  it("stores an explicit pick, serves it, and clears it when the picked app is deleted", async () => {
-    const state = await run("projects.icon.put", { params: { slug }, body: { choice: "auto", appId: ids.dash } }).out;
-    expect(state).toMatchObject({ image: { version: sha(png(40)).slice(0, 12) }, borrow: { pick: ids.dash, from: ids.dash } });
+  it("stores the app chosen, serves its favicon, and shows the folder again when that app is deleted", async () => {
+    const state = await run("projects.icon.put", { params: { slug }, body: { choice: "app", appId: ids.dash } }).out;
+    expect(state).toMatchObject({ image: { version: sha(png(40)).slice(0, 12) }, borrow: { mode: "app", pick: ids.dash, from: ids.dash } });
     expect((await db.project.findUnique({ where: { slug }, select: { iconAppId: true } }))?.iconAppId).toBe(ids.dash);
     const log = await db.activityLog.findFirst({ where: { action: "project.icon", targetLabel: slug }, select: { changes: true } });
-    expect(log?.changes).toEqual({ choice: "auto", favicon: { from: "automatic", to: "production/dashboard" } });
+    expect(log?.changes).toEqual({ choice: "app", from: "folder", to: "production/dashboard" });
+    const got = run("projects.icon.get", { params: { slug }, query: { v: sha(png(40)).slice(0, 12) } });
+    await got.out;
+    expect(got.r.status).toBe(200);
+    expect(got.r.headers.etag).toBe(`"${sha(png(40))}"`);
 
     await db.app.delete({ where: { id: ids.dash } });
     expect((await db.project.findUnique({ where: { slug }, select: { iconAppId: true } }))?.iconAppId).toBeNull();
-    const map = (await run("icons.list").out) as unknown as { projects: Record<string, { image: { version: string } | null }> };
-    expect(map.projects[slug]?.image?.version).toBe(sha(png(48)).slice(0, 12));
+    const map = (await run("icons.list").out) as unknown as { projects: Record<string, { image: unknown; borrow: { mode: string } }> };
+    expect(map.projects[slug]).toMatchObject({ image: null, borrow: { mode: "folder" } });
   });
 });

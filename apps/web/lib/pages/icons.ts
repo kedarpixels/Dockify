@@ -3,6 +3,7 @@ import { cache } from "react";
 import { apiRequest, apiStream } from "@/lib/api";
 import { NO_STORE } from "@/lib/http";
 import { EMPTY_ICONS, type IconBody, type IconMap, type IconResult, type IconState, type IconTarget } from "@/lib/icons";
+import { previewIconMap, previewIconSvg, previewIconWrite } from "@/lib/preview-icons";
 import { isPreviewMode } from "@/lib/preview-mode";
 
 /* Server side of app and project icons: the map the console layout reads once, the one write the
@@ -11,7 +12,6 @@ import { isPreviewMode } from "@/lib/preview-mode";
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 const SLUG = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
 const VERSION = /^[a-f0-9]{12}$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 const pathOf = (t: IconTarget) => (t.target === "app" ? `/api/v1/apps/${t.id}/icon` : `/api/v1/projects/${t.slug}/icon`);
@@ -22,8 +22,8 @@ export const getIcons = cache(async (): Promise<IconMap> => {
     const r = await apiRequest<Partial<IconMap>>("/api/v1/icons", { timeoutMs: 5_000 });
     return r.ok && r.data ? { apps: r.data.apps ?? {}, projects: r.data.projects ?? {} } : EMPTY_ICONS;
   }
-  // The design preview has no fetched favicons and no uploads, so every icon is its default.
-  return EMPTY_ICONS;
+  // The design preview draws a few fictional favicons; every other icon is its default.
+  return isPreviewMode() ? previewIconMap() : EMPTY_ICONS;
 });
 
 /** The target and body of a request, or null when any part could steer the path or is malformed. */
@@ -36,10 +36,12 @@ function parseIconRequest(raw: unknown): { target: IconTarget; body: IconBody } 
         : null;
   const b = r.body as Record<string, unknown> | undefined;
   if (!target || !b || typeof b !== "object") return null;
-  if (b.choice === "auto") {
-    // Only a project borrows a favicon from one of its apps; an app's automatic is its own.
-    if (b.appId === undefined || b.appId === null) return { target, body: target.target === "project" && b.appId === null ? { choice: "auto", appId: null } : { choice: "auto" } };
-    return target.target === "project" && typeof b.appId === "string" && UUID.test(b.appId) ? { target, body: { choice: "auto", appId: b.appId } } : null;
+  const keys = Object.keys(b).sort().join(",");
+  // An app is automatic or an upload; a project is the folder, one of its apps' favicons, or an upload.
+  if (target.target === "app" && b.choice === "auto" && keys === "choice") return { target, body: { choice: "auto" } };
+  if (target.target === "project" && b.choice === "folder" && keys === "choice") return { target, body: { choice: "folder" } };
+  if (target.target === "project" && b.choice === "app" && keys === "appId,choice" && typeof b.appId === "string" && ID.test(b.appId)) {
+    return { target, body: { choice: "app", appId: b.appId } };
   }
   if (b.choice === "upload" && typeof b.image === "string" && b.image.length <= 174_764 && BASE64.test(b.image)) {
     return { target, body: { choice: "upload", image: b.image } };
@@ -57,8 +59,7 @@ export async function runIconMutation(raw: unknown): Promise<IconResult> {
     return r.ok ? { ok: true, source: "api", data: r.data } : { ok: false, source: "api", error: r.error, status: r.status };
   }
   if (isPreviewMode()) {
-    const data: IconState = { choice: req.body.choice, image: null, favicon: null };
-    return { ok: true, source: "preview", data };
+    return { ok: true, source: "preview", data: previewIconWrite(req.target, req.body) };
   }
   return { ok: false, source: "none", error: "No data source, set DOCKIFY_API_URL for this dashboard" };
 }
@@ -85,7 +86,10 @@ async function relayImage(path: string, ifNoneMatch: string | null, opts: { cook
 export async function proxyIcon(t: IconTarget, v: string | null, ifNoneMatch: string | null): Promise<Response> {
   if (t.target === "app" ? !ID.test(t.id) : !SLUG.test(t.slug)) return notFound();
   const version = v && VERSION.test(v) ? v : null;
-  if (!process.env.DOCKIFY_API_URL) return notFound();
+  if (!process.env.DOCKIFY_API_URL) {
+    const svg = isPreviewMode() ? previewIconSvg(t, version) : null;
+    return svg ? new Response(svg, { status: 200, headers: { ...NO_STORE, "content-type": "image/svg+xml", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" } }) : notFound();
+  }
   return relayImage(version ? `${pathOf(t)}?v=${version}` : pathOf(t), ifNoneMatch, { cookie: true });
 }
 

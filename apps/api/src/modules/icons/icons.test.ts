@@ -157,8 +157,8 @@ describe("icons.mail.get", () => {
     expect(r.headers.etag).toBe(`"${sha(png(32, 32))}"`);
     expect(Buffer.isBuffer(r.body)).toBe(true);
 
-    // A project's link: its production frontend's favicon, like its console icon; 304 on a matching ETag.
-    const p = fakeDb({ frontends: [{ env: "production", id: "prod-web", primary: true, fav: favicon(png(48, 48)) }] });
+    // A project's link: the favicon of the app the owner chose, like its console icon; 304 on a matching ETag.
+    const p = fakeDb({ pick: "prod-web", frontends: [{ env: "production", id: "prod-web", primary: true, fav: favicon(png(48, 48)) }] });
     const pv = sha(png(48, 48)).slice(0, 12);
     const got = call("icons.mail.get", p.db, { params: { token: token("project", PROJECT, pv) } });
     await got.out;
@@ -295,20 +295,19 @@ describe("projects.icon.put and icons.list", () => {
     expect(map.projects.shop).toMatchObject({ choice: "upload" });
   });
 
-  it("derives a project's automatic icon from its production frontend first, then one on a primary domain", async () => {
-    const prodFav = favicon(png(48, 48));
-    const devFav = favicon(png(32, 32));
-    const f = fakeDb({ frontends: [{ env: "development", id: "dev-web", primary: true, fav: devFav }, { env: "production", id: "prod-admin" }, { env: "production", id: "prod-web", primary: true, fav: prodFav }] });
-    const map = (await call("icons.list", f.db).out) as unknown as { projects: Record<string, { image: { version: string } | null }> };
-    expect(map.projects.shop?.image?.version).toBe(sha(png(48, 48)).slice(0, 12));
-    const { out, r } = call("projects.icon.get", f.db, { slug: true });
-    await out;
-    expect(r.status).toBe(200);
-
-    const none = fakeDb({ frontends: [{ env: "production", id: "prod-web" }] });
-    const plain = (await call("icons.list", none.db).out) as unknown as { projects: Record<string, { image: unknown }> };
-    expect(plain.projects.shop?.image).toBeNull();
-    await expect(call("projects.icon.get", none.db, { slug: true }).out).rejects.toMatchObject({ status: 404 });
+  it("shows the folder by default, whatever favicons its frontends have", async () => {
+    const f = fakeDb({
+      frontends: [
+        { env: "development", id: "0f0e0d0c-0000-4000-8000-0000000000e1", primary: true, fav: favicon(png(32, 32)) },
+        { env: "production", id: "0f0e0d0c-0000-4000-8000-0000000000e2", primary: true, fav: favicon(png(48, 48)) },
+      ],
+    });
+    const map = (await call("icons.list", f.db).out) as unknown as { projects: Record<string, { image: unknown; favicon: unknown; borrow: { mode: string; pick: unknown; from: unknown } }> };
+    // Even the mail link has nothing to name: the email shows the folder.
+    await expect(call("icons.mail.get", f.db, { params: { token: signMailIcon(mailIconKey(internalChannelToken(testRing())), { target: "project", id: PROJECT, version: sha(png(48, 48)).slice(0, 12) }) } }).out).rejects.toMatchObject({ status: 404 });
+    expect(endpoints["icons.list"].response.safeParse(map).success).toBe(true);
+    expect(map.projects.shop).toMatchObject({ image: null, favicon: null, borrow: { mode: "folder", pick: null, from: null } });
+    await expect(call("projects.icon.get", f.db, { slug: true }).out).rejects.toMatchObject({ status: 404 });
   });
 
   // A common shape: an admin panel made first on a test domain, the public site on a custom one, and its dev copy.
@@ -326,26 +325,21 @@ describe("projects.icon.put and icons.list", () => {
     ],
     ...extra,
   });
-  type Listed = { projects: Record<string, { image: { version: string } | null; favicon: { origin: string | null } | null; borrow?: { pick: string | null; auto: string | null; from: string | null; apps: Array<{ id: string; name: string; host: string | null }> } }> };
+  type Listed = { projects: Record<string, { image: { version: string } | null; favicon: { origin: string | null } | null; borrow?: { mode: string; pick: string | null; from: string | null; apps: Array<{ id: string; name: string; host: string | null }> } }> };
 
-  it("borrows the favicon of the most public frontend: the public site on its custom domain, not an older admin panel on a test domain", async () => {
+  it("lists the frontends to choose from, the most public first, while the project shows the folder", async () => {
     const f = siteShape();
     const map = (await call("icons.list", f.db).out) as unknown as Listed;
     expect(endpoints["icons.list"].response.safeParse(map).success).toBe(true);
-    expect(map.projects.shop?.image?.version).toBe(v(png(48, 48)));
+    expect(map.projects.shop?.image).toBeNull();
     expect(map.projects.shop?.borrow).toEqual({
-      pick: null, auto: SITE, from: SITE,
+      mode: "folder", pick: null, from: null,
       apps: [
         { id: SITE, name: "frontend", environment: "production", host: "shop.example.com" },
         { id: DEV, name: "frontend", environment: "development", host: "shop.example.com" },
         { id: DASH, name: "Admin panel", environment: "production", host: "shop.example.com" },
       ],
     });
-    // The image route lands on the same favicon, so the map's version is the one it caches for good.
-    const got = call("projects.icon.get", f.db, { slug: true, query: { v: v(png(48, 48)) } });
-    await got.out;
-    expect(got.r.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
-    expect(got.r.headers.etag).toBe(`"${sha(png(48, 48))}"`);
   });
 
   it("treats an sslip name as a test domain even when its row was never flagged", async () => {
@@ -356,61 +350,67 @@ describe("projects.icon.put and icons.list", () => {
       ],
     });
     const map = (await call("icons.list", f.db).out) as unknown as Listed;
-    expect(map.projects.shop?.borrow?.auto).toBe(SITE);
+    expect(map.projects.shop?.borrow?.apps.map((a) => a.id)).toEqual([SITE, DASH]);
   });
 
-  it("uses the frontend the owner picked, stores it on the project and audits the change", async () => {
+  it("shows the app the owner chose, stores it on the project and audits the change", async () => {
     const f = siteShape();
-    const state = await call("projects.icon.put", f.db, { slug: true, body: { choice: "auto", appId: DASH } }).out;
+    const state = await call("projects.icon.put", f.db, { slug: true, body: { choice: "app", appId: DASH } }).out;
     expect(endpoints["projects.icon.put"].response.safeParse(state).success).toBe(true);
-    expect(state).toMatchObject({ choice: "auto", image: { version: v(png(40, 40)), source: "favicon" }, borrow: { pick: DASH, auto: SITE, from: DASH } });
+    expect(state).toMatchObject({ choice: "auto", image: { version: v(png(40, 40)), source: "favicon" }, borrow: { mode: "app", pick: DASH, from: DASH } });
     expect(f.project.iconAppId).toBe(DASH);
-    expect(f.audits[0]).toMatchObject({ action: "project.icon", targetLabel: "shop", changes: { choice: "auto", favicon: { from: "automatic", to: "production/dashboard" } } });
+    expect(f.audits[0]).toMatchObject({ action: "project.icon", targetLabel: "shop", changes: { choice: "app", from: "folder", to: "production/dashboard" } });
 
-    // Every reader follows the pick: the map, the image route and the mail rule.
+    // Every reader follows the choice: the map, the image route and the mail rule.
     const map = (await call("icons.list", f.db).out) as unknown as Listed;
     expect(map.projects.shop?.image?.version).toBe(v(png(40, 40)));
     const got = call("projects.icon.get", f.db, { slug: true, query: { v: v(png(40, 40)) } });
     await got.out;
+    expect(got.r.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
     expect(got.r.headers.etag).toBe(`"${sha(png(40, 40))}"`);
 
-    // Back to the automatic pick.
-    const back = await call("projects.icon.put", f.db, { slug: true, body: { choice: "auto", appId: null } }).out;
-    expect(back).toMatchObject({ image: { version: v(png(48, 48)) }, borrow: { pick: null, from: SITE } });
+    // Back to the folder.
+    const back = await call("projects.icon.put", f.db, { slug: true, body: { choice: "folder" } }).out;
+    expect(back).toMatchObject({ choice: "auto", image: null, favicon: null, borrow: { mode: "folder", pick: null, from: null } });
     expect(f.project.iconAppId).toBeNull();
-    expect(f.audits[1]).toMatchObject({ changes: { favicon: { from: "production/dashboard", to: "automatic" } } });
+    expect(f.audits[1]).toMatchObject({ changes: { choice: "folder", from: "production/dashboard", to: "folder" } });
+    await expect(call("projects.icon.get", f.db, { slug: true }).out).rejects.toMatchObject({ status: 404 });
   });
 
-  it("refuses a pick that is not one of the project's frontends with a favicon, writing nothing", async () => {
+  it("refuses an app that is not one of the project's frontends with a favicon, writing nothing", async () => {
     for (const appId of ["0f0e0d0c-0000-4000-8000-0000000000ff", APP]) {
       const f = siteShape({ frontends: [{ env: "production", id: SITE, primary: "brand.example", fav: siteFav }, { env: "production", id: APP }] });
-      await expect(call("projects.icon.put", f.db, { slug: true, body: { choice: "auto", appId } }).out).rejects.toMatchObject({ status: 400, code: "INVALID_REQUEST", extra: { field: "appId" } });
+      await expect(call("projects.icon.put", f.db, { slug: true, body: { choice: "app", appId } }).out).rejects.toMatchObject({ status: 400, code: "INVALID_REQUEST", extra: { field: "appId" } });
       expect(f.project.iconAppId).toBeNull();
       expect(f.audits).toHaveLength(0);
     }
-    // Only a project names an app to borrow from; an app's automatic is its own favicon.
+    // Only a project names an app; an app's automatic is its own favicon. A project has no automatic.
     expect(endpoints["apps.icon.put"].body.safeParse({ choice: "auto", appId: SITE }).success).toBe(false);
-    expect(endpoints["projects.icon.put"].body.safeParse({ choice: "auto", appId: SITE }).success).toBe(true);
-    expect(endpoints["projects.icon.put"].body.safeParse({ choice: "auto", appId: "dashboard" }).success).toBe(false);
+    expect(endpoints["projects.icon.put"].body.safeParse({ choice: "app", appId: SITE }).success).toBe(true);
+    expect(endpoints["projects.icon.put"].body.safeParse({ choice: "auto" }).success).toBe(false);
+    expect(endpoints["projects.icon.put"].body.safeParse({ choice: "auto", appId: SITE }).success).toBe(false);
+    expect(endpoints["projects.icon.put"].body.safeParse({ choice: "app", appId: "dashboard" }).success).toBe(false);
   });
 
-  it("falls back to the automatic pick when the picked frontend no longer has a favicon", async () => {
+  it("shows the folder when the chosen frontend no longer has a favicon, and never another app's", async () => {
     const f = siteShape({ pick: DEV, frontends: [{ env: "production", id: SITE, primary: "brand.example", fav: siteFav }, { env: "development", id: DEV }] });
     const map = (await call("icons.list", f.db).out) as unknown as Listed;
-    expect(map.projects.shop?.image?.version).toBe(v(png(48, 48)));
-    expect(map.projects.shop?.borrow).toMatchObject({ pick: DEV, from: SITE });
+    expect(map.projects.shop?.image).toBeNull();
+    expect(map.projects.shop?.borrow).toMatchObject({ mode: "app", pick: DEV, from: null });
+    await expect(call("projects.icon.get", f.db, { slug: true }).out).rejects.toMatchObject({ status: 404 });
   });
 
-  it("an upload clears the pick, and leaving the upload for a frontend drops it", async () => {
+  it("an upload clears the chosen app, and leaving the upload for a frontend drops it", async () => {
     const f = siteShape({ pick: DASH });
     const img = png(64, 64);
     const up = await call("projects.icon.put", f.db, { slug: true, body: { choice: "upload", image: img.toString("base64") } }).out;
-    expect(up).toMatchObject({ choice: "upload", image: { source: "upload" }, borrow: { pick: null } });
+    expect(up).toMatchObject({ choice: "upload", image: { source: "upload" }, favicon: null, borrow: { mode: "upload", pick: null, from: null } });
     expect(f.project.iconAppId).toBeNull();
-    const to = await call("projects.icon.put", f.db, { slug: true, body: { choice: "auto", appId: DEV } }).out;
-    expect(to).toMatchObject({ choice: "auto", image: { version: v(png(36, 36)) }, borrow: { pick: DEV } });
+    expect(f.audits[0]).toMatchObject({ changes: { choice: "upload", from: "production/dashboard" } });
+    const to = await call("projects.icon.put", f.db, { slug: true, body: { choice: "app", appId: DEV } }).out;
+    expect(to).toMatchObject({ choice: "auto", image: { version: v(png(36, 36)) }, borrow: { mode: "app", pick: DEV, from: DEV } });
     expect(f.images().filter((i) => i.projectId === PROJECT)).toHaveLength(0);
-    expect(f.audits[1]).toMatchObject({ changes: { favicon: { from: "upload", to: "development/frontend" } } });
+    expect(f.audits[1]).toMatchObject({ changes: { choice: "app", from: "upload", to: "development/frontend" } });
   });
 
   it("limits the map to a token's projects", async () => {

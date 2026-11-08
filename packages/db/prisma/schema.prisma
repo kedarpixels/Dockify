@@ -123,7 +123,9 @@ enum DeployTarget {
   vercel
 }
 
-/// What an app or project shows as its icon: the automatic one (favicon or default) or an upload.
+/// What an app or project shows as its icon: an upload, or else its own. For an app that is its
+/// favicon (frontends) or its kind's default; for a project, the favicon of the app it names in
+/// iconAppId, else the folder.
 enum IconChoice {
   auto
   upload
@@ -955,9 +957,9 @@ model Project {
   /// A same-repo preview of a production base may have production's secrets and network. Off on every
   /// row, older ones too (migration 0023), so push access alone never reaches them.
   previewProductionAccess Boolean          @default(false)
-  /// The frontend whose favicon the project shows while its icon is automatic, as the owner picked
-  /// it. Null, or an app without a favicon, uses the most public frontend (db icons.ts). Last, as
-  /// migration 0028 adds it.
+  /// The frontend whose favicon the project shows, as the owner chose it. Null, or an app without a
+  /// favicon, shows the folder (db icons.ts); deleting the app clears it. Last, as migration 0028
+  /// adds it.
   iconAppId            String?             @db.Uuid
   iconApp              App?                @relation("ProjectIconApp", fields: [iconAppId], references: [id], onDelete: SetNull)
 

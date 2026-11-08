@@ -9,7 +9,7 @@ import { PendingButton } from "@/components/ui/pending";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { When } from "@/components/ui/when";
 import { report } from "@/lib/feedback";
-import { PROJECT_AUTO as AUTOMATIC, PROJECT_UPLOAD as UPLOADED, projectIconLine, projectIconPick, type IconBody, type IconState, type IconTarget } from "@/lib/icons";
+import { PROJECT_FOLDER as FOLDER, PROJECT_UPLOAD as UPLOADED, projectIconLine, projectIconPick, type IconBody, type IconState, type IconTarget } from "@/lib/icons";
 import type { AppKind } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
 import { AppIcon, ProjectIcon, useIcons } from "./app-icon";
@@ -17,12 +17,12 @@ import { prepareUpload, sendIcon } from "./upload";
 
 /*
  * The Icon card in app and project settings: what shows now, Automatic (a frontend's favicon or
- * the kind's default), an upload, and Reset. A project picks in a dropdown instead: Automatic (its
- * most public frontend's favicon, or the folder), one of its frontends with a favicon, or the
- * upload while it has one. Each action saves at once; a refused upload says why under the card.
+ * the kind's default), an upload, and Reset. A project picks in a dropdown instead: Folder (the
+ * default), one of its frontends with a favicon, or the upload while it has one. Each action saves
+ * at once; a refused upload says why under the card.
  */
 
-type Busy = "auto" | "upload" | null;
+type Busy = "auto" | "pick" | "upload" | null;
 
 function hostOf(url: string | null) {
   if (!url) return null;
@@ -102,14 +102,18 @@ export function IconCard({
 
   const auto = (success: string) => void run(() => save({ choice: "auto" }, "auto", success));
 
-  // A project's dropdown: the upload while it has one, else the picked frontend, else Automatic.
+  // A project's dropdown: the upload while it has one, else the frontend chosen, else the folder.
   const project = target.target === "project";
-  const { value: picked, auto: autoApp, apps } = projectIconPick(state);
+  const { value: picked, apps } = projectIconPick(state);
   // The pick waiting on "remove the upload?", since leaving an upload deletes it as Reset does.
   const [leaving, setLeaving] = useState<string | null>(null);
   const appName = (id: string) => apps.find((a) => a.id === id)?.name ?? "the app";
   const sendPick = (value: string) =>
-    run(() => save({ choice: "auto", appId: value === AUTOMATIC ? null : value }, "auto", value === AUTOMATIC ? "Icon set to Automatic" : `Icon set to the favicon of ${appName(value)}`));
+    run(() =>
+      value === FOLDER
+        ? save({ choice: "folder" }, "pick", "Icon set to the folder")
+        : save({ choice: "app", appId: value }, "pick", `Icon set to the favicon of ${appName(value)}`),
+    );
   const pick = (value: string) => {
     if (value === UPLOADED || value === picked) return;
     if (choice === "upload") setLeaving(value);
@@ -120,7 +124,7 @@ export function IconCard({
         ...(choice === "upload"
           ? [{ value: UPLOADED, label: "Uploaded image", hint: state?.image ? `${state.image.width} by ${state.image.height}` : undefined, glyph: <ProjectIcon slug={target.slug} /> }]
           : []),
-        { value: AUTOMATIC, label: "Automatic", hint: autoApp?.name ?? "Project folder", glyph: autoApp ? <AppIcon id={autoApp.id} kind="frontend" /> : <ProjectIcon /> },
+        { value: FOLDER, label: "Folder", hint: "Default", glyph: <ProjectIcon /> },
         ...apps.map((a) => ({ value: a.id, label: a.name, hint: a.host ?? a.environment, glyph: <AppIcon id={a.id} kind="frontend" /> })),
       ]
     : [];
@@ -217,8 +221,8 @@ export function IconCard({
           sub={name}
           body={
             <p className="dlg-text">
-              {leaving === AUTOMATIC || leaving === null
-                ? "The project shows its automatic favicon instead."
+              {leaving === FOLDER || leaving === null
+                ? "The project shows the folder instead."
                 : `The project shows the favicon of ${appName(leaving)} instead.`}{" "}
               The uploaded image is deleted; upload it again to bring it back.
             </p>
