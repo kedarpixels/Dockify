@@ -43,7 +43,7 @@ export function NameSection({ app, onRenamed, onDirty }: { app: AppDetail; onRen
     setBusy(false);
     // Taken by another app: said on the field, where the fix is typed.
     if (!r.ok && r.code === "NAME_TAKEN") {
-      setRefused(r.error ?? "Another app in this environment already goes by that name");
+      setRefused(r.error ?? "Another app already goes by that name");
       return;
     }
     report(r, { success: next === null ? "Name reset" : "App renamed", error: "Could not rename the app", what: `${app.projectSlug} / ${appTitle({ name: app.name, displayName: next })}` });

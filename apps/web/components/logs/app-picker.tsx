@@ -227,7 +227,7 @@ export function AppPicker({ apps, value, onChange }: { apps: PickerApp[]; value:
                   </span>
                   <span className="sel-option-label">{row.kind === "project" ? row.project : row.app.name}</span>
                   {row.kind === "app" ? <span className="lx-dot" style={{ ["--lx-app" as string]: `var(--lx-c${row.app.slot})` }} aria-hidden="true" /> : null}
-                  {row.kind === "app" ? <EnvTag env={row.app.env} quiet compact /> : null}
+                  {row.kind === "app" ? <EnvTag env={row.app.env} project={row.app.project} quiet compact /> : null}
                   <span className="sel-hint num">{row.kind === "project" ? plural(row.ids.length, "app") : row.app.onVercel ? "On Vercel" : row.app.stopped ? "Stopped" : ""}</span>
                   <span className="sel-check" aria-hidden="true">
                     {on ? <Icon name="check" size={16} /> : part ? <Icon name="minus" size={16} /> : null}

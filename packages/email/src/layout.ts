@@ -44,12 +44,15 @@ export interface EmailMessage {
 /** An app's kind, as the apps table stores it. It picks the kind tile in a project chip. */
 export type AppKind = "frontend" | "backend" | "bot" | "postgres" | "redis" | "s3";
 
-/** Where something happened, as the dashboard shows it: the project, its environment and the app. */
+/**
+ * Where something happened, as the dashboard shows it: the project, its environment and the app. A
+ * project with one environment shows none anywhere, so its place leaves `env` out.
+ */
 export interface AppRef {
   projectName: string;
   projectSlug: string;
-  /** "production", "development", ... */
-  env: string;
+  /** "production", "development", ...; absent or null when the project has only one. */
+  env?: string | null;
   /** The app as people read it: its display name when it has one, else its name. */
   appName: string;
   appKind: AppKind;
@@ -59,8 +62,9 @@ export interface AppRef {
   appIcon?: string | null;
 }
 
-/** The plain spelling of a place, for subjects and the text part: "horseai / production / web". */
-export const whereText = (where: AppRef | string): string => (typeof where === "string" ? where : `${where.projectSlug} / ${where.env} / ${where.appName}`);
+/** The plain spelling of a place, for subjects and the text part: "horseai / web", or "horseai / staging / web". */
+export const whereText = (where: AppRef | string): string =>
+  typeof where === "string" ? where : [where.projectSlug, ...(where.env ? [where.env] : []), where.appName].join(" / ");
 
 /** A fact's value: text, or a place shown as the dashboard's project chip. */
 export type FactValue = string | AppRef;
@@ -387,7 +391,8 @@ const envName = (env: string) => ENV_NAMES[env] ?? env.charAt(0).toUpperCase() +
  * its name, the EnvTag (the branch glyph; ink for production, muted for the rest) and the app
  * with its icon (its upload or favicon, else its kind tile), parted by thin vertical dividers in
  * the frame's line colour. Each segment is a cell, so the chip is one line; on phones the dividers
- * hide and the segments wrap between themselves. No origin, no images: the three names stand alone.
+ * hide and the segments wrap between themselves. No origin, no images: the names stand alone. A place
+ * with no environment (its project has only one) has no EnvTag segment.
  */
 function chip(ref: AppRef, origin?: string): string {
   const prod = ref.env === "production";
@@ -404,8 +409,8 @@ function chip(ref: AppRef, origin?: string): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
 ${seg(pic(ref.projectIcon, "dk-folder.png", 24, 8, !!ref.projectIcon) + name(ref.projectName, "dk-ink", 14, 500, L.ink))}
 ${divider}
-${seg(pic(null, "dk-f-source.png", 14, 5, false) + name(envName(ref.env), prod ? "dk-ink" : "dk-muted", 13, 400, prod ? L.ink : L.ink3))}
-${divider}
+${ref.env ? `${seg(pic(null, "dk-f-source.png", 14, 5, false) + name(envName(ref.env), prod ? "dk-ink" : "dk-muted", 13, 400, prod ? L.ink : L.ink3))}
+${divider}` : ""}
 ${seg(pic(ref.appIcon, `dk-kind-${KIND_TILE[ref.appKind]}.png`, 24, 8, !!ref.appIcon) + name(ref.appName, "dk-ink", 14, 500, L.ink))}
 </tr></table>`;
 }

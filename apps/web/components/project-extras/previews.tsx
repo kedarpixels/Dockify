@@ -317,7 +317,11 @@ export function PreviewSettingsCard({
           />
           <ToggleRow
             title="Previews may use production secrets and services"
-            body="Off by default. Off: a preview of production gets plain variables and its own network, so an app that needs more fails. A development base and forks are not affected."
+            body={
+              many
+                ? "Off by default. Off: a preview of production gets plain variables and its own network, so an app that needs more fails. A development base and forks are not affected."
+                : "Off by default. Off: a preview gets plain variables and its own network, so an app that needs more fails. Forks never get them."
+            }
             checked={draft.productionAccess}
             disabled={off}
             onChange={(productionAccess) => set({ productionAccess })}
@@ -353,7 +357,7 @@ export function PreviewSettingsCard({
           <p className="fld-note">
             {draft.access === "password"
               ? "Inbound webhooks to a preview, and a frontend preview calling a backend preview from the browser, cannot pass the password. Use Public if your previews need those."
-              : "Anyone with the link can open a preview, and it runs your code with this environment's plain variables."}
+              : `Anyone with the link can open a preview, and it runs your code with ${many ? "its base environment’s" : "the project’s"} plain variables.`}
           </p>
         </fieldset>
 

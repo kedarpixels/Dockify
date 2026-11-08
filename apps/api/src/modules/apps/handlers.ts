@@ -23,7 +23,7 @@ import { assertNoDeployInFlight } from "../deployments/enqueue.ts";
 import { IN_FLIGHT } from "../deployments/mapping.ts";
 import { configOf, findIntegration } from "../integrations/store.ts";
 import { enqueueVercelMirror, enqueueVercelSync, importGate, TOKEN_DEAD, vercelApiFor } from "../integrations/vercel.ts";
-import { appLabel, defaultCpuCores } from "@dockify/contracts";
+import { appLabel, defaultCpuCores, projects as P } from "@dockify/contracts";
 import { DEFAULT_MEMORY_MB, DEFAULT_PIDS } from "../observe/metrics.ts";
 import { imageProblem } from "../projects/handlers.ts";
 import { enqueueRemovals } from "../projects/jobs.ts";
@@ -42,13 +42,14 @@ const ROW = {
   currentDeploymentId: true, environmentId: true, serverId: true,
   primaryDomain: { select: { hostname: true } },
   domains: { orderBy: { createdAt: "asc" }, take: 1, select: { hostname: true } },
-  environment: { select: { name: true, projectId: true, project: { select: { slug: true, gitRepoId: true } } } },
+  environment: { select: { name: true, projectId: true, project: { select: { slug: true, gitRepoId: true, _count: { select: { environments: true } } } } } },
   _count: { select: { volumes: true } },
 } as const satisfies Prisma.AppSelect;
 
 type Row = Prisma.AppGetPayload<{ select: typeof ROW }>;
 
-const label = (a: Row) => `${a.environment.project.slug}/${a.environment.name}/${a.name}`;
+/** "shop/web", or "shop/staging/web" in a project with several environments (P.placeLabel). */
+const label = (a: Row) => P.placeLabel(a.environment.project.slug, a.environment.name, a.environment.project._count?.environments, a.name);
 const notFound = () => new HttpError(404, "App not found", "NOT_FOUND");
 const refused = (r: Refusal[]) => new HttpError(400, r[0]?.reason ?? "Refused", "REFUSED", { field: r[0]?.field, refusals: r });
 

@@ -314,7 +314,7 @@ export function DeploymentsView({ initial, overview, query }: { initial: Deploym
                     <ResultCount count={0} one="deployment" query={q} />
                   </>
                 ) : (
-                  <Empty icon="deploy" title="No deployments yet" body="Push to an environment’s branch or press Deploy on an app. Every build shows up here." />
+                  <Empty icon="deploy" title="No deployments yet" body="Push to an app’s branch or press Deploy on an app. Every build shows up here." />
                 )
               ) : (
                 <div className="dep-list">

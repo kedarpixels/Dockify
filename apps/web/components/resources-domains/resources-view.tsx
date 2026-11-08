@@ -8,7 +8,8 @@ import { KIND_LABEL } from "@/components/project-detail/shared";
 import { Topbar } from "@/components/shell/topbar";
 import { StatusChip } from "@/components/ui/chip";
 import { Empty } from "@/components/ui/empty";
-import { EnvTag, envName } from "@/components/ui/env-tag";
+import { EnvTag, envName, useRowEnv } from "@/components/ui/env-tag";
+import { useShowsEnv } from "@/components/ui/env-scope";
 import { SearchField } from "@/components/ui/field";
 import { KpiStrip, type KpiData } from "@/components/ui/kpi";
 import { Meter } from "@/components/ui/meter";
@@ -105,19 +106,23 @@ function Summary({ items, hostMemory }: { items: ResourceRow[]; hostMemory?: num
 /** Memory used as a share of the reservation, 0 when nothing is reserved. */
 const memPct = (r: ResourceRow) => (r.memory.reservedBytes ? (r.memory.usedBytes / r.memory.reservedBytes) * 100 : 0);
 
-/** The link that opens the app: its name says project, app, kind and environment, so twin rows differ. */
-const coverName = (r: ResourceRow) => `${r.projectSlug} / ${appTitle(r)}, ${KIND_LABEL[r.kind]}, ${envName(r.environment)}`;
+/**
+ * The link that opens the app: its name says project, app, kind and, when the project's apps sit in
+ * several environments, the environment, so twin rows differ.
+ */
+const coverName = (r: ResourceRow, shows: (project: string) => boolean) =>
+  `${r.projectSlug} / ${appTitle(r)}, ${KIND_LABEL[r.kind]}${shows(r.projectSlug) ? `, ${envName(r.environment)}` : ""}`;
 
-/** "horseai" for production (the default says nothing in a row), "horseai, Dev" otherwise. */
+/** "horseai" for production (the default says nothing in a row) or a project with one environment, "horseai, Dev" otherwise. */
 function Where({ r }: { r: ResourceRow }) {
-  const prod = r.environment === "production";
+  const named = useRowEnv()(r.projectSlug, r.environment);
   return (
     <span className="two-sub rd-sub">
       <span>
         {r.projectSlug}
-        {prod ? null : ","}
+        {named ? "," : null}
       </span>
-      <EnvTag env={r.environment} compact quiet />
+      {named ? <EnvTag env={r.environment} compact /> : null}
     </span>
   );
 }
@@ -151,11 +156,12 @@ interface RowProps {
 }
 
 function ResourceListRow({ r, now, delay }: RowProps) {
+  const shows = useShowsEnv();
   const img = imageParts(r);
   return (
     <li className="reveal" style={{ animationDelay: `${delay}ms` }}>
       <div className="soft-row rs-row" data-hover="true">
-        <Link href={`/apps/${r.id}`} className="rd-cover" aria-label={coverName(r)} />
+        <Link href={`/apps/${r.id}`} className="rd-cover" aria-label={coverName(r, shows)} />
         <span className="rs-col-name">
           <AppIcon id={r.id} kind={r.kind} size="md" />
           <span className="two">
@@ -186,11 +192,12 @@ function ResourceListRow({ r, now, delay }: RowProps) {
 }
 
 function ResourceCell({ r, now, delay }: RowProps) {
+  const shows = useShowsEnv();
   const img = imageParts(r);
   return (
     <article className="rs-cell reveal" style={{ animationDelay: `${delay}ms` }}>
       <Corners />
-      <Link href={`/apps/${r.id}`} className="rd-cover" aria-label={coverName(r)} />
+      <Link href={`/apps/${r.id}`} className="rd-cover" aria-label={coverName(r, shows)} />
       <div className="rs-cell-body">
         <header className="rs-cell-hd">
           <AppIcon id={r.id} kind={r.kind} size="lg" />

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { Tone } from "@/lib/derive";
 import { SIDEBAR_KEY } from "@/lib/theme";
 import type { AppKind } from "@/lib/types";
+import { EnvScopeProvider } from "@/components/ui/env-scope";
 import { CommandMenu } from "./command-menu";
 import { focusMain } from "./focus";
 import { MobileNav, MobileNavContext } from "./mobile-nav";
@@ -19,6 +20,8 @@ export interface ShellData {
   /** `environment` is null when the app's project shows none (lib/environments.ts). */
   /** `label` is what people read ("horseai / Storefront"); `name` is the app's own name, which a search also finds. */
   apps: Array<{ id: string; kind: AppKind; label: string; name?: string; environment: string | null }>;
+  /** The projects whose rows name their environments (components/ui/env-scope.tsx). */
+  envProjects?: string[];
   inFlight: number;
   viewer: { name: string; role: string; email?: string; avatarUrl?: string } | null;
   /** Design preview build: sign out skips the API call. */
@@ -137,7 +140,7 @@ export function Shell({ data, children }: { data: ShellData; children: React.Rea
         </a>
         <Sidebar data={data} collapsed={collapsed} onSearch={openCommand} onToggle={toggleSidebar} />
         <div ref={column} className="shell-main">
-          {children}
+          <EnvScopeProvider projects={data.envProjects ?? []}>{children}</EnvScopeProvider>
           <MobileNav data={data} open={menuOpen} onClose={closeMenu} onSearch={openCommand} />
         </div>
         {commandOpen ? <CommandMenu data={data} onClose={closeCommand} onNavigate={onNavigate} /> : null}

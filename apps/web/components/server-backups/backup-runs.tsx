@@ -132,7 +132,7 @@ function RunRow({ r, now, actions }: { r: BackupRun; now: number; actions: RunAc
         <span className="ellipsis" title={dbLabel(r.database)}>
           <span className="sb-muted">{r.database.projectSlug} /</span> {dbName(r.database)}
         </span>
-        <EnvTag env={r.database.environment} compact quiet />
+        <EnvTag env={r.database.environment} project={r.database.projectSlug} compact quiet />
       </span>
       <RunDetail r={r} />
       <TestCell r={r} />

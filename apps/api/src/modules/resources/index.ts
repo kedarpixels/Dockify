@@ -8,7 +8,7 @@
  * volume row) and then deployed through the worker's managed path (data/managed.ts) by its first
  * deploy job, queued here. Storage is refused: MinIO no longer publishes an image.
  */
-import { defaultCpuCores } from "@dockify/contracts";
+import { defaultCpuCores, projects as P } from "@dockify/contracts";
 import os from "node:os";
 import type { Db, Prisma } from "@dockify/db";
 import { assertProjectScope } from "../../actor.ts";
@@ -101,7 +101,7 @@ export const resourcesHandlers: Handlers = {
   "resources.create": async ({ body, actor, ctx, req }) => {
     if (!actor) throw unauthenticated();
     if (body.kind === "s3") throw new HttpError(400, STORAGE_UNAVAILABLE, "KIND_UNAVAILABLE", { field: "kind" });
-    const project = await ctx.db.project.findUnique({ where: { id: body.projectId }, select: { id: true, slug: true, archivedAt: true } });
+    const project = await ctx.db.project.findUnique({ where: { id: body.projectId }, select: { id: true, slug: true, archivedAt: true, _count: { select: { environments: true } } } });
     if (!project || project.archivedAt) throw new HttpError(404, "Project not found", "NOT_FOUND", { field: "projectId" });
     assertProjectScope(actor, project.id);
     const kind = body.kind;
@@ -116,7 +116,7 @@ export const resourcesHandlers: Handlers = {
     await enqueueDeployment(ctx.db, id!, { trigger: actor.kind === "token" ? "api" : "manual", ...by });
     await audit(ctx.db, {
       category: "deploys", action: "app.deploy", verb: "deployed", ...by, targetType: "app", targetId: id!,
-      targetLabel: `${project.slug}/${body.environment}/${body.name}`, ip: req.clientIp, userAgent: req.headers["user-agent"] ?? null,
+      targetLabel: P.placeLabel(project.slug, body.environment, project._count?.environments, body.name), ip: req.clientIp, userAgent: req.headers["user-agent"] ?? null,
     });
     const app = await ctx.db.app.findUniqueOrThrow({ where: { id: id! }, include: APP_INCLUDE });
     return toResourceRow(app, undefined);

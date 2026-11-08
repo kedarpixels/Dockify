@@ -147,7 +147,8 @@ export interface LogLine {
 /** What the New project popup collects. The create route adds what the API body also needs (toUpstream). */
 export interface NewProjectInput {
   name: string;
-  environments: string[];
+  /** Left out, the project starts with one environment, production (the API's default). */
+  environments?: string[];
 }
 
 export interface NewAppInput {
@@ -352,9 +353,9 @@ function toUpstream(m: Mutation): Upstream | null {
     case "env.delete":
       return ok(m.slug) ? { method: "DELETE", path: `/api/v1/projects/${m.slug}/env`, body: { environment: m.environment, key: m.key } } : null;
     case "project.create":
-      // A project names no repository (apps carry their own), and every environment starts on the
-      // instance's default branch (the api fills it in); its branch stays editable in the project's settings.
-      return { method: "POST", path: "/api/v1/projects", body: { repoUrl: "", name: m.project.name, environments: m.project.environments } };
+      // A project names no repository (apps carry their own) and, unless asked, one environment: the
+      // api starts it with production on the instance's default branch, editable in the project's settings.
+      return { method: "POST", path: "/api/v1/projects", body: { repoUrl: "", name: m.project.name, ...(m.project.environments ? { environments: m.project.environments } : {}) } };
     case "project.patch":
       return ok(m.slug) ? { method: "PATCH", path: `/api/v1/projects/${m.slug}`, body: m.patch } : null;
     case "project.delete":

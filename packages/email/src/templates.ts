@@ -23,7 +23,7 @@ const placeOf = (where: AppRef | string): AppRef | string =>
     : {
         projectName: oneLine(where.projectName, 60),
         projectSlug: oneLine(where.projectSlug, 40),
-        env: oneLine(where.env, 32),
+        env: where.env ? oneLine(where.env, 32) : null,
         // The name people read: a display name runs to 60 characters (an app's name to 32).
         appName: oneLine(where.appName, 60),
         appKind: where.appKind,
@@ -284,6 +284,7 @@ export interface PreviewNoticeInput extends Brand {
   isolatedDb: boolean;
   /** What it shares with its base environment: both its secrets and network, or neither. */
   isolation: "base" | "own" | "fork";
+  /** Empty in a project with one environment, which names none. */
   baseEnvironment: string;
   /** Its public address: live when ready, the build still serving when failed, or null. */
   previewUrl: string | null;
@@ -307,7 +308,7 @@ export function previewNotice(input: PreviewNoticeInput, theme: Theme = "auto"):
   if (input.commit) rows.push(["Commit", oneLine(input.commit, 40).slice(0, 7), "commit"]);
   if (input.author) rows.push(["Author", oneLine(input.author, 60), "user"]);
   rows.push(["Status", ready ? "Ready" : "Failed", "status"]);
-  rows.push(["Database", input.isolatedDb ? "Its own temporary database, separate from your real data" : input.isolation === "base" ? `The ${oneLine(input.baseEnvironment, 32)} environment's services` : "None", "database"]);
+  rows.push(["Database", input.isolatedDb ? "Its own temporary database, separate from your real data" : input.isolation === "base" ? (input.baseEnvironment ? `The ${oneLine(input.baseEnvironment, 32)} environment's services` : "The project's services") : "None", "database"]);
   if (input.isolation === "own") rows.push(["Production", "No secrets or services, so an app that needs them fails here"]);
   if (input.fromFork) rows.push(["Fork", "Built from a fork, without any secret", "source"]);
   const lines = input.lines.slice(-PREVIEW_LOG_LINES).map((l) => oneLine(l, 240)).filter(Boolean);

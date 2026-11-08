@@ -1,29 +1,42 @@
 ---
 title: "Projects and apps"
-description: "How Dockify organises what runs on your server: projects hold environments, environments hold apps."
+description: "How Dockify organises what runs on your server: a project is a folder of apps, and environments are an option for running a second copy."
 ---
 
 ## The model
 
+A **project** is a folder of apps: the frontends, backends, bots and databases one product runs. Its apps can come from different repositories, or from none.
+
+```text
+project            lighthouse   (branch main)
+  app              web          frontend
+  app              api          backend
+  app              db           postgres
+```
+
+An **app** is one container: something you build, an image you pull, or a managed service.
+
+That is all most projects need. **Environments** are an option, for running a second copy of the apps from another branch, such as `staging`:
+
 ```text
 project            lighthouse
   environment      production   (branch main)
-    app            web          frontend
-    app            api          backend
-    app            db           postgres
-  environment      development  (branch dev)
+    app            web, api, db
+  environment      staging      (branch staging)
     app            web, api, db
 ```
 
-- A **project** groups the apps and databases one product runs. Its apps can come from different repositories, or from none.
-- An **environment** has a name and the branch it tracks. Each environment gets its own private Docker network, so `development` apps cannot reach `production` ones.
-- An **app** is one container: something you build, an image you pull, or a managed service.
-
 ## Environments
 
-A new project starts with one environment, Production, on the `main` branch, and the dashboard says nothing about environments until there is a second: each app simply shows its own branch. To add one, open the project's settings and give it a name and a branch; you can copy the variables of another environment to start from. It gets separate variables, domains and an isolated network. A project holds up to ten. Removing down to one hides them again.
+A new project starts with one environment, `production`, on the instance's default branch (`main` unless you changed it under **Settings > Instance**). With one environment the dashboard shows none anywhere: no tags, no switcher, no environment picker. Variables are the project's own or an app's own, and each app shows its own branch.
 
-Changing an environment's branch or deleting it asks you to confirm it is you, because it changes what code runs.
+To add one, open the project's **Settings** tab and choose **Add environment** in the Environments card. Give it a name and the branch that deploys to it; you can copy the variables of another environment to start from. It starts with no apps: add them with **New app**, which then asks which environment. Each environment gets its own apps, variables, domains and private Docker network, so `staging` apps cannot reach `production` ones. A project holds up to ten.
+
+With two or more, the project page's header has an environment switcher (**All**, then one key per environment with its app count). It narrows the apps, deployments, domains and variables to one environment, and **New app** starts in the one you picked. App cards name their environment only when the cards on screen come from more than one. Lists that span projects, such as Resources, Domains and Logs, name an app's environment only for projects whose apps sit in more than one.
+
+Removing an environment, from the same card, deletes everything in it: its apps and databases with their data, their volumes, domains and routes, and every variable set in it. Previews built from it close, and if it was the previews' base, they move to one that is left. Database backups stay on the Backups page until you delete them. You type the environment's name, and Dockify asks you to confirm it is you. It is refused while one of its apps is deploying (cancel or wait for it first), and the last environment can never be removed: delete the project instead. Removing down to one hides environments again.
+
+Changing an environment's branch also asks you to confirm it is you, because it changes what code runs.
 
 Inside an environment, apps reach each other by name. If your database app is called `db`, your api connects to `db:5432`; if your api app is called `api` and listens on 3000, your web app calls `http://api:3000`. Nothing outside the environment network can.
 
@@ -87,8 +100,8 @@ Each project can publish a public status page at `/status/<project>`. The dashbo
 
 ## Preview deploys
 
-Every pull request can get its own copy of the project, `pr-<n>`, cloned from a base environment, with its own URL and low resource limits, asleep when idle and deleted on close or merge. See [Pull request previews](/docs/previews).
+Every pull request can get its own copy of the project, `pr-<n>`, cloned from the project (or, with several environments, from a base environment you pick), with its own URL and low resource limits, asleep when idle and deleted on close or merge. See [Pull request previews](/docs/previews).
 
 ## Deleting
 
-Deleting a project, an environment or an app asks you to type its name and to confirm it is you. Containers, networks and the app's images are removed. Backups are not deleted with a database: they stay in the bucket, listed as orphans, until you remove them on purpose.
+Deleting a project, an environment or an app asks you to type its name and to confirm it is you. Containers, volumes, routes, networks and the app's images are removed. Backups are not deleted with a database: they stay in the bucket, listed as orphans, until you remove them on purpose.

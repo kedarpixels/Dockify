@@ -177,7 +177,7 @@ export function VersionSection({ app }: { app: AppDetail }) {
         title={`Switch to ${up?.target?.name ?? "the new service"}`}
         confirmText={app.name}
         confirmLabel="Stop apps and switch"
-        body={`Every app in this environment stops while the latest data is copied, then ${linked.length ? "the linked apps redeploy on the new service" : "they start again"}. The size of the database decides how long. Counts must match exactly or nothing switches. A connection string typed by hand is not a link: change those yourself.`}
+        body={`Every app beside it stops while the latest data is copied, then ${linked.length ? "the linked apps redeploy on the new service" : "they start again"}. The size of the database decides how long. Counts must match exactly or nothing switches. A connection string typed by hand is not a link: change those yourself.`}
       />
       <ConfirmDialog
         open={pending?.type === "back"}

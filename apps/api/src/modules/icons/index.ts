@@ -1,7 +1,7 @@
 /**
  * App and project icons: the map the console reads once, the image routes, and the one write per
  * owner (automatic or an upload). Automatic is a frontend's own favicon; for a project it is the
- * favicon of its production frontend, then of any frontend on a primary domain. Uploads are checked
+ * favicon of the frontend the owner picked, else of its most public frontend (db icons.ts). Uploads are checked
  * by magic bytes and header size before they are stored, and every image is served only with the
  * type that check found.
  */
@@ -9,10 +9,11 @@ import { actorFields, meta } from "../../actor.ts";
 import { requireActor } from "../../actor.ts";
 import { createHash } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { checkIconUpload, type EndpointId, type IconState, type SetIconBody } from "@dockify/contracts";
+import { checkIconUpload, projects as P, type EndpointId, type IconState, type ProjectFavicon, type SetIconBody, type SetProjectIconBody } from "@dockify/contracts";
 import { internalChannelToken, mailIconKey, verifyMailIcon } from "@dockify/crypto";
 import {
-  enqueue, iconVersion, projectFavicon, shownAppIcon, shownProjectIcon, SHOWN_APP_ICON, SHOWN_PROJECT_ICON, type IconImageRow, type Prisma,
+  enqueue, iconVersion, projectFavicon, projectFaviconApp, rankFaviconApps, shownAppIcon, shownProjectIcon, SHOWN_APP_ICON, SHOWN_PROJECT_ICON,
+  type FaviconCandidate, type IconImageRow, type Prisma,
 } from "@dockify/db";
 import { assertProjectScope, tokenProjectLimit, type Actor } from "../../actor.ts";
 import type { Ctx, Handlers } from "../../app.ts";
@@ -26,7 +27,7 @@ export const ICON_ENDPOINTS = [
 const APP_ICON = {
   ...SHOWN_APP_ICON,
   name: true, kind: true, faviconCheckedAt: true, faviconError: true,
-  environment: { select: { name: true, projectId: true, project: { select: { slug: true } } } },
+  environment: { select: { name: true, projectId: true, project: { select: { slug: true, _count: { select: { environments: true } } } } } },
 } as const satisfies Prisma.AppSelect;
 
 /** A project's own upload, and its frontends' favicons to derive Automatic from. */
@@ -53,12 +54,34 @@ export function appStateOf(a: Pick<AppRow, "kind" | "iconChoice" | "icons" | "fa
   };
 }
 
+/** The host a borrowed favicon came from, else the app's primary domain. */
+function hostOf(a: FaviconCandidate): string | null {
+  try {
+    if (a.favicon.origin) return new URL(a.favicon.origin).hostname;
+  } catch {
+    // An origin that is not a URL names no host; the domain below does.
+  }
+  return a.primaryDomain?.hostname ?? null;
+}
+
+/** Which frontends a project can borrow a favicon from, the one it does, and the automatic one. */
+function borrowOf(p: ProjectRow): ProjectFavicon {
+  const ranked = rankFaviconApps(p);
+  return {
+    pick: p.iconAppId,
+    auto: ranked[0]?.id ?? null,
+    from: projectFaviconApp(p)?.id ?? null,
+    apps: ranked.map((a) => ({ id: a.id, name: a.displayName ?? a.name ?? "", environment: a.environment, host: hostOf(a) })),
+  };
+}
+
 export function projectStateOf(p: ProjectRow): IconState {
   const fav = projectFavicon(p);
   return {
     choice: p.iconChoice,
     image: refOf(projectImage(p)),
     favicon: fav ? { origin: fav.origin, fetchedAt: fav.updatedAt.toISOString(), checkedAt: null, error: null } : null,
+    borrow: borrowOf(p),
   };
 }
 
@@ -137,8 +160,11 @@ async function sendMailIcon(ctx: Ctx, token: string, req: FastifyRequest, reply:
   return sendRow(row, "public, max-age=31536000, immutable", req, reply);
 }
 
-/** Writes the choice for one owner. Automatic drops the stored upload. */
-async function writeChoice(ctx: Ctx, body: SetIconBody, owner: { appId: string } | { projectId: string }) {
+/**
+ * Writes the choice for one owner. Automatic drops the stored upload; for a project it also keeps
+ * the frontend picked to borrow from (null for the automatic pick), and an upload clears that pick.
+ */
+async function writeChoice(ctx: Ctx, body: SetIconBody | SetProjectIconBody, owner: { appId: string } | { projectId: string }) {
   const key = "appId" in owner ? { appId: owner.appId } : { projectId: owner.projectId };
   const upload = body.choice === "upload" ? decodeUpload(body.image) : null;
   await ctx.db.$transaction(async (tx) => {
@@ -151,13 +177,21 @@ async function writeChoice(ctx: Ctx, body: SetIconBody, owner: { appId: string }
     }
     const data = { iconChoice: body.choice };
     if ("appId" in owner) await tx.app.update({ where: { id: owner.appId }, data });
-    else await tx.project.update({ where: { id: owner.projectId }, data });
+    else await tx.project.update({ where: { id: owner.projectId }, data: { ...data, iconAppId: body.choice === "auto" && "appId" in body ? (body.appId ?? null) : null } });
   });
   return upload;
 }
 
 const changesOf = (upload: ReturnType<typeof decodeUpload> | null) =>
   upload ? { choice: "upload", mime: upload.mime, bytes: upload.bytes.length, width: upload.width, height: upload.height, sha256: upload.sha256 } : { choice: "auto" };
+
+/** A project's icon change for the activity log: an upload, or automatic and whose favicon it borrows. */
+function projectChangesOf(upload: ReturnType<typeof decodeUpload> | null, before: ProjectRow, picked: FaviconCandidate | null) {
+  if (upload) return changesOf(upload);
+  const was = before.iconAppId ? rankFaviconApps(before).find((a) => a.id === before.iconAppId) : null;
+  const label = (a: FaviconCandidate | null | undefined) => (a ? `${a.environment}/${a.name ?? a.id}` : "automatic");
+  return { choice: "auto", favicon: { from: before.iconChoice === "upload" ? "upload" : label(was), to: label(picked) } };
+}
 
 export const iconHandlers: Handlers = {
   "icons.list": async ({ ctx, actor }) => {
@@ -201,7 +235,7 @@ export const iconHandlers: Handlers = {
     }
     await audit(ctx.db, {
       category: "config", action: "app.icon", verb: "changed the icon of", ...actorFields(a),
-      targetType: "app", targetId: app.id, targetLabel: `${app.environment.project.slug}/${app.environment.name}/${app.name}`,
+      targetType: "app", targetId: app.id, targetLabel: P.placeLabel(app.environment.project.slug, app.environment.name, app.environment.project._count?.environments, app.name),
       changes: changesOf(upload), ...meta(req),
     });
     return appStateOf(await loadApp(ctx, a, app.id));
@@ -210,10 +244,15 @@ export const iconHandlers: Handlers = {
   "projects.icon.put": async ({ ctx, actor, params, body, req }) => {
     const a = requireActor(actor);
     const project = await loadProject(ctx, a, params.slug);
+    // A picked app must be one of this project's frontends with a fetched favicon: the ones the Icon control lists.
+    const picked = body.choice === "auto" && body.appId ? (rankFaviconApps(project).find((x) => x.id === body.appId) ?? null) : null;
+    if (body.choice === "auto" && body.appId && !picked) {
+      throw new HttpError(400, "That app is not a frontend of this project with a favicon", "INVALID_REQUEST", { field: "appId" });
+    }
     const upload = await writeChoice(ctx, body, { projectId: project.id });
     await audit(ctx.db, {
       category: "config", action: "project.icon", verb: "changed the icon of", ...actorFields(a),
-      targetType: "project", targetId: project.id, targetLabel: project.slug, changes: changesOf(upload), ...meta(req),
+      targetType: "project", targetId: project.id, targetLabel: project.slug, changes: projectChangesOf(upload, project, picked), ...meta(req),
     });
     return projectStateOf(await loadProject(ctx, a, project.slug));
   },

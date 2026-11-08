@@ -82,7 +82,7 @@ export function ProjectCarousel({ projects, now, empty }: { projects: ProjectSum
           </div>
         </div>
       ) : (
-        <Empty icon="folder" title="No projects yet" body={empty ?? "Create a project to group its apps, environments and domains. It shows up here."} />
+        <Empty icon="folder" title="No projects yet" body={empty ?? "Create a project to group its apps and domains. It shows up here."} />
       )}
     </section>
   );

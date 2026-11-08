@@ -228,7 +228,7 @@ function LinkApps({ link, draft, set, many }: { link: LinkStep; draft: DetailsDr
       )}
       {link.conflict ? (
         <Callout tone="warn" icon="alert" role="alert">
-          {conflictLine(link.conflict, service, draft.environment)}
+          {conflictLine(link.conflict, service, many ? draft.environment : null)}
         </Callout>
       ) : link.apps.length ? (
         <p className="fld-note">

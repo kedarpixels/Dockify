@@ -17,11 +17,12 @@ import { Topbar } from "@/components/shell/topbar";
 import { StatusChip } from "@/components/ui/chip";
 import { Crumbs } from "@/components/ui/crumbs";
 import { Empty } from "@/components/ui/empty";
-import { EnvTag } from "@/components/ui/env-tag";
+import { EnvTag, envName } from "@/components/ui/env-tag";
 import { RepoRef } from "@/components/ui/git-ref";
 import { NoSource } from "@/components/ui/no-source";
 import { NotFound } from "@/components/ui/not-found";
 import { PreviewProvider } from "@/components/ui/preview";
+import { filterOptions, Segmented } from "@/components/ui/segmented";
 import { Corners, Node, Rule, Spacer } from "@/components/ui/rule";
 import { SectionHead } from "@/components/ui/section-head";
 import { TabPanel, Tabs } from "@/components/ui/tabs";
@@ -101,17 +102,22 @@ function AppCard({ a, now, multiEnv, delay, repoUrl }: { a: AppSummary; now: num
   );
 }
 
-function AppsTab({ p, now, onNew }: { p: ProjectDetail; now: number; onNew?: () => void }) {
-  if (!p.apps.length) {
+/** The environment switcher's "every environment" choice. Never an environment name: those start with a letter or digit. */
+const ALL = "*";
+
+function AppsTab({ p, env, now, onNew }: { p: ProjectDetail; env: string; now: number; onNew?: () => void }) {
+  const apps = env === ALL ? p.apps : p.apps.filter((a) => a.environment === env);
+  if (!apps.length) {
+    const where = env === ALL ? "" : ` in ${envName(env)}`;
     return (
       <div className="card">
         <Empty
           icon="box"
-          title="No apps yet"
+          title={`No apps${where} yet`}
           body={
             onNew
               ? "Add a frontend, a backend, a bot or a database. Each app builds from its own repository or Git URL, or runs from an image."
-              : "An admin can add a frontend, a backend, a bot or a database here."
+              : `An admin can add a frontend, a backend, a bot or a database${where ? ` to ${envName(env)}` : " here"}.`
           }
           action={
             onNew ? (
@@ -125,31 +131,55 @@ function AppsTab({ p, now, onNew }: { p: ProjectDetail; now: number; onNew?: () 
       </div>
     );
   }
-  const multiEnv = showsEnvironments(p.environments);
+  // A card names its environment only when the cards around it sit in more than one.
+  const multiEnv = new Set(apps.map((a) => a.environment)).size > 1;
   return (
     <section className="pj-grid" aria-label="Apps">
-      {p.apps.map((a, i) => (
+      {apps.map((a, i) => (
         <AppCard key={a.id} a={a} now={now} multiEnv={multiEnv} delay={i * 40} repoUrl={p.repo?.url ?? null} />
       ))}
     </section>
   );
 }
 
+/**
+ * Which environment the project page shows, kept in `?env=` as the tab is in `?tab=`: every
+ * environment is the bare URL. A switch replaces the history entry.
+ */
+function useEnvFilter() {
+  const param = useSearchParams().get("env") ?? ALL;
+  const [value, setValue] = useState(param);
+  const [seen, setSeen] = useState(param);
+  if (param !== seen) {
+    setSeen(param);
+    setValue(param);
+  }
+  const change = useCallback((next: string) => {
+    setValue(next);
+    const url = new URL(window.location.href);
+    if (next === ALL) url.searchParams.delete("env");
+    else url.searchParams.set("env", next);
+    window.history.replaceState(null, "", url);
+  }, []);
+  return [value, change] as const;
+}
+
 /* -------------- Domains -------------- */
 
 /* The domains page row, without the DNS column (the project read has no lookup) or the project,
    which this page already is. Adding and removing happen on an app or on the Domains page. */
-function DomainsTab({ p, now, manage }: { p: ProjectDetail; now: number; manage: boolean }) {
-  const active = p.domains.filter((d) => d.tls === "active").length;
+function DomainsTab({ p, env, now, manage }: { p: ProjectDetail; env: string; now: number; manage: boolean }) {
+  const domains = env === ALL ? p.domains : p.domains.filter((d) => d.environment === env);
+  const active = domains.filter((d) => d.tls === "active").length;
   return (
     <section className="card" aria-labelledby="pd-dom-title">
       <div className="card-hd">
-        <CardTitle id="pd-dom-title" icon="globe" title="Domains" sub={p.domains.length ? `${plural(p.domains.length, "domain")}, ${active} with TLS active` : "Hostnames routed to this project’s apps"} />
+        <CardTitle id="pd-dom-title" icon="globe" title="Domains" sub={domains.length ? `${plural(domains.length, "domain")}, ${active} with TLS active` : env === ALL ? "Hostnames routed to this project’s apps" : `Hostnames routed to its apps in ${envName(env)}`} />
         <Link href="/domains" className="btn btn-sm">
           View all domains
         </Link>
       </div>
-      {p.domains.length === 0 ? (
+      {domains.length === 0 ? (
         <Empty
           icon="globe"
           title="No domains yet"
@@ -163,8 +193,9 @@ function DomainsTab({ p, now, manage }: { p: ProjectDetail; now: number; manage:
         <div className="rd-list">
           <DomainHead target dns={false} />
           <ul className="dm-rows" aria-label="Domains">
-            {p.domains.map((d, i) => (
+            {domains.map((d, i) => (
               <DomainRow
+                project={p.slug}
                 key={d.id}
                 d={{ id: d.id, hostname: d.host, appId: d.appId, appName: d.appName, appDisplayName: d.appDisplayName, environment: d.environment, tls: { status: d.tls, expiresAt: d.expiresAt } }}
                 now={now}
@@ -188,6 +219,7 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
   const o = result.data;
   const notices = useMemo(() => (o ? deriveNotices(o, now) : null), [o, now]);
   const [tab, setTab] = useUrlTab(PROJECT_TABS);
+  const [envFilter, setEnvFilter] = useEnvFilter();
   // Switching away from Settings with unsaved edits asks first.
   const tabGuard = useTabSwitchGuard(tab, "settings", setTab);
   const [saved, setSaved] = useState<ProjectDetail | null>(null);
@@ -208,7 +240,7 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
   const search = useSearchParams();
   const asked = search.get("new") === "service";
   const askedFor = asked ? (search.get("for") ?? undefined) : undefined;
-  const [newApp, setNewApp] = useState<{ start?: SourceType; forApp?: string } | null>(asked ? { start: "service", forApp: askedFor } : null);
+  const [newApp, setNewApp] = useState<{ start?: SourceType; forApp?: string; environment?: string } | null>(asked ? { start: "service", forApp: askedFor } : null);
   const [seenAsk, setSeenAsk] = useState(asked);
   if (asked !== seenAsk) {
     setSeenAsk(asked);
@@ -232,18 +264,26 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
     return { ...base, apps: base.apps.map((a) => ({ ...a, status: live.get(a.id) ?? a.status })) };
   }, [saved, page.data, o]);
 
+  // A project with one environment shows none: no switcher, nothing narrowed. With several, the
+  // header's switcher narrows the apps, deployments, domains and variables to one, or shows them all.
+  const multi = project ? showsEnvironments(project.environments) : false;
+  const env = multi && project?.environments.some((e) => e.name === envFilter) ? envFilter : ALL;
+  const inEnv = useCallback((x: { environment: string }) => env === ALL || x.environment === env, [env]);
+
   const tabs = useMemo(() => {
     if (!project) return [];
     const e = extras?.env;
     const counts: Partial<Record<ProjectTab, number>> = {
-      apps: project.apps.length,
-      deployments: project.deployments.length,
+      apps: project.apps.filter(inEnv).length,
+      deployments: project.deployments.filter(inEnv).length,
       previews: extras?.previews?.settings.enabled ? extras.previews.previews.length : undefined,
-      env: e ? e.environments.reduce((n, x) => n + x.vars.length, 0) + e.overrides.reduce((n, o) => n + o.vars.length, 0) : undefined,
-      domains: project.domains.length,
+      env: e
+        ? e.environments.filter((x) => inEnv({ environment: x.name })).reduce((n, x) => n + x.vars.length, 0) + e.overrides.filter(inEnv).reduce((n, o) => n + o.vars.length, 0)
+        : undefined,
+      domains: project.domains.filter(inEnv).length,
     };
     return PROJECT_TABS.map((t) => ({ value: t, label: TAB_LABEL[t], count: counts[t] }));
-  }, [project, extras]);
+  }, [project, extras, inEnv]);
 
   // Settings holds the preview options: switch there, then bring the card into view once it
   // renders, gliding unless the operator asked for less motion.
@@ -292,7 +332,7 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
   }
 
   const state = projectState(project.apps);
-  const openNew = can.manage ? () => setNewApp({}) : undefined;
+  const openNew = can.manage ? () => setNewApp(env === ALL ? {} : { environment: env }) : undefined;
 
   return (
     <PreviewProvider preview={page.source === "preview"}>
@@ -308,17 +348,37 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
             </span>
           }
           lead={
-            <DetailLead tone={state.tone} state={state.label} envs={showsEnvironments(project.environments) ? project.environments.map((e) => e.name) : []}>
+            <DetailLead tone={state.tone} state={state.label} envs={[]}>
               {/* Projects made before apps carried their own source named one repository; a project made now names none. */}
               {project.repo ? <RepoRef source={project.repo.url} label={project.repo.label} className="pd-repo" icon={<Icon name="github" size={14} />} /> : null}
             </DetailLead>
           }
           actions={
-            openNew ? (
-              <button type="button" className="btn btn-primary" onClick={openNew}>
-                <Icon name="plus" />
-                New app
-              </button>
+            multi || openNew ? (
+              <>
+                {multi ? (
+                  <Segmented
+                    label="Environment"
+                    value={env}
+                    onChange={setEnvFilter}
+                    options={filterOptions([
+                      { value: ALL, label: "All", count: project.apps.length, tip: "Every environment" },
+                      ...project.environments.map((e) => ({
+                        value: e.name,
+                        label: envName(e.name),
+                        count: project.apps.filter((a) => a.environment === e.name).length,
+                        tip: `Deploys from ${e.branch}`,
+                      })),
+                    ])}
+                  />
+                ) : null}
+                {openNew ? (
+                  <button type="button" className="btn btn-primary" onClick={openNew}>
+                    <Icon name="plus" />
+                    New app
+                  </button>
+                ) : null}
+              </>
             ) : null
           }
         />
@@ -327,14 +387,14 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
         <Rule />
 
         <TabPanel id="project" value={tab} className="pd-panel">
-          {tab === "apps" ? <AppsTab p={project} now={now} onNew={openNew} /> : null}
+          {tab === "apps" ? <AppsTab p={project} env={env} now={now} onNew={openNew} /> : null}
           {tab === "deployments" ? (
             <DeployCard
               scope="project"
-              deployments={withRepo(project.deployments, project.repo?.url)}
+              deployments={withRepo(project.deployments.filter(inEnv), project.repo?.url)}
               now={now}
-              sub={`Every build of ${project.slug}, newest first`}
-              emptyBody="Push to an environment’s branch or press Deploy on an app. Every build of this project shows up here."
+              sub={env === ALL ? `Every build of ${project.slug}, newest first` : `Every build in ${envName(env)}, newest first`}
+              emptyBody="Push to an app’s branch or press Deploy on an app. Every build of this project shows up here."
             />
           ) : null}
           {tab === "previews" ? (
@@ -350,9 +410,9 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
             />
           ) : null}
           {tab === "env" ? (
-            <EnvWorkbench project={project} extras={extras} loading={extrasLoading} loadError={extras?.envError ?? extrasError} now={now} onPatch={patch} onReload={reload} />
+            <EnvWorkbench project={project} extras={extras} loading={extrasLoading} loadError={extras?.envError ?? extrasError} now={now} onPatch={patch} onReload={reload} environment={env === ALL ? undefined : env} />
           ) : null}
-          {tab === "domains" ? <DomainsTab p={project} now={now} manage={can.manage} /> : null}
+          {tab === "domains" ? <DomainsTab p={project} env={env} now={now} manage={can.manage} /> : null}
           {tab === "settings" ? (
             <ProjectSettings
               p={project}
@@ -372,7 +432,7 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
         <Spacer end />
       </main>
 
-      {can.manage ? <NewAppDialog p={project} open={newApp !== null} start={newApp?.start} forApp={newApp?.forApp} onClose={closeNew} /> : null}
+      {can.manage ? <NewAppDialog p={project} open={newApp !== null} start={newApp?.start} forApp={newApp?.forApp} environment={newApp?.environment} onClose={closeNew} /> : null}
     </PreviewProvider>
   );
 }

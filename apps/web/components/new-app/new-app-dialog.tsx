@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon, type IconName } from "@/components/icon";
 import { Dialog } from "@/components/ui/dialog";
 import { envName } from "@/components/ui/env-tag";
+import { showsEnvironments } from "@/lib/environments";
 import { PendingButton } from "@/components/ui/pending";
 import { report } from "@/lib/feedback";
 import type { ProjectDetail } from "@/lib/pages/project-detail";
@@ -78,13 +79,15 @@ type Props = {
   start?: SourceType;
   /** The app New app was opened from: a new service starts in its environment, linked to it. */
   forApp?: string;
+  /** The environment the project page is showing: the new app starts there. */
+  environment?: string;
 };
 
 export function NewAppDialog(props: Props) {
   return props.open ? <NewAppFlow {...props} /> : null;
 }
 
-function NewAppFlow({ p, open, onClose, start, forApp }: Props) {
+function NewAppFlow({ p, open, onClose, start, forApp, environment }: Props) {
   const router = useRouter();
   const ctx = useNewAppContext();
   const body = useRef<HTMLDivElement>(null);
@@ -98,7 +101,7 @@ function NewAppFlow({ p, open, onClose, start, forApp }: Props) {
   const templates = useTemplates(source === "template");
   const [details, setDetails] = useState<DetailsDraft>(() => {
     const from = p.apps.find((a) => a.id === forApp && LINKABLE_KINDS.has(a.kind));
-    return { name: "", named: false, environment: from?.environment ?? p.environments[0]?.name ?? "production", kind: null, target: "server", links: from ? [from.id] : [] };
+    return { name: "", named: false, environment: from?.environment ?? (p.environments.some((e) => e.name === environment) ? environment! : (p.environments[0]?.name ?? "production")), kind: null, target: "server", links: from ? [from.id] : [] };
   });
   // The API's last link conflict, and the apps the operator has agreed to replace since.
   const [conflict, setConflict] = useState<LinkConflict | null>(null);
@@ -130,15 +133,17 @@ function NewAppFlow({ p, open, onClose, start, forApp }: Props) {
   const kind = details.kind ?? proposedKind(source, git);
   const many = source === "compose" ? composeSpecs(compose, plan) : null;
   const clashes = many?.filter((a) => taken.has(a.name)).map((a) => a.name) ?? [];
+  // A project with one environment names none, here as everywhere (lib/environments.ts).
+  const multi = showsEnvironments(p.environments);
   const env = envName(details.environment);
 
   // The template flow has its own checks; these read "no errors" for it.
   const stepErrors: Errors =
     source === "git" ? gitErrors(git) : source === "image" ? imageErrors(image) : source === "compose" ? composeErrors(compose, plan) : {};
   const shown = tried >= 2 ? stepErrors : {};
-  const nameErr = many ? undefined : nameError(name, taken, details.environment, source === "service");
+  const nameErr = many ? undefined : nameError(name, taken, multi ? details.environment : null, source === "service");
   const manyErr = clashes.length
-    ? `${clashes.join(", ")} already ${clashes.length === 1 ? "exists" : "exist"} in ${env}. Rename ${clashes.length === 1 ? "it" : "them"} in the file, or leave ${clashes.length === 1 ? "it" : "them"} out.`
+    ? `${clashes.join(", ")} already ${clashes.length === 1 ? "exists" : "exist"} in ${multi ? env : "this project"}. Rename ${clashes.length === 1 ? "it" : "them"} in the file, or leave ${clashes.length === 1 ? "it" : "them"} out.`
     : undefined;
 
   // Linking: only a service, only the checked apps of the chosen environment, and a conflict only
@@ -177,7 +182,7 @@ function NewAppFlow({ p, open, onClose, start, forApp }: Props) {
     report(r, {
       success: `${row.name} is deploying`,
       error: `Could not deploy ${row.name}`,
-      what: `${p.slug} / ${template.name}, ${env}`,
+      what: `${p.slug} / ${template.name}${multi ? `, ${env}` : ""}`,
       action: { label: "View", onClick: () => router.push(r.ok && r.data.primaryId ? `/apps/${r.data.primaryId}` : `/projects/${p.slug}`) },
     });
     if (!r.ok) return setBusy(false);
@@ -243,7 +248,7 @@ function NewAppFlow({ p, open, onClose, start, forApp }: Props) {
     report(r, {
       success: one ? (vercel ? "App created. Pick its Vercel project in its Settings" : linked.length ? `App created and linked to ${listNames(linked)}` : "App created") : `${apps.length.toLocaleString("en-US")} apps created`,
       error: one ? "Could not create the app" : "Could not create the apps",
-      what: `${p.slug} / ${apps.map((a) => a.name).join(", ")}, ${env}`,
+      what: `${p.slug} / ${apps.map((a) => a.name).join(", ")}${multi ? `, ${env}` : ""}`,
       // The preview creates nothing, so View opens the project instead of an app.
       action: { label: "View", onClick: () => router.push(ids[0] ? `/apps/${ids[0]}` : `/projects/${p.slug}`) },
     });
@@ -263,7 +268,7 @@ function NewAppFlow({ p, open, onClose, start, forApp }: Props) {
       ? "Step 1 of 3, choose a source"
       : step === 2
         ? `Step 2 of 3, ${TITLE[source!]}`
-        : `Step 3 of 3, ${many || source === "template" ? "review and create" : source === "service" ? "name, environment and links" : "name and environment"}`;
+        : `Step 3 of 3, ${many || source === "template" ? "review and create" : source === "service" ? (multi ? "name, environment and links" : "name and links") : multi ? "name and environment" : "name"}`;
   // The picker owns the next step itself (Import, or Connect GitHub), so Continue waits there as a
   // plain key: one primary at a time.
   const pickFirst = step === 2 && source === "git" && !git.picked && !git.byUrl;

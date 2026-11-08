@@ -119,7 +119,7 @@ export function ProjectSettings({
 
           <ToggleRow
             title="Auto-deploy"
-            body="Build and deploy on every push to an environment’s branch. Off means deploys run only when started by hand."
+            body="Build and deploy on every push to an app’s branch. Off means deploys run only when started by hand."
             checked={autoDeploy}
             onChange={setAutoDeploy}
             disabled={!can.manage}

@@ -11,12 +11,12 @@ You need a repository. It needs no Dockerfile: Dockify uses one when it is there
 
 <Steps>
 
-1. **New project.** Choose **New project**, give it a name (lowercase letters, numbers and hyphens). It also becomes the project's slug in URLs, which cannot change later; the name itself can, in the project's settings. It starts with one environment on the `main` branch; change the branch, or add another environment, in the project's settings.
+1. **New project.** Choose **New project**, give it a name (lowercase letters, numbers and hyphens). It also becomes the project's slug in URLs, which cannot change later; the name itself can, in the project's settings. It is a folder for your apps, deployed from the `main` branch; change the branch, or add an environment such as `staging`, in the project's settings.
 2. **New app.** In the project, choose **New app**, then **GitHub repository**. Pick the repository from the list, or use its URL, then its branch.
 3. **Pick the folder.** For a monorepo, set the root directory, such as `apps/web`. Paths are relative and may not leave the repository.
 4. **Check what was detected.** New app reads the repository and shows the framework and the commands it would use. Leave them blank to follow what is detected, or set your own. A repository with a Dockerfile keeps using it, with the choice to build with Railpack instead.
 5. **Check the port.** The port your app listens on inside the container, filled in from what was detected and passed to it as `PORT`. Dockify never publishes it on the host: traffic reaches it through the proxy.
-6. **Pick the environment and create.** Then open the app and choose **Deploy**. Watch the live log and the step timeline on the deployment page.
+6. **Name it and create.** In a project with several environments, also pick the one it goes in. Then open the app and choose **Deploy**. Watch the live log and the step timeline on the deployment page.
 
 </Steps>
 
@@ -58,7 +58,7 @@ Some apps cannot run two copies at once. An app that mounts a volume, or a manag
 
 ## Push to deploy
 
-With **auto deploy** on for the project, a push to the branch an environment tracks deploys every app in that environment that comes from that repository. It needs the GitHub App (see [Connect GitHub](/docs/github)). You can also deploy from the dashboard, or call the deploy route from your CI.
+With **auto deploy** on for the project, a push deploys every app built from that repository that tracks the pushed branch: its own branch when it names one, otherwise the project's (with several environments, its environment's). It needs the GitHub App (see [Connect GitHub](/docs/github)). You can also deploy from the dashboard, or call the deploy route from your CI.
 
 One deploy per app runs at a time. A click on **Deploy** while one is in flight is refused with a clear message.
 

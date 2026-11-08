@@ -8,7 +8,7 @@
  * app that reads it starts.
  */
 import { randomBytes, randomUUID } from "node:crypto";
-import { testDomainName, type templates as T } from "@dockify/contracts";
+import { projects as P, testDomainName, type templates as T } from "@dockify/contracts";
 import type { FastifyRequest } from "fastify";
 import type { z } from "zod";
 import { actorFields, assertProjectScope, requireActor } from "../../actor.ts";
@@ -42,7 +42,7 @@ export const templateHandlers: Handlers = {
 
   "projects.apps.template": async ({ params, body, actor, ctx, req }) => {
     const a = requireActor(actor);
-    const p = await ctx.db.project.findUnique({ where: { slug: params.slug }, select: { id: true, slug: true, archivedAt: true } });
+    const p = await ctx.db.project.findUnique({ where: { slug: params.slug }, select: { id: true, slug: true, archivedAt: true, _count: { select: { environments: true } } } });
     if (!p || p.archivedAt) throw new HttpError(404, "Project not found", "NOT_FOUND");
     assertProjectScope(a, p.id);
     const t: Template | undefined = CATALOG.find((x) => x.id === body.templateId);
@@ -63,7 +63,7 @@ export const templateHandlers: Handlers = {
     const primary = resolved.find((r) => r.service === t.primary)!;
     await audit(ctx.db, {
       category: "config", action: "template.deploy", verb: "deployed the template", ...actorFields(a), targetType: "app", targetId: primary.id,
-      targetLabel: `${p.slug}/${body.environment}/${primary.name}`, suffix: `${t.name}, ${resolved.length} app${resolved.length === 1 ? "" : "s"}`,
+      targetLabel: P.placeLabel(p.slug, body.environment, p._count?.environments, primary.name), suffix: `${t.name}, ${resolved.length} app${resolved.length === 1 ? "" : "s"}`,
       // Names only: no value, generated or typed, reaches the log.
       changes: { template: t.id, apps: resolved.map((r) => r.name), images: row.apps.map((x) => x.image || x.managed), inputs: Object.keys(body.inputs) },
       ip: req.clientIp, userAgent: req.headers["user-agent"] ?? null,

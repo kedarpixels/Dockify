@@ -150,6 +150,8 @@ describe("templates", () => {
     const allowed = previewNotice({ ...input, isolation: "base", isolatedDb: false }).text;
     expect(allowed).toContain("The production environment's services");
     expect(allowed).not.toContain("No secrets or services");
+    // A project with one environment names none: its services are the project's.
+    expect(previewNotice({ ...input, baseEnvironment: "", isolation: "base", isolatedDb: false }).text).toContain("The project's services");
     const fork = previewNotice({ ...input, fromFork: true, isolation: "fork", isolatedDb: false }).text;
     expect(fork).not.toContain("environment's services");
   });
@@ -262,6 +264,16 @@ describe("templates", () => {
     expect(plain).toContain("/dk-f-source.png");
     expect(plain).toMatch(/<span class="dk-muted" style="[^"]*font-size:13px;[^"]*">Development<\/span>/);
     expect(failed({ ...PLACE, env: "qa" }).html).toContain(">Qa</span>");
+  });
+
+  it("names no environment for a project that has only one: one divider, no EnvTag", () => {
+    const m = failed({ ...PLACE, env: null });
+    expect(m.subject).toBe("Deploy failed: horseai / web");
+    expect(m.text).toContain("App: horseai / web");
+    expect(count(m.html, 'class="dk-div"')).toBe(1);
+    expect(m.html).not.toContain("/dk-f-source.png");
+    expect(m.html).not.toContain(">Production</span>");
+    expect(whereText({ ...PLACE, env: undefined, appName: "api" })).toBe("horseai / api");
   });
 
   it("has a kind tile for every app kind", () => {

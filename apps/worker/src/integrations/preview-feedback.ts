@@ -28,6 +28,7 @@ export interface FeedbackView {
   isolation: P.PreviewIsolation;
   /** The URL asks for the project's preview password. The comment says so and never holds the password. */
   passwordProtected?: boolean;
+  /** Empty in a project with one environment, which names none. */
   baseEnvironment: string;
   /** `icon` is the row's image; null leaves it out, so the comment reads the same with none. */
   apps: Array<{ name: string; url: string | null; icon?: string | null }>;
@@ -187,7 +188,7 @@ export function commentFor(v: FeedbackView): string {
   if (v.fromFork) notes.push("Built from a fork, without any secret.");
   if (v.isolation === "own") notes.push("Runs without production's secrets and services, so an app that needs them fails here.");
   if (v.isolatedDb) notes.push("Uses its own temporary database, separate from your real data.");
-  else if (v.isolation === "base") notes.push(`Uses the ${v.baseEnvironment} environment's services.`);
+  else if (v.isolation === "base") notes.push(v.baseEnvironment ? `Uses the ${v.baseEnvironment} environment's services.` : "Uses the project's services.");
   if (notes.length) lines.push("", `<sub>${notes.join(" ")}</sub>`);
   return lines.join("\n");
 }
@@ -254,7 +255,8 @@ export async function runPreviewFeedback(deps: FeedbackDeps, payload: unknown): 
   };
   const view: FeedbackView = {
     prNumber: env.prNumber, status: env.status, reason: env.reason, error: env.error, lines: failureLines(failedBuild?.error ?? null), updatedAt: env.updatedAt, fromFork: env.fromFork,
-    isolatedDb: env.isolatedDb, isolation: P.previewIsolation(env), passwordProtected: env.project.previewAccess === "password", baseEnvironment: env.baseEnvironment.name,
+    isolatedDb: env.isolatedDb, isolation: P.previewIsolation(env), passwordProtected: env.project.previewAccess === "password",
+    baseEnvironment: env.project.environments.length > 1 ? env.baseEnvironment.name : "",
     // Only what answers gets a link: a first build that failed serves nothing.
     // Each row names the app as the dashboard shows it, its display name when it has one.
     apps: env.apps.map((a) => ({ name: appLabel(a.app), url: a.app.port !== null && live && a.currentDeploymentId ? `https://${a.hostname}` : null, icon: iconOf(a.app) })),

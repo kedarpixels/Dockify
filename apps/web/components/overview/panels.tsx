@@ -34,7 +34,7 @@ export function DeploymentList({ deployments, now }: { deployments: RecentDeploy
         </Link>
       </div>
       {deployments.length === 0 ? (
-        <Empty icon="deploy" title="No deployments yet" body="Push to an environment’s branch or press Deploy on an app. Every build shows up here." />
+        <Empty icon="deploy" title="No deployments yet" body="Push to an app’s branch or press Deploy on an app. Every build shows up here." />
       ) : (
         <div className="dep-list">
           {groups.map((g) => (

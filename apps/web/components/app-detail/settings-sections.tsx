@@ -430,7 +430,7 @@ export function TargetSection({ app, config, now, onSaved, onDirty }: { app: App
           <>
             {kind === "deploy" ? (
               <Callout tone="warn" icon="alert">
-                <b className="pd-strong">This sends secrets to Vercel.</b> Dockify pushes this environment’s variables and secrets to the project and asks Vercel to deploy. To only see deployments and logs here, choose {TARGET_LABEL.follow}.
+                <b className="pd-strong">This sends secrets to Vercel.</b> Dockify pushes the variables and secrets this app reads to the project and asks Vercel to deploy. To only see deployments and logs here, choose {TARGET_LABEL.follow}.
               </Callout>
             ) : null}
             <Field
@@ -508,7 +508,7 @@ export function TargetSection({ app, config, now, onSaved, onDirty }: { app: App
             if (!(await send(true))) throw new Error("Not saved");
           }}
           title="Send variables and secrets to Vercel"
-          body={`Dockify copies this environment’s variables, secrets included, to ${name} on your Vercel account, overwriting any with the same name, and can start deploys there. Going back to follow only stops this but does not remove what was sent.`}
+          body={`Dockify copies the variables this app reads, secrets included, to ${name} on your Vercel account, overwriting any with the same name, and can start deploys there. Going back to follow only stops this but does not remove what was sent.`}
           confirmLabel="Send and deploy to Vercel"
           cancelLabel="Cancel"
         />

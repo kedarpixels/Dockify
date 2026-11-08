@@ -144,7 +144,7 @@ export function ReviewDialog({
       <div className="px-diff">
         {groups.map((g) => (
           <section key={g.label} className="px-diff-group" aria-label={g.label}>
-            <GroupHead label={g.label} icon="layers" lead={g.app ? <AppIcon id={g.app.id} kind={g.app.kind} /> : undefined} count={g.rows.length} noun="change" actions={<EnvTag env={g.env} compact />} />
+            <GroupHead label={g.label} icon="layers" lead={g.app ? <AppIcon id={g.app.id} kind={g.app.kind} /> : undefined} count={g.rows.length} noun="change" actions={many ? <EnvTag env={g.env} compact /> : undefined} />
             <ul className="px-diff-lines">
               {g.rows.map((c) => (
                 <ChangeLines key={`${c.key}`} c={c} state={state} apps={apps} plain={plain} />
@@ -177,7 +177,7 @@ export function ReviewDialog({
                     {a.keys.join(", ")}
                   </span>
                 </span>
-                <EnvTag env={a.app.environment} quiet compact />
+                {many ? <EnvTag env={a.app.environment} quiet compact /> : null}
                 <Chip size="xs" tone={a.app.status === "unknown" ? "idle" : a.rebuild ? "warn" : "idle"}>
                   {a.app.status === "unknown" ? "On first deploy" : a.rebuild ? "Rebuild" : "Restart"}
                 </Chip>

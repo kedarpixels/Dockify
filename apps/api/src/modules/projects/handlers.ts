@@ -386,8 +386,13 @@ export async function createApps(
 
   try {
     return await ctx.db.$transaction(async (tx) => {
-      const env = await tx.environment.findUnique({ where: { projectId_name: { projectId: project.id, name: environment } } });
+      const env = await tx.environment.findUnique({
+        where: { projectId_name: { projectId: project.id, name: environment } },
+        include: { project: { select: { _count: { select: { environments: true } } } } },
+      });
       if (!env) throw new HttpError(404, `Environment ${environment} not found`, "ENV_NOT_FOUND");
+      // How many the project has, so the log names the environment only when there are several.
+      const envCount = env.project?._count?.environments;
       // Another app may show a new app's name as its display name: refused, so no two apps look alike.
       const shown = await tx.app.findFirst({
         where: { environmentId: env.id, OR: apps.map((a) => ({ displayName: { equals: a.name, mode: "insensitive" as const } })) },
@@ -448,7 +453,7 @@ export async function createApps(
       for (const [i, id] of ids.entries()) {
         await audit(tx, {
           category: "config", action: "app.create", verb: "created app", ...actorFields(actor),
-          targetType: "app", targetId: id, targetLabel: `${project.slug}/${environment}/${apps[i]?.name ?? ""}`,
+          targetType: "app", targetId: id, targetLabel: P.placeLabel(project.slug, environment, envCount, apps[i]?.name ?? ""),
           suffix: apps[i]?.spec ? `from ${apps[i]?.spec?.source.type}` : null, ...meta(req),
         });
       }
@@ -523,8 +528,10 @@ export const projectsHandlers = {
     if (!base) throw new HttpError(400, "Use letters or digits in the name", "INVALID_SLUG", { field: "name" });
     // "New!" slugifies to "new" too: the reserved check runs on the slug, not only on the name.
     if (isReservedSlug(base)) throw new HttpError(400, "That name is reserved", "RESERVED_SLUG", { field: "name" });
-    const envNames = new Set(body.environments);
-    if (envNames.size !== body.environments.length) throw new HttpError(400, "Each environment needs its own name", "DUPLICATE_ENVIRONMENT", { field: "environments" });
+    // A project is a folder of apps: one environment unless the caller names more.
+    const environments = body.environments ?? [P.DEFAULT_ENVIRONMENT];
+    const envNames = new Set(environments);
+    if (envNames.size !== environments.length) throw new HttpError(400, "Each environment needs its own name", "DUPLICATE_ENVIRONMENT", { field: "environments" });
     if (body.repoUrl && isBlockedHost(repoHostOf(body.repoUrl))) throw new HttpError(400, "That repository host is not reachable from Dockify", "REFUSED", { field: "repoUrl" });
     let gitInstallationId: string | null = null;
     if (body.git) {
@@ -547,7 +554,7 @@ export const projectsHandlers = {
             data: {
               slug, name: body.name, repoUrl: body.repoUrl || null, defaultBranch: branch,
               gitInstallationId, gitRepoId: body.git?.repoId ?? null,
-              environments: { create: body.environments.map((name) => ({ name, branch })) },
+              environments: { create: environments.map((name) => ({ name, branch })) },
             },
           });
           await audit(tx, { category: "config", action: "project.create", verb: "created project", ...actorFields(a), targetType: "project", targetId: p.id, targetLabel: slug, ...meta(req) });
@@ -726,7 +733,7 @@ export const projectsHandlers = {
     const value = await resolveValue(stored, servicesOf(scope.apps), (svc) => openRefTarget(ctx.db, ctx.ring, svc)).catch(planError);
     await audit(ctx.db, {
       category: "access", action: "env.reveal", verb: "revealed env var", ...actorFields(a), targetType: "env_var", targetId: row.id,
-      targetLabel: `${p.slug}/${c.environment}${c.appName ? `/${c.appName}` : ""}/${c.key}`,
+      targetLabel: P.placeLabel(p.slug, c.environment, scope.environments.length, ...(c.appName ? [c.appName] : []), c.key),
       suffix: [body.purpose === "copy" ? "for copy" : null, linked ? "resolved from a linked service" : null].filter(Boolean).join(", ") || null,
       // Names only: the value never reaches the log.
       changes: { key: c.key, project: p.slug, environment: c.environment, ...(c.appName ? { app: c.appName } : {}), purpose: body.purpose ?? "view", linked },
@@ -840,12 +847,25 @@ export const projectsHandlers = {
     const p = await projectBySlug(ctx, a, params.slug);
     if (body.confirm !== params.name) throw new HttpError(400, `Type ${params.name} to confirm`, "CONFIRM_MISMATCH", { field: "confirm" });
     await ctx.db.$transaction(async (tx) => {
-      const env = await tx.environment.findUnique({ where: { projectId_name: { projectId: p.id, name: params.name } } });
+      // One removal at a time per project, so two at once can never leave it with none.
+      await tx.$executeRaw`SELECT 1 FROM projects WHERE id = ${p.id}::uuid FOR UPDATE`;
+      const envs = await tx.environment.findMany({ where: { projectId: p.id }, orderBy: { createdAt: "asc" }, select: { id: true, name: true } });
+      const env = envs.find((e) => e.name === params.name);
       if (!env) throw notFound("Environment");
-      if ((await tx.environment.count({ where: { projectId: p.id } })) <= 1) {
+      if (envs.length <= 1) {
         throw new HttpError(409, "A project keeps at least one environment; delete the project instead", "LAST_ENVIRONMENT");
       }
+      // Its apps go the way a deleted app goes (containers, volumes, routes, domains, images and the
+      // network once empty, by the worker's remove_app); refused while one of them deploys.
       const removed = await teardown(tx, p.id, [env.id]);
+      // The previews built from it go with its row (the worker's reconcile removes their containers,
+      // routes, networks and databases, by label). A base that names it moves to one that is left.
+      const left = envs.filter((e) => e.id !== env.id);
+      const project = await tx.project.findUniqueOrThrow({ where: { id: p.id }, select: { previewBaseEnv: true } });
+      if (project.previewBaseEnv === env.name) {
+        const base = left.length === 1 ? left[0]! : (left.find((e) => e.name !== P.DEFAULT_ENVIRONMENT) ?? left[0]!);
+        await tx.project.update({ where: { id: p.id }, data: { previewBaseEnv: base.name } });
+      }
       await tx.environment.delete({ where: { id: env.id } });
       await audit(tx, {
         category: "config", action: "environment.delete", verb: "deleted environment", ...actorFields(a), targetType: "environment", targetId: env.id,

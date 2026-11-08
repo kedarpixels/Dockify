@@ -26,7 +26,7 @@ const OP_SIGN = { add: "+", change: "~", remove: "-" } as const;
 const OP_LABEL = { add: "Added", change: "Changed", remove: "Removed" } as const;
 const SOURCE_LABEL: Record<EnvVersion["source"], string> = { dashboard: "Dashboard", api: "API token", rollback: "Rollback" };
 
-function VersionRow({ v, current, now, onRollback }: { v: EnvVersion; current: boolean; now: number; onRollback: () => void }) {
+function VersionRow({ v, current, many, now, onRollback }: { v: EnvVersion; current: boolean; many: boolean; now: number; onRollback: () => void }) {
   const [open, setOpen] = useState(false);
   const id = `px-ver-${v.version}`;
   const what = v.source === "rollback" && v.restoredFrom ? `Restored version ${v.restoredFrom.toLocaleString("en-US")}` : summarize(v.changes);
@@ -73,7 +73,7 @@ function VersionRow({ v, current, now, onRollback }: { v: EnvVersion; current: b
                 {c.secret ? <Icon name="lock" size={14} className="ev-var-lock" label="Secret" /> : null}
               </span>
               <span className="px-ver-scope">
-                <EnvTag env={c.environment} quiet compact />
+                {many ? <EnvTag env={c.environment} quiet compact /> : null}
                 {c.appName ? <span className="px-ver-app">{c.appName}</span> : <span className="px-ver-app">Shared</span>}
               </span>
               <span className="px-ver-target">{TARGET_LABEL[c.target]}</span>
@@ -93,6 +93,7 @@ export function HistoryCard({
   current,
   now,
   pending,
+  many = true,
   onRollback,
 }: {
   versions: EnvVersion[] | null;
@@ -103,6 +104,8 @@ export function HistoryCard({
   now: number;
   /** Staged edits block a rollback, which would throw them away. */
   pending: number;
+  /** Whether the project shows its environments (lib/environments.ts). */
+  many?: boolean;
   onRollback: (version: number, redeploy: boolean) => Promise<boolean>;
 }) {
   const [all, setAll] = useState(false);
@@ -136,6 +139,7 @@ export function HistoryCard({
                 key={v.version}
                 v={v}
                 current={v.version === current}
+                many={many}
                 now={now}
                 onRollback={() => {
                   setRedeploy(true);

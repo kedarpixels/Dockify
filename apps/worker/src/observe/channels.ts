@@ -68,12 +68,14 @@ export interface AlertView {
   startedAt: Date;
   resolvedAt: Date | null;
   /** `shown` is what people read as the app's name, its display name when it has one; `name` stays its identity. */
-  app: { name: string; shown?: string; projectSlug: string; environment: string } | null;
+  /** `named` is false when the project has one environment: its place then leaves the environment out. */
+  app: { name: string; shown?: string; projectSlug: string; environment: string; named?: boolean } | null;
   /** The app as the email's project chip shows it (name, kind, icon links); only the email channel reads it. */
   chip?: AppRef | null;
 }
 
-const whereOf = (a: AlertView): string => (a.app ? `${a.app.projectSlug} / ${a.app.environment} / ${a.app.shown ?? a.app.name}` : a.service ? `service ${a.service}` : "host");
+const whereOf = (a: AlertView): string =>
+  a.app ? [a.app.projectSlug, ...(a.app.named === false ? [] : [a.app.environment]), a.app.shown ?? a.app.name].join(" / ") : a.service ? `service ${a.service}` : "host";
 
 /**
  * One alert as every webhook gets it, shaped per provider by @dockify/notify. The generic
@@ -153,7 +155,7 @@ export async function deliverAlert(deps: NotifyDeps, raw: unknown): Promise<"sen
         select: {
           ...SHOWN_APP_ICON,
           name: true, displayName: true, kind: true,
-          environment: { select: { name: true, project: { select: { ...SHOWN_PROJECT_ICON, slug: true, name: true } } } },
+          environment: { select: { name: true, project: { select: { ...SHOWN_PROJECT_ICON, slug: true, name: true, _count: { select: { environments: true } } } } } },
         },
       },
     },
@@ -172,14 +174,15 @@ export async function deliverAlert(deps: NotifyDeps, raw: unknown): Promise<"sen
   }
   const origin = deps.publicUrl ? new URL(deps.publicUrl).origin : undefined;
   const project = ev.app?.environment.project;
+  const named = (project?._count?.environments ?? 2) > 1;
   const view: AlertView = {
     id: ev.id, metric: ev.metric as Metric, service: ev.service, detail: ev.detail, href: ev.href,
     startedAt: ev.startedAt, resolvedAt: ev.resolvedAt,
-    app: ev.app && project ? { name: ev.app.name, shown: appLabel(ev.app), projectSlug: project.slug, environment: ev.app.environment.name } : null,
+    app: ev.app && project ? { name: ev.app.name, shown: appLabel(ev.app), projectSlug: project.slug, environment: ev.app.environment.name, named } : null,
     // The email's project chip: the dashboard's names and icons; webhooks keep their own shape.
     chip: ev.app && project
       ? {
-          projectName: project.name, projectSlug: project.slug, env: ev.app.environment.name, appName: appLabel(ev.app), appKind: ev.app.kind,
+          projectName: project.name, projectSlug: project.slug, env: named ? ev.app.environment.name : null, appName: appLabel(ev.app), appKind: ev.app.kind,
           ...mailIconLinks(origin, mailIconSigner(deps.internalToken), ev.app, project),
         }
       : null,

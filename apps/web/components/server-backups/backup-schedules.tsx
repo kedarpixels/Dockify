@@ -8,67 +8,98 @@ import { Chip } from "@/components/ui/chip";
 import { CopyButton } from "@/components/ui/copy-button";
 import { EnvTag } from "@/components/ui/env-tag";
 import { IconTile } from "@/components/ui/icon-tile";
-import { Switch } from "@/components/ui/switch";
 import { When } from "@/components/ui/when";
 import { plural } from "@/lib/format";
 import { useUtcAt } from "@/lib/time-prefs";
-import type { BackupConfig, BackupRun, BackupSchedule, StorageProvider } from "@/lib/pages/server-backups";
+import type { BackupConfig, BackupRun, BackupSchedule, BackupTierSchedule, StorageProvider } from "@/lib/pages/server-backups";
 import { useCan } from "@/lib/viewer";
 import { Countdown } from "./live";
-import { cronText, dbLabel, dbName, offServer, placeName } from "./util";
+import { lastOf, lastWord, TIER_LABEL, TIERS, tierWords } from "./tier-schedule";
+import { cronText, dbLabel, dbName } from "./util";
 
 /** Where backup destinations are managed. */
 export const STORAGE_HREF = "/settings?section=integrations";
 
 const PROVIDER: Record<StorageProvider, string> = { r2: "Cloudflare R2", s3: "AWS S3", minio: "MinIO", custom: "S3-compatible" };
 
-/**
- * Where a schedule's backups go, then whether they are encrypted: one place chip (the destination,
- * or Local only in amber) and one encryption chip. Encryption that is on before the instance key
- * exists reads Key pending, so the chip never claims more than the Storage card can show.
- */
-function PlaceTags({ s }: { s: BackupSchedule }) {
-  const off = offServer(s);
+/** Whether a database's backups are encrypted, as one chip: Key pending before the instance key exists. */
+function SealChip({ s }: { s: BackupSchedule }) {
   const enc = s.encryption;
-  return (
-    <>
-      {/* "Local only" needs no tip: the note over the schedules says what it means. */}
-      <Chip size="xs" tone={off ? "ok" : "warn"} tip={off ? `Bucket ${s.storage!.bucket}` : undefined}>
-        {off ? placeName(s.storage) : "Local only"}
-      </Chip>
-      {enc.enabled && !enc.fingerprint ? (
-        <Chip size="xs" tone="warn" tip="The key is created with the first backup">
-          Key pending
-        </Chip>
-      ) : (
-        <Chip size="xs" icon={<Icon name={enc.enabled ? "lock" : "lockOpen"} size={12} />} tip={enc.enabled ? `Key ${enc.fingerprint}` : undefined}>
-          {enc.enabled ? "Encrypted" : "Not encrypted"}
-        </Chip>
-      )}
-    </>
+  return enc.enabled && !enc.fingerprint ? (
+    <Chip size="xs" tone="warn" tip="The key is created with the first backup">
+      Key pending
+    </Chip>
+  ) : (
+    <Chip size="xs" icon={<Icon name={enc.enabled ? "lock" : "lockOpen"} size={12} />} tip={enc.enabled ? `Key ${enc.fingerprint}` : undefined}>
+      {enc.enabled ? "Encrypted" : "Not encrypted"}
+    </Chip>
   );
 }
 
 /**
- * One schedule per row inside a soft ruled box: the database and its last run, the schedule in
- * words with the cron as a small chip, retention, destination and encryption chips, the next run
- * (relative, the exact UTC time in its tip), then the shared Switch. Local only schedules raise a
- * note on top. A Viewer reads the schedules without the switch.
+ * One tier of one database on one line: its name, the schedule and what it keeps in words with its
+ * last result under it, where the copies go, and the next run (relative, the exact UTC time in its
+ * tip). A tier that is off reads Off.
+ */
+function TierLine({ s, t, runs, now }: { s: BackupSchedule; t: BackupTierSchedule; runs: BackupRun[]; now: number }) {
+  const last = lastOf(runs, s.resourceId, t.tier);
+  const words = cronText(t.cron);
+  return (
+    <span className="bk-tier-line" data-off={!t.enabled || undefined}>
+      <span className="bk-tier-name">{TIER_LABEL[t.tier]}</span>
+      <span className="bk-tier-what two">
+        {t.enabled ? (
+          <>
+            <span className="two-main" title={words === t.cron ? `Cron ${t.cron}, ${t.timezone}` : `${t.cron}, ${t.timezone}`}>
+              {tierWords(t)}
+            </span>
+            <span className={last?.status === "failed" ? "two-sub tone-bad" : "two-sub"}>
+              <When iso={last ? (last.finishedAt ?? last.createdAt) : null} now={now} utc prefix={lastWord(last) ?? undefined} fallback="No backup yet" />
+            </span>
+          </>
+        ) : (
+          <span className="two-main sb-muted">Off</span>
+        )}
+      </span>
+      <span className="bk-tier-place">
+        {!t.enabled ? null : t.tier === "local" ? (
+          <Chip size="xs">This server</Chip>
+        ) : t.storage ? (
+          <Chip size="xs" tone="ok" tip={`Bucket ${t.storage.bucket}`}>
+            {t.storage.name}
+          </Chip>
+        ) : (
+          <Chip size="xs" tone="warn">
+            No storage
+          </Chip>
+        )}
+      </span>
+      <span className="bk-tier-next">
+        {t.enabled && t.nextRunAt ? <Countdown at={t.nextRunAt} serverNow={now} prefix="Next" className="num" tipAlign="end" /> : null}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * One database per row inside a soft ruled box: the database and its encryption, then its two
+ * tiers, on this server and offsite, one line each, then Edit. Databases whose copies never leave
+ * this server raise a note on top. A Viewer reads the schedules without Edit.
  */
 export function Schedules({
   schedules,
   runs,
   now,
-  onToggle,
+  onEdit,
 }: {
   schedules: BackupSchedule[];
   runs: BackupRun[];
   now: number;
-  onToggle: (s: BackupSchedule, on: boolean) => void;
+  onEdit: (s: BackupSchedule) => void;
 }) {
   const { manage } = useCan();
   const on = schedules.filter((s) => s.enabled).length;
-  const local = schedules.filter((s) => !offServer(s));
+  const local = schedules.filter((s) => s.enabled && !s.tiers.offsite.enabled);
   return (
     <section className="card sb-sched" aria-labelledby="sb-sched-title">
       <div className="card-hd">
@@ -88,68 +119,40 @@ export function Schedules({
             }
           >
             <b>Not off-server.</b> {local.map((s) => dbLabel(s.database)).join(", ")} {local.length === 1 ? "keeps its" : "keep their"} backups on this
-            server only. If the disk fails, they go with it.
+            server only. If the disk fails, they go with it. Turn on the offsite tier to keep copies elsewhere.
           </Callout>
         </div>
       ) : null}
       <div className="sb-sched-wrap">
         <ul className="sb-sched-box">
-          {schedules.map((s) => {
-            const words = cronText(s.cron);
-            const last = runs.find((r) => r.resourceId === s.resourceId && r.status !== "running");
-            const lastAt = last ? (last.finishedAt ?? last.createdAt) : s.lastRunAt;
-            return (
-              <li key={s.id} className="sb-sched-row" data-off={!s.enabled || undefined}>
-                <IconTile size="sm" className="sb-sched-tile">
-                  <Icon name="database" />
-                </IconTile>
-                <span className="sb-sched-db two">
-                  <span className="two-main">
-                    <span>
-                      <span className="sb-muted">{s.database.projectSlug} /</span> {dbName(s.database)}
-                    </span>
-                    <EnvTag env={s.database.environment} compact quiet />
+          {schedules.map((s) => (
+            <li key={s.id} className="sb-sched-row bk-sched-row" data-off={!s.enabled || undefined}>
+              <IconTile size="sm" className="sb-sched-tile">
+                <Icon name="database" />
+              </IconTile>
+              <span className="sb-sched-db two">
+                <span className="two-main">
+                  <span>
+                    <span className="sb-muted">{s.database.projectSlug} /</span> {dbName(s.database)}
                   </span>
-                  <span className={last?.status === "failed" ? "two-sub tone-bad" : "two-sub"}>
-                    <When iso={lastAt} now={now} utc prefix={last?.status === "failed" ? "Last run failed" : "Last backup"} fallback="No backup yet" />
-                  </span>
+                  <EnvTag env={s.database.environment} project={s.database.projectSlug} compact quiet />
                 </span>
-                <span className="sb-sched-when">
-                  {/* An expression cronText cannot read stays as the chip alone, under a plain name. */}
-                  <span className="sb-sched-words">{words === s.cron ? "Custom schedule" : words}</span>
-                  <span className="sb-cron" data-tip={`Cron expression, ${s.timezone}`}>
-                    <Chip size="xs" className="num">
-                      {s.cron}
-                    </Chip>
-                  </span>
+                <span className="two-sub">
+                  <SealChip s={s} />
                 </span>
-                <span className="sb-sched-tags">
-                  <Chip size="xs" icon={<Icon name="history" size={12} />} className="num">
-                    Keep {plural(s.retentionDays, "day")}
-                  </Chip>
-                  <PlaceTags s={s} />
-                </span>
-                <span className="sb-sched-next two">
-                  {!s.enabled ? (
-                    <>
-                      <span className="two-main sb-muted">Paused</span>
-                      <span className="two-sub">Turn on to resume</span>
-                    </>
-                  ) : s.nextRunAt ? (
-                    <Countdown at={s.nextRunAt} serverNow={now} prefix="Next" className="two-main num" tipAlign="end" />
-                  ) : (
-                    <>
-                      <span className="two-main sb-muted">Not planned</span>
-                      <span className="two-sub">Not scheduled yet</span>
-                    </>
-                  )}
-                </span>
-                {manage ? (
-                  <Switch className="sb-sched-switch" checked={s.enabled} label={`Back up ${dbLabel(s.database)} on schedule`} onChange={(v) => onToggle(s, v)} />
-                ) : null}
-              </li>
-            );
-          })}
+              </span>
+              <span className="bk-tiers">
+                {TIERS.map((k) => (
+                  <TierLine key={k} s={s} t={s.tiers[k]} runs={runs} now={now} />
+                ))}
+              </span>
+              {manage ? (
+                <button type="button" className="btn btn-sm bk-sched-edit" aria-label={`Edit the backup schedule of ${dbLabel(s.database)}`} onClick={() => onEdit(s)}>
+                  Edit
+                </button>
+              ) : null}
+            </li>
+          ))}
         </ul>
       </div>
     </section>
@@ -164,8 +167,8 @@ export function Schedules({
 export function StorageCard({ config, schedules, now }: { config: BackupConfig; schedules: BackupSchedule[]; now: number }) {
   const utcAt = useUtcAt();
   const { manage } = useCan();
-  const local = schedules.filter((s) => !offServer(s)).length;
-  const using = (id: string) => schedules.filter((s) => offServer(s) && s.storage!.id === id).length;
+  const local = schedules.filter((s) => s.tiers.local.enabled).length;
+  const using = (id: string) => schedules.filter((s) => s.tiers.offsite.enabled && s.tiers.offsite.storage?.id === id).length;
   const enc = config.encryption;
   // The instance key is made on first use, so encryption can be on while no key exists yet.
   const sealed = !enc.enabled ? "not encrypted" : enc.fingerprint ? "encrypted" : "key pending";

@@ -92,7 +92,8 @@ export async function deliverPreviewNotice(deps: PreviewNotifyDeps, raw: unknown
     fromFork: env.fromFork,
     isolatedDb: env.isolatedDb,
     isolation: P.previewIsolation(env),
-    baseEnvironment: env.baseEnvironment.name,
+    // A project with one environment names none.
+    baseEnvironment: env.project.environments.length > 1 ? env.baseEnvironment.name : "",
     previewUrl: serving ? `https://${serving.hostname}` : null,
     dashboardUrl: new URL(`/projects/${encodeURIComponent(env.project.slug)}?tab=previews`, deps.publicUrl).toString(),
     // Written by the pipeline through its redactor, like the lines; stripped of links here.

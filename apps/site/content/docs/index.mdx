@@ -16,7 +16,7 @@ It is built for one job: several projects on one VPS that stay up. It does less 
 
 ## How it is organised
 
-A **project** holds one or more **environments**, such as `production` and `development`. Each environment tracks a branch and holds **apps**: frontends, backends, bots, and managed Postgres or Redis. Each app has its own domains, variables, logs, metrics and backups. Read more in [Projects and apps](/docs/projects-and-apps).
+A **project** is a folder of **apps**: frontends, backends, bots, and managed Postgres or Redis. Each app has its own domains, variables, logs, metrics and backups. A project can also have more than one **environment**, such as `production` and `staging`, each a separate copy of its apps deployed from its own branch; with one, the dashboard shows none. Read more in [Projects and apps](/docs/projects-and-apps).
 
 ## Start here
 

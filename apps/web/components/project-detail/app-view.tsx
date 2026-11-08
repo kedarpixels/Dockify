@@ -544,7 +544,7 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
               deployments={withRepo(app.deployments, app.repo)}
               now={now}
               sub={`${hosted ? "Every deployment on Vercel of" : "Every build of"} ${app.projectSlug} / ${appTitle(app)}, newest first`}
-              emptyBody={hosted ? (app.target?.mode === "deploy" ? "Vercel’s deployments of the linked project show here within a couple of minutes. Press Deploy to start one." : "Vercel’s deployments of the linked project show here within a couple of minutes.") : "Press Deploy, or push to the environment’s branch."}
+              emptyBody={hosted ? (app.target?.mode === "deploy" ? "Vercel’s deployments of the linked project show here within a couple of minutes. Press Deploy to start one." : "Vercel’s deployments of the linked project show here within a couple of minutes.") : "Press Deploy, or push to its branch."}
             />
           ) : null}
           {shown === "logs" && hosted ? <VercelRuntimeLogs appId={app.id} inspectorUrl={app.deployments.find((d) => d.external?.inspectorUrl)?.external?.inspectorUrl} name={`${app.projectSlug}-${app.name}`} sub="Read live from Vercel" /> : null}

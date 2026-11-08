@@ -44,6 +44,13 @@ describe("preview feedback neutralises tenant-controlled error text", () => {
     expect(block).not.toContain("`");
   });
 
+  it("names the base environment only in a project with several", () => {
+    const shared = { ...base, status: "ready" as const, fromFork: false, isolatedDb: false, isolation: "base" as const };
+    expect(commentFor({ ...shared, baseEnvironment: "development" })).toContain("Uses the development environment's services.");
+    expect(commentFor({ ...shared, baseEnvironment: "" })).toContain("Uses the project's services.");
+    expect(commentFor({ ...shared, baseEnvironment: "" })).not.toContain("environment's");
+  });
+
   it("sanitizes the app name in its row", () => {
     const body = commentFor({ ...base, status: "ready", apps: [{ name: "a|[x](y)@z", url: "https://a.example.com" }, { name: "b", url: null }] });
     expect(body).toContain("| ax(y)z | 🟢 [Ready](https://dockify.test/previews/42) | [Preview](https://a.example.com) |");

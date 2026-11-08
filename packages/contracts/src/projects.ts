@@ -48,9 +48,24 @@ export const NewProjectBody = z.strictObject({
   name: DisplayName.refine((n) => !isReservedSlug(n), "That name is reserved"),
   /** Left out, the instance's default branch (Settings, Instance). */
   defaultBranch: Branch.optional(),
-  environments: z.array(EnvName).min(1).max(10),
+  /**
+   * Left out, the project starts with one environment, production (DEFAULT_ENVIRONMENT): a project is
+   * a folder of apps, and more environments are an option its settings add. Older clients that send
+   * the list keep working.
+   */
+  environments: z.array(EnvName).min(1).max(10).optional(),
   git: GitRef.optional(),
 });
+/** The one environment a new project starts with. */
+export const DEFAULT_ENVIRONMENT = "production";
+
+/**
+ * A place as labels and notices spell it: "shop/web" in a project with one environment, which shows
+ * none anywhere, and "shop/staging/web" in one with several. An unknown count keeps the environment.
+ */
+export function placeLabel(slug: string, environment: string, environmentCount: number | undefined, ...rest: string[]): string {
+  return [slug, ...(environmentCount === undefined || environmentCount > 1 ? [environment] : []), ...rest].join("/");
+}
 export const NewProjectResponse = z.object({ slug: z.string() });
 export const ProjectPatchBody = z.strictObject({
   name: DisplayName.optional(),

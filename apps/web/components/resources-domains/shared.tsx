@@ -7,7 +7,7 @@ import { Callout } from "@/components/ui/callout";
 import { StatusChip } from "@/components/ui/chip";
 import { CopyButton } from "@/components/ui/copy-button";
 import { cx } from "@/components/ui/cx";
-import { EnvTag } from "@/components/ui/env-tag";
+import { EnvTag, useRowEnv } from "@/components/ui/env-tag";
 import { IconTile } from "@/components/ui/icon-tile";
 import { When } from "@/components/ui/when";
 import type { Tone } from "@/lib/derive";
@@ -264,6 +264,7 @@ export function DomainRow({
   dnsNote,
   extra,
   recordsDone = false,
+  project,
 }: {
   d: DomainView;
   now: number;
@@ -279,7 +280,10 @@ export function DomainRow({
   extra?: React.ReactNode;
   /** The record is right where it is managed, so the panel does not ask for it again. */
   recordsDone?: boolean;
+  /** The project the row belongs to when `d` does not name it (a project's own page). */
+  project?: string;
 }) {
+  const named = useRowEnv()(d.projectSlug ?? project ?? "", d.environment);
   const dns = d.dns;
   // A test domain has no DNS to wait for on the owner's side: its certificate is simply pending.
   const tls = tlsState(d.tls, now, d.test ? undefined : dns?.status);
@@ -315,15 +319,16 @@ export function DomainRow({
               {d.hostname}
             </a>
             {showTarget ? (
-              // Production is the default and says nothing in a row; any other environment follows a comma.
+              // Production is the default and says nothing in a row, nor does a project with one
+              // environment; any other environment follows a comma.
               <span className="two-sub rd-sub">
                 <span>
                   <Link href={`/apps/${d.appId}`} className="dm-app">
                     {d.projectSlug ? `${d.projectSlug} / ${d.appDisplayName ?? d.appName}` : (d.appDisplayName ?? d.appName)}
                   </Link>
-                  {d.environment === "production" ? null : ","}
+                  {named ? "," : null}
                 </span>
-                <EnvTag env={d.environment} compact quiet />
+                {named ? <EnvTag env={d.environment} compact /> : null}
                 {d.test ? <span className="dm-test-tag">Test domain</span> : null}
               </span>
             ) : d.createdAt ? (

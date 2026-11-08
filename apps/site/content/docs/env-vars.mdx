@@ -5,7 +5,9 @@ description: "At the end you will know how to set variables per environment or p
 
 ## Where variables live
 
-Variables belong to a project environment, for example `production`. Every app in that environment gets them. An app can also have its own **overrides**, which win over the environment value for that app only. The dashboard shows them on each project's **Variables** tab.
+Variables are shared by the project's apps: every app gets them. An app can also have its own **overrides**, which win over the shared value for that app only. The dashboard shows them on each project's **Variables** tab.
+
+In a project with several [environments](/docs/projects-and-apps#environments), the shared variables belong to one environment, for example `production`, and only its apps get them; the Variables tab then has a switcher for the environment.
 
 Each variable has:
 

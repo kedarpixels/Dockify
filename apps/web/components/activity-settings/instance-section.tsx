@@ -67,7 +67,7 @@ export function InstanceSection(props: SectionProps) {
             <SettingRow label="Instance name" desc="Shown on the sign-in page, in invites and in emails." error={errors.instanceName}>
               {(ids) => <TextInput ids={ids} value={draft.instanceName} maxLength={60} readOnly={readOnly} onChange={(e) => set({ instanceName: e.target.value })} />}
             </SettingRow>
-            <SettingRow label="Default branch" desc="New projects start every environment on it." error={errors.defaultBranch}>
+            <SettingRow label="Default branch" desc="New projects deploy from it." error={errors.defaultBranch}>
               {(ids) => <TextInput ids={ids} spellCheck={false} value={draft.defaultBranch} readOnly={readOnly} onChange={(e) => set({ defaultBranch: e.target.value })} />}
             </SettingRow>
             {/* No Build concurrency row: deploys run one at a time on the worker's deploy lane, which also

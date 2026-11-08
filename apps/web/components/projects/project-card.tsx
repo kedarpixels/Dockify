@@ -81,16 +81,15 @@ export function LastDeployment({ d, now, withApp = false }: { d?: RecentDeployme
 }
 
 /**
- * The line under a project's name: every environment, production included, when the project shows
- * them (lib/environments.ts); otherwise how many apps it holds, so cards keep one height.
+ * The line under a project's name: how many apps it holds, and how many environments when its apps
+ * sit in more than one (lib/environments.ts). Words, not a row of tags: a project is a folder of
+ * apps, and its environments are a detail of it.
  */
 export function Envs({ envs, apps }: { envs: string[]; apps: number }) {
-  if (!showsEnvironments(envs)) return <span className="two-sub num">{plural(apps, "app")}</span>;
   return (
-    <span className="pj-envs">
-      {envs.map((e) => (
-        <EnvTag key={e} env={e} />
-      ))}
+    <span className="two-sub num">
+      {plural(apps, "app")}
+      {showsEnvironments(envs) ? `, ${plural(envs.length, "environment")}` : null}
     </span>
   );
 }

@@ -274,6 +274,7 @@ export function EnvWorkbench({
   onPatch,
   onReload,
   appId,
+  environment,
 }: {
   project: EnvProject;
   extras: ProjectExtras | null;
@@ -284,6 +285,8 @@ export function EnvWorkbench({
   onReload: () => Promise<void>;
   /** Set on an app page: the workbench narrows to that app. */
   appId?: string;
+  /** The environment the project page's switcher picked; the workbench then shows that one and no switcher of its own. */
+  environment?: string;
 }) {
   const router = useRouter();
   const viewer = useViewer();
@@ -345,7 +348,10 @@ export function EnvWorkbench({
   const linkFor = useSearchParams().get("link");
 
   // An app page always shows the app's own environment.
-  const env = self ? self.environment : envNames.includes(chosenEnv) ? chosenEnv : (envNames[0] ?? "production");
+  const picked = environment && envNames.includes(environment) ? environment : undefined;
+  const env = self ? self.environment : (picked ?? (envNames.includes(chosenEnv) ? chosenEnv : (envNames[0] ?? "production")));
+  // The page's own switcher already says which environment this is.
+  const ownSwitch = !self && many && !picked;
   /** Where a line says the variables live: the environment, or just the project when it shows none. */
   const where = many ? envName(env) : "this project";
   const changes = useMemo(() => [...staged.values()], [staged]);
@@ -814,10 +820,10 @@ export function EnvWorkbench({
         </div>
       ) : null}
 
-      {(!self && many) || filterShown ? (
+      {ownSwitch || filterShown ? (
         <div className="px-env-tools">
           <div className="toolbar">
-            {!self && many ? (
+            {ownSwitch ? (
               <Segmented
                 label="Environment"
                 value={env}
@@ -903,7 +909,7 @@ export function EnvWorkbench({
 
       {/* History is the whole project's, rolled back as one, so it stays on the project tab. */}
       {!self && !(versions && versions.length === 0) ? (
-        <HistoryCard versions={versions} error={extras?.versionsError} loading={false} current={state.version} now={now} pending={staged.size} onRollback={rollback} />
+        <HistoryCard versions={versions} error={extras?.versionsError} loading={false} current={state.version} now={now} pending={staged.size} many={many} onRollback={rollback} />
       ) : null}
 
       <ReviewDialog

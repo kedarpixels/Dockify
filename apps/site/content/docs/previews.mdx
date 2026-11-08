@@ -7,7 +7,7 @@ Previews start from GitHub's `pull_request` webhook, so they need the GitHub App
 
 ## What a preview is
 
-A preview is a short-lived environment named `pr-<n>`, cloned from a **base environment** of your project. The default base is `development`. Production is never the default; you can pick it, but you should not need to. In a project with one environment, that environment counts as production, whatever its name.
+A preview is a short-lived environment named `pr-<n>`, cloned from your project. In a project with one environment there is nothing to pick: previews copy its apps, that environment counts as production whatever its name, and each preview always gets its own temporary database. With several, you pick a **base environment** in Preview settings. The default base is `development`. Production is never the default; you can pick it, but you should not need to. Removing the base environment moves previews to one that is left.
 
 Only the apps you mark **Include in previews** are copied. By default that is every frontend and backend app in the base environment built from a repository on this server; a bot is off until you tick it. **Databases are never cloned.** With a `development` base, a preview has that environment's secrets and network and reaches its services through its [linked variables](/docs/env-vars), so it talks to the same development database your `development` apps use. On that network it reaches the base environment's apps by their names too, as they do each other. A preview's own containers never answer to an app's name, so the base apps never send traffic to a preview by mistake.
 

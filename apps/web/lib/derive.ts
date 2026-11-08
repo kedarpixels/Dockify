@@ -362,6 +362,7 @@ export function buildShell(data: Overview | null) {
     projects: data ? deriveProjects(data).map((p) => ({ slug: p.slug, tone: p.tone, stateLabel: p.stateLabel })) : [],
     // A renamed app is still found by its name, which links and the CLI use.
     apps: data?.resources.map((r) => ({ id: r.id, kind: r.kind, label: appLabel({ projectSlug: r.projectSlug, app: r }), name: r.name, environment: shows(r.projectSlug) ? r.environment : null })) ?? [],
+    envProjects: [...new Set((data?.resources ?? []).map((r) => r.projectSlug))].filter(shows),
     inFlight: data?.counts.deployments.inFlight ?? 0,
     viewer: data?.viewer ?? null,
   };

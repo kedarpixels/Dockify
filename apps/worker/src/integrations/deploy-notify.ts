@@ -49,7 +49,7 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
         select: {
           ...SHOWN_APP_ICON,
           name: true, displayName: true, kind: true, gitRepository: true, gitInstallationId: true,
-          environment: { select: { name: true, project: { select: { ...SHOWN_PROJECT_ICON, slug: true, name: true } } } },
+          environment: { select: { name: true, project: { select: { ...SHOWN_PROJECT_ICON, slug: true, name: true, _count: { select: { environments: true } } } } } },
         },
       },
     },
@@ -63,6 +63,8 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
   const commit = outside(d.commitSha);
   const source = [vercel ? (preview ? "Vercel preview" : "Vercel") : null, branch, commit?.slice(0, 7)].filter(Boolean).join(", ") || null;
   const project = d.app.environment.project;
+  // A project with one environment names none, as the dashboard does; the data payload always has it.
+  const env = (project._count?.environments ?? 2) > 1 ? d.app.environment.name : null;
   // What people read as the app's name; the payload's data keeps the name, which is its identity.
   const shown = appLabel(d.app);
   // The pipeline writes its own through its redactor. Vercel's text has been through nothing yet.
@@ -74,7 +76,7 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
     title: `${preview ? "Preview failed on Vercel" : vercel ? "Deploy failed on Vercel" : "Deploy failed"}: ${shown}`,
     text: error.slice(0, 2000),
     url: deps.publicUrl ? new URL(`/deployments/${deploymentId}`, deps.publicUrl).toString() : null,
-    fields: [{ name: "Where", value: `${project.slug} / ${d.app.environment.name} / ${shown}` }, ...(source ? [{ name: "Source", value: source }] : [])],
+    fields: [{ name: "Where", value: [project.slug, ...(env ? [env] : []), shown].join(" / ") }, ...(source ? [{ name: "Source", value: source }] : [])],
     at: (d.finishedAt ?? new Date()).toISOString(),
     instance: { name: inst?.name ?? "Dockify", url: deps.publicUrl ? new URL(deps.publicUrl).origin : null },
     data: { deployment: { id: deploymentId, project: project.slug, environment: d.app.environment.name, app: d.app.name, branch, commit } },
@@ -90,7 +92,7 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
     origin,
     // The place as the dashboard shows it: project icon or folder, EnvTag, app icon or kind tile.
     where: {
-      projectName: project.name, projectSlug: project.slug, env: d.app.environment.name, appName: shown, appKind: d.app.kind,
+      projectName: project.name, projectSlug: project.slug, env, appName: shown, appKind: d.app.kind,
       ...mailIconLinks(origin, mailIconSigner(deps.internalToken), d.app, project),
     },
     error,

@@ -337,9 +337,10 @@ describe("env reveal: no step-up, but Admin only, audited and rate limited", () 
       const r = await reveal(ctx, { environment: "production", key: "DATABASE_URL", purpose: "copy" });
       expect(r.value).toBe(PLAIN);
       expect(audits).toHaveLength(1);
+      // The project has one environment: the label names none, and the changes still record it.
       expect(audits[0]).toMatchObject({
         category: "access", action: "env.reveal", actorType: "user", actorId: "u1", ip: "203.0.113.9",
-        targetType: "env_var", targetId: "v1", targetLabel: "shop/production/DATABASE_URL", suffix: "for copy",
+        targetType: "env_var", targetId: "v1", targetLabel: "shop/DATABASE_URL", suffix: "for copy",
         changes: { key: "DATABASE_URL", project: "shop", environment: "production", purpose: "copy", linked: false },
       });
       expect(JSON.stringify(audits)).not.toContain("s3cret-pw");

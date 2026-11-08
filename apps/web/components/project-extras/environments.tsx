@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
 import { CardTitle } from "@/components/card-title";
 import { Icon } from "@/components/icon";
@@ -18,11 +19,13 @@ import { BRANCH_MESSAGE, BRANCH_NAME } from "@/lib/validation";
 import { NO_ACCESS_TIP, useCan } from "@/lib/viewer";
 import { send } from "./api";
 
-/* Environments: one row per environment with the branch that deploys to it, its app count, an
-   inline branch editor and remove. Production always stays; an environment with apps cannot be
-   removed until they move or go. The preview row stands for pull request previews and links to
-   their settings. Add environment can copy another environment's variables. A Viewer sees the
-   table with its keys dimmed; their tips say why. */
+/* Environments are optional. A project starts with one and shows no environment anywhere: this card
+   then holds only the branch its apps deploy from and Add environment. With two or more, one row per
+   environment with the branch that deploys to it, its app count, an inline branch editor and remove;
+   the preview row stands for pull request previews and links to their settings. Removing one deletes
+   everything in it (its apps, databases, volumes, domains and variables) after its name is typed and
+   the session steps up; the last one never goes. Add environment can copy another environment's
+   variables. A Viewer sees the table with its keys dimmed; their tips say why. */
 
 const NAME_MAX = 32;
 const NAME = /^[a-z][a-z0-9-]{0,31}$/;
@@ -36,7 +39,22 @@ function nameError(n: string, taken: string[]) {
   return null;
 }
 
-function EnvRow({ p, name, branch, onSaved, onRemove }: { p: ProjectDetail; name: string; branch: string; onSaved: (branch: string) => void; onRemove: () => void }) {
+function EnvRow({
+  p,
+  name,
+  branch,
+  single,
+  onSaved,
+  onRemove,
+}: {
+  p: ProjectDetail;
+  name: string;
+  branch: string;
+  /** The project's only environment: no name, no remove, just the branch its apps deploy from. */
+  single: boolean;
+  onSaved: (branch: string) => void;
+  onRemove: () => void;
+}) {
   const can = useCan();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(branch);
@@ -45,7 +63,6 @@ function EnvRow({ p, name, branch, onSaved, onRemove }: { p: ProjectDetail; name
   const reasonId = useId();
   const apps = p.apps.filter((a) => a.environment === name).length;
   const err = branchError(value.trim());
-  const prod = name === "production";
   const label = envName(name);
 
   const save = async () => {
@@ -57,7 +74,7 @@ function EnvRow({ p, name, branch, onSaved, onRemove }: { p: ProjectDetail; name
     const r = report(await send({ type: "environment.branch", slug: p.slug, name, branch: next }), {
       success: "Branch saved",
       error: "Could not save the branch",
-      what: `${p.slug} / ${label} now deploys from ${next}`,
+      what: `${p.slug}${single ? "" : ` / ${label}`} now deploys from ${next}`,
     });
     setBusy(false);
     if (!r.ok) return;
@@ -66,13 +83,11 @@ function EnvRow({ p, name, branch, onSaved, onRemove }: { p: ProjectDetail; name
   };
 
   // Why the remove key cannot be used: said in its tip, and read with its name.
-  const blocked = !can.manage ? NO_ACCESS_TIP : prod ? "Production cannot be removed" : apps ? `Move or delete its ${plural(apps, "app")} first` : null;
+  const blocked = !can.manage ? NO_ACCESS_TIP : null;
 
   return (
     <li className="px-env-row">
-      <span className="px-env-name">
-        <EnvTag env={name} />
-      </span>
+      <span className="px-env-name">{single ? <span className="px-env-plain">Branch</span> : <EnvTag env={name} />}</span>
       <span className="px-env-branch">
         {editing ? (
           <span
@@ -91,7 +106,7 @@ function EnvRow({ p, name, branch, onSaved, onRemove }: { p: ProjectDetail; name
             <span className="pd-lead-field">
               <Icon name="branch" size={14} />
               <TextInput
-                aria-label={`${label} branch`}
+                aria-label={single ? "Branch" : `${label} branch`}
                 data-size="sm"
                 value={value}
                 autoFocus
@@ -124,7 +139,7 @@ function EnvRow({ p, name, branch, onSaved, onRemove }: { p: ProjectDetail; name
             <button
               type="button"
               className="btn btn-xs btn-icon"
-              aria-label={`Edit the ${label} branch`}
+              aria-label={single ? "Edit the branch" : `Edit the ${label} branch`}
               aria-disabled={!can.manage || undefined}
               data-tip={can.manage ? undefined : NO_ACCESS_TIP}
               onClick={
@@ -139,20 +154,23 @@ function EnvRow({ p, name, branch, onSaved, onRemove }: { p: ProjectDetail; name
             >
               <Icon name="edit" />
             </button>
-            {/* Focusable even when it cannot be used, so its tip says why to the keyboard too. */}
-            <button
-              type="button"
-              className="btn btn-xs btn-icon btn-quiet-danger"
-              aria-label={`Remove ${label}`}
-              aria-disabled={blocked ? true : undefined}
-              aria-describedby={blocked ? reasonId : undefined}
-              data-tip={blocked ?? undefined}
-              data-tip-align="end"
-              onClick={blocked ? undefined : onRemove}
-            >
-              <Icon name="trash" />
-            </button>
-            {blocked ? (
+            {/* Focusable even when it cannot be used, so its tip says why to the keyboard too. The
+                only environment has no remove: the project itself goes from the danger zone. */}
+            {single ? null : (
+              <button
+                type="button"
+                className="btn btn-xs btn-icon btn-quiet-danger"
+                aria-label={`Remove ${label}`}
+                aria-disabled={blocked ? true : undefined}
+                aria-describedby={blocked ? reasonId : undefined}
+                data-tip={blocked ?? undefined}
+                data-tip-align="end"
+                onClick={blocked ? undefined : onRemove}
+              >
+                <Icon name="trash" />
+              </button>
+            )}
+            {blocked && !single ? (
               <span id={reasonId} className="sr">
                 {blocked}
               </span>
@@ -177,6 +195,8 @@ export function EnvironmentsCard({
   onOpenPreviews: () => void;
 }) {
   const can = useCan();
+  const router = useRouter();
+  const single = p.environments.length < 2;
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: "", branch: "", copyFrom: "none" });
   const [tried, setTried] = useState(false);
@@ -213,13 +233,33 @@ export function EnvironmentsCard({
   };
 
   const remove = async (name: string) => {
+    const gone = p.apps.filter((a) => a.environment === name).length;
     const r = report(await send({ type: "environment.remove", slug: p.slug, name, confirm: name }), {
       success: "Environment removed",
       error: "Could not remove the environment",
-      what: `${p.slug} / ${envName(name)} and its variables`,
+      what: `${p.slug} / ${envName(name)}${gone ? `, ${plural(gone, "app")} and their data` : ""}`,
     });
     if (!r.ok) throw new Error(r.error);
-    onChange({ ...p, environments: p.environments.filter((e) => e.name !== name) });
+    onChange({
+      ...p,
+      environments: p.environments.filter((e) => e.name !== name),
+      apps: p.apps.filter((a) => a.environment !== name),
+      deployments: p.deployments.filter((d) => d.environment !== name),
+      domains: p.domains.filter((d) => d.environment !== name),
+    });
+    // The overview, the sidebar and every list read the apps that went from the server again.
+    router.refresh();
+  };
+
+  /** What removing an environment takes with it, in the confirm's words. */
+  const removal = (name: string) => {
+    const apps = p.apps.filter((a) => a.environment === name);
+    const dbs = apps.filter((a) => a.kind === "postgres" || a.kind === "redis" || a.kind === "s3").length;
+    const domains = p.domains.filter((d) => d.environment === name).length;
+    const what = apps.length
+      ? `its ${plural(apps.length, "app")}${dbs ? ` (${plural(dbs, "database")} with ${dbs === 1 ? "its" : "their"} data among them)` : ""}, ${apps.length === 1 ? "its" : "their"} volumes${domains ? `, ${plural(domains, "domain")}` : ""} and every variable set in it`
+      : "every variable set in it";
+    return `Deletes ${envName(name)} from ${p.slug} with ${what}. Previews built from it close, and its branch stops deploying. Database backups stay on the Backups page. This cannot be undone.`;
   };
 
   /** After a removal: the first key of the row now in the removed one's place (the next environment, or the preview row). */
@@ -234,7 +274,12 @@ export function EnvironmentsCard({
   return (
     <section className="card" aria-labelledby="px-envs-title">
       <div className="card-hd">
-        <CardTitle id="px-envs-title" icon="layers" title="Environments" sub="Each one gets its own variables, domains and isolated network" />
+        <CardTitle
+          id="px-envs-title"
+          icon="layers"
+          title="Environments"
+          sub={single ? "Optional. Add one to run a second copy of the apps, such as staging, from another branch" : "Each one gets its own apps, variables, domains and isolated network"}
+        />
         {can.manage ? (
           <button type="button" className="btn btn-sm" onClick={open}>
             Add environment
@@ -242,12 +287,14 @@ export function EnvironmentsCard({
         ) : null}
       </div>
       <div className="px-envs-wrap">
-        <div className="px-env-row px-env-head" aria-hidden="true">
-          <span>Environment</span>
-          <span>Branch</span>
-          <span>Apps</span>
-          <span />
-        </div>
+        {single ? null : (
+          <div className="px-env-row px-env-head" aria-hidden="true">
+            <span>Environment</span>
+            <span>Branch</span>
+            <span>Apps</span>
+            <span />
+          </div>
+        )}
         <ul ref={list} className="px-envs" aria-label="Environments">
           {p.environments.map((e, i) => (
             <EnvRow
@@ -255,6 +302,7 @@ export function EnvironmentsCard({
               p={p}
               name={e.name}
               branch={e.branch}
+              single={single}
               onSaved={(branch) => onChange({ ...p, environments: p.environments.map((x) => (x.name === e.name ? { ...x, branch } : x)) })}
               onRemove={() => {
                 removedAt.current = i;
@@ -262,25 +310,28 @@ export function EnvironmentsCard({
               }}
             />
           ))}
-          <li className="px-env-row" data-kind="preview">
-            <span className="px-env-name">
-              <EnvTag env="preview" />
-            </span>
-            <span className="px-env-branch">
-              <span className="px-env-ref">
-                <Icon name="merge" size={14} />
-                <span className="ellipsis">Pull requests to {p.defaultBranch}</span>
+          {/* With one environment the previews card below says all there is; the row joins the table once there are several. */}
+          {single ? null : (
+            <li className="px-env-row" data-kind="preview">
+              <span className="px-env-name">
+                <EnvTag env="preview" />
               </span>
-            </span>
-            <span className="px-env-apps">
-              <StatusChip tone={prState.tone}>{prState.label}</StatusChip>
-            </span>
-            <span className="px-env-acts">
-              <button type="button" className="btn btn-xs" onClick={onOpenPreviews}>
-                Configure
-              </button>
-            </span>
-          </li>
+              <span className="px-env-branch">
+                <span className="px-env-ref">
+                  <Icon name="merge" size={14} />
+                  <span className="ellipsis">Pull requests to {p.defaultBranch}</span>
+                </span>
+              </span>
+              <span className="px-env-apps">
+                <StatusChip tone={prState.tone}>{prState.label}</StatusChip>
+              </span>
+              <span className="px-env-acts">
+                <button type="button" className="btn btn-xs" onClick={onOpenPreviews}>
+                  Configure
+                </button>
+              </span>
+            </li>
+          )}
         </ul>
       </div>
 
@@ -289,7 +340,7 @@ export function EnvironmentsCard({
         onClose={() => setAdding(false)}
         icon="layers"
         title="Add environment"
-        sub={`Gives ${p.slug} a separate set of variables, domains and an isolated network, deployed from its own branch.`}
+        sub={`A second place for ${p.slug}’s apps, with its own variables, domains and isolated network, deployed from its own branch. It starts with no apps: add them with New app.`}
         busy={busy}
         onSubmit={() => void add()}
         footer={
@@ -344,7 +395,7 @@ export function EnvironmentsCard({
         onClose={() => setRemoving(null)}
         tone="danger"
         title={`Remove ${removing ? envName(removing) : "environment"}`}
-        body={`Deletes ${removing ? envName(removing) : "it"} from ${p.slug} with all of its variables and overrides. Its branch stops deploying.`}
+        body={removing ? removal(removing) : undefined}
         confirmLabel="Remove environment"
         confirmIcon="trash"
         confirmText={removing ?? undefined}

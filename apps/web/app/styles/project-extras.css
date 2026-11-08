@@ -565,6 +565,13 @@ li.px-prev:hover {
   min-width: 0;
 }
 
+/* The only environment names none: its row reads "Branch", as a field label would. */
+.px-env-plain {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
 .px-env-branch {
   min-width: 0;
 }

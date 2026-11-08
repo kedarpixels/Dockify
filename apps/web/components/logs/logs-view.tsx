@@ -7,6 +7,7 @@ import { Topbar } from "@/components/shell/topbar";
 import { Callout } from "@/components/ui/callout";
 import { Empty } from "@/components/ui/empty";
 import { envName } from "@/components/ui/env-tag";
+import { projectsShowingEnvironments } from "@/lib/environments";
 import { SearchField } from "@/components/ui/field";
 import { NoSource } from "@/components/ui/no-source";
 import { Rule, Spacer } from "@/components/ui/rule";
@@ -115,12 +116,14 @@ export function LogsView({ initial, overview, filters: start }: { initial: LogsR
   }, [catalogue]);
   // A picked app on Vercel prints nothing here: its lines are read live on its own page, never stored.
   const pickedOnVercel = pickerApps.filter((a) => a.onVercel && filters.apps.includes(a.id));
-  // A row names its environment off production only, in the compact tag's words ("Dev").
+  // A row names its environment off production only, in the compact tag's words ("Dev"), and only
+  // in a project whose apps sit in several environments.
   const meta = useMemo(() => {
+    const shows = projectsShowingEnvironments(catalogue);
     const m = new Map<string, AppMeta>();
-    for (const a of pickerApps) m.set(a.id, { label: `${a.project} / ${a.name}`, env: a.env === "production" ? undefined : envName(a.env, true), slot: a.slot });
+    for (const a of pickerApps) m.set(a.id, { label: `${a.project} / ${a.name}`, env: a.env === "production" || !shows(a.project) ? undefined : envName(a.env, true), slot: a.slot });
     return m;
-  }, [pickerApps]);
+  }, [pickerApps, catalogue]);
   const nameOf = (id: string) => meta.get(id)?.label ?? id;
 
   // Why the settled search cannot run. It shows once, in the log box, where its lines would be.

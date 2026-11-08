@@ -14,8 +14,8 @@ import { projectNameProblem } from "@/lib/validation";
 import { useCan } from "@/lib/viewer";
 
 /*
- * The New project popup, in one step: the name, then Create. It starts with one environment,
- * production, unsaid; more can be added in the project's settings. A project is only
+ * The New project popup, in one step: the name, then Create. A project is a folder of apps: it starts
+ * with one environment, production, which shows nowhere; more can be added in the project's settings. A project is only
  * the container for one product's apps, so it asks for no repository and no branch. Each app brings
  * its own source (a repository, a Git URL, an image or a database) through New app on the
  * project's page, which is where Create lands.
@@ -49,7 +49,8 @@ export function NewProjectDialog({ source, taken, onClose }: { source: OverviewS
     setTried(true);
     if (busy || offline || Object.values(errors).some(Boolean)) return;
     setBusy(true);
-    const project: NewProjectInput = { name, environments: ["production"] };
+    // One environment, production, which the API gives a project that names none.
+    const project: NewProjectInput = { name };
     const r = await mutate({ type: "project.create", project });
     const created = r.data && typeof r.data === "object" && "slug" in r.data && typeof r.data.slug === "string" ? r.data.slug : name;
     const preview = r.source === "preview";

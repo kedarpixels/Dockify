@@ -104,7 +104,7 @@ function ContainerRowView({ c, tick, host }: { c: ContainerRow; tick: number; ho
             <AppIcon id={c.app.id} kind={c.app.kind} />
             {/* The group head above already names the project. */}
             <span className="sb-c-appname">{appTitle(c.app)}</span>
-            <EnvTag env={c.app.environment} compact quiet />
+            <EnvTag env={c.app.environment} project={c.app.projectSlug} compact quiet />
           </Link>
         ) : (
           <span className="sb-c-applink" data-system="true">

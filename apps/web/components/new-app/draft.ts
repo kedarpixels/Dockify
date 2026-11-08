@@ -191,12 +191,13 @@ export function composeSpecs(d: ComposeDraft, plan: ComposeResult | null): AppSp
     .map((a) => (a.spec.source.type === "image" && d.kinds[a.service] ? { ...a.spec, kind: d.kinds[a.service]! } : a.spec));
 }
 
-export function nameError(name: string, taken: ReadonlySet<string>, environment: string, isService = false): string | undefined {
+/** `environment` is null in a project with one environment, which names none. */
+export function nameError(name: string, taken: ReadonlySet<string>, environment: string | null, isService = false): string | undefined {
   if (!name) return "Enter a name";
   if (!APP_NAME.test(name)) return "Use lowercase letters, numbers and hyphens, up to 32 characters, not starting or ending with a hyphen";
   if (hasReservedPrefix(name)) return RESERVED_NAME_MESSAGE;
   if (isService && isReservedServiceName(name)) return RESERVED_SERVICE_MESSAGE;
-  if (taken.has(name)) return `${name} already exists in ${envName(environment)}`;
+  if (taken.has(name)) return `${name} already exists in ${environment ? envName(environment) : "this project"}`;
   return undefined;
 }
 
@@ -256,7 +257,7 @@ export const linkable = <A extends { kind: AppKind; environment: string }>(apps:
  * What a conflict means and what "Replace and create" does about it, for the callout. An app's own
  * variable is replaced; a shared one stays for the other apps and the picked app gets its own.
  */
-export function conflictLine(c: LinkConflict, service: string, environment: string): string {
+export function conflictLine(c: LinkConflict, service: string, environment: string | null): string {
   const own = c.apps.filter((a) => !a.shared).map((a) => a.name);
   const shared = c.apps.filter((a) => a.shared).map((a) => a.name);
   const parts: string[] = [];
@@ -265,7 +266,7 @@ export function conflictLine(c: LinkConflict, service: string, environment: stri
   }
   if (shared.length) {
     parts.push(
-      `${listNames(shared)} ${shared.length === 1 ? "gets" : "get"} ${c.key} from the variables shared in ${envName(environment)}. Replacing gives ${shared.length === 1 ? "it its" : "each its"} own, linked to ${service}; the other apps keep the shared one.`,
+      `${listNames(shared)} ${shared.length === 1 ? "gets" : "get"} ${c.key} from the ${environment ? `variables shared in ${envName(environment)}` : "shared variables"}. Replacing gives ${shared.length === 1 ? "it its" : "each its"} own, linked to ${service}; the other apps keep the shared one.`,
     );
   }
   return `${parts.join(" ")} Uncheck an app to leave it as it is.`;
