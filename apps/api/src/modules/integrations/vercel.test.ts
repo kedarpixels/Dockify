@@ -10,7 +10,7 @@ import { testConfig, testRing } from "../../test-helpers.ts";
 import { externalOf, vercelSteps } from "../deployments/mapping.ts";
 import { defaultDeps } from "./deps.ts";
 import { integrationsPlugin } from "./index.ts";
-import { VercelApi, VERCEL_WEBHOOK_MAX_BYTES, verifyVercelSignature, webhookState } from "./vercel.ts";
+import { DELETED_EVENT, VercelApi, VERCEL_WEBHOOK_MAX_BYTES, verifyVercelSignature, webhookState } from "./vercel.ts";
 import {
   clearVercelLogCache, eventToLine, GONE_NOTICE, parseEvents, readBuildLog, retentionNote, runtimeToLine, setVercelLogClients, tailRuntime, TRUNCATED_NOTICE,
 } from "./vercel-logs.ts";
@@ -132,6 +132,21 @@ describe("Vercel webhook through the plugin", () => {
     expect(deliveries[0]).toMatchObject({ provider: "vercel", deliveryId: "evt_1", statusCode: 202 });
   });
 
+  it("turns a deletion into a pass that asks Vercel about that deployment, apart from the project's open pass", async () => {
+    const { db, jobs, deliveries } = await fakeDb();
+    const f = await build(db);
+    expect((await post(f, event())).statusCode).toBe(202);
+    expect((await post(f, event({ id: "evt_del", type: DELETED_EVENT, payload: { project: { id: "prj_1" }, deployment: { id: "dpl_9" } } }))).statusCode).toBe(202);
+    expect(jobs.map((j) => [j.dedupeKey, j.payload])).toEqual([
+      ["vercel_mirror:prj_1", { projectId: "prj_1" }],
+      ["vercel_mirror:prj_1:deleted:dpl_9", { projectId: "prj_1", deploymentId: "dpl_9" }],
+    ]);
+    expect(deliveries[1]).toMatchObject({ event: DELETED_EVENT, summary: `${DELETED_EVENT}: removal check queued` });
+    // A malformed id is no lead: a plain pass for the project.
+    expect((await post(f, event({ id: "evt_del2", type: DELETED_EVENT, payload: { project: { id: "prj_1" }, deployment: { id: "../x" } } }))).statusCode).toBe(202);
+    expect(jobs).toHaveLength(2);
+  });
+
   it("refuses a bad or missing signature before writing anything", async () => {
     const { db, jobs, deliveries } = await fakeDb();
     const f = await build(db);
@@ -211,6 +226,7 @@ describe("VercelApi webhooks", () => {
     const sent = JSON.parse(String(calls[0]!.body)) as { url: string; events: string[]; projectIds: string[] };
     expect(sent.projectIds).toEqual(["prj_1"]);
     expect(sent.events.every((e) => e.startsWith("deployment"))).toBe(true);
+    expect(sent.events).toContain(DELETED_EVENT);
   });
 
   it("turns a plan refusal into an answer, and a refused token into an error", async () => {

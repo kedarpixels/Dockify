@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Db, SecretVault } from "@dockify/db";
 import type { HttpClient, HttpResponse } from "@dockify/net-guard";
 import { httpsOfHost, safeInspectorUrl } from "./vercel-host.ts";
-import { mapDeploymentState, NOT_FOLLOWED, pickApp, queueVercelMirrorIfDue, rowFieldsOf, runVercelMirror, statusFor, VercelMirrorError, type LinkedApp, type VercelDeployment } from "./vercel-mirror.ts";
+import { mapDeploymentState, NOT_FOLLOWED, pickApp, queueVercelMirrorIfDue, REMOVED_ACTION, rowFieldsOf, runVercelMirror, statusFor, VercelMirrorError, type LinkedApp, type VercelDeployment } from "./vercel-mirror.ts";
 
 const NOW = new Date("2026-11-06T12:00:00.000Z");
 const res = (status: number, body: unknown = {}): HttpResponse => ({ status, headers: {}, body: Buffer.from(JSON.stringify(body)) });
@@ -101,9 +101,10 @@ function harness(opts: { deployments?: Row[]; apps?: Array<Record<string, unknow
   const jobs: QueuedJob[] = opts.jobs ?? [];
   const updates: Array<Record<string, unknown>> = [];
   const appUpdates: Array<Record<string, unknown>> = [];
+  const activity: Array<Record<string, unknown>> = [];
   const integration = { id: "i1", kind: "vercel", name: "default", status: "connected", secretId: "s1", config: { team: { id: "team_1" }, ...opts.config } };
   const matches = (r: Row, where: Record<string, unknown>) => {
-    if (where.id !== undefined && r.id !== where.id) return false;
+    if (typeof where.id === "string" && r.id !== where.id) return false;
     const inList = (v: unknown) => (v as { in?: unknown[] })?.in;
     if (inList(where.externalId) && !inList(where.externalId)!.includes(r.externalId)) return false;
     if (where.externalId === null && r.externalId !== null) return false;
@@ -114,6 +115,15 @@ function harness(opts: { deployments?: Row[]; apps?: Array<Record<string, unknow
     if (typeof where.status === "string" && r.status !== where.status) return false;
     const after = (where.finishedAt as { gt?: Date } | undefined)?.gt;
     if (after && !(r.finishedAt instanceof Date && r.finishedAt > after)) return false;
+    if (inList(where.id) && !inList(where.id)!.includes(r.id)) return false;
+    if (typeof where.externalId === "string" && r.externalId !== where.externalId) return false;
+    if (where.previewId === null && (r.previewId ?? null) !== null) return false;
+    if (typeof where.provider === "string" && (r.provider ?? "vercel") !== where.provider) return false;
+    const actorNotIn = (where.actorType as { notIn?: unknown[] } | undefined)?.notIn;
+    if (actorNotIn && actorNotIn.includes(r.actorType)) return false;
+    const created = where.createdAt as { gt?: Date; gte?: Date } | undefined;
+    if (created?.gt && !(Number(r.createdAt) > Number(created.gt))) return false;
+    if (created?.gte && !(Number(r.createdAt) >= Number(created.gte))) return false;
     return true;
   };
   const tx = {
@@ -163,10 +173,16 @@ function harness(opts: { deployments?: Row[]; apps?: Array<Record<string, unknow
         rows.push(row);
         return row;
       },
+      deleteMany: async ({ where }: { where: Record<string, unknown> }) => {
+        const hit = rows.filter((r) => matches(r, where));
+        for (const r of hit) rows.splice(rows.indexOf(r), 1);
+        return { count: hit.length };
+      },
       count: async () => rows.filter((r) => matches(r, { status: { notIn: ["ready", "failed", "cancelled"] } })).length,
     },
+    activityLog: { create: async ({ data }: { data: Record<string, unknown> }) => (activity.push(data), data) },
   };
-  return { db: db as unknown as Db, rows, updates, appUpdates, integration, jobs };
+  return { db: db as unknown as Db, rows, updates, appUpdates, integration, jobs, activity };
 }
 
 const vault: SecretVault = { open: async (_tx: unknown, ids: string[]) => new Map(ids.map((i) => [i, "the-token"])) } as unknown as SecretVault;
@@ -222,15 +238,16 @@ describe("runVercelMirror", () => {
     expect(h.appUpdates.at(-1)).toMatchObject({ currentDeploymentId: "old", status: "running" });
   });
 
-  it("asks about a row in flight that fell out of the list, and settles one Vercel no longer has", async () => {
+  it("asks about a row in flight that fell out of the list, and settles a deploy started here that Vercel no longer has", async () => {
     const h = harness({ deployments: [
       { id: "a", appId: "a1", provider: "vercel", externalId: "dpl_a", status: "building", actorType: "system", finishedAt: null, createdAt: 1 },
-      { id: "b", appId: "a1", provider: "vercel", externalId: "dpl_b", status: "building", actorType: "system", finishedAt: null, createdAt: 2 },
+      { id: "b", appId: "a1", provider: "vercel", externalId: "dpl_b", status: "building", actorType: "user", finishedAt: null, createdAt: 2 },
     ] });
     const v = vercel([], { one: (url) => (url.includes("dpl_a") ? res(200, dpl({ uid: undefined as never, id: "dpl_a" })) : res(404)) });
     await runVercelMirror(deps(h.db, v.http), {});
     expect(h.rows.find((r) => r.id === "a")).toMatchObject({ status: "ready" });
     expect(h.rows.find((r) => r.id === "b")).toMatchObject({ status: "cancelled", error: "Vercel no longer has this deployment" });
+    expect(h.activity).toHaveLength(0);
   });
 
   it("says a refused token on the card without burning retries, and retries an outage", async () => {
@@ -259,6 +276,88 @@ describe("runVercelMirror", () => {
   });
 
   it("names the error a stray row gets when its app left Vercel", () => expect(NOT_FOLLOWED).toContain("no longer deploys to Vercel"));
+});
+
+describe("deployments deleted on Vercel", () => {
+  const hoursAgo = (h: number) => NOW.getTime() - h * 3600_000;
+  const apps = [{ id: "a1", name: "site", vercelProjectId: "prj_1", gitBranch: null, environment: { name: "production", branch: "main" } }];
+  const row = (id: string, uid: string, over: Partial<Row> = {}): Row => ({ id, appId: "a1", provider: "vercel", externalId: uid, status: "failed", actorType: "system", previewId: null, externalTarget: "preview", finishedAt: new Date(hoursAgo(2)), createdAt: hoursAgo(2), ...over });
+  const asks = (v: ReturnType<typeof vercel>) => v.calls.filter((c) => c.url.includes("/v13/deployments/")).map((c) => decodeURIComponent(c.url.split("/v13/deployments/")[1]!.split("?")[0]!));
+
+  it("removes a mirrored row the list no longer shows once Vercel answers 404 for it, and says so in Activity", async () => {
+    const h = harness({ apps, deployments: [row("x", "dpl_gone"), row("y", "dpl_gone2", { status: "cancelled" })] });
+    const v = vercel([dpl({ uid: "dpl_live", created: hoursAgo(1) })]);
+    await runVercelMirror(deps(h.db, v.http), {});
+    expect(asks(v).sort()).toEqual(["dpl_gone", "dpl_gone2"]);
+    expect(h.rows.map((r) => r.externalId)).toEqual(["dpl_live"]);
+    expect(h.activity).toEqual([expect.objectContaining({
+      category: "deploys", action: REMOVED_ACTION, actorType: "system", targetType: "app", targetId: "a1", targetLabel: "site",
+      verb: "removed 2 deployments deleted on Vercel from",
+    })]);
+    expect((h.activity[0]!.changes as Array<{ key: string }>).map((c) => c.key).sort()).toEqual(["dpl_gone", "dpl_gone2"]);
+    expect(v.calls.every((c) => c.method === "GET")).toBe(true);
+  });
+
+  it("keeps and refreshes a row Vercel still has, even when the list left it out", async () => {
+    const h = harness({ apps, deployments: [row("x", "dpl_x")] });
+    const v = vercel([], { one: () => res(200, dpl({ uid: undefined as never, id: "dpl_x", readyState: "READY" })) });
+    await runVercelMirror(deps(h.db, v.http), {});
+    expect(h.rows).toHaveLength(1);
+    expect(h.rows[0]).toMatchObject({ id: "x", status: "ready" });
+    expect(h.activity).toHaveLength(0);
+  });
+
+  it("removes one Vercel lists or answers as DELETED", async () => {
+    const h = harness({ apps, deployments: [row("x", "dpl_listed"), row("y", "dpl_asked")] });
+    const v = vercel([dpl({ uid: "dpl_listed", readyState: "DELETED" })], { one: () => res(200, dpl({ uid: undefined as never, id: "dpl_asked", readyState: "DELETED" })) });
+    await runVercelMirror(deps(h.db, v.http), {});
+    expect(h.rows).toHaveLength(0);
+    expect(asks(v)).toEqual(["dpl_asked"]);
+  });
+
+  it("never removes a deploy Dockify started, a preview of this server, or a row of another app", async () => {
+    const h = harness({ apps, deployments: [
+      row("mine", "dpl_user", { actorType: "user" }),
+      row("tok", "dpl_token", { actorType: "token" }),
+      row("prev", "dpl_prev", { previewId: "p1" }),
+      row("other", "dpl_other", { appId: "a2" }),
+    ] });
+    await runVercelMirror(deps(h.db, vercel([]).http), {});
+    expect(h.rows.map((r) => r.id).sort()).toEqual(["mine", "other", "prev", "tok"]);
+    expect(h.activity).toHaveLength(0);
+  });
+
+  it("does not ask about a row older than a full page reaches, since the list simply stops before it", async () => {
+    const page = Array.from({ length: 50 }, (_, i) => dpl({ uid: `dpl_${i}`, created: hoursAgo(1) - i * 1000 }));
+    const h = harness({ apps, deployments: [row("old", "dpl_old", { createdAt: hoursAgo(5) })] });
+    const v = vercel(page);
+    await runVercelMirror(deps(h.db, v.http), {});
+    expect(asks(v)).toEqual([]);
+    expect(h.rows.some((r) => r.id === "old")).toBe(true);
+  });
+
+  it("asks about a deployment a deletion webhook named, wherever it sits, and believes only Vercel", async () => {
+    const page = Array.from({ length: 50 }, (_, i) => dpl({ uid: `dpl_${i}`, created: hoursAgo(1) - i * 1000 }));
+    const h = harness({ apps, deployments: [row("old", "dpl_old", { createdAt: hoursAgo(5) }), row("kept", "dpl_kept", { createdAt: hoursAgo(5) })] });
+    await runVercelMirror(deps(h.db, vercel(page).http), { projectId: "prj_1", deploymentId: "dpl_old" });
+    expect(h.rows.some((r) => r.id === "old")).toBe(false);
+    const v = vercel(page, { one: () => res(200, dpl({ uid: undefined as never, id: "dpl_kept" })) });
+    await runVercelMirror(deps(h.db, v.http), { projectId: "prj_1", deploymentId: "dpl_kept" });
+    expect(h.rows.some((r) => r.id === "kept")).toBe(true);
+    const bad = vercel(page);
+    await runVercelMirror(deps(h.db, bad.http), { projectId: "prj_1", deploymentId: "../x" });
+    expect(asks(bad)).toEqual([]);
+  });
+
+  it("asks about at most 20 a pass, and the rest on the next", async () => {
+    const h = harness({ apps, deployments: Array.from({ length: 30 }, (_, i) => row(`r${i}`, `dpl_r${i}`, { createdAt: hoursAgo(2) - i })) });
+    const v = vercel([]);
+    await runVercelMirror(deps(h.db, v.http), {});
+    expect(asks(v)).toHaveLength(20);
+    expect(h.rows).toHaveLength(10);
+    await runVercelMirror(deps(h.db, v.http), {});
+    expect(h.rows).toHaveLength(0);
+  });
 });
 
 describe("telling a failed Vercel deployment once", () => {

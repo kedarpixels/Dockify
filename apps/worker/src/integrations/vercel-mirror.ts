@@ -4,11 +4,16 @@
  * them: this dashboard, a push through Vercel's Git integration, or the Vercel CLI. It only reads
  * Vercel and only writes these rows and the linked apps' status. Runs as vercel_mirror jobs:
  *
- *   { projectId }   one Vercel project, queued by a verified webhook delivery
- *   {}              every linked project, queued by the timer below as the backstop, or by Sync now
+ *   { projectId }                 one Vercel project, queued by a verified webhook delivery
+ *   { projectId, deploymentId }   the same, after Vercel said that deployment was deleted
+ *   {}                            every linked project, queued by the timer below as the backstop, or by Sync now
  *
  * A Vercel project can be linked by several apps (one per environment) while a deployment has one
  * row, so each deployment goes to one app: see pickApp.
+ *
+ * A deployment deleted on Vercel goes from the list too. Nothing is removed on a webhook's word or on
+ * absence alone: a row is removed only once Vercel answers 404 (or DELETED) for it by id, and only a
+ * row the mirror itself copied in. A deploy Dockify started there keeps its row.
  */
 import { enqueue, enqueueTx, readSecretValue, type AppStatus, type Db, type DeploymentStatus, type Prisma, type SecretVault } from "@dockify/db";
 import { jsonOf, type HttpClient } from "@dockify/net-guard";
@@ -30,6 +35,11 @@ const NEVER_ACCEPTED_MS = 40 * 60_000;
 const FAILURE_NEWS_MS = 15 * 60_000;
 /** The most failures one pass announces; a burst drains over the next passes. */
 const NOTICES_PER_PASS = 10;
+/** The most deployments one pass asks Vercel about by id because the list no longer shows them. */
+const GONE_LOOKUPS_PER_PASS = 20;
+/** Who started a row Dockify itself sent to Vercel; every other Vercel row was copied in by the mirror. */
+const STARTED_HERE = ["user", "token"] as const;
+export const REMOVED_ACTION = "vercel.deployments.removed";
 export const NOT_FOLLOWED = "This app no longer deploys to Vercel, so Dockify stopped following this deployment";
 
 export class VercelMirrorError extends Error {
@@ -142,6 +152,8 @@ export function rowFieldsOf(d: VercelDeployment, seen: { finishedAt: Date | null
 
 export interface LinkedApp {
   id: string;
+  /** For the Activity line when deployments deleted on Vercel leave this app's list. */
+  name?: string;
   environment: string;
   /** The branch this app follows: its own, or its environment's. */
   branch: string | null;
@@ -253,27 +265,85 @@ async function announceFailures(db: Db, now: Date): Promise<void> {
   }
 }
 
-async function mirrorProject(deps: VercelMirrorDeps, api: Reader, projectId: string, links: LinkedApp[], now: Date): Promise<number> {
+const isDeleted = (d: VercelDeployment) => (d.readyState ?? d.state) === "DELETED";
+
+/**
+ * Removes the rows of deployments Vercel says are gone, but only rows the mirror copied in: never a
+ * deploy Dockify started, never a preview of this server. One Activity line per app says so.
+ */
+async function removeGone(db: Db, links: LinkedApp[], gone: string[], now: Date): Promise<void> {
+  if (!gone.length) return;
+  const rows = await db.deployment.findMany({
+    where: { provider: "vercel", appId: { in: links.map((a) => a.id) }, externalId: { in: gone }, previewId: null, actorType: { notIn: [...STARTED_HERE] } },
+    select: { id: true, appId: true, externalId: true, status: true },
+  });
+  if (!rows.length) return;
+  const removed = await db.deployment.deleteMany({ where: { id: { in: rows.map((r) => r.id) }, provider: "vercel", actorType: { notIn: [...STARTED_HERE] } } });
+  if (!removed.count) return;
+  for (const app of links) {
+    const mine = rows.filter((r) => r.appId === app.id);
+    if (!mine.length) continue;
+    await db.activityLog.create({
+      data: {
+        at: now, category: "deploys", action: REMOVED_ACTION, actorType: "system", actorName: "Dockify",
+        verb: `removed ${mine.length} deployment${mine.length === 1 ? "" : "s"} deleted on Vercel from`,
+        targetType: "app", targetId: app.id, targetLabel: app.name ?? "this app",
+        changes: mine.map((r) => ({ key: r.externalId, before: r.status, after: null })) as Prisma.InputJsonValue,
+      },
+    });
+  }
+}
+
+async function mirrorProject(deps: VercelMirrorDeps, api: Reader, projectId: string, links: LinkedApp[], now: Date, hint: string | null = null): Promise<number> {
   const { db } = deps;
   const project = encodeURIComponent(projectId);
   const since = now.getTime() - deps.retentionDays * 86_400_000;
   const listed = await api.get<{ deployments: VercelDeployment[] }>(`/v7/deployments?projectId=${project}&limit=${MIRROR_LIST_LIMIT}&since=${since}`);
-  const list = listed?.deployments ?? [];
+  const page = listed?.deployments ?? [];
   const appIds = links.map((a) => a.id);
+  const gone: string[] = [];
+  // One Vercel lists as deleted is gone already, whatever else it says.
+  const list = page.filter((d) => {
+    const uid = d.uid ?? d.id;
+    if (uid && isDeleted(d)) gone.push(uid);
+    return !isDeleted(d);
+  });
+  const asked = new Set(page.map((d) => d.uid ?? d.id));
+  const ask = async (externalId: string) => {
+    asked.add(externalId);
+    const one = await api.get<VercelDeployment>(`/v13/deployments/${encodeURIComponent(externalId)}`, true);
+    if (one && !isDeleted(one)) list.push({ ...one, uid: externalId });
+    else gone.push(externalId);
+  };
 
   // A row in flight that fell out of the page (or was deleted on Vercel) is asked about by itself.
   const open = await db.deployment.findMany({
     where: { provider: "vercel", appId: { in: appIds }, status: { notIn: [...TERMINAL] }, externalId: { not: null } },
     select: { externalId: true },
   });
-  const listedIds = new Set(list.map((d) => d.uid ?? d.id));
-  const gone: string[] = [];
   for (const { externalId } of open) {
-    if (!externalId || listedIds.has(externalId)) continue;
-    const one = await api.get<VercelDeployment>(`/v13/deployments/${encodeURIComponent(externalId)}`, true);
-    if (one) list.push({ ...one, uid: externalId });
-    else gone.push(externalId);
+    if (externalId && !asked.has(externalId)) await ask(externalId);
   }
+
+  // A finished row the list should show and does not was most likely deleted on Vercel. The page
+  // covers every deployment since the retention cut when it is not full, else back to its oldest
+  // entry; a row inside that span is asked about by id, and so is one a deletion webhook named.
+  const oldest = Math.min(...page.map((d) => d.created ?? d.createdAt ?? Number.POSITIVE_INFINITY));
+  const span = page.length < MIRROR_LIST_LIMIT ? { gte: new Date(since) } : Number.isFinite(oldest) ? { gt: new Date(oldest) } : null;
+  const mirrored = { provider: "vercel" as const, appId: { in: appIds }, previewId: null, externalId: { not: null }, actorType: { notIn: [...STARTED_HERE] } };
+  const missing = [
+    ...(hint ? await db.deployment.findMany({ where: { ...mirrored, externalId: hint }, select: { externalId: true } }) : []),
+    ...(span ? await db.deployment.findMany({ where: { ...mirrored, createdAt: span }, select: { externalId: true }, orderBy: { createdAt: "desc" }, take: 500 }) : []),
+  ];
+  let lookups = 0;
+  for (const { externalId } of missing) {
+    if (!externalId || asked.has(externalId)) continue;
+    if (lookups++ >= GONE_LOOKUPS_PER_PASS) break;
+    await ask(externalId);
+  }
+
+  await removeGone(db, links, gone, now);
+  // What is left in flight was started here: it keeps its row, settled, since nothing will finish it.
   if (gone.length) {
     await db.deployment.updateMany({
       where: { provider: "vercel", externalId: { in: gone }, status: { notIn: [...TERMINAL] } },
@@ -350,6 +420,9 @@ export async function runVercelMirror(deps: VercelMirrorDeps, payload: unknown):
   const { db } = deps;
   const now = (deps.now ?? (() => new Date()))();
   const only = typeof (payload as { projectId?: unknown } | null)?.projectId === "string" ? (payload as { projectId: string }).projectId : null;
+  // Only a lead: the pass asks Vercel about it and believes that answer, never the webhook's.
+  const named = (payload as { deploymentId?: unknown } | null)?.deploymentId;
+  const hint = only && typeof named === "string" && /^[\w-]{1,128}$/.test(named) ? named : null;
   await settleStrays(db, now);
   const row = await db.integration.findUnique({ where: { kind_name: { kind: "vercel", name: "default" } } });
   if (!row?.secretId || row.status === "disconnected") return;
@@ -357,13 +430,13 @@ export async function runVercelMirror(deps: VercelMirrorDeps, payload: unknown):
   if (!token) return;
   const apps = await db.app.findMany({
     where: { deployTarget: "vercel", vercelProjectId: only ?? { not: null } },
-    select: { id: true, vercelProjectId: true, gitBranch: true, serverId: true, environment: { select: { name: true, branch: true } } },
+    select: { id: true, name: true, vercelProjectId: true, gitBranch: true, serverId: true, environment: { select: { name: true, branch: true } } },
     orderBy: { createdAt: "asc" },
   });
   const byProject = new Map<string, LinkedApp[]>();
   for (const a of apps) {
     const list = byProject.get(a.vercelProjectId!) ?? [];
-    list.push({ id: a.id, environment: a.environment.name, branch: a.gitBranch?.trim() || a.environment.branch, serverId: a.serverId });
+    list.push({ id: a.id, name: a.name, environment: a.environment.name, branch: a.gitBranch?.trim() || a.environment.branch, serverId: a.serverId });
     byProject.set(a.vercelProjectId!, list);
   }
   const teamId = (row.config as { team?: { id?: string } | null } | null)?.team?.id ?? null;
@@ -371,7 +444,7 @@ export async function runVercelMirror(deps: VercelMirrorDeps, payload: unknown):
   let problem: VercelMirrorError | null = null;
   for (const [projectId, links] of byProject) {
     try {
-      await mirrorProject(deps, api, projectId, links, now);
+      await mirrorProject(deps, api, projectId, links, now, hint);
     } catch (e) {
       if (!(e instanceof VercelMirrorError)) throw e;
       // One project that is gone must not hold up the others; a refused token stops them all anyway.

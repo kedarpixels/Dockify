@@ -311,6 +311,12 @@ jobs:
           cp deploy/socket-proxy/haproxy.cfg "$F/releases/$VERSION/socket-proxy/haproxy.cfg"
           cp "docs/releases/$VERSION.md" "$F/releases/notes/$VERSION.md"
           cp deploy/release.pub "$F/minisign.pub"
+          # This branch holds only the feed, yet a Vercel project that builds the site from this repo
+          # (root directory apps/site) still tries every push to it and fails, as the folder is missing.
+          # Vercel reads vercel.json from the pushed branch's root directory, and deploymentEnabled false
+          # there skips the deployment. Installs and updates read fixed feed paths, so they never see it.
+          mkdir -p "$F/apps/site"
+          printf '%s\n' '{"git":{"deploymentEnabled":false}}' > "$F/apps/site/vercel.json"
           cd "$F"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

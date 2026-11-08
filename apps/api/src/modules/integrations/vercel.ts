@@ -56,8 +56,13 @@ interface VercelConfig {
   [k: string]: unknown;
 }
 
+/**
+ * Vercel's event for a deleted deployment. It fires when the deployment is removed for good, after
+ * the recovery period; the mirror's own pass notices a deletion sooner, by Vercel answering 404.
+ */
+export const DELETED_EVENT = "deployment.cleanup";
 /** The deployment events the mirror cares about; each only ever queues a sync. */
-export const WEBHOOK_EVENTS = ["deployment.created", "deployment.succeeded", "deployment.ready", "deployment.error", "deployment.canceled", "deployment.promoted", "deployment.rollback"];
+export const WEBHOOK_EVENTS = ["deployment.created", "deployment.succeeded", "deployment.ready", "deployment.error", "deployment.canceled", "deployment.promoted", "deployment.rollback", DELETED_EVENT];
 /** A deployment event's body is small. Past this it is not one of Vercel's, or not worth reading. */
 export const VERCEL_WEBHOOK_MAX_BYTES = 256 * 1024;
 /** Vercel retries a delivery for up to 24 hours, so a signed body older than this is a replay. */
@@ -319,10 +324,16 @@ async function patchConfig(tx: Tx, id: string, patch: Partial<VercelConfig>): Pr
   await tx.integration.update({ where: { id }, data: { config: asJson({ ...configOf(row ?? { config: null }), ...patch }) } });
 }
 
-/** Queues a mirror pass: one project, or every linked one. An open pass for the same scope covers it. */
-export async function enqueueVercelMirror(db: Db, projectId: string | null): Promise<void> {
+/**
+ * Queues a mirror pass: one project, or every linked one. An open pass for the same scope covers it.
+ * A deployment Vercel said it deleted gets a pass of its own that asks about that id, since the
+ * scope's open pass may have read the list before the deletion.
+ */
+export async function enqueueVercelMirror(db: Db, projectId: string | null, deletedId: string | null = null): Promise<void> {
+  const payload = projectId ? { projectId, ...(deletedId ? { deploymentId: deletedId } : {}) } : {};
+  const key = `vercel_mirror:${projectId ?? "all"}${projectId && deletedId ? `:deleted:${deletedId}` : ""}`;
   await db.$transaction(async (tx) => {
-    await enqueueTx(tx, { kind: "vercel_mirror", lane: "maintenance", payload: projectId ? { projectId } : {}, dedupeKey: `vercel_mirror:${projectId ?? "all"}`, maxAttempts: 3 });
+    await enqueueTx(tx, { kind: "vercel_mirror", lane: "maintenance", payload, dedupeKey: key, maxAttempts: 3 });
   });
 }
 
@@ -347,7 +358,7 @@ export async function receiveVercelWebhook(db: Db, ring: Keyring, req: FastifyRe
   if (!secret || !verifyVercelSignature(secret, raw, req.headers["x-vercel-signature"])) {
     return { status: 401, error: { error: "Signature verification failed", code: "BAD_SIGNATURE" } };
   }
-  let event: { id?: unknown; type?: unknown; createdAt?: unknown; payload?: { project?: { id?: unknown } | null; projectId?: unknown } | null };
+  let event: { id?: unknown; type?: unknown; createdAt?: unknown; payload?: { project?: { id?: unknown } | null; projectId?: unknown; deployment?: { id?: unknown } | null } | null };
   try {
     event = JSON.parse(raw.toString("utf8")) as typeof event;
   } catch {
@@ -370,10 +381,13 @@ export async function receiveVercelWebhook(db: Db, ring: Keyring, req: FastifyRe
   const named = event.payload?.project?.id ?? event.payload?.projectId;
   const projectId = typeof named === "string" && /^[\w-]{1,128}$/.test(named) ? named : null;
   const app = projectId ? await db.app.findFirst({ where: { deployTarget: "vercel", vercelProjectId: projectId }, select: { environment: { select: { projectId: true } } } }) : null;
-  if (app) await enqueueVercelMirror(db, projectId);
+  // A deletion names the deployment, so the pass asks Vercel about it by id; it never deletes on this word.
+  const dpl = event.payload?.deployment?.id;
+  const deletedId = type === DELETED_EVENT && typeof dpl === "string" && /^[\w-]{1,128}$/.test(dpl) ? dpl : null;
+  if (app) await enqueueVercelMirror(db, projectId, deletedId);
   await db.webhookDelivery.update({
     where: { id: rowId },
-    data: { statusCode: 202, summary: app ? `${type}: mirror queued` : `${type}: no linked app`, projectId: app?.environment.projectId ?? null, durationMs: Date.now() - started },
+    data: { statusCode: 202, summary: app ? `${type}: ${deletedId ? "removal check" : "mirror"} queued` : `${type}: no linked app`, projectId: app?.environment.projectId ?? null, durationMs: Date.now() - started },
   });
   return { status: 202 };
 }
