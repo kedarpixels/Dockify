@@ -175,3 +175,140 @@
 .bk-mode .two {
   min-width: 0;
 }
+
+/* -------------- Tiers -------------- */
+/* A database's schedules row: the database, then its two tiers one line each, then Edit. */
+.sb-sched-row.bk-sched-row {
+  --cols: var(--col-status) minmax(160px, 240px) minmax(0, 1fr) auto;
+  align-items: start;
+  padding: 12px 16px;
+}
+
+.bk-sched-row > .sb-sched-tile {
+  margin-top: 2px;
+}
+
+.bk-sched-row > .sb-sched-db .two-sub {
+  display: flex;
+  padding-top: 4px;
+}
+
+.bk-tiers {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Name, what it does with its last result under it, where it goes, when next. */
+.bk-tier-line {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) auto 144px;
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.bk-tier-line + .bk-tier-line {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.bk-tier-name {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.bk-tier-what .two-main {
+  font-weight: 400;
+}
+
+.bk-tier-place {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+}
+
+.bk-tier-next {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.bk-tier-line[data-off] .bk-tier-name {
+  color: var(--ink-3);
+}
+
+.bk-sched-edit {
+  justify-self: end;
+}
+
+@container sb-sched (max-width: 980px) {
+  .sb-sched-row.bk-sched-row {
+    --cols: 24px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "tile db edit"
+      ". tiers tiers";
+    gap: 8px 16px;
+  }
+  .bk-sched-row > .bk-tiers { grid-area: tiers; }
+  .bk-sched-row > .bk-sched-edit { grid-area: edit; }
+}
+
+@container sb-sched (max-width: 520px) {
+  .sb-sched-row.bk-sched-row {
+    padding: 12px;
+    gap: 8px 12px;
+  }
+  .bk-tier-line {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name next"
+      "what what"
+      "place place";
+    gap: 4px 12px;
+  }
+  .bk-tier-name { grid-area: name; }
+  .bk-tier-what { grid-area: what; }
+  .bk-tier-place { grid-area: place; }
+  .bk-tier-next { grid-area: next; }
+}
+
+/* The schedule dialog: one soft box per tier, its switch at the head. */
+.bk-tiers-form {
+  display: grid;
+  gap: 16px;
+}
+
+.bk-tier {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  border: 0;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.bk-tier-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* A text key inside a fact, read like the fact's links. */
+.bk-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}

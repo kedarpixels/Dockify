@@ -15,12 +15,12 @@ import { audit } from "../../audit.ts";
 import { HttpError, isUniqueViolation } from "../../errors.ts";
 import { nameShownElsewhere } from "../apps/display-name.ts";
 import { WORKER_SILENT_MS } from "../platform/server.ts";
-import { DEFAULT_CRON, toRun, toSchedule, type BackupRowIn, type DestinationRow, type ScheduleAppIn } from "./map.ts";
+import { toRun, toSchedule, type BackupRowIn, type DestinationRow, type ScheduleAppIn, type ScheduleContext } from "./map.ts";
 import {
-  ALGORITHM, backupKeyFingerprint, CronError, DataError, DecryptStream, dataPathFor, isRetentionDecrease,
-  isServiceKind, LOCAL_FLAG, localBackupsAllowed, nextRun, parseBackupKey, parseCron, publicOnlyGuard, RequestError, requestBackup,
+  ALGORITHM, backupKeyFingerprint, bothTiers, CronError, DataError, DecryptStream, DEFAULT_CRON, dataPathFor, enabledTiers, isRetentionDecrease,
+  isServiceKind, loadTiers, LOCAL_FLAG, localBackupsAllowed, nextRun, parseBackupKey, parseCron, primaryTier, publicOnlyGuard, RequestError, requestBackup,
   requestRestore, requestRestoreTest, resolveStore, SERVICE_IMAGES, SERVICE_KINDS, SERVICE_PORTS, STORAGE_UNAVAILABLE, volumeNameFor,
-  type AppSnapshot, type ServiceKind,
+  type AppSnapshot, type ServiceKind, type Tier, type TierRow,
 } from "./shared.ts";
 
 export interface BackupsOptions {
@@ -43,7 +43,7 @@ export const defaultBackupsOptions = (env: NodeJS.ProcessEnv = process.env): Bac
 const BACKUP_INCLUDE = { destination: { include: { integration: true } }, app: { select: { displayName: true } } } as const;
 const SCHEDULE_INCLUDE = {
   environment: { include: { project: { select: { slug: true } } } },
-  backupDestination: { include: { integration: true } },
+  backupSchedules: true,
 } as const;
 
 const actorFields = (a: Actor | null) => ({ actorType: (a?.kind === "token" ? "token" : "user") as "token" | "user", actorId: a?.kind === "token" ? a.tokenId : (a?.userId ?? null), actorName: a?.name ?? null });
@@ -66,9 +66,25 @@ async function instanceFingerprint(ctx: Ctx): Promise<{ fingerprint: string | nu
   return { fingerprint: raw ? backupKeyFingerprint(parseBackupKey(raw)) : null, createdAt: inst.backupKey.createdAt };
 }
 
-async function defaultDestination(db: Tx): Promise<DestinationRow | null> {
-  return (await db.backupDestination.findFirst({ where: { isDefault: true }, include: { integration: true } })) as DestinationRow | null;
+/** What every schedule in one answer is read against (map.ts ScheduleContext). */
+async function scheduleContext(ctx: Ctx, env: NodeJS.ProcessEnv, fingerprint?: string | null): Promise<ScheduleContext> {
+  const s3 = (await ctx.db.backupDestination.findMany({ where: { type: "s3" }, include: { integration: true }, orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }] })) as DestinationRow[];
+  const def = await ctx.db.backupDestination.findFirst({ where: { isDefault: true }, select: { type: true } });
+  return { fingerprint: fingerprint !== undefined ? fingerprint : (await instanceFingerprint(ctx)).fingerprint, s3, defaultType: def?.type ?? null, localAllowed: localBackupsAllowed(env) };
 }
+
+/** The tiers one Back up now writes: the one asked for, both, else every tier that is on, else where the schedule points. */
+async function tiersToRun(db: Tx, appId: string, asked: "local" | "offsite" | "both" | undefined): Promise<Tier[]> {
+  if (asked === "both") return ["local", "offsite"];
+  if (asked) return [asked];
+  const tiers = await loadTiers(db, appId);
+  const on = enabledTiers(tiers);
+  if (on.length) return on;
+  const def = await db.backupDestination.findFirst({ where: { isDefault: true }, select: { type: true } });
+  return [primaryTier(tiers, def?.type ?? null)];
+}
+
+const policyOf = (r: TierRow) => ({ keep: r.keep, keepDays: r.keepDays, enabled: r.enabled });
 
 async function loadServiceApp(ctx: Ctx, actor: Actor | null, id: string) {
   const app = await ctx.db.app.findUnique({ where: { id }, include: SCHEDULE_INCLUDE });
@@ -224,50 +240,79 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
         include: SCHEDULE_INCLUDE,
         orderBy: { name: "asc" },
       });
-      const fp = await instanceFingerprint(ctx);
-      const fallback = await defaultDestination(ctx.db);
-      return apps.map((a) => toSchedule(a as unknown as ScheduleAppIn, fp.fingerprint, fallback));
+      const c = await scheduleContext(ctx, opts.env);
+      return apps.map((a) => toSchedule(a as unknown as ScheduleAppIn, c));
     },
 
     "backups.config": async ({ ctx }) => configPayload(ctx, await instanceFingerprint(ctx)),
 
     "backups.schedules.patch": async ({ ctx, actor, params, body, req }) => {
       const app = await loadServiceApp(ctx, actor, params.id);
-      const data: Prisma.AppUpdateInput = {};
+      const c = await scheduleContext(ctx, opts.env);
+      const tiers = bothTiers(app.backupSchedules);
+      const primary = primaryTier(tiers, c.defaultType);
+
+      // A destination id names its tier by its type; "local" and "s3" name theirs.
+      let destId: string | null | undefined;
+      let destTier: Tier | undefined;
+      if (body.destination === "local") destTier = "local";
+      else if (body.destination === "s3") {
+        if (!c.s3.length) throw new HttpError(409, "Add an S3 compatible storage destination first", "NO_DESTINATION", { field: "destination" });
+        destTier = "offsite";
+        destId = null;
+      } else if (body.destination !== undefined) {
+        const d = await ctx.db.backupDestination.findUnique({ where: { id: body.destination } });
+        if (!d) throw new HttpError(404, "That backup destination does not exist", "NOT_FOUND", { field: "destination" });
+        destTier = d.type === "s3" ? "offsite" : "local";
+        destId = d.type === "s3" ? d.id : undefined;
+      }
+      if (body.tier && destTier && body.tier !== destTier) {
+        throw new HttpError(400, body.tier === "local" ? "The local tier keeps its backups on this server" : "The offsite tier needs an S3 destination", "WRONG_DESTINATION", { field: "destination" });
+      }
+      const tier: Tier = body.tier ?? destTier ?? primary;
+      // An older client that points its one schedule somewhere else moves it there.
+      const moveFrom = !body.tier && destTier && destTier !== primary ? primary : null;
+
+      const before = tiers[tier];
+      const next: TierRow = moveFrom
+        ? { ...before, enabled: tiers[moveFrom].enabled, cron: tiers[moveFrom].cron, keep: tiers[moveFrom].keep, keepDays: tiers[moveFrom].keepDays }
+        : { ...before };
       if (body.cron !== undefined) {
         try {
           parseCron(body.cron);
         } catch (e) {
           throw new HttpError(400, e instanceof CronError ? e.message : "Not a valid cron expression", "INVALID_CRON", { field: "cron" });
         }
-        data.backupCron = body.cron;
+        next.cron = body.cron;
       }
-      if (body.retentionDays !== undefined) data.backupRetentionDays = body.retentionDays;
-      if (body.enabled !== undefined) {
-        data.backupEnabled = body.enabled;
-        if (body.enabled && !app.backupCron && body.cron === undefined) data.backupCron = DEFAULT_CRON;
+      if (body.retentionDays !== undefined) {
+        next.keep = 3;
+        next.keepDays = body.retentionDays;
       }
-      if (body.destination !== undefined) {
-        if (body.destination === "local") {
-          // The same rule a manual run follows: this server's disk unless the owner turned it off.
-          if (!localBackupsAllowed(opts.env)) throw new HttpError(409, `Local backups are turned off on this server (${LOCAL_FLAG}=0). Remove that setting to allow them.`, "LOCAL_DISABLED", { field: "destination" });
-          const local = await ctx.db.backupDestination.upsert({ where: { name: "This server" }, update: {}, create: { name: "This server", type: "local" } });
-          data.backupDestination = { connect: { id: local.id } };
-        } else if (body.destination === "s3") {
-          const d = await ctx.db.backupDestination.findFirst({ where: { type: "s3" }, orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }] });
-          if (!d) throw new HttpError(409, "Add an S3 compatible storage destination first", "NO_DESTINATION", { field: "destination" });
-          data.backupDestination = { connect: { id: d.id } };
-        } else {
-          const d = await ctx.db.backupDestination.findUnique({ where: { id: body.destination } });
-          if (!d) throw new HttpError(404, "That backup destination does not exist", "NOT_FOUND", { field: "destination" });
-          data.backupDestination = { connect: { id: d.id } };
-        }
+      if (body.keep !== undefined) next.keep = body.keep;
+      if (body.keepDays !== undefined) next.keepDays = body.keepDays;
+      if (destId !== undefined) next.destinationId = destId;
+      if (body.enabled !== undefined) next.enabled = body.enabled;
+      if (next.enabled && !next.cron) next.cron = DEFAULT_CRON;
+      if (tier === "local" && (body.destination === "local" || (next.enabled && !before.enabled)) && !c.localAllowed) {
+        // The same rule a manual run follows: this server's disk unless the owner turned it off.
+        throw new HttpError(409, `Local backups are turned off on this server (${LOCAL_FLAG}=0). Remove that setting to allow them.`, "LOCAL_DISABLED", { field: "destination" });
       }
-      const updated = await ctx.db.app.update({ where: { id: app.id }, data, include: SCHEDULE_INCLUDE });
-      const decrease = isRetentionDecrease(
-        { retentionDays: app.backupRetentionDays, enabled: app.backupEnabled },
-        { retentionDays: updated.backupRetentionDays, enabled: updated.backupEnabled },
-      );
+      if (tier === "offsite" && next.enabled && !c.s3.length) throw new HttpError(409, "Add an S3 compatible storage destination first", "NO_DESTINATION", { field: "destination" });
+
+      const data = { enabled: next.enabled, cron: next.cron, keep: next.keep, keepDays: next.keepDays, destinationId: tier === "offsite" ? next.destinationId : null };
+      await ctx.db.$transaction(async (tx) => {
+        await tx.backupSchedule.upsert({ where: { appId_tier: { appId: app.id, tier } }, update: data, create: { appId: app.id, tier, ...data } });
+        if (moveFrom) await tx.backupSchedule.upsert({ where: { appId_tier: { appId: app.id, tier: moveFrom } }, update: { enabled: false, cron: null }, create: { appId: app.id, tier: moveFrom } });
+      });
+      const decrease = isRetentionDecrease(policyOf(before), policyOf(next));
+      const changes: Array<[string, unknown, unknown]> = [
+        ["enabled", before.enabled, next.enabled],
+        ["cron", before.cron, next.cron],
+        ["keep", before.keep, next.keep],
+        ["keepDays", before.keepDays, next.keepDays],
+        ["destination", before.destinationId, data.destinationId],
+      ];
       await audit(ctx.db, {
         category: "config",
         action: "backup.schedule.update",
@@ -276,18 +321,12 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
         targetType: "app",
         targetId: app.id,
         targetLabel: app.name,
+        suffix: moveFrom ? `moved from the ${moveFrom} tier to the ${tier} tier` : `${tier} tier`,
         ...meta(req),
-        changes: [
-          ["enabled", app.backupEnabled, updated.backupEnabled],
-          ["cron", app.backupCron, updated.backupCron],
-          ["retentionDays", app.backupRetentionDays, updated.backupRetentionDays],
-          ["destination", app.backupDestinationId, updated.backupDestinationId],
-        ]
-          .filter(([, a, b]) => a !== b)
-          .map(([key, before, after]) => ({ key, before, after })) as Prisma.InputJsonValue,
+        changes: changes.filter(([, a, b]) => a !== b).map(([key, before, after]) => ({ key, before, after })) as Prisma.InputJsonValue,
       });
-      const fp = await instanceFingerprint(ctx);
-      return toSchedule(updated as unknown as ScheduleAppIn, fp.fingerprint, await defaultDestination(ctx.db));
+      const updated = await ctx.db.app.findUniqueOrThrow({ where: { id: app.id }, include: SCHEDULE_INCLUDE });
+      return toSchedule(updated as unknown as ScheduleAppIn, c);
     },
 
     "backups.run": async ({ ctx, actor, body, req }) => {
@@ -306,7 +345,8 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
       const backupIds: string[] = [];
       for (const id of ids) {
         try {
-          backupIds.push((await requestBackup(ctx.db, id, "manual")).backupId);
+          // One dump per database, a copy to each tier it runs for.
+          backupIds.push(...(await requestBackup(ctx.db, id, "manual", { tiers: await tiersToRun(ctx.db, id, body.tier) })).backupIds);
         } catch (e) {
           if (ids.length === 1) fromRequestError(e);
         }
@@ -422,7 +462,7 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
       if (!isServiceKind(app.kind)) return { schedule: null, runs: [], config: null };
       const fp = await instanceFingerprint(ctx);
       return {
-        schedule: toSchedule(app as unknown as ScheduleAppIn, fp.fingerprint, await defaultDestination(ctx.db)),
+        schedule: toSchedule(app as unknown as ScheduleAppIn, await scheduleContext(ctx, opts.env, fp.fingerprint)),
         runs: await listRuns(ctx, { sourceAppId: app.id }, 100),
         config: await configPayload(ctx, fp),
       };

@@ -212,9 +212,15 @@ async function createTarget(tx: Prisma.TransactionClient, ctx: Ctx, app: Row, ki
       // On the old service's server: the upgrade copies the data across on that server's network.
       id, environmentId: app.environmentId, serverId: app.serverId, name, kind, image, port: SERVICE_PORTS[kind], desiredState: "running",
       memoryLimitMb: app.memoryLimitMb, cpuLimit: app.cpuLimit, pidsLimit: app.pidsLimit,
-      backupEnabled: app.backupEnabled, backupCron: app.backupCron, backupTimezone: app.backupTimezone, backupRetentionDays: app.backupRetentionDays, backupDestinationId: app.backupDestinationId,
     },
   });
+  // Both backup tiers, as they are: on or off, cron, what they keep and where offsite goes.
+  const tiers = await tx.backupSchedule.findMany({ where: { appId: app.id } });
+  if (tiers.length) {
+    await tx.backupSchedule.createMany({
+      data: tiers.map((t) => ({ appId: id, tier: t.tier, enabled: t.enabled, cron: t.cron, timezone: t.timezone, keep: t.keep, keepDays: t.keepDays, destinationId: t.destinationId })),
+    });
+  }
   const secretId = await sealServiceCredentials(tx, ctx.ring, id, generateServiceCredentials(kind, name));
   await tx.app.update({ where: { id }, data: { passwordSecretId: secretId } });
   await tx.volume.create({ data: { appId: id, name: volumeNameFor(id), mountPath: dataPathFor(kind) } });

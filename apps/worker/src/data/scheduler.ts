@@ -10,7 +10,8 @@ import { nextRun } from "./cron.ts";
 import { resume } from "./pipeline.ts";
 import { containerNameFor, LABEL_APP, LABEL_ROLE } from "./services.ts";
 import { requestBackup, requestRestoreTest, SERVICE_KINDS, staleReason, type RestorePayload } from "./requests.ts";
-import { failedRowsToDelete, selectExpired } from "./retention.ts";
+import { failedRowsToDelete, selectExpired, type RetentionCandidate, type RetentionPolicy } from "./retention.ts";
+import { bothTiers, tierNextRun, TIERS, tierOfType } from "./tiers.ts";
 import { settleAbandonedUpgrades } from "./upgrade.ts";
 
 export interface TickReport {
@@ -71,54 +72,72 @@ export async function upgradeLegacyServices(deps: DataDeps, serverId: string): P
   return n;
 }
 
-/** When a schedule next fires, from its last run (or from when the app was set up). */
-export function scheduleNextRun(app: { backupCron: string | null; backupTimezone: string; backupLastRunAt: Date | null; createdAt: Date }, now: Date): Date | null {
-  if (!app.backupCron) return null;
-  try {
-    return nextRun(app.backupCron, app.backupTimezone || "UTC", app.backupLastRunAt ?? new Date(Math.max(app.createdAt.getTime(), now.getTime() - 60_000)));
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * Fires every tier that is due. Tiers of one database due in the same minute share one run: one
+ * dump, a copy to each (requests.ts). Each tier's slot is claimed first, so a second worker or the
+ * next tick does not fire it again; a run that cannot start because another is in flight gives its
+ * slots back and fires on a later tick.
+ */
 export async function fireDueSchedules(db: Db, now: Date, log: (msg: string, extra?: object) => void = () => {}): Promise<number> {
-  const apps = await db.app.findMany({
-    where: { backupEnabled: true, backupCron: { not: null }, kind: { in: [...SERVICE_KINDS] } },
-    select: { id: true, backupCron: true, backupTimezone: true, backupLastRunAt: true, createdAt: true },
+  const rows = await db.backupSchedule.findMany({
+    where: { enabled: true, cron: { not: null }, app: { kind: { in: [...SERVICE_KINDS] } } },
+    select: { id: true, appId: true, tier: true, cron: true, timezone: true, lastRunAt: true },
+    orderBy: [{ appId: "asc" }, { tier: "asc" }],
   });
+  const byApp = new Map<string, typeof rows>();
+  for (const r of rows) byApp.set(r.appId, [...(byApp.get(r.appId) ?? []), r]);
   let n = 0;
-  for (const app of apps) {
-    const due = scheduleNextRun(app, now);
-    if (!due || due > now) continue;
-    // Claim this slot first, so a second worker or the next tick does not fire it again.
-    const claimed = await db.app.updateMany({ where: { id: app.id, backupLastRunAt: app.backupLastRunAt }, data: { backupLastRunAt: now } });
-    if (claimed.count !== 1) continue;
+  for (const [appId, tiers] of byApp) {
+    const claimed: typeof rows = [];
+    for (const t of tiers) {
+      const due = tierNextRun(t, now);
+      if (!due || due > now) continue;
+      const won = await db.backupSchedule.updateMany({ where: { id: t.id, lastRunAt: t.lastRunAt }, data: { lastRunAt: now } });
+      if (won.count === 1) claimed.push(t);
+    }
+    if (!claimed.length) continue;
     try {
-      await requestBackup(db, app.id, "schedule");
+      await requestBackup(db, appId, "schedule", { tiers: claimed.map((t) => t.tier) });
       n++;
     } catch (e) {
-      log("a scheduled backup was not taken", { appId: app.id, error: e instanceof Error ? e.message : String(e) });
-      // A restore of this database is running: give the slot back, and the next tick after it tries again.
-      if ((e as { code?: unknown }).code === "BUSY") await db.app.updateMany({ where: { id: app.id, backupLastRunAt: now }, data: { backupLastRunAt: app.backupLastRunAt } });
+      log("a scheduled backup was not taken", { appId, tiers: claimed.map((t) => t.tier), error: e instanceof Error ? e.message : String(e) });
+      // A restore or another backup of this database is running: give the slots back, and a tick after it tries again.
+      if ((e as { code?: unknown }).code === "BUSY") {
+        for (const t of claimed) await db.backupSchedule.updateMany({ where: { id: t.id, lastRunAt: now }, data: { lastRunAt: t.lastRunAt } });
+      }
     }
   }
   return n;
 }
 
-const CONTROL_PLANE_RETENTION_DAYS = 30;
+/** Pre-update dumps of Dockify's own database: no tier, so the rule before tiers. */
+const CONTROL_PLANE_RETENTION: RetentionPolicy = { keep: 3, keepDays: 30 };
 
-/** Deletes expired objects first and marks the row only after, so a failed delete is retried next tick. */
+/** Backups a restore or a restore test is reading right now. */
+async function backupsInUse(db: Db): Promise<Set<string>> {
+  const open = await db.job.findMany({ where: { kind: { in: ["restore", "restore_test"] }, completedAt: null, failedAt: null }, select: { payload: true } });
+  const ids = new Set<string>();
+  for (const j of open) {
+    const id = (j.payload as { backupId?: unknown } | null)?.backupId;
+    if (typeof id === "string") ids.add(id);
+  }
+  return ids;
+}
+
+/**
+ * Each database's backups, tier by tier, against that tier's policy (a tier with no row keeps
+ * DEFAULT_KEEP). Deletes the stored object first, local file or remote object alike, and marks the
+ * row only after, so a failed delete is retried next tick.
+ */
 export async function applyRetention(deps: DataStores, now: Date): Promise<{ expired: number; deleted: number }> {
   const { db } = deps;
-  const apps = await db.app.findMany({ where: { kind: { in: [...SERVICE_KINDS] } }, select: { id: true, backupRetentionDays: true } });
+  const apps = await db.app.findMany({ where: { kind: { in: [...SERVICE_KINDS] } }, select: { id: true, backupSchedules: true } });
+  const inUse = await backupsInUse(db);
+  const select = { id: true, status: true, trigger: true, createdAt: true, objectKey: true, expiredAt: true, destinationId: true, restoreTestStatus: true, destination: { select: { type: true } } } as const;
   let expired = 0;
   let deleted = 0;
-  const pass = async (where: { appId: string } | { kind: "control_plane" }, days: number) => {
-    const rows = await db.backup.findMany({
-      where,
-      select: { id: true, status: true, trigger: true, createdAt: true, objectKey: true, expiredAt: true, destinationId: true },
-    });
-    for (const b of selectExpired(rows, days, now)) {
+  const prune = async (rows: Array<RetentionCandidate & { id: string; destinationId: string | null }>, policy: RetentionPolicy) => {
+    for (const b of selectExpired(rows, policy, now, inUse)) {
       try {
         const dest = await deps.storeFor(b.destinationId);
         await dest.store.delete(b.objectKey!);
@@ -131,11 +150,18 @@ export async function applyRetention(deps: DataStores, now: Date): Promise<{ exp
     const old = failedRowsToDelete(rows, now).map((b) => b.id);
     if (old.length) deleted += (await db.backup.deleteMany({ where: { id: { in: old }, status: "failed" } })).count;
   };
-  for (const app of apps) await pass({ appId: app.id }, app.backupRetentionDays);
+  for (const app of apps) {
+    const rows = await db.backup.findMany({ where: { appId: app.id }, select });
+    const tiers = bothTiers(app.backupSchedules);
+    for (const tier of TIERS) await prune(rows.filter((r) => tierOfType(r.destination?.type) === tier), tiers[tier]);
+  }
   // The offsite copies of pre-update dumps belong to no app, and one more comes with each update.
-  await pass({ kind: "control_plane" }, CONTROL_PLANE_RETENTION_DAYS);
+  await prune(await db.backup.findMany({ where: { kind: "control_plane" }, select }), CONTROL_PLANE_RETENTION);
   return { expired, deleted };
 }
+
+/** The backup job that writes this row: as its first copy, or as one of the copies one dump also writes. */
+const ownJob = (id: string) => [{ payload: { path: ["backupId"], equals: id } }, { payload: { path: ["copies"], array_contains: [id] } }];
 
 /** A row with no job at all is settled only after this, the one case the reason cannot come from a job. */
 const ORPHAN_ROW_AGE_MS = 10 * 60_000;
@@ -152,13 +178,13 @@ export async function failStaleRuns(db: Db, now: Date): Promise<number> {
     // A restore and a version change each take their own dump first, a running row no job names.
     const ownerKeys = b.appId ? [{ dedupeKey: `restore:${b.appId}` }, { dedupeKey: `service-upgrade:${b.appId}` }] : [];
     const open = await db.job.findFirst({
-      where: { kind: { in: ["backup", "restore", "service_upgrade"] }, completedAt: null, failedAt: null, OR: [{ payload: { path: ["backupId"], equals: b.id } }, ...ownerKeys] },
+      where: { kind: { in: ["backup", "restore", "service_upgrade"] }, completedAt: null, failedAt: null, OR: [...ownJob(b.id), ...ownerKeys] },
       select: { id: true },
     });
     if (open) continue;
     // Its own job, or for a pre-restore dump the restore that took it.
     const owner = await db.job.findFirst({
-      where: b.trigger === "pre_restore" && b.appId ? { kind: "restore", dedupeKey: `restore:${b.appId}` } : { kind: "backup", payload: { path: ["backupId"], equals: b.id } },
+      where: b.trigger === "pre_restore" && b.appId ? { kind: "restore", dedupeKey: `restore:${b.appId}` } : { kind: "backup", OR: ownJob(b.id) },
       orderBy: { createdAt: "desc" },
       select: { lastError: true },
     });

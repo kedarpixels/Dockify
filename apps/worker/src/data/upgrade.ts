@@ -23,7 +23,7 @@ import { DataError, type DataDeps } from "./context.ts";
 import { parseRestoreCheck, restoreCheckCommand } from "./dump.ts";
 import { deployManagedService } from "./managed.ts";
 import { checkExit, fetchVerified, quiesce, replayPostgres, resume, runBackup, target as serviceTarget } from "./pipeline.ts";
-import { backupKindFor, defaultDestinationId, isServiceKind, type AppSnapshot } from "./requests.ts";
+import { backupKindFor, isServiceKind, scheduleDestinationId, type AppSnapshot } from "./requests.ts";
 import { readAll } from "./context.ts";
 
 export type UpgradePayload =
@@ -81,7 +81,7 @@ async function freshBackup(deps: DataDeps, sourceId: string): Promise<string> {
   const row = await deps.db.backup.create({
     data: {
       appId: app.id, sourceAppId: app.id, appSnapshot: snapshot as unknown as Prisma.InputJsonValue, kind: backupKindFor(app.kind), trigger: "pre_update", status: "running",
-      destinationId: app.backupDestinationId ?? (await defaultDestinationId(deps.db)), encrypted: true,
+      destinationId: await scheduleDestinationId(deps.db, app.id), encrypted: true,
     },
     select: { id: true },
   });

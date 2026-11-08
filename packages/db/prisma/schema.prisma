@@ -249,6 +249,11 @@ enum BackupDestinationType {
   s3
 }
 
+enum BackupTier {
+  local
+  offsite
+}
+
 enum RestoreTestStatus {
   passed
   failed
@@ -1041,14 +1046,6 @@ model App {
   /// Vercel target sync state.
   vercelSync          Json?
 
-  backupEnabled       Boolean            @default(false)
-  backupCron          String?
-  backupTimezone      String             @default("UTC")
-  backupRetentionDays Int                @default(14)
-  backupDestinationId String?            @db.Uuid
-  backupDestination   BackupDestination? @relation(fields: [backupDestinationId], references: [id], onDelete: SetNull)
-  backupLastRunAt     DateTime?          @db.Timestamptz(3)
-
   iconChoice       IconChoice @default(auto)
   /// The last favicon attempt and why it found nothing, shown under the Icon control.
   faviconCheckedAt DateTime?  @db.Timestamptz(3)
@@ -1098,6 +1095,7 @@ model App {
   domains         Domain[]            @relation("AppDomains")
   deployments     Deployment[]        @relation("AppDeployments")
   backups         Backup[]
+  backupSchedules BackupSchedule[]
   previews        PreviewDeployment[]
   metrics         MetricSample[]
   alertRules      AlertRule[]
@@ -1432,10 +1430,37 @@ model BackupDestination {
   isDefault     Boolean               @default(false)
   createdAt     DateTime              @default(now()) @db.Timestamptz(3)
 
-  apps    App[]
-  backups Backup[]
+  schedules BackupSchedule[]
+  backups   Backup[]
 
   @@map("backup_destinations")
+}
+
+/// One database's backup schedule for one tier: `local` keeps copies on this server's disk, `offsite`
+/// sends them to an S3 destination. Each tier is on or off on its own. A backup belongs to the tier
+/// its destination's type names, so retention counts each tier's backups apart. A tier with no row
+/// is off and keeps DEFAULT_KEEP. Migration 0027 made these from the single schedule on apps.
+model BackupSchedule {
+  id            String             @id @default(uuid()) @db.Uuid
+  appId         String             @db.Uuid
+  app           App                @relation(fields: [appId], references: [id], onDelete: Cascade)
+  tier          BackupTier
+  enabled       Boolean            @default(false)
+  cron          String?
+  timezone      String             @default("UTC")
+  /// The newest this many automatic backups of the tier always stay (1 to 1000, CHECK).
+  keep          Int                @default(7)
+  /// Also kept: every automatic backup newer than this many days. Null keeps by count alone.
+  keepDays      Int?
+  /// Offsite only: null sends to the default S3 destination. Local always uses this server's disk.
+  destinationId String?            @db.Uuid
+  destination   BackupDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  lastRunAt     DateTime?          @db.Timestamptz(3)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@unique([appId, tier])
+  @@map("backup_schedules")
 }
 
 /// Outlives its app: appId goes null on delete and `appSnapshot` keeps what a restore needs.

@@ -177,9 +177,9 @@ export function storageHandlers(deps: IntegrationDeps): Handlers {
       await ctx.db.$transaction(async (tx) => {
         const row = await tx.integration.findFirst({ where: { id: params.id, kind: "storage" } });
         if (!row) throw notFound();
-        const dest = await tx.backupDestination.findUnique({ where: { integrationId: row.id }, select: { id: true, _count: { select: { backups: true, apps: true } } } });
-        if (dest && (dest._count.backups > 0 || dest._count.apps > 0)) {
-          throw new HttpError(409, "Backups or apps still use this destination; move them first", "IN_USE");
+        const dest = await tx.backupDestination.findUnique({ where: { integrationId: row.id }, select: { id: true, _count: { select: { backups: true, schedules: true } } } });
+        if (dest && (dest._count.backups > 0 || dest._count.schedules > 0)) {
+          throw new HttpError(409, "Backups or backup schedules still use this destination; move them first", "IN_USE");
         }
         if (dest) await tx.backupDestination.delete({ where: { id: dest.id } });
         await tx.integration.delete({ where: { id: row.id } });

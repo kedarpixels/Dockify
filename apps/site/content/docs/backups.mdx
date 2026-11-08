@@ -1,6 +1,6 @@
 ---
 title: "Backups and restore"
-description: "At the end your databases will be backed up off the server on a schedule you turn on, encrypted before upload, and Postgres backups restored for real every week by default to prove it."
+description: "At the end your databases will be backed up on this server and off it, each on its own schedule and keeping its own count, encrypted before upload, and Postgres backups restored for real every week by default to prove it."
 ---
 
 ## Add a destination
@@ -13,7 +13,7 @@ Backups go to an S3-compatible bucket you own. Add one under **Settings > Integr
 | Endpoint | An https URL. |
 | Bucket and region | As your provider names them. |
 | Access key and secret key | Stored sealed. Only a short hint is ever shown again. |
-| Default | New schedules use the default destination. |
+| Default | An offsite tier with no destination of its own sends to the default. |
 
 Use **Test** to check the credentials and see the round trip time. Give the key access to this one bucket only.
 
@@ -21,20 +21,46 @@ Until you add a destination, backups, manual and scheduled alike, are kept on th
 
 ## Schedules
 
-Every database has a schedule, off until you turn it on. Once on, it runs daily at 03:00 (`0 3 * * *`) unless you set a cron. For each one you can set:
+Every database has two backup tiers, each off until you turn it on, each with its own schedule:
 
-- **Cron.** Five fields, for example `0 */6 * * *` for every six hours.
-- **Retention.** 1 to 3650 days.
-- **Destination.** A storage destination, or this server's disk (`local`) unless local backups are turned off.
+| Tier | Where the copies go | Good for |
+|---|---|---|
+| **On this server** | This server's disk. | Quick restores. Lost with the disk. |
+| **Offsite** | An S3 destination, such as Backblaze B2 or Cloudflare R2. | Surviving a lost server. |
+
+For example, a backup on the server every 12 hours keeping only the latest one, and a daily backup to Backblaze B2 keeping 7. Open **Schedule** on the database's Backups tab, or **Edit** on its row on the Backups page, and set for each tier:
+
 - **On or off.**
+- **How often.** Every hour, every 6 or 12 hours, daily, weekly, or a five field cron such as `0 */6 * * *`. Times are UTC.
+- **Keep.** How many backups the tier keeps, 1 to 1000.
+- **Destination**, offsite only. The default S3 destination, or another one.
 
-Changing a schedule asks you to confirm it is you, because a lowered retention is how backup history gets destroyed. Retention follows three rules:
+The Backups tab shows each tier with its schedule in words ("Every 12 hours, keep 1"), where the copies go, the next run and the last result. The Backups page lists every database with both tiers.
 
-- Manual backups are never removed by a schedule. Someone took them on purpose.
-- The newest **3** good backups always stay, whatever their age, so a stopped schedule or a long outage never ages out your last copies.
-- Everything else older than the retention expires. The stored object is deleted, but the row stays in the history, marked expired.
+When both tiers are due in the same minute, one dump serves both: it is taken once, then encrypted and stored once per tier. Each copy succeeds or fails on its own, so a bucket that is down never fails the copy on this server.
 
-You can also run a backup now, for one database or all of them.
+### Retention
+
+Retention counts backups, per tier. Changing a schedule asks you to confirm it is you, because a lowered count is how backup history gets destroyed. The rules:
+
+- Each tier keeps its newest **N** good backups, whatever their age, and removes older ones. A tier keeping 1 holds exactly the latest backup.
+- A failed run is never counted, so it never pushes a good backup out.
+- The only good backup of a tier is never removed: the newest backup whose restore test did not fail always stays.
+- A backup that a restore or restore test is reading is never removed under it.
+- Manual backups are never removed, and never counted. Someone took them on purpose.
+- Removing an offsite backup deletes its object from the bucket. The row stays in the history, marked expired.
+
+Backups taken by Dockify itself before an update or a restore count in the tier they were stored in, like scheduled ones.
+
+### Schedules from before tiers
+
+Dockify 1.0.1 and earlier had one schedule per database, with retention in days. Upgrading moves it to the tier its destination names: this server's disk to **On this server**, an S3 destination to **Offsite**. It keeps its cron, on or off, and its old retention, shown as "keep 3 and 14 days": the newest 3 always stay, and so does everything from the last 14 days. Clear the days in the schedule dialog to keep by count alone.
+
+The API keeps the old single schedule fields (`cron`, `retentionDays`, `destination`, `enabled`) for older clients, describing the tier that is on. Both tiers are under `tiers`. A change sent with `tier` goes to that tier; one without goes where an older client meant it.
+
+### Back up now
+
+**Back up now** takes one dump of the database and stores a copy in every tier that is on, so with both on you get a copy here and one offsite. With no tier on, it goes where the schedule points. You can run it for one database or all of them. Through the API, `tier` picks `local`, `offsite` or `both`.
 
 ## What a backup is
 
@@ -66,7 +92,7 @@ Each backup shows **Passed**, **Failed**, **Testing** or **Not tested**, with wh
 
 ## Restore
 
-Open a backup and choose **Restore**. Before anything is replayed, Dockify downloads it and verifies it: the SHA-256 matches, every chunk decrypts, and a tar archive contains no unsafe entries.
+Open a backup and choose **Restore**. The history lists the backups of both tiers, each labelled with where it is stored, this server or the destination's name, and the restore dialog says it again. Before anything is replayed, Dockify downloads it and verifies it: the SHA-256 matches, every chunk decrypts, and a tar archive contains no unsafe entries.
 
 ### Into a new database (default)
 

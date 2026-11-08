@@ -24,12 +24,41 @@ export const BackupConfig = z.object({
   encryption: z.object({ enabled: z.boolean(), algorithm: z.string(), fingerprint: z.string().nullable(), createdAt: Iso.nullable() }),
   restoreTests: z.object({ cron: z.string(), nextRunAt: Iso.nullable() }),
 });
+/** Where a tier keeps its copies: `local` on this server's disk, `offsite` in an S3 destination. */
+export const BackupTier = z.enum(["local", "offsite"]);
+/**
+ * One tier of a database's backups: its own cron, and the newest `keep` automatic backups always
+ * stay (plus every one from the last `keepDays` days, when set: how migrated schedules keep their
+ * old rule). Manual backups are never counted or removed.
+ */
+export const BackupTierSchedule = z.object({
+  tier: BackupTier,
+  enabled: z.boolean(),
+  cron: z.string(),
+  timezone: z.string(),
+  keep: z.number(),
+  keepDays: z.number().nullable(),
+  destination: z.enum(["s3", "local"]),
+  /** Set for "local": the copies are on this server's own disk and go with it. */
+  warning: z.string().optional(),
+  storage: BackupStorageRef.nullable(),
+  /** False when it cannot run here: offsite with no S3 destination, local with local backups turned off. */
+  available: z.boolean(),
+  nextRunAt: Iso.nullable(),
+  lastRunAt: Iso.nullable(),
+});
+/**
+ * A database's backups: both tiers in `tiers`. The flat fields are the one schedule older clients
+ * read: the tier that is on (offsite first) for cron, retention and destination, `enabled` when any
+ * tier is on, and the soonest next run of the tiers that are on.
+ */
 export const BackupSchedule = z.object({
   id: z.string(),
   resourceId: z.string(),
   database: BackupDatabase,
   cron: z.string(),
   timezone: z.string(),
+  /** Deprecated: about how many days of backups that tier keeps. Read `tiers` instead. */
   retentionDays: z.number(),
   destination: z.enum(["s3", "local"]),
   /** Set for "local": the copies are on this server's own disk and go with it. */
@@ -39,6 +68,7 @@ export const BackupSchedule = z.object({
   enabled: z.boolean(),
   nextRunAt: Iso.nullable(),
   lastRunAt: Iso.nullable(),
+  tiers: z.object({ local: BackupTierSchedule, offsite: BackupTierSchedule }),
 });
 export const BackupRun = z.object({
   id: z.string(),
@@ -50,6 +80,8 @@ export const BackupRun = z.object({
   createdAt: Iso,
   finishedAt: Iso.nullable(),
   sizeBytes: z.number().nullable(),
+  /** The tier the copy counts in, by where it is stored. */
+  tier: BackupTier,
   destination: z.enum(["s3", "local"]),
   /** Set for "local": the copy is on this server's own disk and goes with it. */
   warning: z.string().optional(),
@@ -62,13 +94,25 @@ export const BackupRun = z.object({
 
 /** Five-field cron, digits and the usual operators only. */
 const Cron = z.string().max(100).regex(/^(\S+\s+){4}\S+$/).regex(/^[\d*/,\- ]+$/);
+export const KEEP_MAX = 1000;
+export const KEEP_DAYS_MAX = 3650;
+/**
+ * Changes one tier. Without `tier`, the change goes where an older client meant it: to the tier its
+ * `destination` names (moving the schedule there), else to the tier the flat fields describe.
+ * `retentionDays` is the old rule: keep 3, plus every backup from that many days.
+ */
 export const SchedulePatchBody = z.strictObject({
+  tier: BackupTier.optional(),
   enabled: z.boolean().optional(),
   cron: Cron.optional(),
-  retentionDays: z.number().int().min(1).max(3650).optional(),
+  keep: z.number().int().min(1).max(KEEP_MAX).optional(),
+  keepDays: z.number().int().min(1).max(KEEP_DAYS_MAX).nullable().optional(),
+  retentionDays: z.number().int().min(1).max(KEEP_DAYS_MAX).optional(),
+  /** Offsite: "s3" (the default S3 destination) or a destination id. Without `tier`, "local" moves the schedule to the local tier. */
   destination: z.union([z.enum(["s3", "local"]), Uuid]).optional(),
 });
-export const RunBackupsBody = z.strictObject({ resourceId: Uuid.optional() });
+/** Without `tier`: every tier of the database that is on, both at once from one dump, else where its schedule points. */
+export const RunBackupsBody = z.strictObject({ resourceId: Uuid.optional(), tier: z.enum(["local", "offsite", "both"]).optional() });
 export const RunBackupsResponse = z.object({ runs: z.array(BackupRun) });
 /** The new service's app name, which becomes its DNS alias: the dk- prefix is Dockify's (common.ts AppName). */
 export const NewDbName = z

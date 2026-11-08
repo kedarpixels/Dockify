@@ -10,6 +10,7 @@ import { bytes, plural } from "@/lib/format";
 import { useUtcAt } from "@/lib/time-prefs";
 import type { BackupRun, BackupSchedule, RestoreRequest } from "@/lib/pages/server-backups";
 import { NEW_DB_NAME, isOrphan } from "@/lib/pages/server-backups-shared";
+import { backUpPlaces } from "./tier-schedule";
 import { dbLabel, dbName, dbRef, placeName, restoreName } from "./util";
 import { hasReservedPrefix, isReservedServiceName, RESERVED_NAME_MESSAGE, RESERVED_SERVICE_MESSAGE } from "@/lib/validation";
 
@@ -133,7 +134,7 @@ export function RestoreDialog({ run, onClose, onConfirm }: { run: BackupRun; onC
         <div>
           <dt>Backup</dt>
           <dd className="num">
-            {bytes(run.sizeBytes ?? 0)}, {placeName(run.storage)}
+            {bytes(run.sizeBytes ?? 0)}, {run.tier === "offsite" ? `offsite in ${placeName(run.storage)}${run.storage ? `, bucket ${run.storage.bucket}` : ""}` : "on this server"}
           </dd>
         </div>
         <div>
@@ -166,7 +167,7 @@ export function RunDialog({ onClose, schedules, onConfirm }: { onClose: () => vo
           <span className="sb-muted">{s.database.projectSlug} /</span> {dbName(s.database)}
         </>
       ),
-      meta: placeName(s.storage),
+      meta: ((w) => w.charAt(0).toUpperCase() + w.slice(1))(backUpPlaces(s)),
     })),
   ];
 

@@ -43,6 +43,7 @@ import {
 } from "./services.ts";
 import { backupKindFor, isServiceKind, type AppSnapshot, type RestorePayload } from "./requests.ts";
 import { backupObjectKey } from "./store.ts";
+import { tierOfType } from "./tiers.ts";
 import { TarGuard } from "./tar-guard.ts";
 
 const STDERR_TAIL = 2_000;
@@ -132,67 +133,137 @@ const failureData = (e: unknown, final: boolean) =>
   final || isPermanentError(e) ? { status: "failed" as const, error: message(e), finishedAt: new Date() } : { error: message(e) };
 
 /**
- * Runs one backup row to completion. `final` is whether this is the job's last attempt: then, or
- * when the error is permanent, the row is marked failed with the reason at once; otherwise it
- * keeps running with the reason recorded, and the retry tries again.
+ * Writes every chunk to each branch, waiting for all of them to drain: one dump feeds the
+ * encryption of each copy at the pace of the slowest.
  */
-export async function runBackup(deps: DataDeps, backupId: string, final = true): Promise<void> {
+class Fan extends Writable {
+  readonly #outs: Writable[];
+  constructor(outs: Writable[]) {
+    super();
+    this.#outs = outs;
+  }
+  override _write(chunk: Buffer, _e: BufferEncoding, cb: (err?: Error | null) => void): void {
+    let waiting = 0;
+    for (const o of this.#outs) {
+      if (o.write(chunk)) continue;
+      waiting++;
+      o.once("drain", () => {
+        if (--waiting === 0) cb();
+      });
+    }
+    if (waiting === 0) cb();
+  }
+  override _final(cb: (err?: Error | null) => void): void {
+    for (const o of this.#outs) o.end();
+    cb();
+  }
+}
+
+/** One copy of a dump: its row, and the ciphertext sealed to that row's id on its way to scratch. */
+interface Copy {
+  row: Backup;
+  tmp: string;
+  counter: HashCount;
+}
+
+/**
+ * Runs one backup to completion: one dump, gzipped once, then encrypted and stored once per copy
+ * (`copyIds`: the other tiers one run serves, each its own row and its own destination). Each copy
+ * succeeds or fails on its own: a bucket that is down never fails the local copy. `final` is whether
+ * this is the job's last attempt: then, or when the error is permanent, a row is marked failed with
+ * the reason at once; otherwise it keeps running with the reason recorded, and the retry dumps again
+ * for the copies still running only.
+ */
+export async function runBackup(deps: DataDeps, backupId: string, final = true, copyIds: readonly string[] = []): Promise<void> {
   const { db } = deps;
   const backup = await db.backup.findUnique({ where: { id: backupId } });
   if (!backup) throw new DataError("That backup row no longer exists", true);
-  if (backup.status !== "running") return;
-  if (backup.kind === "control_plane") return copyControlPlaneDump(deps, backup, final);
+  if (backup.kind === "control_plane") return backup.status === "running" ? copyControlPlaneDump(deps, backup, final) : undefined;
+  const extra = copyIds.length ? await db.backup.findMany({ where: { id: { in: [...copyIds] }, sourceAppId: backup.sourceAppId } }) : [];
+  const rows = [backup, ...extra].filter((r) => r.status === "running");
+  if (!rows.length) return;
   if (!backup.appId) {
     const gone = new DataError("The app was deleted before its backup ran", true);
-    await db.backup.update({ where: { id: backup.id }, data: failureData(gone, true) });
+    for (const r of rows) await db.backup.update({ where: { id: r.id }, data: failureData(gone, true) });
     throw gone;
   }
 
-  const tmp = join(deps.tmpDir, `backup-${backup.id}.dkbk`);
+  const copies: Copy[] = rows.map((row) => ({ row, tmp: join(deps.tmpDir, `backup-${row.id}.dkbk`), counter: new HashCount() }));
   let source: DumpSource | null = null;
+  let fan: Fan | null = null;
+  let firstError: unknown = null;
+  const settled = new Set<string>();
+  const fail = async (c: Copy, e: unknown) => {
+    firstError ??= e;
+    settled.add(c.row.id);
+    await db.backup.update({ where: { id: c.row.id }, data: failureData(e, final) });
+  };
   try {
-    // Inside the try: a scratch folder that cannot be made fails the row with its reason.
+    // Inside the try: a scratch folder that cannot be made fails the rows with its reason.
     await mkdir(deps.tmpDir, { recursive: true, mode: 0o700 });
     const t = await target(deps, backup.appId);
     const keys = await deps.backupKeys();
-    const dest = await deps.storeFor(backup.destinationId);
+    // Each destination first: one that cannot be reached fails its copy before anything is dumped.
+    const live: Array<Copy & { dest: Awaited<ReturnType<DataDeps["storeFor"]>> }> = [];
+    for (const c of copies) {
+      try {
+        live.push({ ...c, dest: await deps.storeFor(c.row.destinationId) });
+      } catch (e) {
+        await fail(c, e);
+      }
+    }
+    if (!live.length) throw firstError;
     source = await openDump(deps, backup, t);
-    const counter = new HashCount();
-    const flow = pipeline(source.handle.stdout, createGzip({ level: 6 }), new EncryptStream(keys.active, backup.id), counter, createWriteStream(tmp, { mode: 0o600 }));
-    const [, result] = await Promise.all([flow, source.handle.done]);
+    const branches = live.map((c) => {
+      const into = new PassThrough();
+      return { into, done: pipeline(into, new EncryptStream(keys.active, c.row.id), c.counter, createWriteStream(c.tmp, { mode: 0o600 })) };
+    });
+    fan = new Fan(branches.map((b) => b.into));
+    const flow = pipeline(source.handle.stdout, createGzip({ level: 6 }), fan);
+    const [, result] = await Promise.all([flow, source.handle.done, ...branches.map((b) => b.done)]);
     checkExit(backup.kind === "postgres" ? "pg_dump" : backup.kind === "redis" ? "redis-cli" : "tar", result);
 
-    const createdAt = backup.createdAt;
-    const key = backupObjectKey(dest.prefix, { sourceAppId: backup.sourceAppId, backupId: backup.id, createdAt, kind: backup.kind });
-    await dest.store.put(key, createReadStream(tmp), counter.bytes);
-    // The backup key travels with the dumps, sealed under the master key, so losing this server's
-    // database never makes the offsite copies unreadable (key-escrow.ts).
-    await writeBackupKeyEscrow(dest.store, dest.prefix, deps.db, deps.vault, keys);
-    const now = deps.now?.() ?? new Date();
-    await db.$transaction([
-      db.backup.update({
-        where: { id: backup.id },
-        data: {
-          status: "ready",
-          objectKey: key,
-          sizeBytes: BigInt(counter.bytes),
-          sha256: counter.digest(),
-          encrypted: true,
-          keyFingerprint: keys.fingerprint,
-          destinationId: dest.destinationId,
-          finishedAt: now,
-          error: null,
-        },
-      }),
-      db.app.update({ where: { id: backup.appId }, data: { backupLastRunAt: now } }),
-    ]);
+    for (const c of live) {
+      try {
+        const key = backupObjectKey(c.dest.prefix, { sourceAppId: c.row.sourceAppId, backupId: c.row.id, createdAt: c.row.createdAt, kind: c.row.kind });
+        await c.dest.store.put(key, createReadStream(c.tmp), c.counter.bytes);
+        // The backup key travels with the dumps, sealed under the master key, so losing this server's
+        // database never makes the offsite copies unreadable (key-escrow.ts).
+        await writeBackupKeyEscrow(c.dest.store, c.dest.prefix, deps.db, deps.vault, keys);
+        const now = deps.now?.() ?? new Date();
+        await db.backup.update({
+          where: { id: c.row.id },
+          data: {
+            status: "ready",
+            objectKey: key,
+            sizeBytes: BigInt(c.counter.bytes),
+            sha256: c.counter.digest(),
+            encrypted: true,
+            keyFingerprint: keys.fingerprint,
+            destinationId: c.dest.destinationId,
+            finishedAt: now,
+            error: null,
+          },
+        });
+        settled.add(c.row.id);
+        // A scheduled run's tier counts its next run from when this one finished.
+        if (c.row.trigger === "schedule") {
+          await db.backupSchedule.updateMany({ where: { appId: backup.appId, tier: tierOfType(c.dest.type), OR: [{ lastRunAt: null }, { lastRunAt: { lt: now } }] }, data: { lastRunAt: now } }).catch(() => {});
+        }
+      } catch (e) {
+        await fail(c, e);
+      }
+    }
+    if (firstError) throw firstError;
   } catch (e) {
     await source?.handle.kill().catch(() => {});
-    await db.backup.update({ where: { id: backup.id }, data: failureData(e, final) });
+    fan?.destroy();
+    // Every copy not settled above carries the reason the run stopped.
+    for (const c of copies) if (!settled.has(c.row.id)) await db.backup.update({ where: { id: c.row.id }, data: failureData(e, final) });
     throw e;
   } finally {
     await source?.cleanup();
-    await rm(tmp, { force: true });
+    for (const c of copies) await rm(c.tmp, { force: true });
   }
 }
 

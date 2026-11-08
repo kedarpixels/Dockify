@@ -272,6 +272,8 @@ export interface PruneResult {
 }
 
 export type BackupDestination = "s3" | "local";
+/** Where a tier keeps its copies: this server's disk, or an S3 destination off it. */
+export type BackupTier = "local" | "offsite";
 export type BackupStatus = "running" | "ready" | "failed";
 export type BackupKind = "scheduled" | "manual" | "preDeploy" | "preUpdate";
 export type StorageProvider = "r2" | "s3" | "minio" | "custom";
@@ -324,11 +326,31 @@ export interface BackupConfig {
   restoreTests: { cron: string; nextRunAt: string | null };
 }
 
+/** One tier of a database's backups: its own cron, switch and how many automatic backups it keeps. */
+export interface BackupTierSchedule {
+  tier: BackupTier;
+  enabled: boolean;
+  /** Five field cron, evaluated in `timezone`. */
+  cron: string;
+  timezone: string;
+  /** The newest this many automatic backups always stay. */
+  keep: number;
+  /** Also kept: every one from the last this many days (schedules from before tiers). */
+  keepDays: number | null;
+  destination: BackupDestination;
+  /** Where offsite goes; null for local, or offsite with no S3 destination yet. */
+  storage: BackupStorageRef | null;
+  /** False when it cannot run: offsite with no S3 destination, local turned off on this server. */
+  available: boolean;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+}
+
 export interface BackupSchedule {
   id: string;
   resourceId: string;
   database: BackupDatabase;
-  /** Five field cron, evaluated in `timezone`. */
+  /** The flat fields describe one tier (the one that is on, offsite first), for older readers. */
   cron: string;
   timezone: string;
   retentionDays: number;
@@ -336,9 +358,23 @@ export interface BackupSchedule {
   /** Where "s3" goes; null for local. */
   storage: BackupStorageRef | null;
   encryption: BackupEncryption;
+  /** On when any tier is. */
   enabled: boolean;
+  /** The soonest next run of the tiers that are on. */
   nextRunAt: string | null;
   lastRunAt: string | null;
+  tiers: Record<BackupTier, BackupTierSchedule>;
+}
+
+/** What the schedule dialog changes on one tier. */
+export interface TierPatch {
+  tier: BackupTier;
+  enabled?: boolean;
+  cron?: string;
+  keep?: number;
+  keepDays?: number | null;
+  /** Offsite only: "s3" for the default destination, or a destination id. */
+  destination?: string;
 }
 
 export interface BackupRun {
@@ -351,6 +387,8 @@ export interface BackupRun {
   createdAt: string;
   finishedAt: string | null;
   sizeBytes: number | null;
+  /** The tier the copy counts in, by where it is stored. */
+  tier: BackupTier;
   destination: BackupDestination;
   storage: BackupStorageRef | null;
   encryption: BackupEncryption;
@@ -433,6 +471,7 @@ function list<T>(body: T[] | { items?: T[]; data?: T[] }): T[] {
 function normRun(r: BackupRun & { trigger?: "schedule" | "manual" }): BackupRun {
   return {
     ...r,
+    tier: r.tier ?? (r.destination === "s3" ? "offsite" : "local"),
     kind: r.kind ?? (r.trigger === "manual" ? "manual" : "scheduled"),
     storage: r.storage ?? null,
     encryption: r.encryption ?? { enabled: false, fingerprint: null },
@@ -440,8 +479,27 @@ function normRun(r: BackupRun & { trigger?: "schedule" | "manual" }): BackupRun 
   };
 }
 
+/** A tier an API from before tiers never sent: the one schedule it had, or off. */
+function flatTier(s: BackupSchedule, tier: BackupTier): BackupTierSchedule {
+  const mine = (s.destination === "s3" ? "offsite" : "local") === tier;
+  return {
+    tier,
+    enabled: mine && s.enabled,
+    cron: s.cron,
+    timezone: s.timezone,
+    keep: 3,
+    keepDays: s.retentionDays,
+    destination: tier === "offsite" ? "s3" : "local",
+    storage: tier === "offsite" ? (s.storage ?? null) : null,
+    available: tier === "local" || s.storage !== null,
+    nextRunAt: mine ? s.nextRunAt : null,
+    lastRunAt: mine ? s.lastRunAt : null,
+  };
+}
+
 function normSchedule(s: BackupSchedule): BackupSchedule {
-  return { ...s, storage: s.storage ?? null, encryption: s.encryption ?? { enabled: false, fingerprint: null } };
+  const out = { ...s, storage: s.storage ?? null, encryption: s.encryption ?? { enabled: false, fingerprint: null } };
+  return { ...out, tiers: s.tiers ?? { local: flatTier(out, "local"), offsite: flatTier(out, "offsite") } };
 }
 
 /**
@@ -630,35 +688,47 @@ export async function getBackups(): Promise<BackupsResult> {
   return { source: "none", data: null, fetchedAt };
 }
 
-export function patchSchedule(id: string, patch: { enabled?: boolean }): Promise<ActionResult<BackupSchedule>> {
+export function patchSchedule(id: string, patch: TierPatch): Promise<ActionResult<BackupSchedule>> {
   return mutate<BackupSchedule>(`/api/v1/backups/schedules/${encodeURIComponent(id)}`, "PATCH", patch, () => {
-    const hit = buildPreviewBackups(new Date()).schedules.find((s) => s.id === id);
-    return hit ? { ...hit, ...patch } : null;
+    const now = new Date();
+    const hit = buildPreviewBackups(now).schedules.find((s) => s.id === id);
+    if (!hit) return null;
+    const { tier, destination, ...rest } = patch;
+    const before = hit.tiers[tier];
+    const storage = tier === "offsite" ? (destination && destination !== "s3" ? (previewStorage(destination) ?? before.storage) : (before.storage ?? R2)) : null;
+    const t: BackupTierSchedule = { ...before, ...rest, storage, available: tier === "local" || storage !== null };
+    t.nextRunAt = t.enabled ? iso(firings(t.cron, now.getTime(), now.getTime() + 8 * DAY)[0]) : null;
+    return withFlat({ ...hit, tiers: { ...hit.tiers, [tier]: t } });
   }, { elevated: true });
 }
 
-export function runBackup(resourceId?: string): Promise<ActionResult<{ runs: BackupRun[] }>> {
-  return mutate<{ runs: BackupRun[] }>("/api/v1/backups/run", "POST", resourceId ? { resourceId } : {}, () => {
+export function runBackup(resourceId?: string, tier?: BackupTier | "both"): Promise<ActionResult<{ runs: BackupRun[] }>> {
+  return mutate<{ runs: BackupRun[] }>("/api/v1/backups/run", "POST", { ...(resourceId ? { resourceId } : {}), ...(tier ? { tier } : {}) }, () => {
     const now = new Date();
     const picked = buildPreviewBackups(now).schedules.filter((s) => (resourceId ? s.resourceId === resourceId : s.enabled));
     if (!picked.length) return null;
     return {
-      runs: picked.map((s) => ({
-        id: `bkp_manual_${s.resourceId}_${now.getTime()}`,
-        scheduleId: s.id,
-        resourceId: s.resourceId,
-        database: s.database,
-        status: "running" as const,
-        kind: "manual" as const,
-        createdAt: now.toISOString(),
-        finishedAt: null,
-        sizeBytes: null,
-        destination: s.destination,
-        storage: s.storage,
-        encryption: s.encryption,
-        restoreTest: { status: "notTested" as const, testedAt: null, tables: null, rows: null, error: null },
-        expired: false,
-      })),
+      runs: picked.flatMap((s) => {
+        const on = (["local", "offsite"] as const).filter((k) => s.tiers[k].enabled && s.tiers[k].available);
+        const tiers = tier === "both" ? (["local", "offsite"] as const) : tier ? [tier] : on.length ? on : [s.destination === "s3" ? "offsite" as const : "local" as const];
+        return tiers.map((k) => ({
+          id: `bkp_manual_${s.resourceId}_${k}_${now.getTime()}`,
+          scheduleId: s.id,
+          resourceId: s.resourceId,
+          database: s.database,
+          status: "running" as const,
+          kind: "manual" as const,
+          createdAt: now.toISOString(),
+          finishedAt: null,
+          sizeBytes: null,
+          tier: k,
+          destination: s.tiers[k].destination,
+          storage: s.tiers[k].storage,
+          encryption: s.encryption,
+          restoreTest: { status: "notTested" as const, testedAt: null, tables: null, rows: null, error: null },
+          expired: false,
+        }));
+      }),
     };
   });
 }
@@ -1146,17 +1216,51 @@ function buildPreviewMetrics(range: MetricRange, now: Date): ServerMetrics {
   return { range, points };
 }
 
-/** The preview's backup plan for each project's database, with what a restore test finds in it. */
+interface PreviewTier {
+  cron: string;
+  keep: number;
+  keepDays?: number;
+  enabled?: boolean;
+}
+
+/**
+ * The preview's backup plan for each project's database: a tier on this server and one offsite,
+ * each with its own cron and count, and what a restore test finds in it. horseai is the owner's
+ * own: every 12 hours here keeping 1, daily to the bucket keeping 7.
+ */
 const PLANS: Record<
   string,
-  { cron: string; retentionDays: number; destination: BackupDestination; encrypted: boolean; sizeGb: number; tables: number; rows: number; failRecent?: number }
+  { local?: PreviewTier; offsite?: PreviewTier; encrypted: boolean; sizeGb: number; tables: number; rows: number; failRecent?: number }
 > = {
-  horseai: { cron: "0 3 * * *", retentionDays: 14, destination: "s3", encrypted: true, sizeGb: 1.8, tables: 48, rows: 2_184_330 },
-  inkwell: { cron: "0 */12 * * *", retentionDays: 7, destination: "s3", encrypted: true, sizeGb: 0.64, tables: 61, rows: 1_236_904 },
+  horseai: { local: { cron: "0 */12 * * *", keep: 1 }, offsite: { cron: "0 3 * * *", keep: 7 }, encrypted: true, sizeGb: 1.8, tables: 48, rows: 2_184_330 },
+  inkwell: { offsite: { cron: "0 */12 * * *", keep: 14 }, encrypted: true, sizeGb: 0.64, tables: 61, rows: 1_236_904 },
   // The degraded brightlane database: its last two dumps lost the connection, and it stays on this disk.
-  brightlane: { cron: "30 4 * * *", retentionDays: 7, destination: "local", encrypted: false, sizeGb: 0.22, tables: 22, rows: 318_442, failRecent: 2 },
-  fieldnote: { cron: "0 3 * * 0", retentionDays: 30, destination: "s3", encrypted: true, sizeGb: 0.41, tables: 35, rows: 604_118 },
+  brightlane: { local: { cron: "30 4 * * *", keep: 7 }, encrypted: false, sizeGb: 0.22, tables: 22, rows: 318_442, failRecent: 2 },
+  // From before tiers: kept by its old rule, the newest 3 and everything from 30 days.
+  fieldnote: { offsite: { cron: "0 3 * * 0", keep: 3, keepDays: 30 }, encrypted: true, sizeGb: 0.41, tables: 35, rows: 604_118 },
 };
+
+/** A destination id the preview knows, for the schedule dialog's picker. */
+const previewStorage = (id: string): BackupStorageRef | null => (id === R2.id ? R2 : null);
+
+/** The flat fields older readers use, from the tiers (the api's own rule, backups/map.ts). */
+function withFlat(s: BackupSchedule): BackupSchedule {
+  const { local, offsite } = s.tiers;
+  const main = offsite.enabled || (!local.enabled && offsite.storage) ? offsite : local;
+  const nexts = [local.nextRunAt, offsite.nextRunAt].filter((x): x is string => !!x).sort();
+  const lasts = [local.lastRunAt, offsite.lastRunAt].filter((x): x is string => !!x).sort();
+  return {
+    ...s,
+    cron: main.cron,
+    timezone: main.timezone,
+    retentionDays: Math.max(main.keepDays ?? 0, main.keep),
+    destination: main.destination,
+    storage: main.storage,
+    enabled: local.enabled || offsite.enabled,
+    nextRunAt: nexts[0] ?? null,
+    lastRunAt: lasts.at(-1) ?? null,
+  };
+}
 
 /**
  * Databases whose apps were deleted. Their backups outlive them until deleted from the page.
@@ -1206,71 +1310,99 @@ function buildPreviewBackups(now: Date): BackupsData {
     const plan = PLANS[r.projectSlug]!;
     const database: BackupDatabase = { name: r.name, ...(r.displayName ? { displayName: r.displayName } : {}), projectSlug: r.projectSlug, environment: r.environment };
     const id = `bks_${r.projectSlug}`;
-    const storage = plan.destination === "s3" ? R2 : null;
     const encryption = sealed(plan.encrypted);
     const rnd = seeded(61 + k * 13);
+    const tiers = {} as Record<BackupTier, BackupTierSchedule>;
 
-    // Scheduled dumps, one before the last Dockify update, and one before a stateful redeploy of horseai and inkwell.
-    const planned: Array<{ at: number; kind: BackupKind }> = firings(plan.cron, windowStart, t).map((at) => ({ at, kind: "scheduled" }));
-    if (LAST_UPDATE_AT >= windowStart && LAST_UPDATE_AT < t) planned.push({ at: LAST_UPDATE_AT, kind: "preUpdate" });
-    if (r.projectSlug === "horseai") planned.push({ at: t - (3 * 24 + 2) * 3_600_000, kind: "preDeploy" });
-    if (r.projectSlug === "inkwell") planned.push({ at: t - (9 * 24 + 5) * 3_600_000, kind: "preDeploy" });
-    planned.sort((a, b) => a.at - b.at);
-    const scheduled = planned.filter((p) => p.kind === "scheduled");
+    for (const tier of ["local", "offsite"] as const) {
+      const p = plan[tier];
+      const storage = tier === "offsite" ? R2 : null;
+      const destination: BackupDestination = tier === "offsite" ? "s3" : "local";
+      // Scheduled dumps, one before the last Dockify update, and one before a stateful redeploy of horseai and inkwell.
+      const planned: Array<{ at: number; kind: BackupKind }> = p ? firings(p.cron, windowStart, t).map((at) => ({ at, kind: "scheduled" })) : [];
+      const main = tier === (plan.offsite ? "offsite" : "local");
+      if (main && LAST_UPDATE_AT >= windowStart && LAST_UPDATE_AT < t) planned.push({ at: LAST_UPDATE_AT, kind: "preUpdate" });
+      if (main && r.projectSlug === "horseai") planned.push({ at: t - (3 * 24 + 2) * 3_600_000, kind: "preDeploy" });
+      if (main && r.projectSlug === "inkwell") planned.push({ at: t - (9 * 24 + 5) * 3_600_000, kind: "preDeploy" });
+      planned.sort((a, b) => a.at - b.at);
+      const scheduled = planned.filter((x) => x.kind === "scheduled");
+      const made: BackupRun[] = [];
 
-    planned.forEach(({ at, kind }, i) => {
-      const fromEnd = kind === "scheduled" ? scheduled.length - 1 - scheduled.findIndex((p) => p.at === at) : -1;
-      const failed = kind === "scheduled" && ((plan.failRecent !== undefined && fromEnd < plan.failRecent) || (r.projectSlug === "inkwell" && fromEnd === 19));
-      const expired = t - at > plan.retentionDays * 86_400_000;
-      // Dumps grow a little over the month.
-      const size = plan.sizeGb * GB * (0.9 + (i / Math.max(1, planned.length - 1)) * 0.1) * (0.98 + rnd() * 0.04);
-      const secs = Math.round(failed ? 6 + rnd() * 20 : 8 + plan.sizeGb * 38 + rnd() * 10);
-      // The daily test covers scheduled dumps of the last week; one inkwell test caught a short dump.
-      const tested = kind === "scheduled" && !failed && !expired && t - at < 7 * 86_400_000 && at + 2 * 3_600_000 < t;
-      const testFailed = tested && r.projectSlug === "inkwell" && fromEnd === 5;
-      const restoreTest: RestoreTest = tested
-        ? {
-            status: testFailed ? "failed" : "passed",
-            testedAt: new Date(Math.floor((at + 2 * 3_600_000) / 3_600_000) * 3_600_000).toISOString(),
-            tables: testFailed ? plan.tables - 1 : plan.tables,
-            rows: Math.round(plan.rows * (0.96 + (i / Math.max(1, planned.length)) * 0.04)),
-            error: testFailed ? "Table bets is missing after restore" : null,
-          }
-        : NOT_TESTED;
-      runs.push({
-        id: `bkp_${r.projectSlug}_${at}`,
-        scheduleId: kind === "scheduled" ? id : null,
-        resourceId: r.id,
-        database,
-        status: failed ? "failed" : "ready",
-        kind,
-        createdAt: new Date(at).toISOString(),
-        finishedAt: new Date(at + secs * 1000).toISOString(),
-        sizeBytes: failed ? null : Math.round(size / MB) * MB,
-        destination: plan.destination,
-        storage,
-        encryption,
-        restoreTest,
-        expired,
-        error: failed ? (r.projectSlug === "inkwell" ? "Upload to S3 timed out after 300s" : "pg_dump: connection to server lost") : null,
+      planned.forEach(({ at, kind }, i) => {
+        const fromEnd = kind === "scheduled" ? scheduled.length - 1 - scheduled.findIndex((x) => x.at === at) : -1;
+        const failed = kind === "scheduled" && ((plan.failRecent !== undefined && fromEnd < plan.failRecent) || (r.projectSlug === "inkwell" && fromEnd === 19));
+        // Dumps grow a little over the month.
+        const size = plan.sizeGb * GB * (0.9 + (i / Math.max(1, planned.length - 1)) * 0.1) * (0.98 + rnd() * 0.04);
+        const secs = Math.round(failed ? 6 + rnd() * 20 : 8 + plan.sizeGb * 38 + rnd() * 10);
+        // The daily test covers scheduled dumps of the last week; one inkwell test caught a short dump.
+        const tested = kind === "scheduled" && !failed && t - at < 7 * 86_400_000 && at + 2 * 3_600_000 < t;
+        const testFailed = tested && r.projectSlug === "inkwell" && fromEnd === 5;
+        const restoreTest: RestoreTest = tested
+          ? {
+              status: testFailed ? "failed" : "passed",
+              testedAt: new Date(Math.floor((at + 2 * 3_600_000) / 3_600_000) * 3_600_000).toISOString(),
+              tables: testFailed ? plan.tables - 1 : plan.tables,
+              rows: Math.round(plan.rows * (0.96 + (i / Math.max(1, planned.length)) * 0.04)),
+              error: testFailed ? "Table bets is missing after restore" : null,
+            }
+          : NOT_TESTED;
+        made.push({
+          id: `bkp_${r.projectSlug}_${tier}_${at}`,
+          scheduleId: kind === "scheduled" ? id : null,
+          resourceId: r.id,
+          database,
+          status: failed ? "failed" : "ready",
+          kind,
+          createdAt: new Date(at).toISOString(),
+          finishedAt: new Date(at + secs * 1000).toISOString(),
+          sizeBytes: failed ? null : Math.round(size / MB) * MB,
+          tier,
+          destination,
+          storage,
+          encryption,
+          restoreTest,
+          expired: false,
+          error: failed ? (tier === "offsite" ? "Upload to S3 timed out after 300s" : "pg_dump: connection to server lost") : null,
+        });
       });
-    });
+      // Retention as the worker runs it: the newest `keep` good ones stay, and with keepDays every one that young.
+      const good = made.filter((x) => x.status === "ready").reverse();
+      good.forEach((x, i) => {
+        if (i >= (p?.keep ?? 7) && (!p?.keepDays || t - Date.parse(x.createdAt) > p.keepDays * DAY)) x.expired = true;
+      });
+      runs.push(...made);
 
-    const next = firings(plan.cron, t, t + 8 * 86_400_000)[0];
-    schedules.push({
+      const next = p ? firings(p.cron, t, t + 8 * 86_400_000)[0] : undefined;
+      tiers[tier] = {
+        tier,
+        enabled: p ? p.enabled !== false : false,
+        cron: p?.cron ?? "0 3 * * *",
+        timezone: "UTC",
+        keep: p?.keep ?? 7,
+        keepDays: p?.keepDays ?? null,
+        destination,
+        storage,
+        available: true,
+        nextRunAt: p && next ? new Date(next).toISOString() : null,
+        lastRunAt: scheduled.length ? new Date(scheduled.at(-1)!.at).toISOString() : null,
+      };
+    }
+
+    schedules.push(withFlat({
       id,
       resourceId: r.id,
       database,
-      cron: plan.cron,
+      cron: "",
       timezone: "UTC",
-      retentionDays: plan.retentionDays,
-      destination: plan.destination,
-      storage,
+      retentionDays: 0,
+      destination: "local",
+      storage: null,
       encryption,
-      enabled: true,
-      nextRunAt: next ? new Date(next).toISOString() : null,
-      lastRunAt: scheduled.length ? new Date(scheduled.at(-1)!.at).toISOString() : null,
-    });
+      enabled: false,
+      nextRunAt: null,
+      lastRunAt: null,
+      tiers,
+    }));
   });
 
   // Orphans: scheduled dumps up to the day the app was deleted, kept 30 days.
@@ -1288,6 +1420,7 @@ function buildPreviewBackups(now: Date): BackupsData {
         createdAt: new Date(at).toISOString(),
         finishedAt: new Date(at + 22_000).toISOString(),
         sizeBytes: Math.round((d.sizeGb * GB) / MB) * MB,
+        tier: "offsite",
         destination: "s3",
         storage: R2,
         encryption: sealed(true),

@@ -40,6 +40,14 @@ function field(payload: unknown, key: string): string {
   return v;
 }
 
+/** The other copies one backup job writes from the same dump (requests.ts BackupJobPayload). */
+export function copiesOf(payload: unknown): string[] {
+  const v = (payload as { copies?: unknown } | null)?.copies;
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > 4 || v.some((x) => typeof x !== "string" || !UUID.test(x))) throw new DataError("job payload has no valid copies", true);
+  return v as string[];
+}
+
 export function parseRestorePayload(payload: unknown): RestorePayload {
   const p = payload as Partial<RestorePayload> | null;
   const backupId = field(p, "backupId");
@@ -63,11 +71,12 @@ export function dataJobHandlers(deps: DataDeps): Partial<Record<JobKind, DataJob
   return {
     backup: async (job) => {
       const backupId = field(job.payload, "backupId");
+      const copies = copiesOf(job.payload);
       const final = job.attempts >= job.maxAttempts;
       try {
-        await runBackup(deps, backupId, final);
+        await runBackup(deps, backupId, final, copies);
       } catch (e) {
-        if (final || isPermanentError(e)) await settleBackupRow(deps.db, backupId, e).catch(() => {});
+        if (final || isPermanentError(e)) for (const id of [backupId, ...copies]) await settleBackupRow(deps.db, id, e).catch(() => {});
         throw e;
       }
     },

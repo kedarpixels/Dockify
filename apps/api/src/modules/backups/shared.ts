@@ -6,6 +6,9 @@
 export { nextRun, parseCron, CronError } from "../../../../worker/src/data/cron.ts";
 export { isRetentionDecrease } from "../../../../worker/src/data/retention.ts";
 export {
+  bothTiers, DEFAULT_CRON, DEFAULT_KEEP, enabledTiers, loadTiers, primaryTier, tierOfType, TIERS, type Tier, type TierRow,
+} from "../../../../worker/src/data/tiers.ts";
+export {
   requestBackup, requestRestore, requestRestoreTest, isServiceKind, RequestError, SERVICE_KINDS, type AppSnapshot,
 } from "../../../../worker/src/data/requests.ts";
 export { resolveStore, DataError } from "../../../../worker/src/data/context.ts";

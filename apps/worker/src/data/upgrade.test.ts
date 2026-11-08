@@ -36,8 +36,8 @@ const TARGET = "22222222-2222-4222-8222-222222222222";
 
 function world() {
   const apps = new Map<string, Record<string, any>>([
-    [SOURCE, { id: SOURCE, name: "db", kind: "postgres", image: "postgres:16-alpine", pinnedImage: "postgres:16-alpine@sha256:old", environmentId: "env", backupDestinationId: null, serviceRedirectId: null, serviceUpgrade: { phase: "backing_up", targetId: TARGET }, environment: { name: "production", project: { slug: "p" } } }],
-    [TARGET, { id: TARGET, name: "db-pg17", kind: "postgres", image: "postgres:17-alpine", environmentId: "env", backupDestinationId: null, environment: { name: "production", project: { slug: "p" } } }],
+    [SOURCE, { id: SOURCE, name: "db", kind: "postgres", image: "postgres:16-alpine", pinnedImage: "postgres:16-alpine@sha256:old", environmentId: "env", serviceRedirectId: null, serviceUpgrade: { phase: "backing_up", targetId: TARGET }, environment: { name: "production", project: { slug: "p" } } }],
+    [TARGET, { id: TARGET, name: "db-pg17", kind: "postgres", image: "postgres:17-alpine", environmentId: "env", environment: { name: "production", project: { slug: "p" } } }],
     ["app-1", { id: "app-1", desiredState: "running", gitBranch: "main", currentDeployment: { imageId: "sha256:a", imageRef: "x", commitSha: "c" } }],
   ]);
   const deployments: any[] = [];
@@ -53,6 +53,7 @@ function world() {
       findUnique: async () => ({ id: "b1", status: "ready", objectKey: "k" }),
     },
     backupDestination: { findFirst: async () => null },
+    backupSchedule: { findMany: async () => [] },
     deployment: { create: async ({ data }: any) => { deployments.push(data); return { id: `d${deployments.length}` }; } },
     job: { findFirst: async () => null, create: async ({ data }: any) => { jobs.push(data); return { id: "j" }; } },
     activityLog: { create: async ({ data }: any) => { activity.push(data); return data; } },

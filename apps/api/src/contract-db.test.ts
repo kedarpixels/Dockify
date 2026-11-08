@@ -69,8 +69,13 @@ const LISTS: Record<string, readonly string[]> = {
 };
 
 const PS = P.PreviewSettings.shape;
+const TIER = contracts.backups.SchedulePatchBody.shape;
 /** CHECK ranges a contract field writes straight into, as [check, column, schema]. */
 const RANGES: Array<[string, string, z.ZodNumber]> = [
+  ["backup_schedules_keep_range", "keep", TIER.keep.unwrap()],
+  ["backup_schedules_keep_days_range", "keepDays", TIER.keepDays.unwrap().unwrap()],
+  // The old field writes the same column (backups/index.ts: keep 3 plus that many days).
+  ["backup_schedules_keep_days_range", "keepDays", TIER.retentionDays.unwrap()],
   ["projects_preview_caps", "previewMaxConcurrent", PS.maxConcurrent],
   ["projects_preview_caps", "previewIdleMinutes", PS.idleMinutes],
   ["projects_preview_caps", "previewTtlHours", PS.ttlHours],
@@ -85,7 +90,7 @@ const LENGTHS: Array<[string, string, z.ZodString]> = [
 
 /** CHECKs no contract list or range feeds, each read by hand against what writes it. A new CHECK must pick a group. */
 const REVIEWED = new Set([
-  "instance_singleton", "apps_one_source", "apps_port_range", "apps_replicas_range", "apps_retention_min", "apps_sysctls_object",
+  "instance_singleton", "apps_one_source", "apps_port_range", "apps_replicas_range", "backup_schedules_local_no_destination", "apps_sysctls_object",
   "apps_root_dir_relative", "apps_vercel_target", "volumes_mount_absolute", "backup_destinations_s3_has_storage", "jobs_attempts_range",
   "preview_envs_pr_positive", "release_updates_rollback_of_check", "release_updates_attempt_check", "icon_images_one_owner", "icon_images_size_cap",
   "notification_webhooks_telegram_chat", "notification_webhooks_name_length", "deployments_external_id_needs_provider", "jobs_server_bound",
@@ -215,6 +220,36 @@ describe.skipIf(!url)("contracts against a migrated Postgres", () => {
     }).catch((e: unknown) => {
       if (e !== ROLLBACK) throw e;
     });
+  });
+
+  it("stores both backup tiers with every count the contract accepts, and no other", async () => {
+    const T = contracts.backups.SchedulePatchBody.shape;
+    const tier = async (data: Record<string, unknown>): Promise<true> => {
+      await db.$transaction(async (tx) => {
+        const project = await tx.project.create({ data: { slug: `tiers-${Date.now()}-${n++}`, name: "Tiers" } });
+        const environment = await tx.environment.create({ data: { projectId: project.id, name: "production", branch: "main" } });
+        const a = await tx.app.create({ data: { environmentId: environment.id, serverId: await defaultServerId(tx), name: "db", kind: "postgres" } });
+        await tx.backupSchedule.create({ data: { appId: a.id, tier: "local", ...data } as never });
+        throw ROLLBACK;
+      }).catch((e: unknown) => {
+        if (e !== ROLLBACK) throw e;
+      });
+      return true;
+    };
+    for (const keep of [1, 7, contracts.backups.KEEP_MAX]) {
+      expect(T.keep.safeParse(keep).success, String(keep)).toBe(true);
+      await expect(tier({ keep })).resolves.toBeTruthy();
+    }
+    for (const keepDays of [null, 1, contracts.backups.KEEP_DAYS_MAX]) {
+      expect(T.keepDays.safeParse(keepDays).success, String(keepDays)).toBe(true);
+      await expect(tier({ keepDays })).resolves.toBeTruthy();
+    }
+    expect(T.keep.safeParse(0).success).toBe(false);
+    await expect(tier({ keep: 0 })).rejects.toThrow(/backup_schedules_keep_range/);
+    expect(T.keepDays.safeParse(0).success).toBe(false);
+    await expect(tier({ keepDays: 0 })).rejects.toThrow(/backup_schedules_keep_days_range/);
+    const contractTiers = contracts.backups.BackupTier.options;
+    expect([...contractTiers].sort()).toEqual(["local", "offsite"]);
   });
 
   it("has the enums and the CHECKs the migrations say", async () => {

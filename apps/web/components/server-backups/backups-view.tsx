@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/shell/topbar";
-import { wasCancelled } from "@/components/step-up/step-up";
+import { ensureStepUp, wasCancelled } from "@/components/step-up/step-up";
 import { Empty } from "@/components/ui/empty";
 import { KpiStrip, type KpiData } from "@/components/ui/kpi";
 import { NoSource } from "@/components/ui/no-source";
@@ -28,7 +28,8 @@ import { Schedules, StorageCard } from "./backup-schedules";
 import { track, useSecond, useTween } from "./live";
 import { followRestore } from "./restore-follow";
 import { readRestore, send, usePoll } from "./use-poll";
-import { cronText, dbLabel, dueIn, offServer } from "./util";
+import { ScheduleDialog, TIER_LABEL, TIERS, tierWords } from "./tier-schedule";
+import { dbLabel, dueIn, offServer } from "./util";
 
 const DAY = 86_400_000;
 
@@ -114,7 +115,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
   const router = useRouter();
   const { result: ov } = useOverview(overview);
   const [fast, setFast] = useState(false);
-  const { result, setResult, refreshing, hold } = usePoll(initial, "/api/backups", fast ? 4_000 : 20_000, hasBackups);
+  const { result, setResult, refreshing } = usePoll(initial, "/api/backups", fast ? 4_000 : 20_000, hasBackups);
   const now = useNow(30_000, initial.fetchedAt);
   const [restoring, setRestoring] = useState<BackupRun | null>(null);
   const [starting, setStarting] = useState(false);
@@ -129,10 +130,8 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
   const testLock = useRef(new Set<string>());
   // Restore tests started here, so their result toasts when a poll (or the preview) lands it.
   const watched = useRef(new Set<string>());
-  // Per schedule: the last value the API confirmed, the newest toggle's number, and the save chain.
-  const saved = useRef(new Map<string, boolean>());
-  const latest = useRef(new Map<string, number>());
-  const chain = useRef(new Map<string, Promise<unknown>>());
+  // The database whose schedule dialog is open.
+  const [editing, setEditing] = useState<BackupSchedule | null>(null);
   const d = result.data;
   const preview = result.source === "preview";
   const can = useCan();
@@ -202,59 +201,18 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
     }
   }, [d, preview, utcAt]);
 
-  /*
-   * Optimistic: the switch flips at once and stays usable. Saves for one schedule run in order,
-   * only the newest toggle's outcome is shown, and a failure rolls back to the last value the API
-   * confirmed, with an error toast. Polls hold off until every save settles.
-   */
-  const toggle = async (s: BackupSchedule, enabled: boolean) => {
-    const set = (patch: Partial<BackupSchedule>) =>
-      setResult((prev) =>
-        prev.data ? { ...prev, data: { ...prev.data, schedules: prev.data.schedules.map((x) => (x.id === s.id ? { ...x, ...patch } : x)) } } : prev,
-      );
-    const name = dbLabel(s.database);
-    if (!saved.current.has(s.id)) saved.current.set(s.id, s.enabled);
-    const n = (latest.current.get(s.id) ?? 0) + 1;
-    latest.current.set(s.id, n);
-    const release = hold();
-    set({ enabled });
-    const save = (chain.current.get(s.id) ?? Promise.resolve()).then(() =>
-      send<BackupSchedule>(`/api/backups/schedules/${encodeURIComponent(s.id)}`, "PATCH", { enabled }),
-    );
-    chain.current.set(s.id, save.catch(() => undefined));
-    const settle = () => {
-      saved.current.delete(s.id);
-      latest.current.delete(s.id);
-      chain.current.delete(s.id);
-    };
-    try {
-      const next = await save;
-      saved.current.set(s.id, next.enabled);
-      if (latest.current.get(s.id) !== n) return;
-      settle();
-      set(next);
-      const at = next.nextRunAt ?? s.nextRunAt;
-      const words = cronText(s.cron);
-      toast.success(enabled ? "Schedule on" : "Schedule paused", {
-        description: describe(
-          enabled
-            ? `${name}, ${words === s.cron ? `cron ${s.cron}` : words.toLowerCase()}${at ? `, next ${utcAt(at)}` : ""}`
-            : `${name} is not backed up until you turn it on`,
-          { preview },
-        ),
-      });
-    } catch (e) {
-      if (latest.current.get(s.id) !== n) return;
-      set({ enabled: saved.current.get(s.id) ?? !enabled });
-      settle();
-      // Closing "Confirm it is you" only rolls the switch back: nothing failed, so no toast.
-      if (wasCancelled(e)) return;
-      toast.error(enabled ? "Could not turn the schedule on" : "Could not pause the schedule", {
-        description: describe(`${name}, ${errText(e)}`, { preview }),
-      });
-    } finally {
-      release();
-    }
+  // "Confirm it is you" comes first, alone, so it never stacks on the schedule dialog.
+  const edit = async (s: BackupSchedule) => {
+    if (!preview && !(await ensureStepUp({ what: "Changing a backup schedule" }))) return;
+    setEditing(s);
+  };
+
+  const saved = (next: BackupSchedule) => {
+    setEditing(null);
+    setResult((prev) => (prev.data ? { ...prev, data: { ...prev.data, schedules: prev.data.schedules.map((x) => (x.id === next.id ? next : x)) } } : prev));
+    toast.success("Backup schedule saved", {
+      description: describe([dbLabel(next.database), TIERS.map((k) => `${TIER_LABEL[k]}: ${next.tiers[k].enabled ? tierWords(next.tiers[k]).toLowerCase() : "off"}`).join(". ")], { preview }),
+    });
   };
 
   const showHistory = () => document.getElementById("sb-hist")?.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" });
@@ -430,7 +388,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
                     <Spacer />
                   </>
                 ) : null}
-                <Schedules schedules={d.schedules} runs={liveRuns} now={now} onToggle={(s, on) => void toggle(s, on)} />
+                <Schedules schedules={d.schedules} runs={liveRuns} now={now} onEdit={(s) => void edit(s)} />
                 <Spacer />
               </>
             ) : null}
@@ -450,6 +408,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
             <Spacer end />
             {restoring ? <RestoreDialog key={restoring.id} run={restoring} onClose={() => setRestoring(null)} onConfirm={(r, req) => void restore(r, req)} /> : null}
             {starting ? <RunDialog onClose={() => setStarting(false)} schedules={d.schedules} onConfirm={(p) => void launch(p)} /> : null}
+            {editing ? <ScheduleDialog key={editing.id} schedule={editing} destinations={d.config?.destinations ?? []} onClose={() => setEditing(null)} onSaved={saved} /> : null}
             {removing ? (
               <DeleteOrphansDialog
                 key={removing[0]!.resourceId}

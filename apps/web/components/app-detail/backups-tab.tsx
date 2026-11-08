@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "@/components/icon";
 import { RestoreDialog, testLine } from "@/components/server-backups/backup-dialogs";
 import { History } from "@/components/server-backups/backup-runs";
 import { STORAGE_HREF } from "@/components/server-backups/backup-schedules";
 import { track } from "@/components/server-backups/live";
 import { followRestore } from "@/components/server-backups/restore-follow";
+import { backUpPlaces, lastOf, lastWord, ScheduleDialog, TIER_LABEL, tierPlace, TIERS, tierWords } from "@/components/server-backups/tier-schedule";
 import { readRestore, send } from "@/components/server-backups/use-poll";
-import { cronText, dbLabel, offServer, placeName } from "@/components/server-backups/util";
+import { dbLabel, dueIn } from "@/components/server-backups/util";
+import { ensureStepUp } from "@/components/step-up/step-up";
 import { Chip } from "@/components/ui/chip";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Empty } from "@/components/ui/empty";
@@ -18,10 +21,10 @@ import { Skel } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { When } from "@/components/ui/when";
 import { describe, errText } from "@/lib/feedback";
-import { appTitle, plural } from "@/lib/format";
+import { appTitle } from "@/lib/format";
 import { useUtcAt } from "@/lib/time-prefs";
 import type { AppBackups, AppDetail } from "@/lib/pages/project-detail";
-import type { BackupRun, RestoreAccepted, RestoreOutcome, RestoreRequest } from "@/lib/pages/server-backups";
+import type { BackupRun, BackupTierSchedule, RestoreAccepted, RestoreOutcome, RestoreRequest } from "@/lib/pages/server-backups";
 import { useCan } from "@/lib/viewer";
 import { TabCard, TabFailed } from "./states";
 import { useAppTab } from "./use-tab";
@@ -32,70 +35,79 @@ import { useAppTab } from "./use-tab";
 
 const restorable = (r: BackupRun) => r.status === "ready" && !r.expired;
 
-function Summary({ b, now }: { b: AppBackups; now: number }) {
+/**
+ * One tier as a fact: its schedule and what it keeps in words, where the copies go, then the next
+ * run and the last result. A tier that is off says so; offsite with no storage says how to add it.
+ */
+function TierFact({ t, runs, resourceId, now, onEdit }: { t: BackupTierSchedule; runs: BackupRun[]; resourceId: string; now: number; onEdit?: () => void }) {
+  const utcAt = useUtcAt();
+  const last = lastOf(runs, resourceId, t.tier);
+  return (
+    <div className="kv at-fact">
+      <dt className="kv-label">{TIER_LABEL[t.tier]}</dt>
+      <dd className="kv-value">
+        {t.enabled ? (
+          <span className="two">
+            <span className="two-main">{tierWords(t)}</span>
+            <span className="two-sub">{tierPlace(t)}</span>
+            <span className={last?.status === "failed" ? "two-sub num tone-bad" : "two-sub num"}>
+              {t.nextRunAt ? <span data-tip={utcAt(t.nextRunAt)}>Next {dueIn(t.nextRunAt, now)}</span> : "Not planned"}
+              {last ? (
+                <>
+                  , <When iso={last.finishedAt ?? last.createdAt} now={now} utc prefix={lastWord(last)!.toLowerCase()} />
+                </>
+              ) : (
+                ", no backup yet"
+              )}
+            </span>
+          </span>
+        ) : (
+          <span className="two">
+            <span className="two-main none">Off</span>
+            {t.tier === "offsite" && !t.available ? (
+              <span className="two-sub">
+                No copy leaves this server. <Link href={STORAGE_HREF}>Add backup storage</Link>
+              </span>
+            ) : (
+              <span className="two-sub">
+                {t.tier === "offsite" ? "No copy leaves this server." : "No copies on this server."}{" "}
+                {onEdit ? (
+                  <button type="button" className="bk-link" onClick={onEdit}>
+                    Turn on
+                  </button>
+                ) : null}
+              </span>
+            )}
+          </span>
+        )}
+      </dd>
+    </div>
+  );
+}
+
+function Summary({ b, resourceId, now, onEdit }: { b: AppBackups; resourceId: string; now: number; onEdit?: () => void }) {
   const utcAt = useUtcAt();
   const s = b.schedule;
   const newestTested = b.runs.find((r) => r.restoreTest.status === "passed" || r.restoreTest.status === "failed");
-  const off = s ? offServer(s) : false;
   const sealed = s?.encryption.enabled ?? b.config?.encryption.enabled ?? false;
   const fingerprint = s?.encryption.fingerprint ?? b.config?.encryption.fingerprint ?? null;
   return (
     <dl className="at-facts">
-      <div className="kv at-fact">
-        <dt className="kv-label">Schedule</dt>
-        <dd className="kv-value">
-          {s ? (
-            <span className="two">
-              <span className="two-main">
-                {cronText(s.cron)}
-                {s.enabled ? null : (
-                  <>
-                    {" "}
-                    <Chip size="xs" tone="warn">
-                      Paused
-                    </Chip>
-                  </>
-                )}
-              </span>
-              <span className="two-sub num">
-                {s.enabled && s.nextRunAt ? `Next ${utcAt(s.nextRunAt)}, keeps ${plural(s.retentionDays, "day")}` : `Keeps ${plural(s.retentionDays, "day")}`}
-              </span>
-            </span>
-          ) : (
+      {s ? (
+        TIERS.map((k) => <TierFact key={k} t={s.tiers[k]} runs={b.runs} resourceId={resourceId} now={now} onEdit={onEdit} />)
+      ) : (
+        <div className="kv at-fact">
+          <dt className="kv-label">Schedule</dt>
+          <dd className="kv-value">
             <span className="two">
               <span className="two-main none">No schedule</span>
               <span className="two-sub">
                 Set one on <Link href="/backups">Backups</Link>
               </span>
             </span>
-          )}
-        </dd>
-      </div>
-      <div className="kv at-fact">
-        <dt className="kv-label">Destination</dt>
-        <dd className="kv-value">
-          <span className="two">
-            <span className="two-main">
-              {s ? placeName(s.storage) : "Not set"}
-              {s && !off ? (
-                <>
-                  {" "}
-                  <Chip size="xs" tone="warn">
-                    Not off-server
-                  </Chip>
-                </>
-              ) : null}
-            </span>
-            <span className="two-sub num">
-              {s?.storage ? `Bucket ${s.storage.bucket}` : (
-                <>
-                  Backups stay on this disk only. <Link href={STORAGE_HREF}>Add backup storage</Link>
-                </>
-              )}
-            </span>
-          </span>
-        </dd>
-      </div>
+          </dd>
+        </div>
+      )}
       <div className="kv at-fact">
         <dt className="kv-label">Encryption</dt>
         <dd className="kv-value">
@@ -167,6 +179,7 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
   const [restoreRun, setRestoreRun] = useState<BackupRun | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [testing, setTesting] = useState<Set<string>>(() => new Set());
+  const [editing, setEditing] = useState(false);
   const lock = useRef(false);
   const running = b?.runs.some((r) => r.status === "running") ?? false;
   const testRunning = b?.runs.some((r) => r.restoreTest.status === "running") ?? false;
@@ -209,12 +222,19 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
       description: what,
       success: (r) => {
         q.patch((d) => ({ ...d, runs: [...r.runs, ...d.runs] }));
-        return { title: "Backup started", description: [what, "It shows in the history as it runs"] };
+        return { title: "Backup started", description: [what, b?.schedule ? `One dump, to ${backUpPlaces(b.schedule)}` : "It shows in the history as it runs"] };
       },
       error: "Could not start the backup",
     });
     lock.current = false;
     setStarting(false);
+  };
+
+  // "Confirm it is you" comes first, alone, so it never stacks on the schedule dialog.
+  const editSchedule = async () => {
+    if (!b?.schedule) return;
+    if (!preview && !(await ensureStepUp({ what: "Changing a backup schedule" }))) return;
+    setEditing(true);
   };
 
   const restore = async (run: BackupRun, req: RestoreRequest) => {
@@ -266,6 +286,10 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
       <PendingButton className="btn btn-sm" pending={restoringId !== null} disabled={!newest} onClick={() => newest && setRestoreRun(newest)}>
         Restore into new database
       </PendingButton>
+      <button type="button" className="btn btn-sm" disabled={!b?.schedule} onClick={() => void editSchedule()}>
+        <Icon name="calendar" />
+        Schedule
+      </button>
       <PendingButton className="btn btn-sm btn-primary" pending={starting || running} disabled={!b} icon="archive" onClick={() => void backUp()}>
         Back up now
       </PendingButton>
@@ -281,7 +305,13 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
         sub={newest ? <When iso={newest.createdAt} now={now} utc prefix="Newest good backup" /> : "Backups of this database"}
         actions={actions}
       >
-        {!b && q.loading ? <SummarySkeleton /> : !b ? <TabFailed error={q.error} onRetry={q.reload} what="Backups for this database" /> : <Summary b={b} now={now} />}
+        {!b && q.loading ? (
+          <SummarySkeleton />
+        ) : !b ? (
+          <TabFailed error={q.error} onRetry={q.reload} what="Backups for this database" />
+        ) : (
+          <Summary b={b} resourceId={app.id} now={now} onEdit={can.manage ? () => void editSchedule() : undefined} />
+        )}
       </TabCard>
       {b ? (
         b.runs.length ? (
@@ -316,6 +346,18 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
         )
       ) : null}
       {restoreRun ? <RestoreDialog run={restoreRun} onClose={() => setRestoreRun(null)} onConfirm={(r, req) => void restore(r, req)} /> : null}
+      {editing && b?.schedule ? (
+        <ScheduleDialog
+          schedule={b.schedule}
+          destinations={b.config?.destinations ?? []}
+          onClose={() => setEditing(false)}
+          onSaved={(next) => {
+            setEditing(false);
+            q.patch((d) => ({ ...d, schedule: next }));
+            toast.success("Backup schedule saved", { description: describe([what, TIERS.map((k) => `${TIER_LABEL[k]}: ${next.tiers[k].enabled ? tierWords(next.tiers[k]).toLowerCase() : "off"}`).join(". ")], { preview }) });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -5,6 +5,7 @@
  * scheduler (cron) and the deploy and update paths (pre-deploy, pre-update).
  */
 import { defaultServerId, type BackupKind, type BackupTrigger, type Db, type Prisma, type Tx } from "@dockify/db";
+import { loadTiers, primaryTier, tierDestinationId, type Tier } from "./tiers.ts";
 
 export const SERVICE_KINDS = ["postgres", "redis", "s3"] as const;
 export type ServiceAppKind = (typeof SERVICE_KINDS)[number];
@@ -51,9 +52,17 @@ export function staleReason(rowError: string | null | undefined, jobError: strin
 const lock = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
 
 export interface BackupRequest {
+  /** The first copy; `backupIds` lists every copy this one run writes. */
   backupId: string;
+  backupIds: string[];
   jobId: string;
   existing: boolean;
+}
+
+/** What a backup job runs: one dump, written to the first row's destination and to each copy's. */
+export interface BackupJobPayload {
+  backupId: string;
+  copies?: string[];
 }
 
 /**
@@ -61,8 +70,13 @@ export interface BackupRequest {
  * (existing: true): a pre-deploy dump that finds a scheduled dump in flight reuses it. While a
  * restore of the app is open the answer is 409 BUSY: the restore takes its own pre-restore dump
  * (a running row under the restore job), which must never be mistaken for a crash leftover.
+ *
+ * With `tiers`, the one dump goes to each tier, one row per tier, so both tiers due at once cost a
+ * single dump. A scheduled run that finds another run in flight is BUSY rather than reused: that run
+ * may not write to its tier, so the scheduler gives the slot back and fires once it is done.
+ * Without `tiers`, one copy goes to `destinationId`, else where the database's schedule points.
  */
-export async function requestBackup(db: Db, appId: string, trigger: BackupTrigger, opts: { destinationId?: string | null } = {}): Promise<BackupRequest> {
+export async function requestBackup(db: Db, appId: string, trigger: BackupTrigger, opts: { destinationId?: string | null; tiers?: readonly Tier[] } = {}): Promise<BackupRequest> {
   return db.$transaction(async (tx) => {
     await lock(tx, `dockify.backup:${appId}`);
     const app = await tx.app.findUnique({
@@ -78,13 +92,29 @@ export async function requestBackup(db: Db, appId: string, trigger: BackupTrigge
     const running = await tx.backup.findFirst({ where: { appId, status: "running" }, orderBy: { createdAt: "desc" } });
     if (running) {
       const job = await tx.job.findFirst({ where: { kind: "backup", dedupeKey: `backup:${appId}`, completedAt: null, failedAt: null }, select: { id: true } });
-      if (job) return { backupId: running.id, jobId: job.id, existing: true };
+      if (job && trigger === "schedule" && opts.tiers) throw new RequestError(409, "A backup of this database is running; the schedule fires when it finishes", "BUSY");
+      if (job) return { backupId: running.id, backupIds: [running.id], jobId: job.id, existing: true };
       // A running row with no open job will never finish: settle it with the best reason there is.
       const last = await tx.job.findFirst({ where: { kind: "backup", payload: { path: ["backupId"], equals: running.id } }, orderBy: { createdAt: "desc" }, select: { lastError: true } });
       await tx.backup.update({ where: { id: running.id }, data: { status: "failed", error: staleReason(running.error, last?.lastError), finishedAt: new Date() } });
     }
 
-    const destinationId = opts.destinationId !== undefined ? opts.destinationId : (app.backupDestinationId ?? (await defaultDestinationId(tx)));
+    const tiers = opts.tiers?.length ? await loadTiers(tx, appId) : null;
+    const destinations: Array<string | null> = [];
+    if (tiers) {
+      // A schedule still runs the tiers that can run: an offsite tier whose storage was removed
+      // must not stop the local copy. Asked for by hand, the refusal is the answer.
+      let refused: unknown = null;
+      for (const t of new Set(opts.tiers)) {
+        try {
+          destinations.push(await tierDestinationId(tx, tiers[t]));
+        } catch (e) {
+          if (trigger !== "schedule") throw e;
+          refused ??= e;
+        }
+      }
+      if (!destinations.length) throw refused;
+    } else destinations.push(opts.destinationId !== undefined ? opts.destinationId : await scheduleDestinationId(tx, appId));
     const snapshot: AppSnapshot = {
       name: app.name,
       kind: app.kind,
@@ -94,30 +124,51 @@ export async function requestBackup(db: Db, appId: string, trigger: BackupTrigge
       image: app.image,
       pinnedImage: app.pinnedImage,
     };
-    const backup = await tx.backup.create({
-      data: {
-        appId,
-        sourceAppId: appId,
-        appSnapshot: snapshot as unknown as Prisma.InputJsonValue,
-        kind: backupKindFor(app.kind),
-        trigger,
-        status: "running",
-        destinationId,
-        encrypted: true,
-      },
-      select: { id: true },
-    });
+    const ids: string[] = [];
+    for (const destinationId of destinations) {
+      const backup = await tx.backup.create({
+        data: {
+          appId,
+          sourceAppId: appId,
+          appSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+          kind: backupKindFor(app.kind),
+          trigger,
+          status: "running",
+          destinationId,
+          encrypted: true,
+        },
+        select: { id: true },
+      });
+      ids.push(backup.id);
+    }
+    const payload: BackupJobPayload = ids.length > 1 ? { backupId: ids[0]!, copies: ids.slice(1) } : { backupId: ids[0]! };
     const job = await tx.job.create({
-      data: { kind: "backup", lane: "data", serverId: app.serverId, payload: { backupId: backup.id }, dedupeKey: `backup:${appId}`, maxAttempts: 2 },
+      data: { kind: "backup", lane: "data", serverId: app.serverId, payload: payload as unknown as Prisma.InputJsonValue, dedupeKey: `backup:${appId}`, maxAttempts: 2 },
       select: { id: true },
     });
-    return { backupId: backup.id, jobId: job.id, existing: false };
+    return { backupId: ids[0]!, backupIds: ids, jobId: job.id, existing: false };
   });
 }
 
 export async function defaultDestinationId(tx: Tx): Promise<string | null> {
   const d = await tx.backupDestination.findFirst({ where: { isDefault: true }, select: { id: true } });
   return d?.id ?? null;
+}
+
+/**
+ * Where a backup outside the tiers goes (a pre-update or pre-deploy dump, a manual run an older
+ * client asked for): the destination of the tier the schedule's flat fields describe, else the
+ * default destination, as before tiers.
+ */
+export async function scheduleDestinationId(tx: Tx, appId: string): Promise<string | null> {
+  const tiers = await loadTiers(tx, appId);
+  const def = await tx.backupDestination.findFirst({ where: { isDefault: true }, select: { id: true, type: true } });
+  const tier = primaryTier(tiers, def?.type ?? null);
+  try {
+    return await tierDestinationId(tx, tiers[tier]);
+  } catch {
+    return def?.id ?? null;
+  }
 }
 
 export type RestoreMode = "replace" | "new";

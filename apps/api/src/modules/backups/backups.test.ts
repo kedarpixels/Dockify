@@ -7,7 +7,10 @@ import type { Ctx, Handler } from "../../app.ts";
 import { testConfig, testRing } from "../../test-helpers.ts";
 import { createDataHandlers, type DataChannel } from "../data/index.ts";
 import { createBackupsHandlers, defaultBackupsOptions } from "./index.ts";
-import { toRun, toSchedule, type BackupRowIn, type DestinationRow, type ScheduleAppIn } from "./map.ts";
+import { toRun, toSchedule, type BackupRowIn, type DestinationRow, type ScheduleAppIn, type ScheduleContext } from "./map.ts";
+import type { TierRow } from "./shared.ts";
+
+const run = toRun;
 
 const APP = "0f0f0f0f-0000-4000-8000-000000000001";
 const BK = "0f0f0f0f-0000-4000-8000-0000000000b1";
@@ -21,10 +24,13 @@ const row = (over: Partial<BackupRowIn> = {}): BackupRowIn => ({
   destination: s3, ...over,
 });
 
-const scheduleApp = (over: Partial<ScheduleAppIn> = {}): ScheduleAppIn => ({
-  id: APP, name: "db", backupEnabled: true, backupCron: "0 3 * * *", backupTimezone: "UTC", backupRetentionDays: 14, backupLastRunAt: null,
-  createdAt: new Date("2026-10-01T00:00:00Z"), environment: { name: "prod", project: { slug: "acme" } }, backupDestination: null, ...over,
+const tierRow = (tier: "local" | "offsite", over: Partial<TierRow> = {}): TierRow => ({
+  tier, enabled: true, cron: "0 3 * * *", timezone: "UTC", keep: 7, keepDays: null, destinationId: null, lastRunAt: null, ...over,
 });
+const scheduleApp = (tiers: TierRow[] = [tierRow("offsite", { keep: 3, keepDays: 14 })]): ScheduleAppIn => ({
+  id: APP, name: "db", createdAt: new Date("2026-10-01T00:00:00Z"), environment: { name: "prod", project: { slug: "acme" } }, backupSchedules: tiers,
+});
+const sctx = (over: Partial<ScheduleContext> = {}): ScheduleContext => ({ fingerprint: "abcd", s3: [s3], defaultType: "s3", localAllowed: true, ...over });
 
 describe("contract shapes", () => {
   it("a run matches the BackupRun contract", () => {
@@ -54,11 +60,36 @@ describe("contract shapes", () => {
     expect(toRun(row()).warning).toBeUndefined();
   });
   it("a schedule matches the contract and computes the next run", () => {
-    const s = toSchedule(scheduleApp(), "abcd", s3, new Date("2026-10-30T01:00:00Z"));
+    const s = toSchedule(scheduleApp(), sctx(), new Date("2026-10-30T01:00:00Z"));
     expect(B.BackupSchedule.parse(s)).toEqual(s);
     expect(s.nextRunAt).toBe("2026-10-30T03:00:00.000Z");
     expect(s.storage?.id).toBe("d1");
-    expect(toSchedule(scheduleApp({ backupEnabled: false }), null, null).nextRunAt).toBeNull();
+    expect(toSchedule(scheduleApp([tierRow("offsite", { enabled: false })]), sctx()).nextRunAt).toBeNull();
+    expect(run(row()).tier).toBe("offsite");
+  });
+
+  it("shows both tiers, each with its own cron, count, next run and destination", () => {
+    const now = new Date("2026-11-06T13:00:00Z");
+    const s = toSchedule(scheduleApp([tierRow("local", { cron: "0 */12 * * *", keep: 1 }), tierRow("offsite", { keep: 7 })]), sctx(), now);
+    expect(B.BackupSchedule.parse(s)).toEqual(s);
+    expect(s.tiers.local).toMatchObject({ tier: "local", enabled: true, cron: "0 */12 * * *", keep: 1, keepDays: null, destination: "local", storage: null, available: true, nextRunAt: "2026-11-07T00:00:00.000Z" });
+    expect(s.tiers.local.warning).toMatch(/not off the server/);
+    expect(s.tiers.offsite).toMatchObject({ tier: "offsite", keep: 7, destination: "s3", storage: { id: "d1", bucket: "dk" }, available: true, nextRunAt: "2026-11-07T03:00:00.000Z" });
+    // The flat fields an older client reads: offsite, on, the soonest next run of the two.
+    expect(s).toMatchObject({ destination: "s3", cron: "0 3 * * *", enabled: true, nextRunAt: "2026-11-07T00:00:00.000Z", retentionDays: 7 });
+  });
+
+  it("a tier with no row is off with the defaults, and offsite without storage cannot run", () => {
+    const s = toSchedule(scheduleApp([]), sctx({ s3: [], defaultType: null }));
+    expect(s.tiers.local).toMatchObject({ enabled: false, keep: 7, keepDays: null, available: true, nextRunAt: null });
+    expect(s.tiers.offsite).toMatchObject({ enabled: false, storage: null, available: false });
+    expect(s).toMatchObject({ enabled: false, destination: "local" });
+  });
+
+  it("an old schedule reads as it did: keep 3 plus its days, in days for older clients", () => {
+    const s = toSchedule(scheduleApp([tierRow("local", { enabled: false, cron: null, keep: 3, keepDays: 14 }), tierRow("offsite", { keep: 3, keepDays: 14 })]), sctx());
+    expect(s).toMatchObject({ retentionDays: 14, destination: "s3", enabled: true });
+    expect(s.tiers.offsite).toMatchObject({ keep: 3, keepDays: 14 });
   });
 });
 
@@ -74,15 +105,37 @@ async function call(h: unknown, input: AnyRow): Promise<any> {
   return (h as Handler<never>)({ body: undefined as never, query: undefined as never, params: undefined as never, actor: session, req: req as never, reply: {} as never, ctx: input.ctx, ...input } as never);
 }
 
-const serviceApp = { id: APP, name: "db", kind: "postgres", backupEnabled: false, backupCron: null, backupRetentionDays: 14, backupDestinationId: null, environment: { projectId: "p1", name: "prod", project: { slug: "acme" } } };
+const serviceApp = { id: APP, name: "db", kind: "postgres", createdAt: new Date("2026-10-01T00:00:00Z"), backupSchedules: [] as AnyRow[], environment: { projectId: "p1", name: "prod", project: { slug: "acme" } } };
 
 describe("backup handlers", () => {
   const audits: AnyRow[] = [];
-  const baseDb = (over: AnyRow = {}) => ({
+  /** The schedule rows of the one app, as the patch handler writes them. */
+  let tiers: AnyRow[] = [];
+  let dests: AnyRow[] = [];
+  const baseDb = (over: AnyRow = {}): AnyRow => ({
     activityLog: { create: async ({ data }: AnyRow) => audits.push(data) },
-    app: { findUnique: async () => serviceApp, ...over.app },
+    app: {
+      findUnique: async () => ({ ...serviceApp, backupSchedules: tiers.map((t) => ({ ...t })) }),
+      findUniqueOrThrow: async () => ({ ...serviceApp, backupSchedules: tiers.map((t) => ({ ...t })) }),
+      ...over.app,
+    },
     backup: { findUnique: async () => ({ ...row(), objectKey: "k", kind: "postgres", app: { environment: { projectId: "p1" } } }), ...over.backup },
-    backupDestination: { findFirst: async () => null, upsert: async () => ({ id: "local" }), ...over.backupDestination },
+    backupSchedule: {
+      findMany: async () => tiers.map((t) => ({ ...t })),
+      upsert: async ({ where, update, create }: AnyRow) => {
+        const hit = tiers.find((t) => t.tier === where.appId_tier.tier);
+        if (hit) Object.assign(hit, update);
+        else tiers.push({ enabled: false, cron: null, timezone: "UTC", keep: 7, keepDays: null, destinationId: null, lastRunAt: null, ...create });
+        return {};
+      },
+    },
+    backupDestination: {
+      findMany: async ({ where }: AnyRow) => dests.filter((d) => d.type === where.type),
+      findFirst: async ({ where }: AnyRow) => dests.find((d) => (where.isDefault === undefined || d.isDefault === where.isDefault) && (where.type === undefined || d.type === where.type)) ?? null,
+      findUnique: async ({ where }: AnyRow) => dests.find((d) => d.id === where.id) ?? null,
+      upsert: async () => ({ id: "local" }),
+      ...over.backupDestination,
+    },
     job: over.job ?? {},
     instance: { findUnique: async () => null },
     $transaction: async (fn: (tx: unknown) => unknown) => fn(baseDb(over)),
@@ -90,42 +143,94 @@ describe("backup handlers", () => {
     ...over.root,
   });
   const h = createBackupsHandlers({ ...defaultBackupsOptions({}), restoreWaitMs: 50, pollMs: 5 });
+  const patch = (body: AnyRow, handlers = h) => call(handlers["backups.schedules.patch"], { ctx: ctxWith(baseDb()), params: { id: APP }, body });
+  const B2 = { id: "d1", name: "Backblaze B2", type: "s3", isDefault: true, createdAt: new Date(), integration: { name: "b2", config: { provider: "custom", bucket: "dk" }, lastCheckedAt: null, error: null } };
+  const reset = (t: AnyRow[] = [], d: AnyRow[] = []) => {
+    tiers = t;
+    dests = d;
+    audits.length = 0;
+  };
+
+  it("sets up the owner's two tiers: every 12 hours here keeping 1, daily offsite keeping 7", async () => {
+    reset([], [B2]);
+    await patch({ tier: "local", enabled: true, cron: "0 */12 * * *", keep: 1 });
+    const s = await patch({ tier: "offsite", enabled: true, cron: "0 3 * * *", keep: 7, destination: "d1" });
+    expect(B.BackupSchedule.parse(s)).toEqual(s);
+    expect(s.tiers.local).toMatchObject({ enabled: true, cron: "0 */12 * * *", keep: 1, keepDays: null, destination: "local" });
+    expect(s.tiers.offsite).toMatchObject({ enabled: true, cron: "0 3 * * *", keep: 7, storage: { id: "d1", name: "Backblaze B2" } });
+    expect(tiers.find((t) => t.tier === "offsite")!.destinationId).toBe("d1");
+    expect(tiers.find((t) => t.tier === "local")!.destinationId).toBeNull();
+  });
 
   it("lets a schedule use this server's disk by default, the same rule as a manual run, and says it is not off the server", async () => {
-    let data: AnyRow = {};
-    const local = { id: "local", name: "This server", type: "local", isDefault: false, integration: null };
-    const db = baseDb({
-      app: {
-        update: async ({ data: d }: AnyRow) => {
-          data = d;
-          return { ...serviceApp, backupTimezone: "UTC", createdAt: new Date(), backupLastRunAt: null, backupDestinationId: "local", backupDestination: local };
-        },
-      },
-    });
-    const s = await call(h["backups.schedules.patch"], { ctx: ctxWith(db), params: { id: APP }, body: { destination: "local" } });
-    expect(data.backupDestination).toEqual({ connect: { id: "local" } });
+    reset();
+    const s = await patch({ destination: "local" });
     expect(s).toMatchObject({ destination: "local", storage: null });
     expect(s.warning).toMatch(/this server's own disk, not off the server/);
     expect(B.BackupSchedule.parse(s)).toEqual(s);
   });
 
+  it("an older client that points its one schedule elsewhere moves it, cron, switch and retention", async () => {
+    reset([{ tier: "local", enabled: true, cron: "0 4 * * *", timezone: "UTC", keep: 3, keepDays: 14, destinationId: null, lastRunAt: null }], [B2]);
+    const s = await patch({ destination: "s3" });
+    expect(s.tiers.offsite).toMatchObject({ enabled: true, cron: "0 4 * * *", keep: 3, keepDays: 14 });
+    expect(s.tiers.local).toMatchObject({ enabled: false });
+    expect(s).toMatchObject({ destination: "s3", enabled: true, cron: "0 4 * * *" });
+  });
+
+  it("an older client's change without a destination goes to the tier it reads", async () => {
+    reset([{ tier: "offsite", enabled: true, cron: "0 3 * * *", timezone: "UTC", keep: 3, keepDays: 14, destinationId: null, lastRunAt: null }], [B2]);
+    const s = await patch({ cron: "0 5 * * *", retentionDays: 30 });
+    expect(s.tiers.offsite).toMatchObject({ cron: "0 5 * * *", keep: 3, keepDays: 30 });
+    expect(s.tiers.local.enabled).toBe(false);
+  });
+
+  it("refuses offsite with no S3 storage, and a destination that is not the tier's kind", async () => {
+    reset();
+    await expect(patch({ tier: "offsite", enabled: true })).rejects.toMatchObject({ status: 409, code: "NO_DESTINATION" });
+    reset([], [B2]);
+    await expect(patch({ tier: "local", destination: "d1" })).rejects.toMatchObject({ status: 400, code: "WRONG_DESTINATION" });
+  });
+
   it("refuses local backups only when the owner turned them off", async () => {
+    reset();
     const off = createBackupsHandlers({ ...defaultBackupsOptions({ DOCKIFY_ALLOW_LOCAL_BACKUPS: "0" }), restoreWaitMs: 50, pollMs: 5 });
-    await expect(call(off["backups.schedules.patch"], { ctx: ctxWith(baseDb()), params: { id: APP }, body: { destination: "local" } })).rejects.toMatchObject({ status: 409, code: "LOCAL_DISABLED" });
+    await expect(patch({ destination: "local" }, off)).rejects.toMatchObject({ status: 409, code: "LOCAL_DISABLED" });
+    await expect(patch({ tier: "local", enabled: true }, off)).rejects.toMatchObject({ status: 409, code: "LOCAL_DISABLED" });
   });
 
   it("refuses an invalid cron with a field error", async () => {
-    await expect(call(h["backups.schedules.patch"], { ctx: ctxWith(baseDb()), params: { id: APP }, body: { cron: "99 * * * *" } })).rejects.toMatchObject({ status: 400, code: "INVALID_CRON" });
+    reset();
+    await expect(patch({ cron: "99 * * * *" })).rejects.toMatchObject({ status: 400, code: "INVALID_CRON" });
   });
 
   it("audits a retention decrease as such", async () => {
-    let updated: AnyRow = {};
-    const db = baseDb({ app: { update: async ({ data }: AnyRow) => (updated = { ...serviceApp, ...data, backupRetentionDays: data.backupRetentionDays, backupTimezone: "UTC", createdAt: new Date(), backupLastRunAt: null, backupDestination: null }) } });
-    audits.length = 0;
-    await call(h["backups.schedules.patch"], { ctx: ctxWith(db), params: { id: APP }, body: { retentionDays: 3 } });
-    expect(updated.backupRetentionDays).toBe(3);
-    expect(audits[0]).toMatchObject({ action: "backup.schedule.update", verb: "reduced backup retention for" });
-    expect(audits[0]!.changes).toEqual([{ key: "retentionDays", before: 14, after: 3 }]);
+    reset([{ tier: "offsite", enabled: true, cron: "0 3 * * *", timezone: "UTC", keep: 7, keepDays: null, destinationId: null, lastRunAt: null }], [B2]);
+    await patch({ tier: "offsite", keep: 1 });
+    expect(audits[0]).toMatchObject({ action: "backup.schedule.update", verb: "reduced backup retention for", suffix: "offsite tier" });
+    expect(audits[0]!.changes).toEqual([{ key: "keep", before: 7, after: 1 }]);
+  });
+
+  it("Back up now writes one dump to every tier that is on, or to the tier asked for", async () => {
+    const created: AnyRow[] = [];
+    const queued: AnyRow[] = [];
+    const db = (t: AnyRow[]) => {
+      tiers = t;
+      dests = [B2, { id: "here", name: "This server", type: "local", isDefault: false, createdAt: new Date() }];
+      const d = baseDb({
+        app: { findUnique: async () => ({ ...serviceApp, serverId: "s1", environmentId: "e1", environment: { ...serviceApp.environment, project: { slug: "acme" } }, backupSchedules: tiers }) },
+        backup: { findFirst: async () => null, create: async ({ data }: AnyRow) => (created.push(data), { id: `b${created.length}` }), findMany: async () => [] },
+        job: { findFirst: async () => null, create: async ({ data }: AnyRow) => (queued.push(data), { id: "j" }) },
+      });
+      return ctxWith({ ...d, $transaction: async (fn: (tx: unknown) => unknown) => fn(d) });
+    };
+    const on = { timezone: "UTC", keep: 7, keepDays: null, destinationId: null, lastRunAt: null, cron: "0 3 * * *", enabled: true };
+    await call(h["backups.run"], { ctx: db([{ ...on, tier: "local" }, { ...on, tier: "offsite" }]), body: { resourceId: APP } });
+    expect(created.map((c) => c.destinationId)).toEqual(["here", "d1"]);
+    expect(queued[0]).toMatchObject({ kind: "backup", payload: { backupId: "b1", copies: ["b2"] } });
+    created.length = 0;
+    await call(h["backups.run"], { ctx: db([{ ...on, tier: "local" }, { ...on, tier: "offsite" }]), body: { resourceId: APP, tier: "local" } });
+    expect(created.map((c) => c.destinationId)).toEqual(["here"]);
   });
 
   it("replace needs the project and name typed exactly, as the dialog asks", async () => {

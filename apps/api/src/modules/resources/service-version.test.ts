@@ -58,12 +58,20 @@ const session = { kind: "session", userId: "u1", sessionId: "s1", name: "Owner",
 function fake(over: Record<string, unknown> = {}) {
   const row: Record<string, unknown> = {
     id: ID, name: "db", kind: "postgres", image: "postgres:16-alpine", pinnedImage: "postgres:16-alpine@sha256:abc", environmentId: "e1", serviceRedirectId: null, serviceUpgrade: null, memoryLimitMb: null, cpuLimit: null, pidsLimit: null,
-    backupEnabled: true, backupCron: "0 3 * * *", backupTimezone: "UTC", backupRetentionDays: 14, backupDestinationId: null, environment: { projectId: "p1", name: "production", project: { id: "p1", slug: "demo" } }, ...over,
+    environment: { projectId: "p1", name: "production", project: { id: "p1", slug: "demo" } }, ...over,
   };
   const jobs: any[] = [];
   const created: any[] = [];
   const updates: any[] = [];
+  const tiers: any[] = [
+    { appId: ID, tier: "local", enabled: true, cron: "0 */12 * * *", timezone: "UTC", keep: 1, keepDays: null, destinationId: null, lastRunAt: new Date() },
+    { appId: ID, tier: "offsite", enabled: true, cron: "0 3 * * *", timezone: "UTC", keep: 7, keepDays: null, destinationId: "b2", lastRunAt: new Date() },
+  ];
   const db: any = {
+    backupSchedule: {
+      findMany: vi.fn(async ({ where }: any) => tiers.filter((t) => t.appId === where.appId)),
+      createMany: vi.fn(async ({ data }: any) => { tiers.push(...data); return { count: data.length }; }),
+    },
     app: {
       findUnique: vi.fn(async ({ where }: any) => (where.id === ID ? { ...row } : created.find((c) => c.id === where.id) ?? null)),
       findMany: vi.fn(async () => [{ name: "db" }]),
@@ -80,7 +88,7 @@ function fake(over: Record<string, unknown> = {}) {
   };
   const ctx: any = { db, ring: { keys: new Map(), activeVersion: 1 } };
   const req: any = { clientIp: "1.1.1.1", headers: {} };
-  return { db, ctx, req, jobs, created, updates, row };
+  return { db, ctx, req, jobs, created, updates, row, tiers };
 }
 
 const call = (id: "apps.version.change" | "apps.version.switch" | "apps.version.back", f: ReturnType<typeof fake>, body: unknown) =>
@@ -116,10 +124,15 @@ describe("apps.version.change", () => {
     expect(f.jobs).toEqual([expect.objectContaining({ kind: "service_upgrade", lane: "data", maxAttempts: 1, dedupeKey: `service-upgrade:${ID}`, payload: { action: "in_place", sourceId: ID, toImage: "postgres:16-alpine", toVersion: "16" } })]);
     expect(f.created).toEqual([]);
   });
-  it("a new major creates a new service with the source's backup schedule, and prepares only", async () => {
+  it("a new major creates a new service with both of the source's backup tiers, and prepares only", async () => {
     const f = fake();
     await call("apps.version.change", f, { version: "17", confirm: "db" });
-    expect(f.created).toEqual([expect.objectContaining({ name: "db-pg17", image: "postgres:17-alpine", backupEnabled: true, backupCron: "0 3 * * *" })]);
+    expect(f.created).toEqual([expect.objectContaining({ name: "db-pg17", image: "postgres:17-alpine" })]);
+    const copied = f.tiers.filter((t) => t.appId === f.created[0].id);
+    expect(copied).toEqual([
+      { appId: f.created[0].id, tier: "local", enabled: true, cron: "0 */12 * * *", timezone: "UTC", keep: 1, keepDays: null, destinationId: null },
+      { appId: f.created[0].id, tier: "offsite", enabled: true, cron: "0 3 * * *", timezone: "UTC", keep: 7, keepDays: null, destinationId: "b2" },
+    ]);
     expect(f.jobs[0].payload).toMatchObject({ action: "prepare", sourceId: ID, toVersion: "17" });
     expect(f.row.serviceRedirectId).toBeNull();
   });

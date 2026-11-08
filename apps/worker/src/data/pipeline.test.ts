@@ -3,6 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { createGunzip } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Db, SecretVault } from "@dockify/db";
 import { openBackupKeyEscrow, sealBackupKeyEscrow } from "@dockify/crypto";
@@ -10,14 +12,16 @@ import { assertSafeSpec, type ContainerSpec } from "@dockify/engine";
 import { listTables, runQuery, scanKeys, tableRows, type PgSession } from "./browser.ts";
 import type { DataDeps } from "./context.ts";
 import type { ContainerState, DockerPort, ExecHandle } from "./docker-port.ts";
-import { backupKeyFingerprint } from "./envelope.ts";
+import { backupKeyFingerprint, DecryptStream } from "./envelope.ts";
 import { escrowObjectKey } from "./key-escrow.ts";
 import { dataJobHandlers } from "./handlers.ts";
 import { runBackup, runRestore, runRestoreTest } from "./pipeline.ts";
 import type { RedisConn, RespValue } from "./resp.ts";
-import { recoverQuiesced } from "./scheduler.ts";
+import { applyRetention, recoverQuiesced } from "./scheduler.ts";
 import { settleAbandonedUpgrades } from "./upgrade.ts";
-import { LocalStore } from "./store.ts";
+import { LocalStore, S3Store, signRequest, type S3Config } from "./store.ts";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 
 // --------------------------------------------------------------------------------- fakes
 
@@ -29,6 +33,7 @@ function fakeDb(seed: { apps: Row[]; backups?: Row[]; jobs?: Row[] }) {
   const jobs = new Map((seed.jobs ?? []).map((j) => [j.id, j]));
   const log: string[] = [];
   const activity: Row[] = [];
+  const schedules: Row[] = [];
   const matches = (row: Row, where: Row) =>
     Object.entries(where).every(([k, v]) => {
       if (v && typeof v === "object" && "in" in v) return (v.in as unknown[]).includes(row[k]);
@@ -43,8 +48,15 @@ function fakeDb(seed: { apps: Row[]; backups?: Row[]; jobs?: Row[] }) {
       findMany: async ({ where }: Row) => [...apps.values()].filter((a) => matches(a, where)),
       update: async ({ where, data }: Row) => Object.assign(apps.get(where.id)!, data),
     },
+    backupSchedule: {
+      updateMany: async ({ where, data }: Row) => {
+        schedules.push({ appId: where.appId, tier: where.tier, ...data });
+        return { count: 1 };
+      },
+    },
     backup: {
       findUnique: async ({ where }: Row) => backups.get(where.id) ?? null,
+      findMany: async ({ where }: Row) => [...backups.values()].filter((b) => where.id.in.includes(b.id) && b.sourceAppId === where.sourceAppId),
       update: async ({ where, data }: Row) => Object.assign(backups.get(where.id)!, data),
       updateMany: async ({ where, data }: Row) => {
         const b = backups.get(where.id);
@@ -69,7 +81,7 @@ function fakeDb(seed: { apps: Row[]; backups?: Row[]; jobs?: Row[] }) {
     activityLog: { create: async ({ data }: Row) => activity.push(data) },
     $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
   };
-  return { db: db as unknown as Db, apps, backups, jobs, log, activity };
+  return { db: db as unknown as Db, apps, backups, jobs, log, activity, schedules };
 }
 
 interface ExecPlan {
@@ -228,6 +240,137 @@ afterEach(async () => {
 
 // --------------------------------------------------------------------------------- tests
 
+/**
+ * A fake S3 server over real HTTP: path-style PUT, GET and DELETE on one bucket, each checked against
+ * the SigV4 signature the access key's secret gives, as a bucket would. Nothing leaves this machine:
+ * the store's https endpoint is routed to this local port.
+ */
+async function fakeS3(cfg: S3Config) {
+  const objects = new Map<string, Buffer>();
+  const calls: string[] = [];
+  const server: Server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", () => {
+      const url = new URL(req.url ?? "/", "http://fake");
+      const prefix = `/${cfg.bucket}/`;
+      const key = decodeURIComponent(url.pathname.startsWith(prefix) ? url.pathname.slice(prefix.length) : "");
+      const stamp = String(req.headers["x-amz-date"] ?? "");
+      const at = new Date(`${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`);
+      const want = signRequest(cfg, req.method ?? "GET", key, String(req.headers["x-amz-content-sha256"] ?? ""), at).headers.authorization;
+      calls.push(`${req.method} ${key}`);
+      if (!key || req.headers.authorization !== want) {
+        res.statusCode = 403;
+        return res.end("<Error><Code>SignatureDoesNotMatch</Code><Message>The request signature we calculated does not match</Message></Error>");
+      }
+      if (req.method === "PUT") {
+        objects.set(key, Buffer.concat(chunks));
+        return res.end();
+      }
+      if (req.method === "DELETE") {
+        objects.delete(key);
+        res.statusCode = 204;
+        return res.end();
+      }
+      const body = objects.get(key);
+      if (!body) {
+        res.statusCode = 404;
+        return res.end("<Error><Code>NoSuchKey</Code></Error>");
+      }
+      res.end(body);
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as AddressInfo).port;
+  /** A store that signs with these credentials, its https endpoint routed to the fake. */
+  const storeWith = (c: S3Config) =>
+    new S3Store(c, { guard: async () => {}, fetch: (url, init) => fetch(url.replace(new URL(c.endpoint).origin, `http://127.0.0.1:${port}`), init) });
+  return { store: storeWith(cfg), storeWith, objects, calls, close: () => new Promise<void>((r) => server.close(() => r())) };
+}
+
+describe("two tiers against a fake S3 server", () => {
+  const cfg: S3Config = { endpoint: "https://s3.fake-b2.test", region: "us-west-004", bucket: "dk-backups", accessKeyId: "fake-key-id", secretAccessKey: "fake-secret" };
+
+  it("stores the offsite copy in the bucket, prunes it by count, deletes the remote object, and restores from it", async () => {
+    const s = setup();
+    const s3 = await fakeS3(cfg);
+    try {
+      const here = s.store;
+      s.deps.storeFor = async (id) =>
+        id === "b2" ? { store: s3.store, prefix: "dockify/", destinationId: "b2", type: "s3" } : { store: here, prefix: "dockify/", destinationId: "here", type: "local" };
+      // Two runs a day apart, each one dump to both tiers.
+      const runOnce = async (hoursAgo: number) => {
+        const mk = (destinationId: string) =>
+          s.db.backup.create({ data: { appId: DB_APP, sourceAppId: DB_APP, appSnapshot: { environmentId: ENV }, kind: "postgres", trigger: "schedule", destinationId, createdAt: new Date(Date.now() - hoursAgo * 3_600_000) } });
+        const local = await mk("here");
+        const remote = await mk("b2");
+        await runBackup(s.deps, local.id, true, [remote.id]);
+        return { local: s.backups.get(local.id)!, remote: s.backups.get(remote.id)! };
+      };
+      const old = await runOnce(24);
+      const fresh = await runOnce(1);
+      expect([old.remote.status, fresh.remote.status]).toEqual(["ready", "ready"]);
+      expect(s3.objects.has(old.remote.objectKey)).toBe(true);
+      expect(s3.objects.has(fresh.remote.objectKey)).toBe(true);
+      // The key escrow travels with the dumps.
+      expect([...s3.objects.keys()].some((k) => k.startsWith("dockify/keys/"))).toBe(true);
+      expect(Number(fresh.remote.sizeBytes)).toBe(s3.objects.get(fresh.remote.objectKey)!.length);
+
+      // Keep 1 on this server and 1 offsite: the older copy of each tier goes, the remote object with it.
+      const tiers = [
+        { tier: "local", enabled: true, cron: "0 */12 * * *", timezone: "UTC", keep: 1, keepDays: null, destinationId: null, lastRunAt: null },
+        { tier: "offsite", enabled: true, cron: "0 3 * * *", timezone: "UTC", keep: 1, keepDays: null, destinationId: "b2", lastRunAt: null },
+      ];
+      const rows = (): Row[] => [...s.backups.values()].map((b: Row) => ({ ...b, destination: { type: b.destinationId === "b2" ? "s3" : "local" } }));
+      const rdb = {
+        app: { findMany: async () => [{ id: DB_APP, backupSchedules: tiers }] },
+        job: { findMany: async () => [] },
+        backup: {
+          findMany: async ({ where }: Row) => (where.appId ? rows().filter((b) => b.appId === where.appId) : []),
+          update: async ({ where, data }: Row) => Object.assign(s.backups.get(where.id)!, data),
+          deleteMany: async () => ({ count: 0 }),
+        },
+      } as unknown as Db;
+      expect(await applyRetention({ ...s.deps, db: rdb }, new Date())).toEqual({ expired: 2, deleted: 0 });
+      expect(s3.objects.has(old.remote.objectKey)).toBe(false);
+      expect(s3.calls).toContain(`DELETE ${old.remote.objectKey}`);
+      expect(s3.objects.has(fresh.remote.objectKey)).toBe(true);
+      await expect(readFile(join(dir, "store", old.local.objectKey))).rejects.toThrow();
+      expect(s.backups.get(old.remote.id)!.expiredAt).toBeInstanceOf(Date);
+      expect(s.backups.get(fresh.remote.id)!.expiredAt ?? null).toBeNull();
+
+      // A restore reads the offsite copy back over HTTP, verifies it and replays it.
+      await runRestore(s.deps, "job-1", { backupId: fresh.remote.id, mode: "replace", targetAppId: DB_APP });
+      expect(s3.calls).toContain(`GET ${fresh.remote.objectKey}`);
+      expect(s.restored.join("")).toContain("CREATE TABLE t");
+      // The expired one is refused before anything is touched.
+      await expect(runRestore(s.deps, "job-1", { backupId: old.remote.id, mode: "replace", targetAppId: DB_APP })).rejects.toThrow(/expired/);
+    } finally {
+      await s3.close();
+    }
+  });
+
+  it("a wrong secret is refused by the bucket, and fails only the offsite copy", async () => {
+    const s = setup();
+    const s3 = await fakeS3(cfg);
+    try {
+      const bad = s3.storeWith({ ...cfg, secretAccessKey: "not-the-secret" });
+      const here = s.store;
+      s.deps.storeFor = async (id) =>
+        id === "b2" ? { store: bad, prefix: "dockify/", destinationId: "b2", type: "s3" } : { store: here, prefix: "dockify/", destinationId: "here", type: "local" };
+      const mk = (destinationId: string) => s.db.backup.create({ data: { appId: DB_APP, sourceAppId: DB_APP, appSnapshot: { environmentId: ENV }, kind: "postgres", trigger: "schedule", destinationId } });
+      const local = await mk("here");
+      const remote = await mk("b2");
+      await expect(runBackup(s.deps, local.id, true, [remote.id])).rejects.toThrow(/SignatureDoesNotMatch/);
+      expect(s.backups.get(local.id)!.status).toBe("ready");
+      expect(s.backups.get(remote.id)).toMatchObject({ status: "failed", error: expect.stringMatching(/SignatureDoesNotMatch/) });
+      expect(s3.objects.size).toBe(0);
+    } finally {
+      await s3.close();
+    }
+  });
+});
+
 describe("backup pipeline", () => {
   it("dumps, encrypts and records size, checksum and key fingerprint", async () => {
     const s = setup();
@@ -239,7 +382,72 @@ describe("backup pipeline", () => {
     const blob = await readFile(join(dir, "store", b.objectKey));
     expect(Number(b.sizeBytes)).toBe(blob.length);
     expect(blob.includes(Buffer.from("CREATE TABLE"))).toBe(false);
-    expect(s.apps.get(DB_APP)!.backupLastRunAt).toBeInstanceOf(Date);
+    // Only a scheduled run moves its tier's clock.
+    expect(s.schedules).toEqual([]);
+  });
+
+  /** Two copies of one run: this server's disk and an offsite bucket, each its own store. */
+  const twoTiers = async (s: ReturnType<typeof setup>, offsite: LocalStore | { put: () => Promise<never> }) => {
+    const here = s.store;
+    s.deps.storeFor = async (id) =>
+      id === "b2" ? { store: offsite as LocalStore, prefix: "dockify/", destinationId: "b2", type: "s3" } : { store: here, prefix: "dockify/", destinationId: "here", type: "local" };
+    const mk = (destinationId: string) => s.db.backup.create({ data: { appId: DB_APP, sourceAppId: DB_APP, appSnapshot: { environmentId: ENV }, kind: "postgres", trigger: "schedule", destinationId } });
+    const local = await mk("here");
+    const remote = await mk("b2");
+    return { local, remote };
+  };
+
+  it("takes one dump for both tiers and stores a copy, sealed to its own row, in each", async () => {
+    const s = setup();
+    const bucket = new LocalStore(join(dir, "bucket"));
+    const { local, remote } = await twoTiers(s, bucket);
+    await runBackup(s.deps, local.id, true, [remote.id]);
+    expect(s.log.filter((l) => l.endsWith(":pg_dump"))).toHaveLength(1);
+    const a = s.backups.get(local.id)!;
+    const b = s.backups.get(remote.id)!;
+    expect([a.status, b.status]).toEqual(["ready", "ready"]);
+    expect(a.sha256).not.toBe(b.sha256);
+    // Each decrypts with its own id only, to the same dump.
+    for (const [row, store] of [[a, s.store], [b, bucket]] as const) {
+      const out: Buffer[] = [];
+      await pipeline(await store.get(row.objectKey), new DecryptStream(new Map([[backupKeyFingerprint(key), key]]), row.id), createGunzip(), new Writable({ write: (c, _e, cb) => (out.push(c), cb()) }));
+      expect(Buffer.concat(out).toString()).toContain("CREATE TABLE t");
+    }
+    expect(s.schedules.map((x) => x.tier)).toEqual(["local", "offsite"]);
+  });
+
+  it("a bucket that fails fails only its own copy: the local one is ready, and the run says why", async () => {
+    const s = setup();
+    const { local, remote } = await twoTiers(s, { put: async () => { throw new Error("SlowDown: please reduce your request rate"); } });
+    await expect(runBackup(s.deps, local.id, true, [remote.id])).rejects.toThrow(/SlowDown/);
+    expect(s.backups.get(local.id)!.status).toBe("ready");
+    expect(s.backups.get(remote.id)).toMatchObject({ status: "failed", error: expect.stringMatching(/SlowDown/) });
+    expect(s.schedules.map((x) => x.tier)).toEqual(["local"]);
+  });
+
+  it("a retry dumps again only for the copy still running", async () => {
+    const s = setup();
+    let down = true;
+    const bucket = new LocalStore(join(dir, "bucket"));
+    const flaky = { put: async (...a: Parameters<LocalStore["put"]>) => (down ? Promise.reject(new Error("timeout")) : bucket.put(...a)) };
+    const { local, remote } = await twoTiers(s, flaky as never);
+    await expect(runBackup(s.deps, local.id, false, [remote.id])).rejects.toThrow(/timeout/);
+    const firstLocal = s.backups.get(local.id)!.objectKey;
+    expect(s.backups.get(remote.id)).toMatchObject({ status: "running", error: "timeout" });
+    down = false;
+    await runBackup(s.deps, local.id, true, [remote.id]);
+    expect(s.backups.get(remote.id)!.status).toBe("ready");
+    expect(s.backups.get(local.id)!.objectKey).toBe(firstLocal);
+    expect(s.log.filter((l) => l.endsWith(":pg_dump"))).toHaveLength(2);
+  });
+
+  it("restores the offsite copy like any other backup", async () => {
+    const s = setup();
+    const bucket = new LocalStore(join(dir, "bucket"));
+    const { local, remote } = await twoTiers(s, bucket);
+    await runBackup(s.deps, local.id, true, [remote.id]);
+    await runRestore(s.deps, "job-1", { backupId: remote.id, mode: "replace", targetAppId: DB_APP });
+    expect(s.restored.join("")).toContain("CREATE TABLE t");
   });
 
   it("escrows the backup key, sealed by the api under the master key, beside the dumps", async () => {

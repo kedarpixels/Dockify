@@ -164,14 +164,25 @@ describe("migrations", () => {
 
   it("keeps a later migration's invariants to CHECK constraints it can name", () => {
     const known = checksIn(init.slice(init.indexOf(MARKER)));
+    /** Each CHECK's table and condition, so a drop can be held to the columns it guards. */
+    const defs = new Map<string, { table: string; cond: string }>();
+    const learn = (sql: string) => {
+      for (const m of sql.matchAll(/^ALTER TABLE "(\w+)" ADD CONSTRAINT "(\w+)" CHECK (.+);$/gm)) defs.set(m[2]!, { table: m[1]!, cond: m[3]! });
+    };
+    learn(init.replace(/\r/g, ""));
     for (const name of later) {
-      const sql = readFileSync(`${MIGRATIONS}${name}/migration.sql`, "utf8");
+      const sql = readFileSync(`${MIGRATIONS}${name}/migration.sql`, "utf8").replace(/\r/g, "");
+      const droppedColumns = [...sql.matchAll(/^ALTER TABLE "(\w+)" DROP COLUMN "(\w+)";$/gm)].map((m) => [m[1]!, m[2]!] as const);
       for (const s of statements(sql).map(bare)) {
         const dropped = /^ALTER TABLE "\w+" DROP CONSTRAINT "(\w+)"$/.exec(s)?.[1];
-        // A CHECK is dropped only to be added again in the same migration, never lost.
-        if (dropped && known.has(dropped)) expect(checksIn(sql).has(dropped), `${name}: ${dropped}`).toBe(true);
+        // A CHECK is dropped only to be added again in the same migration, never lost, or with the
+        // column it guards, which the same migration drops.
+        const def = dropped ? defs.get(dropped) : undefined;
+        const withColumn = !!def && droppedColumns.some(([t, c]) => t === def.table && def.cond.includes(`"${c}"`));
+        if (dropped && known.has(dropped)) expect(checksIn(sql).has(dropped) || withColumn, `${name}: ${dropped}`).toBe(true);
       }
       for (const c of checksIn(sql)) known.add(c);
+      learn(sql);
     }
     expect([...known]).toEqual(expect.arrayContaining(["icon_images_one_owner", "icon_images_mime_known", "notification_webhooks_telegram_chat"]));
   });

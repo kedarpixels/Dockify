@@ -10,7 +10,7 @@ import { CronError, nextRun, parseCron } from "./cron.ts";
 import { parseRestoreCheck, pgDumpCommand, psqlCommand, redisDumpCommand, redisSwapCommand, REPLACE_SCHEMAS_SQL, RESTORE_COMMIT, RESTORE_PREAMBLE, RestoreFramer, TERMINATE_OTHERS_SQL } from "./dump.ts";
 import { backupKeyFingerprint, CHUNK_BYTES, DecryptStream, EncryptStream, EnvelopeError, peekFingerprint } from "./envelope.ts";
 import { encodeCommand, parseReply, RespError } from "./resp.ts";
-import { failedRowsToDelete, isRetentionDecrease, MIN_KEEP, selectExpired, type RetentionCandidate } from "./retention.ts";
+import { failedRowsToDelete, isRetentionDecrease, selectExpired, type RetentionCandidate } from "./retention.ts";
 import { connectionUrl, generateCredentials, provisionService, redisConfig, serviceSpec, STORAGE_UNAVAILABLE, type ServiceApp } from "./services.ts";
 import type { DockerPort } from "./docker-port.ts";
 import { toState } from "./engine-port.ts";
@@ -69,24 +69,46 @@ describe("retention", () => {
   const row = (id: string, daysAgo: number, over: Partial<RetentionCandidate> = {}): RetentionCandidate => ({
     id, status: "ready", trigger: "schedule", createdAt: new Date(now.getTime() - daysAgo * 86_400_000), objectKey: `k/${id}`, expiredAt: null, ...over,
   });
-  it("expires old scheduled backups past the window", () => {
+  const ids = (rows: RetentionCandidate[]) => rows.map((r) => r.id);
+  it("keeps the last N good backups by count, whatever their age", () => {
+    const rows = [row("a", 0.5), row("b", 1), row("c", 1.5), row("d", 2), row("e", 30)];
+    expect(ids(selectExpired(rows, { keep: 1, keepDays: null }, now))).toEqual(["b", "c", "d", "e"]);
+    expect(ids(selectExpired(rows, { keep: 7, keepDays: null }, now))).toEqual([]);
+    expect(ids(selectExpired([row("a", 400), row("b", 500)], { keep: 1, keepDays: null }, now))).toEqual(["b"]);
+  });
+  it("never counts a failed or running run, so a failure never pushes the last good backup out", () => {
+    const rows = [row("f1", 0.1, { status: "failed", objectKey: null }), row("r", 0.05, { status: "running", objectKey: null }), row("good", 1), row("older", 2)];
+    expect(ids(selectExpired(rows, { keep: 1, keepDays: null }, now))).toEqual(["older"]);
+  });
+  it("never removes the only good backup of a tier", () => {
+    expect(selectExpired([row("only", 90)], { keep: 1, keepDays: null }, now)).toEqual([]);
+    // The newest failed its restore test: the newest one that did not stays too.
+    const rows = [row("broken", 1, { restoreTestStatus: "failed" }), row("good", 2, { restoreTestStatus: "passed" }), row("old", 3)];
+    expect(ids(selectExpired(rows, { keep: 1, keepDays: null }, now))).toEqual(["old"]);
+  });
+  it("never removes a backup a restore is reading", () => {
+    const rows = [row("a", 1), row("b", 2), row("c", 3)];
+    expect(ids(selectExpired(rows, { keep: 1, keepDays: null }, now, new Set(["c"])))).toEqual(["b"]);
+  });
+  it("with keepDays, also keeps every backup from that window: the rule before tiers", () => {
     const rows = [row("a", 1), row("b", 2), row("c", 3), row("d", 20), row("e", 30)];
-    expect(selectExpired(rows, 14, now).map((r) => r.id)).toEqual(["d", "e"]);
+    expect(ids(selectExpired(rows, { keep: 3, keepDays: 14 }, now))).toEqual(["d", "e"]);
+    expect(ids(selectExpired([row("a", 40), row("b", 50), row("c", 60), row("d", 70)], { keep: 3, keepDays: 1 }, now))).toEqual(["d"]);
   });
-  it("always keeps the newest MIN_KEEP even when all are old", () => {
-    const rows = [row("a", 40), row("b", 50), row("c", 60), row("d", 70)];
-    expect(MIN_KEEP).toBe(3);
-    expect(selectExpired(rows, 1, now).map((r) => r.id)).toEqual(["d"]);
+  it("never expires or counts manual backups, failed rows or rows already expired", () => {
+    const rows = [row("m1", 0.1, { trigger: "manual" }), row("a", 1), row("m", 90, { trigger: "manual" }), row("f", 90, { status: "failed", objectKey: null }), row("x", 90, { expiredAt: now })];
+    expect(selectExpired(rows, { keep: 1, keepDays: null }, now)).toEqual([]);
   });
-  it("never expires manual backups, failed rows or rows already expired", () => {
-    const rows = [row("a", 1), row("b", 1), row("c", 1), row("m", 90, { trigger: "manual" }), row("f", 90, { status: "failed", objectKey: null }), row("x", 90, { expiredAt: now })];
-    expect(selectExpired(rows, 7, now)).toEqual([]);
+  it("counts safety dumps with the schedule's, as automatic backups of the tier", () => {
+    const rows = [row("pre", 0.1, { trigger: "pre_update" }), row("s1", 1), row("s2", 2)];
+    expect(ids(selectExpired(rows, { keep: 2, keepDays: null }, now))).toEqual(["s2"]);
   });
   it("deletes failed rows after 30 days and flags retention decreases", () => {
     expect(failedRowsToDelete([row("f", 31, { status: "failed" }), row("g", 5, { status: "failed" })], now).map((r) => r.id)).toEqual(["f"]);
-    expect(isRetentionDecrease({ retentionDays: 14, enabled: true }, { retentionDays: 7, enabled: true })).toBe(true);
-    expect(isRetentionDecrease({ retentionDays: 14, enabled: true }, { retentionDays: 14, enabled: false })).toBe(true);
-    expect(isRetentionDecrease({ retentionDays: 7, enabled: false }, { retentionDays: 30, enabled: true })).toBe(false);
+    expect(isRetentionDecrease({ keep: 7, keepDays: null, enabled: true }, { keep: 1, keepDays: null, enabled: true })).toBe(true);
+    expect(isRetentionDecrease({ keep: 3, keepDays: 14, enabled: true }, { keep: 3, keepDays: null, enabled: true })).toBe(true);
+    expect(isRetentionDecrease({ keep: 3, keepDays: 14, enabled: true }, { keep: 3, keepDays: 14, enabled: false })).toBe(true);
+    expect(isRetentionDecrease({ keep: 1, keepDays: null, enabled: false }, { keep: 7, keepDays: null, enabled: true })).toBe(false);
   });
 });
 

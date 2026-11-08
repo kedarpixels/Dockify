@@ -17,7 +17,8 @@ function matches(j: Row, where: Row): boolean {
   if (typeof where.kind === "string" && j.kind !== where.kind) return false;
   if (where.kind?.in && !where.kind.in.includes(j.kind)) return false;
   if (where.dedupeKey !== undefined && j.dedupeKey !== where.dedupeKey) return false;
-  if (where.payload && j.payload?.backupId !== where.payload.equals) return false;
+  if (where.payload?.array_contains && !where.payload.array_contains.every((id: string) => (j.payload?.copies ?? []).includes(id))) return false;
+  if (where.payload && !where.payload.array_contains && j.payload?.backupId !== where.payload.equals) return false;
   if ("completedAt" in where && (j.completedAt ?? null) !== where.completedAt) return false;
   if ("failedAt" in where && (j.failedAt ?? null) !== where.failedAt) return false;
   return true;
@@ -42,37 +43,155 @@ function fakeDb(backups: Row[], jobs: Row[]) {
 
 describe("a scheduled backup that meets a running restore", () => {
   const busyDb = (error: Error) => {
-    const app = { id: APP, backupCron: "* * * * *", backupTimezone: "UTC", backupLastRunAt: ago(5), createdAt: ago(100) };
+    const tier = { id: "t1", appId: APP, tier: "offsite", cron: "* * * * *", timezone: "UTC", lastRunAt: ago(5) as Date | null };
     const db = {
-      app: {
-        findMany: async () => [{ ...app }],
+      backupSchedule: {
+        findMany: async () => [{ ...tier }],
         updateMany: async ({ where, data }: Row) => {
-          if (where.backupLastRunAt !== app.backupLastRunAt) return { count: 0 };
-          Object.assign(app, data);
+          if (where.lastRunAt !== tier.lastRunAt) return { count: 0 };
+          Object.assign(tier, data);
           return { count: 1 };
         },
       },
       $transaction: async () => { throw error; },
     };
-    return { db: db as unknown as Db, app };
+    return { db: db as unknown as Db, tier };
   };
 
   it("gives the slot back and says so, so the next tick tries again", async () => {
     const was = ago(5);
-    const { db, app } = busyDb(Object.assign(new Error("A restore of this database is running"), { code: "BUSY" }));
-    app.backupLastRunAt = was;
+    const { db, tier } = busyDb(Object.assign(new Error("A restore of this database is running"), { code: "BUSY" }));
+    tier.lastRunAt = was;
     const logged: string[] = [];
     expect(await fireDueSchedules(db, NOW, (m) => void logged.push(m))).toBe(0);
-    expect(app.backupLastRunAt).toBe(was);
+    expect(tier.lastRunAt).toBe(was);
     expect(logged).toEqual(["a scheduled backup was not taken"]);
   });
 
   it("any other failure is logged and keeps the slot", async () => {
-    const { db, app } = busyDb(new Error("database gone"));
+    const { db, tier } = busyDb(new Error("database gone"));
     const logged: string[] = [];
     expect(await fireDueSchedules(db, NOW, (m) => void logged.push(m))).toBe(0);
-    expect(app.backupLastRunAt).toBe(NOW);
+    expect(tier.lastRunAt).toBe(NOW);
     expect(logged).toHaveLength(1);
+  });
+});
+
+describe("two tiers on their own crons", () => {
+  /** Every 12 hours on this server, daily offsite: what the owner runs. */
+  const setup = (localLast: Date, offsiteLast: Date) => {
+    const tiers: Row[] = [
+      { id: "tl", appId: APP, tier: "local", enabled: true, cron: "0 */12 * * *", timezone: "UTC", keep: 1, keepDays: null, destinationId: null, lastRunAt: localLast },
+      { id: "to", appId: APP, tier: "offsite", enabled: true, cron: "0 3 * * *", timezone: "UTC", keep: 7, keepDays: null, destinationId: null, lastRunAt: offsiteLast },
+    ];
+    const backups: Row[] = [];
+    const jobs: Row[] = [];
+    const tx = {
+      $executeRaw: async () => 0,
+      app: { findUnique: async () => ({ id: APP, name: "db", kind: "postgres", environmentId: "e", serverId: "s", environment: { name: "production", project: { slug: "p" } } }) },
+      job: {
+        findFirst: async () => null,
+        create: async ({ data }: Row) => {
+          jobs.push(data);
+          return { id: `j${jobs.length}` };
+        },
+      },
+      backup: {
+        findFirst: async () => null,
+        create: async ({ data }: Row) => {
+          backups.push(data);
+          return { id: `b${backups.length}` };
+        },
+      },
+      backupSchedule: { findMany: async () => tiers },
+      backupDestination: {
+        findFirst: async ({ where }: Row) => (where.type === "local" ? { id: "here", type: "local" } : { id: "b2", type: "s3" }),
+        findUnique: async () => null,
+      },
+    };
+    const db = {
+      backupSchedule: {
+        findMany: async () => tiers.map((t) => ({ ...t })),
+        updateMany: async ({ where, data }: Row) => {
+          const t = tiers.find((x) => x.id === where.id)!;
+          if (t.lastRunAt?.getTime() !== where.lastRunAt?.getTime()) return { count: 0 };
+          Object.assign(t, data);
+          return { count: 1 };
+        },
+      },
+      $transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
+    } as unknown as Db;
+    return { db, tiers, backups, jobs };
+  };
+
+  it("fires only the tier that is due", async () => {
+    // 12:00: the local tier (last at 00:00) is due, the offsite one (last at 03:00) is not.
+    const f = setup(new Date("2026-11-06T00:00:00Z"), new Date("2026-11-06T03:00:00Z"));
+    expect(await fireDueSchedules(f.db, NOW)).toBe(1);
+    expect(f.backups.map((b) => b.destinationId)).toEqual(["here"]);
+    expect(f.tiers.map((t) => t.lastRunAt)).toEqual([NOW, new Date("2026-11-06T03:00:00Z")]);
+  });
+
+  it("serves both tiers from one dump when both are due at once", async () => {
+    const f = setup(new Date("2026-11-06T00:00:00Z"), new Date("2026-11-05T03:00:00Z"));
+    expect(await fireDueSchedules(f.db, NOW)).toBe(1);
+    expect(f.backups.map((b) => b.destinationId)).toEqual(["here", "b2"]);
+    expect(f.jobs).toHaveLength(1);
+    expect(f.jobs[0]!.payload).toEqual({ backupId: "b1", copies: ["b2"] });
+  });
+});
+
+describe("retention by count, per tier", () => {
+  const LOCAL = { type: "local" };
+  const S3 = { type: "s3" };
+  const bk = (id: string, hoursAgo: number, dest: { type: string } | null, over: Row = {}): Row => ({
+    id, appId: APP, status: "ready", trigger: "schedule", objectKey: `k/${id}`, expiredAt: null, restoreTestStatus: "not_tested",
+    destinationId: dest ? (dest.type === "s3" ? "b2" : "here") : null, destination: dest, createdAt: new Date(NOW.getTime() - hoursAgo * 3_600_000), ...over,
+  });
+  const run = async (rows: Row[], schedules: Row[], open: Row[] = []) => {
+    const removed: Array<[string | null, string]> = [];
+    const db = {
+      app: { findMany: async () => [{ id: APP, backupSchedules: schedules }] },
+      job: { findMany: async () => open },
+      backup: {
+        findMany: async ({ where }: Row) => (where.appId === APP ? rows : []),
+        update: async ({ where, data }: Row) => Object.assign(rows.find((r) => r.id === where.id)!, data),
+        deleteMany: async () => ({ count: 0 }),
+      },
+    } as unknown as Db;
+    const deps = { db, storeFor: async (id: string | null) => ({ store: { delete: async (k: string) => void removed.push([id, k]) } }) } as never;
+    const out = await applyRetention(deps, NOW);
+    return { out, removed, expired: rows.filter((r) => r.expiredAt).map((r) => r.id) };
+  };
+  const tiers = [
+    { tier: "local", enabled: true, cron: "0 */12 * * *", timezone: "UTC", keep: 1, keepDays: null, destinationId: null, lastRunAt: null },
+    { tier: "offsite", enabled: true, cron: "0 3 * * *", timezone: "UTC", keep: 7, keepDays: null, destinationId: null, lastRunAt: null },
+  ];
+
+  it("keeps the latest 1 on this server and the latest 7 offsite, each counted apart", async () => {
+    const rows = [bk("l1", 1, LOCAL), bk("l2", 13, LOCAL), bk("l3", 25, LOCAL), ...Array.from({ length: 9 }, (_, i) => bk(`o${i + 1}`, 2 + i * 24, S3))];
+    const r = await run(rows, tiers);
+    expect(r.expired.sort()).toEqual(["l2", "l3", "o8", "o9"]);
+  });
+
+  it("deletes the offsite object from its bucket, and the local file from this server", async () => {
+    const r = await run([bk("o1", 1, S3), bk("o2", 30, S3), bk("l1", 1, LOCAL), bk("l2", 13, LOCAL)], [tiers[0]!, { ...tiers[1]!, keep: 1 }]);
+    expect(r.removed).toEqual([["here", "k/l2"], ["b2", "k/o2"]]);
+  });
+
+  it("never counts a failed run: the one good backup stays", async () => {
+    const r = await run([bk("f1", 1, LOCAL, { status: "failed", objectKey: null }), bk("f2", 2, LOCAL, { status: "failed", objectKey: null }), bk("good", 13, LOCAL)], tiers);
+    expect(r.expired).toEqual([]);
+  });
+
+  it("never removes a backup a restore is reading", async () => {
+    const r = await run([bk("l1", 1, LOCAL), bk("l2", 13, LOCAL), bk("l3", 25, LOCAL)], tiers, [{ payload: { backupId: "l3", mode: "new" } }]);
+    expect(r.expired).toEqual(["l2"]);
+  });
+
+  it("a tier with no row keeps the default count", async () => {
+    const r = await run(Array.from({ length: 9 }, (_, i) => bk(`l${i + 1}`, 1 + i, LOCAL)), []);
+    expect(r.expired.sort()).toEqual(["l8", "l9"]);
   });
 });
 
@@ -81,6 +200,7 @@ describe("retention of the offsite copies of pre-update dumps", () => {
     const rows: Row[] = [0, 1, 2, 3].map((i) => ({ id: `d${i}`, kind: "control_plane", status: "ready", trigger: "pre_update", objectKey: `k${i}`, expiredAt: null, destinationId: null, createdAt: new Date(NOW.getTime() - (40 + i) * 86_400_000) }));
     const removed: string[] = [];
     const db = {
+      job: { findMany: async () => [] },
       app: { findMany: async () => [] },
       backup: {
         findMany: async ({ where }: Row) => (where.kind === "control_plane" ? rows : []),
@@ -128,6 +248,15 @@ describe("stale backup rows", () => {
     ];
     expect(await failStaleRuns(fakeDb(rows, jobs), NOW)).toBe(0);
     expect(rows.map((r) => r.status)).toEqual(["running", "running"]);
+  });
+
+  it("leaves the second tier's copy while the one run writing both is open, and settles it with that run", async () => {
+    const rows = [{ id: "copy", appId: APP, trigger: "schedule", status: "running", error: null, createdAt: ago(60) }];
+    const open = [{ kind: "backup", payload: { backupId: "first", copies: ["copy"] }, completedAt: null, failedAt: null, createdAt: ago(60) }];
+    expect(await failStaleRuns(fakeDb(rows, open), NOW)).toBe(0);
+    const over = [{ ...open[0]!, failedAt: ago(1), lastError: "pg_dump exited with code 1: out of memory" }];
+    expect(await failStaleRuns(fakeDb(rows, over), NOW)).toBe(1);
+    expect(rows[0]).toMatchObject({ status: "failed", error: "pg_dump exited with code 1: out of memory" });
   });
 
   it("gives a pre-restore dump the reason its restore failed with", async () => {
