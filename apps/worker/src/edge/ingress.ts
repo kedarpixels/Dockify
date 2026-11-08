@@ -30,7 +30,7 @@ export const TUNNEL_SERVICE = "http://proxy:80";
  * The control plane's fixed addresses on the compose edge network; deploy/docker-compose.yml pins
  * each one (routes.test.ts checks they agree). The dashboard routes name the web and the api by
  * address, never by service name: Traefik joins tenant networks, where a managed service can answer
- * to its own name (an app called "web" or "api"), and "api" also resolves on the egress network,
+ * to its own name (an app or service called "web" or "api"), and "api" also resolves on the egress network,
  * where a caller's source address is not one the api trusts to report the client.
  */
 export const EDGE_ADDRESSES = { api: "172.30.1.10", web: "172.30.1.20", proxyDirect: "172.30.1.30", cloudflared: "172.30.1.40" } as const;

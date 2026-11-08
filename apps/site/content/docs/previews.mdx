@@ -9,7 +9,7 @@ Previews start from GitHub's `pull_request` webhook, so they need the GitHub App
 
 A preview is a short-lived environment named `pr-<n>`, cloned from a **base environment** of your project. The default base is `development`. Production is never the default; you can pick it, but you should not need to. In a project with one environment, that environment counts as production, whatever its name.
 
-Only the apps you mark **Include in previews** are copied. By default that is every frontend and backend app in the base environment built from a repository on this server; a bot is off until you tick it. **Databases are never cloned.** With a `development` base, a preview has that environment's secrets and network and reaches its services through its [linked variables](/docs/env-vars), so it talks to the same development database your `development` apps use.
+Only the apps you mark **Include in previews** are copied. By default that is every frontend and backend app in the base environment built from a repository on this server; a bot is off until you tick it. **Databases are never cloned.** With a `development` base, a preview has that environment's secrets and network and reaches its services through its [linked variables](/docs/env-vars), so it talks to the same development database your `development` apps use. On that network it reaches the base environment's apps by their names too, as they do each other. A preview's own containers never answer to an app's name, so the base apps never send traffic to a preview by mistake.
 
 Turn on **Isolated database per preview** to give each preview its own empty, throwaway Postgres instead. It is deleted with the preview, and only then does the pull request's release command (migrations) run, against that throwaway database. A preview that shares the base database, or has none, never runs its release command.
 
@@ -19,7 +19,7 @@ Anyone who can push a branch can open a pull request, and a preview runs that br
 
 - no secret variable and no linked service credential, at build time or at run time,
 - no database variables, marked secret or not, unless **Isolated database per preview** gives it its own,
-- a network of its own, so it cannot reach production's apps or services directly,
+- a network of its own, so it cannot reach production's apps or services directly, by name or by address,
 - the plain variables. A value you did not mark secret is not hidden, so mark anything sensitive.
 
 An app that needs what was withheld fails to start. The preview shows **Failed**, and its card, email and pull request comment say it ran without production's secrets. To change it, either make a `development` environment the base, or turn on **Previews may use production secrets and services** in Preview settings. That setting gives anyone who can push a branch those secrets and that network, and a change to it reaches previews already running within a few minutes: each is built again, and its temporary database starts empty. Forks never get them, whatever the setting.

@@ -1,6 +1,7 @@
 /** Names, labels and the input shape every app container and one-off shares. */
 import type { ContainerInput, VolumeMount } from "@dockify/engine";
 import type { ContainerInfo } from "@dockify/engine";
+import { RESERVED_NAME_PREFIX } from "@dockify/contracts";
 
 export const LABEL = {
   app: "dockify.app",
@@ -46,6 +47,12 @@ export function routeAliasOf(info: Pick<ContainerInfo, "NetworkSettings">, netwo
 
 export interface RunnableApp {
   id: string;
+  /**
+   * The app's name (contracts AppName), never its display name: what the running app answers to on
+   * its environment network, so its siblings reach it as name:port, the way they reach a database.
+   * Releases and jobs never take it. Left out, the container answers only to its dk- names.
+   */
+  name?: string;
   kind: string;
   environmentId: string;
   projectId: string;
@@ -117,6 +124,18 @@ export function imageArguments(command: string): { cmd: string[] } | null {
   return words && !words[0]!.startsWith("-") ? { cmd: words } : null;
 }
 
+/**
+ * The names the running app answers to on its environment network: its canonical name, the route
+ * alias of this deployment, and its own name. A name with the reserved dk- prefix is never taken (no
+ * app can have one, contracts AppName), so the name can never stand in for a route target or a
+ * Dockify container. Previews never come through here (preview.ts), so a preview only reaches a
+ * production app by name when it shares the production network, which the project owner allows.
+ */
+export function appAliases(app: Pick<RunnableApp, "id" | "name">, deploymentId: string): string[] {
+  const own = app.name && !app.name.startsWith(RESERVED_NAME_PREFIX) ? [app.name] : [];
+  return [canonicalName(app.id), routeAlias(deploymentId), ...own];
+}
+
 /** The containerSpec input for the app or its release one-off. One place, so both get the same caps. */
 export function appContainerInput(app: RunnableApp, o: { name: string; imageId: string; env: Record<string, string>; deploymentId: string; role: "app" | "release" | "job"; cmd?: string | null }): ContainerInput {
   const command = o.cmd ?? (o.role === "app" ? app.startCommand : null);
@@ -124,7 +143,8 @@ export function appContainerInput(app: RunnableApp, o: { name: string; imageId: 
     name: o.name,
     image: o.imageId,
     network: envNetwork(app.environmentId),
-    aliases: o.role === "app" ? [canonicalName(app.id), routeAlias(o.deploymentId)] : [],
+    // Only the serving container: a release or a job answering to the app's name would take a share of its traffic.
+    aliases: o.role === "app" ? appAliases(app, o.deploymentId) : [],
     env: o.env,
     ...(command ? commandInput(command) : {}),
     port: o.role === "app" ? app.port : null,

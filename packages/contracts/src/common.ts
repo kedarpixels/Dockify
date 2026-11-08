@@ -61,9 +61,10 @@ export const AppName = z
  * which Docker's DNS searches before the control plane's internal networks while the worker or the
  * proxy has joined it. Nothing of Dockify's dials these names any more (the database and the socket
  * proxy have fixed addresses, the proxy's alias is dk-proxy), so this is the second layer: a tenant
- * can never answer for one even on an install whose compose file is older than that. Only a service
- * gets an alias, so an ordinary app called "web" or "api" stays fine. A service that already has one
- * of these names keeps it, and its alias: no existing data or connection string changes.
+ * can never answer for one even on an install whose compose file is older than that. An ordinary app
+ * answers to its name too, "web" and "api" included (worker deploy/containers.ts appAliases): that
+ * rests on the first layer, which apps/worker/src/app-name-alias.test.ts pins. A service that already
+ * has one of these names keeps it, and its alias: no existing data or connection string changes.
  */
 export const RESERVED_SERVICE_NAMES: readonly string[] = [
   "api", "buildkit", "cloudflared", "dockify-proxy", "dockify-worker", "migrate", "postgres", "proxy", "proxy-direct", "socket-proxy", "updater", "web", "worker",

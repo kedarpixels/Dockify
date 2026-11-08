@@ -109,6 +109,7 @@ export function toSwapApp(app: Loaded["app"], routed: ReadonlySet<string> = new 
   const dns = new Map(app.domains.map((d) => [d.hostname, d.dnsStatus as string]));
   return {
     id: app.id,
+    name: app.name,
     kind: app.kind,
     environmentId: app.environmentId,
     projectId: app.environment.projectId,

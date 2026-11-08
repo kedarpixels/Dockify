@@ -25,7 +25,9 @@ A new project starts with one environment, Production, on the `main` branch, and
 
 Changing an environment's branch or deleting it asks you to confirm it is you, because it changes what code runs.
 
-Inside an environment, apps reach each other by name. If your database app is called `db`, your api connects to `db:5432`. Nothing outside the environment network can.
+Inside an environment, apps reach each other by name. If your database app is called `db`, your api connects to `db:5432`; if your api app is called `api` and listens on 3000, your web app calls `http://api:3000`. Nothing outside the environment network can.
+
+The name is the app's **name**, the lowercase one it was created with, never its display name, so renaming an app on the dashboard breaks no address. Only the running container answers to it: a release command or a scheduled job does not, so it never takes a share of the app's traffic. An app created before this rule answers to its name from its next deploy. A preview only reaches these names when it shares its base environment's network; see [Previews](/docs/previews#previews-and-production).
 
 ## App kinds
 

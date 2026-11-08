@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { planBuild } from "@dockify/engine";
-import { appContainerInput, canonicalName, type RunnableApp } from "./containers.ts";
+import { appAliases, appContainerInput, canonicalName, routeAlias, type RunnableApp } from "./containers.ts";
 import { containerSpec } from "@dockify/engine";
 import { Demuxer, parseDockerHost } from "@dockify/engine";
 import { mergeScopes, rollbackEnv, runtimeEnv } from "./env.ts";
@@ -270,6 +270,21 @@ describe("container input", () => {
     expect(rel.HostConfig.RestartPolicy.Name).toBe("no");
     expect(rel.Entrypoint).toEqual(["npx"]);
     expect(rel.Cmd).toEqual(["prisma", "migrate", "deploy"]);
+  });
+
+  it("the serving container answers to the app's name on its environment network; a release or a job never does", () => {
+    const named = { ...app, name: "api" };
+    const image = `sha256:${"a".repeat(64)}`;
+    const net = `dockify-env-${app.environmentId}`;
+    const serving = containerSpec(appContainerInput(named, { name: canonicalName(app.id), imageId: image, env: {}, deploymentId: "d1", role: "app" }), 8);
+    expect(serving.NetworkingConfig.EndpointsConfig[net]?.Aliases).toEqual([canonicalName(app.id), routeAlias("d1"), "api"]);
+    for (const role of ["release", "job"] as const) {
+      const one = containerSpec(appContainerInput(named, { name: "dk-one", imageId: image, env: {}, deploymentId: "d1", role, cmd: "true" }), 8);
+      expect(one.NetworkingConfig.EndpointsConfig[net]?.Aliases).toEqual([]);
+    }
+    // A row from before the AppName rule, with the reserved prefix, takes no alias it could answer a route with.
+    expect(appAliases({ id: app.id, name: "dk-route-x" }, "d1")).toEqual([canonicalName(app.id), routeAlias("d1")]);
+    expect(appAliases({ id: app.id }, "d1")).toEqual([canonicalName(app.id), routeAlias("d1")]);
   });
 
   it("a rollback keeps a hook key's current value, as it does a secret's", () => {

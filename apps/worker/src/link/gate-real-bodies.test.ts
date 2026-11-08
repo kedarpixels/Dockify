@@ -22,7 +22,7 @@ import { HELPER_NETWORK, serviceSpec, volumeNameFor } from "../data/services.ts"
 const APP = "0f0e0d0c-0000-4000-8000-0000000000aa";
 const ENV = "0f0e0d0c-0000-4000-8000-0000000000bb";
 const app: RunnableApp = {
-  id: APP, kind: "backend", environmentId: ENV, projectId: "p", port: 3000, startCommand: "node server.js", memoryLimitMb: null, cpuLimit: null, pidsLimit: null,
+  id: APP, name: "api", kind: "backend", environmentId: ENV, projectId: "p", port: 3000, startCommand: "node server.js", memoryLimitMb: null, cpuLimit: null, pidsLimit: null,
   capAdd: ["NET_ADMIN"], sysctls: { "net.ipv4.ip_unprivileged_port_start": "0" }, volumes: [{ id: "v", name: "dk-0f0e0d0c-data", mountPath: "/data" }],
 };
 const createUrl = (name: string) => `/v1.43/containers/create?name=${encodeURIComponent(name)}`;

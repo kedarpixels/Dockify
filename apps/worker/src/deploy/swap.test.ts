@@ -170,6 +170,15 @@ describe("swap", () => {
     expect(docker.find(res.containerId).input?.aliases).toEqual([canonicalName(APP_ID), routeAlias("d1")]);
   });
 
+  it("gives the new container its app name too, so siblings reach it as name:port, while the route stays on the route alias", async () => {
+    const { docker, deps, routeFile } = await setup(true);
+    const res = await swap(app({ name: "egress" }), "d1", IMG, {}, deps, new AbortController().signal);
+    expect(docker.find(res.containerId).input?.aliases).toEqual([canonicalName(APP_ID), routeAlias("d1"), "egress"]);
+    const route = await readFile(routeFile, "utf8");
+    expect(route).toContain(`"http://${routeAlias("d1")}.:3000"`);
+    expect(route).not.toContain("egress");
+  });
+
   it("keeps the route on the old container's alias while the new one is probed", async () => {
     const { routeFile, duringProbe, deps } = await setup(true, [canonicalName(APP_ID), routeAlias("d0")]);
     await swap(app(), "d1", IMG, {}, deps, new AbortController().signal);
