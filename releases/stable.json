@@ -1,8 +1,30 @@
 {
   "schema": 2,
   "channel": "stable",
-  "generatedAt": "2026-11-07T15:22:28.505Z",
+  "generatedAt": "2026-11-08T05:52:46.390Z",
   "releases": [
+    {
+      "version": "1.0.2",
+      "date": "2026-11-08",
+      "publishedAt": "2026-11-08T05:52:46.390Z",
+      "minFrom": "0.0.0",
+      "migration": "0028_project_icon_app",
+      "critical": false,
+      "notesUrl": "https://github.com/kedarpixels/Dockify/releases/tag/v1.0.2",
+      "notes": "## 1.0.2 (2026-11-08)\n\nProjects as folders of apps, two backup tiers, project icons you can pick, and apps that reach each other by name.\n\n### Added\n- Every app answers to its name on its environment's network, so a frontend can call `http://backend:3020`. Before, only managed services had their name; built and image apps answered only to their `dk-<id>` address. The display name never becomes an address. An app takes its name on its next deploy.\n- Two backup tiers per database: On this server (this server's disk) and Offsite (an S3 destination). Each has its own schedule, its own switch and its own number of backups to keep. When both are due together they share one dump, and each copy succeeds or fails on its own. Back up now writes to every tier that is on. The Backups tab and the Backups page show and edit both tiers.\n- A project's Icon section is a dropdown: Automatic, which names the app it picks, each frontend with a fetched favicon, and the uploaded image while there is one.\n\n### Changed\n- A project is a folder of apps, and environments are optional. A new project starts with production only, and a project with one environment shows no environment tags, switchers or pickers anywhere. With two or more, the project header has an environment switcher. Settings adds and removes environments, and never removes the last one.\n- Backups are kept by count: the newest N good automatic backups per tier. A failed run never counts, and the only good copy is never removed. Upgrading moves each database's schedule to the tier its destination names, with its cron, its switch and its old rule (\"keep 3 and N days\"). Clear the days in the schedule dialog to keep by count alone.\n- On Automatic, a project's icon is the favicon of its most public frontend: the production frontend on a custom domain first, so an admin panel on a test domain no longer wins over the public site.\n- Icon images fill their box with no background behind them, so transparent logos stay transparent.\n\n### Fixed\n- Each release made a Vercel project that builds the site from this repository try to deploy the releases branch and fail. That branch now tells Vercel not to deploy it.\n- A deployment deleted on Vercel stayed in Dockify's list of an app that follows Vercel. Dockify now asks Vercel about it and removes it once Vercel confirms it is gone.\n",
+      "images": {
+        "control": {
+          "amd64": "ghcr.io/kedarpixels/dockify-control@sha256:4fe84410776f2e1dbf50afc1e0b82da41d9f8375c51d536fff61a2a92a2cc5fe",
+          "arm64": "ghcr.io/kedarpixels/dockify-control@sha256:dd132fd2794839fc72ea6c6180976dde180a63fed1cb09100a2ecb4e79097e2f"
+        },
+        "web": {
+          "amd64": "ghcr.io/kedarpixels/dockify-web@sha256:e422fe556f35922c4996c9627a83cef8fd20ae6eeb82a194eee010bb296bdca9",
+          "arm64": "ghcr.io/kedarpixels/dockify-web@sha256:6d6b14920a257ed585a27f76cdff3dd55855c40e018963faebe659f9d870aae2"
+        }
+      },
+      "composeSha256": "7742d0c095f02b1d16c26806b9087931bc4fd7f4471f05d551b87c64062956f0",
+      "socketProxySha256": "19d55ffbf94bef940073b91432131ce3a87bce08401076fbd26b4a5967243e98"
+    },
     {
       "version": "1.0.1",
       "date": "2026-11-07",
