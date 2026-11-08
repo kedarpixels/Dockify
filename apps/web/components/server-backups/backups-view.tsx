@@ -388,7 +388,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
                     <Spacer />
                   </>
                 ) : null}
-                <Schedules schedules={d.schedules} runs={liveRuns} now={now} onEdit={(s) => void edit(s)} />
+                <Schedules schedules={d.schedules} runs={liveRuns} now={now} hasStorage={(d.config?.destinations.length ?? 0) > 0 || d.schedules.some((s) => s.tiers.offsite.available)} onEdit={(s) => void edit(s)} />
                 <Spacer />
               </>
             ) : null}

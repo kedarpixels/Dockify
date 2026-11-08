@@ -203,8 +203,15 @@ export class S3Store implements ObjectStore {
  */
 export const LOCAL_FLAG = "DOCKIFY_ALLOW_LOCAL_BACKUPS";
 export const localBackupsAllowed = (env: NodeJS.ProcessEnv = process.env): boolean => (env[LOCAL_FLAG] ?? "").trim() !== "0";
-export const LOCAL_WARNING =
-  "Stored on this server's own disk, not off the server: a failed disk or a lost server takes these backups with it. Add S3 compatible storage in Settings, Integrations to keep copies elsewhere.";
+const AT_RISK = "Stored on this server's own disk, not off the server: a failed disk or a lost server takes";
+/** A backup copy on this server's disk. */
+export const LOCAL_WARNING = `${AT_RISK} this backup with it.`;
+/**
+ * A database whose scheduled copies stay on this server, with the step that fixes it: turn on its
+ * Offsite tier when storage exists, else add storage first. A database with offsite copies needs none.
+ */
+export const localTierWarning = (hasStorage: boolean): string =>
+  `${AT_RISK} these backups with it. ${hasStorage ? "Turn on the Offsite tier of this database to keep copies elsewhere." : "Add S3 compatible storage in Settings, Integrations, then turn on the Offsite tier to keep copies elsewhere."}`;
 
 export class LocalStore implements ObjectStore {
   readonly kind = "local" as const;

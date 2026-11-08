@@ -73,10 +73,32 @@ describe("contract shapes", () => {
     const s = toSchedule(scheduleApp([tierRow("local", { cron: "0 */12 * * *", keep: 1 }), tierRow("offsite", { keep: 7 })]), sctx(), now);
     expect(B.BackupSchedule.parse(s)).toEqual(s);
     expect(s.tiers.local).toMatchObject({ tier: "local", enabled: true, cron: "0 */12 * * *", keep: 1, keepDays: null, destination: "local", storage: null, available: true, nextRunAt: "2026-11-07T00:00:00.000Z" });
-    expect(s.tiers.local.warning).toMatch(/not off the server/);
+    // Copies also go offsite, so the on-this-server tier carries no warning.
+    expect(s.tiers.local.warning).toBeUndefined();
+    expect(s.warning).toBeUndefined();
     expect(s.tiers.offsite).toMatchObject({ tier: "offsite", keep: 7, destination: "s3", storage: { id: "d1", bucket: "dk" }, available: true, nextRunAt: "2026-11-07T03:00:00.000Z" });
     // The flat fields an older client reads: offsite, on, the soonest next run of the two.
     expect(s).toMatchObject({ destination: "s3", cron: "0 3 * * *", enabled: true, nextRunAt: "2026-11-07T00:00:00.000Z", retentionDays: 7 });
+  });
+
+  it("warns about the disk only while no copy goes offsite, with the step that fits", () => {
+    const localOnly = [tierRow("local"), tierRow("offsite", { enabled: false })];
+    // Storage exists: turn on the Offsite tier.
+    const withStorage = toSchedule(scheduleApp(localOnly), sctx());
+    expect(B.BackupSchedule.parse(withStorage)).toEqual(withStorage);
+    expect(withStorage.tiers.local.warning).toMatch(/not off the server.*Turn on the Offsite tier of this database/);
+    expect(withStorage.tiers.local.warning).not.toMatch(/Add S3/);
+    expect(withStorage.warning).toBe(withStorage.tiers.local.warning);
+    // No storage yet: add it first.
+    const bare = toSchedule(scheduleApp(localOnly), sctx({ s3: [], defaultType: "local" }));
+    expect(bare.tiers.local.warning).toMatch(/Add S3 compatible storage in Settings, Integrations, then turn on the Offsite tier/);
+    // Offsite on but its storage was removed: still nothing leaves the server.
+    const orphaned = toSchedule(scheduleApp([tierRow("local"), tierRow("offsite")]), sctx({ s3: [], defaultType: "local" }));
+    expect(orphaned.tiers.local.warning).toMatch(/Add S3/);
+    // Offsite on with its storage: nothing to warn about, whatever the local tier does.
+    expect(toSchedule(scheduleApp([tierRow("local", { enabled: false }), tierRow("offsite")]), sctx()).tiers.local.warning).toBeUndefined();
+    // Offsite never carries it.
+    expect(withStorage.tiers.offsite.warning).toBeUndefined();
   });
 
   it("a tier with no row is off with the defaults, and offsite without storage cannot run", () => {

@@ -90,16 +90,20 @@ export function Schedules({
   schedules,
   runs,
   now,
+  hasStorage,
   onEdit,
 }: {
   schedules: BackupSchedule[];
   runs: BackupRun[];
   now: number;
+  /** Whether any S3 destination exists, which decides the step the note asks for. */
+  hasStorage: boolean;
   onEdit: (s: BackupSchedule) => void;
 }) {
   const { manage } = useCan();
   const on = schedules.filter((s) => s.enabled).length;
-  const local = schedules.filter((s) => s.enabled && !s.tiers.offsite.enabled);
+  // Copies made here while none go offsite: the offsite tier is off, or on with its storage gone.
+  const local = schedules.filter((s) => s.tiers.local.enabled && !(s.tiers.offsite.enabled && s.tiers.offsite.available));
   return (
     <section className="card sb-sched" aria-labelledby="sb-sched-title">
       <div className="card-hd">
@@ -111,15 +115,22 @@ export function Schedules({
             tone="warn"
             icon="alert"
             action={
-              manage ? (
+              manage && !hasStorage ? (
                 <Link href={STORAGE_HREF} className="btn btn-sm">
-                  Choose storage
+                  Add storage
                 </Link>
+              ) : manage && local.length === 1 ? (
+                <button type="button" className="btn btn-sm" onClick={() => onEdit(local[0]!)}>
+                  Turn on offsite
+                </button>
               ) : undefined
             }
           >
             <b>Not off-server.</b> {local.map((s) => dbLabel(s.database)).join(", ")} {local.length === 1 ? "keeps its" : "keep their"} backups on this
-            server only. If the disk fails, they go with it. Turn on the offsite tier to keep copies elsewhere.
+            server only. If the disk fails, they go with it.{" "}
+            {hasStorage
+              ? `Turn on the Offsite tier of ${local.length === 1 ? "this database" : "each"} with Edit to keep copies elsewhere.`
+              : "Add S3 compatible storage in Settings, Integrations, then turn on the Offsite tier to keep copies elsewhere."}
           </Callout>
         </div>
       ) : null}

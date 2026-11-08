@@ -4,7 +4,7 @@
  */
 import { iso, type backups as B } from "@dockify/contracts";
 import type { z } from "zod";
-import { bothTiers, DEFAULT_CRON, LOCAL_WARNING, nextRun, primaryTier, tierOfType, type TierRow } from "./shared.ts";
+import { bothTiers, DEFAULT_CRON, LOCAL_WARNING, localTierWarning, nextRun, primaryTier, tierOfType, type TierRow } from "./shared.ts";
 
 type BackupRun = z.infer<typeof B.BackupRun>;
 type BackupSchedule = z.infer<typeof B.BackupSchedule>;
@@ -171,7 +171,6 @@ export function toTier(row: TierRow, c: ScheduleContext, now = new Date()): Back
     keep: row.keep,
     keepDays: row.keepDays,
     destination: offsite ? "s3" : "local",
-    ...(offsite ? {} : { warning: LOCAL_WARNING }),
     storage: storageRef(dest),
     available: offsite ? dest !== null : c.localAllowed,
     nextRunAt: tierNext(row, now),
@@ -186,8 +185,10 @@ export function toTier(row: TierRow, c: ScheduleContext, now = new Date()): Back
  */
 export function toSchedule(app: ScheduleAppIn, c: ScheduleContext, now = new Date()): BackupSchedule {
   const rows = bothTiers(app.backupSchedules);
-  const local = toTier(rows.local, c, now);
   const offsite = toTier(rows.offsite, c, now);
+  // The disk warning only where it applies: while no copy of this database goes offsite.
+  const stuck = !(offsite.enabled && offsite.available);
+  const local = { ...toTier(rows.local, c, now), ...(stuck ? { warning: localTierWarning(c.s3.length > 0) } : {}) };
   const main = primaryTier(rows, c.defaultType) === "offsite" ? offsite : local;
   const nexts = [local.nextRunAt, offsite.nextRunAt].filter((x): x is string => !!x).sort();
   const lasts = [local.lastRunAt, offsite.lastRunAt].filter((x): x is string => !!x).sort();
@@ -199,7 +200,7 @@ export function toSchedule(app: ScheduleAppIn, c: ScheduleContext, now = new Dat
     timezone: main.timezone,
     retentionDays: approxRetentionDays(rows[main.tier], now),
     destination: main.destination,
-    ...(main.warning ? { warning: main.warning } : {}),
+    ...(local.warning ? { warning: local.warning } : {}),
     storage: main.storage,
     encryption: { enabled: true, fingerprint: c.fingerprint },
     enabled: local.enabled || offsite.enabled,

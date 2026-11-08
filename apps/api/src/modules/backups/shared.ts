@@ -13,7 +13,7 @@ export {
 } from "../../../../worker/src/data/requests.ts";
 export { resolveStore, DataError } from "../../../../worker/src/data/context.ts";
 export { DecryptStream, ALGORITHM, backupKeyFingerprint, parseBackupKey } from "../../../../worker/src/data/envelope.ts";
-export { localBackupsAllowed, LOCAL_FLAG, LOCAL_WARNING } from "../../../../worker/src/data/store.ts";
+export { localBackupsAllowed, LOCAL_FLAG, LOCAL_WARNING, localTierWarning } from "../../../../worker/src/data/store.ts";
 export { assertPublicHost as publicOnlyGuard } from "@dockify/net-guard";
 export {
   dataPathFor, SERVICE_IMAGES, SERVICE_PORTS, STORAGE_UNAVAILABLE, volumeNameFor, type ServiceKind,
