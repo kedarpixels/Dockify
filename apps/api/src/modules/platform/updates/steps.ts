@@ -6,6 +6,7 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Dump, Images, Preflight, Service, UpdateSteps } from "./runner.ts";
 import { archOf, bare, fetchVerifiedFeed, imagesFor, refuseTarget, type Channel, type FeedRelease, type VerifiedFeed } from "./release.ts";
+import { runningVersion } from "@dockify/contracts";
 
 export interface StepsConfig {
   /**
@@ -36,9 +37,9 @@ export function loadStepsConfig(env: NodeJS.ProcessEnv, publicKey: string | null
     feedUrl: feed,
     publicKey: publicKey ?? "",
     minFreeBytes: Number(env.DOCKIFY_UPDATER_MIN_FREE_BYTES ?? 2 * 1024 ** 3) || 2 * 1024 ** 3,
-    // The image's own, which compose never sets: .env's DOCKIFY_VERSION is the version last installed by
-    // hand, and an update does not rewrite it, so it says nothing about what runs. Older images have only that.
-    currentVersion: env.DOCKIFY_IMAGE_VERSION?.trim() || env.DOCKIFY_VERSION?.trim() || "0.0.0-dev",
+    // The image's own (contracts runningVersion): .env's DOCKIFY_VERSION is the version last installed
+    // by hand, and an update does not rewrite it, so it says nothing about what runs.
+    currentVersion: runningVersion(env),
   };
 }
 

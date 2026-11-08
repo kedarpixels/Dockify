@@ -8,7 +8,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { link as L } from "@dockify/contracts";
+import { link as L, runningVersion } from "@dockify/contracts";
 import { createAgentApi, sweepBuildRoot } from "./api.ts";
 import { createDockerGate } from "./docker-gate.ts";
 import { pinOf, runLink } from "./link.ts";
@@ -88,7 +88,7 @@ const onStream = createAgentApi({
   maxContextBytes: Number(opt("DOCKIFY_MAX_REPO_BYTES")) || L.LINK_LIMITS.contextBytesDefault,
   build: { docker, buildkitAddr: opt("BUILDKIT_HOST") ?? "unix:///run/buildkit/buildkitd.sock" },
   facts: {
-    version: opt("DOCKIFY_VERSION") ?? "0.0.0-dev",
+    version: runningVersion(),
     hostname: opt("DOCKIFY_HOST_NAME") ?? "",
     publicIpv4: opt("DOCKIFY_SERVER_IPV4"),
     publicIpv6: opt("DOCKIFY_SERVER_IPV6"),

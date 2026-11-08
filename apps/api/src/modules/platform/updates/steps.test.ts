@@ -6,6 +6,8 @@ import path from "node:path";
 import type { VerifiedFeed } from "./release.ts";
 import { release } from "./test-fixtures.ts";
 import { run, RESTORE_SCRIPT, checkComposeMatchesRelease, checkInstallTree, dockerSteps, dumpPath, installPaths, loadStepsConfig, parseReleaseEnv, renderReleaseEnv, sha256Hex, type ControlProbe, type GuardFs, type StepsConfig } from "./steps.ts";
+import { updateEnv } from "./state.ts";
+import { loadPlatformEnv } from "../shared.ts";
 
 const DIR = "/opt/dockify";
 const P = installPaths(DIR);
@@ -156,6 +158,16 @@ describe("a forged row cannot pin an older signed release", () => {
   it("the version it measures from is the image's own, which compose does not set", () => {
     expect(loadStepsConfig({ DOCKIFY_VERSION: "1.0.0", DOCKIFY_IMAGE_VERSION: "2.0.0" }, null).currentVersion).toBe("2.0.0");
     expect(loadStepsConfig({ DOCKIFY_VERSION: "1.0.0" }, null).currentVersion).toBe("1.0.0");
+  });
+
+  it("after an in-app update every reader says the new version, though .env still names the old one", () => {
+    // Installed as 1.0.1 by hand, then updated in the app to 1.0.3: the updater rewrote only
+    // release.env, so .env (and compose files that pass it on) still say 1.0.1.
+    const env = { DOCKIFY_VERSION: "1.0.1", DOCKIFY_IMAGE_VERSION: "1.0.3", DOCKIFY_RELEASE_FEED: "https://feed.example/releases" };
+    expect(updateEnv(env).version).toBe("1.0.3");
+    expect(loadStepsConfig(env, null).currentVersion).toBe("1.0.3");
+    expect(loadPlatformEnv(env).version).toBe("1.0.3");
+    expect(updateEnv({}).version).toBe("0.0.0-dev");
   });
 });
 

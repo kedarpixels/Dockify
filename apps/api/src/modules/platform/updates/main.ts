@@ -12,9 +12,9 @@
 import { hostname } from "node:os";
 import { createDb, type Db, type ReleaseUpdate } from "@dockify/db";
 import { decideAuto } from "./policy.ts";
-import { chooseRelease, trustedKey } from "./release.ts";
+import { chooseRelease } from "./release.ts";
 import type { RunResult } from "./runner.ts";
-import { buildStatus, checkFeed, readPolicy, ROLLBACK_DAYS, type UpdateEnv } from "./state.ts";
+import { buildStatus, checkFeed, readPolicy, ROLLBACK_DAYS, updateEnv } from "./state.ts";
 import { dockerSteps, loadStepsConfig, parseReleaseEnv, pruneDumps, refreshUpdater, installPaths, run, type ControlProbe, type StepsConfig } from "./steps.ts";
 import { beginApply, beginRollback, claimLaneJob, claimUpdateJob, processJob, schedulerTick, settleOrphans, settleSideEffects, UpdateRefused } from "./engine.ts";
 import { runDomainSwitch } from "./domain-switch.ts";
@@ -26,9 +26,6 @@ const TICK_MS = 60_000;
 const holder = `updater:${hostname()}:${process.pid}`;
 const log = (l: string) => console.log(`dockify-updater: ${l}`);
 
-export function updateEnv(env: NodeJS.ProcessEnv = process.env): UpdateEnv {
-  return { version: env.DOCKIFY_VERSION?.trim() || "0.0.0-dev", feedBase: env.DOCKIFY_RELEASE_FEED?.trim() || null, publicKey: trustedKey(env) };
-}
 
 /** The steps' reads of the control-plane database. */
 export function prismaProbe(db: Db): ControlProbe {

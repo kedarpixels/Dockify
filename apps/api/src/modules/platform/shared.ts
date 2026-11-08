@@ -1,5 +1,6 @@
 import type { FastifyRequest } from "fastify";
 import { enqueueTx, type Prisma, type Tx } from "@dockify/db";
+import { runningVersion } from "@dockify/contracts";
 
 /** Every platform route except the anonymous ones has an actor; the policy hook guarantees it. */
 export { actorFields as actorAudit, requireActor } from "../../actor.ts";
@@ -47,7 +48,8 @@ export function loadPlatformEnv(env: NodeJS.ProcessEnv = process.env): PlatformE
   };
   const cap = Number(env.DOCKIFY_NET_CAPACITY_MBPS ?? 0);
   return {
-    version: s("DOCKIFY_VERSION") ?? "0.0.0-dev",
+    // The image's own version (contracts runningVersion), never the .env value an update leaves stale.
+    version: runningVersion(env),
     releaseFeedUrl: s("DOCKIFY_RELEASE_FEED"),
     releasePublicKey: s("DOCKIFY_RELEASE_PUBKEY"),
     hostOs: s("DOCKIFY_HOST_OS"),

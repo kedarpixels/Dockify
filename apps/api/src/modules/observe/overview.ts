@@ -18,6 +18,7 @@ import { dayIn, lastDays, trendDays, trendStart, trendZone } from "./logic.ts";
 import { hostSnapshot } from "./metrics.ts";
 import { projectLimit } from "./scope.ts";
 import { updateNotices } from "../platform/updates/notices.ts";
+import { runningVersion } from "@dockify/contracts";
 
 const RECENT = 10;
 const DEPLOYMENT_ROW = { app: { select: { id: true, name: true, displayName: true, kind: true, image: true, gitRepository: true, environment: { select: { name: true, project: { select: { slug: true } } } } } } } as const;
@@ -77,7 +78,7 @@ export async function overview(db: Db, actor: Actor | null, now = Date.now(), op
     viewerRow,
     zoneOf,
     // The bell's update notices; no dependency on the rows above, so it rides the same batch.
-    updateNotices(db, process.env.DOCKIFY_VERSION?.trim() || "0.0.0-dev", now).catch(() => []),
+    updateNotices(db, runningVersion(), now).catch(() => []),
     // Every active project, apps or not: a new project starts empty and must still be listed.
     db.project.findMany({ where: { ...projectWhere, archivedAt: null }, select: { slug: true, name: true }, orderBy: { slug: "asc" }, take: 500 }),
   ]);

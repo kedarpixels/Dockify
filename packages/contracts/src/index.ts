@@ -19,6 +19,7 @@ export * from "./webhooks.ts";
 export * from "./public-host.ts";
 export * from "./registry-host.ts";
 export * from "./test-domain.ts";
+export * from "./version.ts";
 export { endpoints, endpointIds, removedEndpoints } from "./endpoints.ts";
 export type {
   BodyInputOf, BodyOf, EndpointDef, EndpointId, Endpoints, Method, ParamsOf, QueryOf, ResponseKind, ResponseOf,

@@ -3,9 +3,9 @@
  * the verified feed, the journal rows and the status the dashboard reads.
  */
 import type { Db, Prisma, ReleaseUpdate, Tx } from "@dockify/db";
-import { isTimeZone } from "@dockify/contracts";
+import { isTimeZone, runningVersion } from "@dockify/contracts";
 import { decideAuto, DEFAULT_WINDOW, minutesOf, nextCheckAt, type UpdatePolicy, type UpdateWindow } from "./policy.ts";
-import { bare, chooseRelease, compareVersions, FeedRelease, fetchVerifiedFeed, pendingSecurity, ReleaseFeed, securityInfo, type Channel, type Fetcher, type Images, type VerifiedFeed } from "./release.ts";
+import { bare, chooseRelease, trustedKey, compareVersions, FeedRelease, fetchVerifiedFeed, pendingSecurity, ReleaseFeed, securityInfo, type Channel, type Fetcher, type Images, type VerifiedFeed } from "./release.ts";
 import { SignatureError } from "./minisign.ts";
 import { plannedSteps, type Journal, type StepId, type StepRow } from "./runner.ts";
 
@@ -16,6 +16,15 @@ export interface UpdateEnv {
   version: string;
   feedBase: string | null;
   publicKey: string | null;
+}
+
+/**
+ * The updater's view of the update settings. Its version is its image's own (runningVersion): the
+ * updater rewrites only release.env, so .env's DOCKIFY_VERSION still names the version before the
+ * last in-app update, and reading it would offer that update again or misjudge minFrom.
+ */
+export function updateEnv(env: NodeJS.ProcessEnv = process.env): UpdateEnv {
+  return { version: runningVersion(env), feedBase: env.DOCKIFY_RELEASE_FEED?.trim() || null, publicKey: trustedKey(env) };
 }
 
 type Client = Db | Tx;

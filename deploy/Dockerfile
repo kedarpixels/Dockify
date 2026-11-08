@@ -159,7 +159,9 @@ RUN NEXT_TELEMETRY_DISABLED=1 pnpm build
 
 # ---------------------------------------------------------------- web: runtime
 FROM ${NODE_IMAGE} AS web
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+ARG DOCKIFY_VERSION=0.0.0-dev
+# The release this image was built as, which Settings shows: the same tag builds the control image.
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 DOCKIFY_IMAGE_VERSION=${DOCKIFY_VERSION}
 WORKDIR /app
 COPY --from=web-build /web/.next/standalone ./
 COPY --from=web-build /web/.next/static ./.next/static

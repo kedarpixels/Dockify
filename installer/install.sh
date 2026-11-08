@@ -955,6 +955,8 @@ upgrade() {
       # What runs is in the database, written by the updater and by this script; .env only says what was last
       # installed by hand. Before anything changes, and before the feed's choice is taken as the target.
       RUNNING="$(dockify exec -T postgres psql -U dockify -d dockify -tAc 'SELECT "releaseVersion" FROM instance WHERE id = 1' 2>/dev/null | tr -d '[:space:]' || true)"
+      # Else the api image's own version; .env's goes stale after an in-app update, so it comes last.
+      [ -n "$RUNNING" ] || RUNNING="$(dockify exec -T api printenv DOCKIFY_IMAGE_VERSION 2>/dev/null | tr -d '[:space:]' || true)"
       [ -n "$RUNNING" ] || RUNNING="$(envget DOCKIFY_VERSION)"
       WHY="$(upgrade_refusal "$RUNNING" "$VERSION" "${REL_MIN_FROM:-}")"
       [ -z "$WHY" ] || die "$WHY Nothing was changed."
