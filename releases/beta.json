@@ -1,8 +1,30 @@
 {
   "schema": 2,
   "channel": "beta",
-  "generatedAt": "2026-11-08T05:52:49.278Z",
+  "generatedAt": "2026-11-08T06:59:42.929Z",
   "releases": [
+    {
+      "version": "1.0.3",
+      "date": "2026-11-08",
+      "publishedAt": "2026-11-08T06:59:42.929Z",
+      "minFrom": "0.0.0",
+      "migration": "0029_project_icon_folder",
+      "critical": false,
+      "notesUrl": "https://github.com/kedarpixels/Dockify/releases/tag/v1.0.3",
+      "notes": "## 1.0.3 (2026-11-08)\n\nProject icons start as the folder, the version is right after an in-app update, and the local backup warning says what to do.\n\n### Changed\n- A project's icon is now the folder unless you choose otherwise. The Icon dropdown offers Folder (the default), each frontend with a fetched favicon, and the uploaded image while there is one. Automatic is gone: a project on Automatic shows the folder after the update, and a project set to an app's favicon or to an upload keeps it. If the chosen app is deleted or loses its favicon, the project shows the folder. Apps still fetch their favicons as before.\n\n### Fixed\n- After an in-app update, the version some places read stayed at the version first installed, because the updater rewrites only `release/release.env` and `.env` kept the old `DOCKIFY_VERSION`. Dockify now reads the version baked into the image it runs, so the agent, the update checks, the update notices and Settings all name the running version. The Settings menu now shows the version too; it showed none before.\n- The \"On this server\" backup tier said to add S3 compatible storage even when storage was set up and the Offsite tier was on. The warning now shows only while a database's copies stay on this server, and says to turn on the Offsite tier when storage exists, or to add storage first when it does not.\n",
+      "images": {
+        "control": {
+          "amd64": "ghcr.io/kedarpixels/dockify-control@sha256:cdd1f950e91e5c8b56247b51ba4019f3d2534a6f3782fb484b1c6cb7c267980d",
+          "arm64": "ghcr.io/kedarpixels/dockify-control@sha256:586efa6fca843021d0e5a31fff7f5d88af0efc575824778f51a4b9ebcf2ac239"
+        },
+        "web": {
+          "amd64": "ghcr.io/kedarpixels/dockify-web@sha256:16e760cc954ece3303274f560a06d9a8bba7f5d6d1cca6975578993f2aefad17",
+          "arm64": "ghcr.io/kedarpixels/dockify-web@sha256:e40187c97916d7decaed0280881add2f347d2802ef259bb40d1907befa51bddc"
+        }
+      },
+      "composeSha256": "7742d0c095f02b1d16c26806b9087931bc4fd7f4471f05d551b87c64062956f0",
+      "socketProxySha256": "19d55ffbf94bef940073b91432131ce3a87bce08401076fbd26b4a5967243e98"
+    },
     {
       "version": "1.0.2",
       "date": "2026-11-08",
