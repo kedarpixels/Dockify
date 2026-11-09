@@ -21,7 +21,7 @@ On a fresh server, as root or a user with sudo:
 curl -fsSL https://dockify.sh/install.sh | sh
 ```
 
-Dockify 1.0 is released. The command installs the newest signed release: it checks the feed signature against the pinned key, then pulls the images by digest.
+The command installs the latest signed release (see [Releases](https://github.com/kedarpixels/Dockify/releases)): it checks the feed signature against the pinned key, then pulls the images by digest.
 `--dry-run` shows what it would do: `curl -fsSL https://dockify.sh/install.sh | sh -s -- --dry-run`.
 Every flag is in [the install docs](https://dockify.sh/docs/install).
 
