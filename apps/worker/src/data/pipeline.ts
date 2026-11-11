@@ -26,7 +26,7 @@ import type { Backup, Prisma } from "@dockify/db";
 import { reason as message } from "@dockify/engine";
 import { isPermanentError } from "../errors.ts";
 import type { DataDeps } from "./context.ts";
-import { DataError } from "./context.ts";
+import { DataError, DeadlineError } from "./context.ts";
 import type { ExecHandle } from "./docker-port.ts";
 import {
   pgDumpCommand, psqlCommand, redisDumpCommand, redisShutdownCommand, redisStageCommand, redisSwapCommand, restoreCheckCommand,
@@ -51,10 +51,17 @@ const SERVICE_KINDS_SIBLINGS = ["frontend", "backend", "bot"] as const;
 
 export class HashCount extends Transform {
   #h = createHash("sha256");
+  #max: number;
   bytes = 0;
+  /** `max`: fails the stream past this many bytes, before the byte over it is passed on. */
+  constructor(max = Infinity) {
+    super();
+    this.#max = max;
+  }
   override _transform(chunk: Buffer, _e: BufferEncoding, cb: TransformCallback): void {
-    this.#h.update(chunk);
     this.bytes += chunk.length;
+    if (this.bytes > this.#max) return cb(new DataError(`The stored backup is larger than the ${this.#max} bytes recorded for it`, true));
+    this.#h.update(chunk);
     cb(null, chunk);
   }
   digest(): string {
@@ -112,6 +119,12 @@ export async function target(deps: DataDeps, appId: string): Promise<ServiceTarg
 }
 
 const exec = (deps: DataDeps, id: string, c: Command, stdin = false) => deps.docker.exec(id, { cmd: c.cmd, env: c.env, stdin });
+/** An exec whose output nobody reads: discarded, so the process is never held back on it. */
+const execQuiet = async (deps: DataDeps, id: string, c: Command, stdin = false) => {
+  const h = await exec(deps, id, c, stdin);
+  h.stdout.resume();
+  return h;
+};
 
 // ---------------------------------------------------------------------------------- backup
 
@@ -324,8 +337,11 @@ export async function fetchVerified(deps: DataDeps, backup: Backup & { objectKey
   const tmp = join(deps.tmpDir, `restore-${backup.id}-${Date.now()}.dkbk`);
   try {
     const dest = await deps.storeFor(backup.destinationId);
-    const counter = new HashCount();
-    await pipeline(await dest.store.get(backup.objectKey), counter, createWriteStream(tmp, { mode: 0o600 }));
+    // The store is not trusted with the length: a body that never ends would fill the disk before
+    // the checksum is ever compared.
+    const max = backup.sizeBytes == null ? undefined : Number(backup.sizeBytes);
+    const counter = new HashCount(max);
+    await pipeline(await dest.store.get(backup.objectKey, max), counter, createWriteStream(tmp, { mode: 0o600 }));
     if (backup.sha256 && counter.digest() !== backup.sha256) throw new DataError("The stored backup does not match its checksum", true);
     const keys = await deps.backupKeys();
     const sink = backup.kind === "volume" ? new TarGuard() : devNull();
@@ -351,26 +367,28 @@ async function plain(deps: DataDeps, tmp: string, backupId: string): Promise<Rea
  * pipeline destroys psql's stdin without the COMMIT line, and the transaction rolls back.
  */
 export async function replayPostgres(deps: DataDeps, tmp: string, backupId: string, containerId: string, creds: ServiceCredentials, replace: boolean): Promise<void> {
-  const h = await exec(deps, containerId, psqlCommand(creds), true);
+  const h = await execQuiet(deps, containerId, psqlCommand(creds), true);
   if (!h.stdin) throw new DataError("psql was started without stdin");
   try {
     await pipeline(await plain(deps, tmp, backupId), new RestoreFramer({ replace }), h.stdin);
   } catch (e) {
     await h.kill().catch(() => {});
-    await h.done.catch(() => {});
+    const late = await h.done.then(() => null, (d: unknown) => d);
+    // Past the job's limit the cut stream is the symptom; the limit is the reason.
+    if (late instanceof DeadlineError) throw late;
     throw new DataError(`The restore was rolled back: ${message(e)}`);
   }
   checkExit("psql", await h.done);
 }
 
 async function replayRedis(deps: DataDeps, tmp: string, backupId: string, t: ServiceTarget): Promise<void> {
-  const stage = await exec(deps, t.containerId, redisStageCommand(), true);
+  const stage = await execQuiet(deps, t.containerId, redisStageCommand(), true);
   if (!stage.stdin) throw new DataError("the staging exec was started without stdin");
   await pipeline(await plain(deps, tmp, backupId), stage.stdin);
   checkExit("staging the snapshot", await stage.done);
-  const swap = await exec(deps, t.containerId, redisSwapCommand(t.creds));
+  const swap = await execQuiet(deps, t.containerId, redisSwapCommand(t.creds));
   checkExit("swapping the snapshot in", await swap.done);
-  await exec(deps, t.containerId, redisShutdownCommand(t.creds)).then((h) => h.done).catch(() => {});
+  await execQuiet(deps, t.containerId, redisShutdownCommand(t.creds)).then((h) => h.done).catch(() => {});
   // Stop waits for the exit the shutdown began, or finds it over; a restart policy may have started it again.
   await deps.docker.stop(t.containerId, 10).catch(() => {});
   try {

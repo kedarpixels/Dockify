@@ -3,9 +3,11 @@
  * /favicon.ico. Every request goes through the net-guard client (https, public addresses only, no
  * redirect followed by the client), and every URL, the page, each redirect and each icon, must sit
  * on one of the app's attached hostnames. Bytes are accepted only when the magic number says png,
- * ico, webp or jpg; SVG is never taken.
+ * ico, webp or jpg, or as an SVG, which is kept only as the document sanitizeSvg rebuilds from it
+ * (contracts' checkFavicon). A candidate that answers an error, or a web page where the image should
+ * be, is no favicon: the next one is tried, and the reason names what each one really answered.
  */
-import { checkFavicon, FAVICON_MAX_BYTES, type SniffedImage } from "@dockify/contracts";
+import { checkFavicon, sniffImage, type SniffedLogo } from "@dockify/contracts";
 import { getFollowing, OutboundError, type HttpClient, type HttpResponse } from "@dockify/net-guard";
 
 const PAGE_MAX_BYTES = 512 * 1024;
@@ -20,7 +22,8 @@ const SCAN_MAX = 64 * 1024;
 const MAX_TAG_BYTES = 4096;
 
 export type FaviconResult =
-  | { ok: true; url: string; bytes: Buffer; image: SniffedImage }
+  /** `bytes` are the ones to store: the image as it arrived, or for an SVG the rebuilt document. */
+  | { ok: true; url: string; bytes: Buffer; image: SniffedLogo }
   | { ok: false; reason: string };
 
 export interface IconLink {
@@ -53,13 +56,15 @@ export function parseIconLinks(html: string): IconLink[] {
 const isSvg = (l: IconLink) => l.type === "image/svg+xml" || /\.svgz?(?:[?#]|$)/i.test(l.href);
 
 /**
- * Raster candidates, best first: the smallest declared size of 64px or more (crisp at 40px on a
- * 2x screen), then larger ones, then smaller or unsized ones. SVG links are dropped.
+ * Candidates, best first: rasters by the smallest declared size of 64px or more (crisp at 40px on
+ * a 2x screen), then larger ones, then smaller or unsized ones, then SVG links. A raster wins while
+ * the site has one because an email and a pull request comment can only show a raster; a site that
+ * declares nothing but an SVG still gets its icon in the dashboard.
  */
 export function rankIconLinks(links: IconLink[]): IconLink[] {
   const size = (l: IconLink) => l.sizes || (l.rel === "apple-touch-icon" ? 180 : 32);
-  const score = (l: IconLink) => (size(l) >= 64 ? size(l) : 10_000 - size(l));
-  return links.filter((l) => !isSvg(l) && !l.href.startsWith("data:")).sort((a, b) => score(a) - score(b));
+  const score = (l: IconLink) => (isSvg(l) ? 20_000 : size(l) >= 64 ? size(l) : 10_000 - size(l));
+  return links.filter((l) => !l.href.startsWith("data:")).sort((a, b) => score(a) - score(b));
 }
 
 /** True for an https URL on one of the allowed hosts, on the default port. */
@@ -85,17 +90,44 @@ function get(http: HttpClient, url: string, hosts: ReadonlySet<string>, maxBytes
   });
 }
 
-const why = (e: unknown) =>
-  e instanceof OutboundError ? (e.code === "TOO_LARGE" ? "The favicon is larger than 64 KB" : e.message) : e instanceof Error ? e.message : String(e);
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Why a request for `what` (a path, or "The home page") threw. A size or redirect refusal is about
+ * that one URL, so it names it; anything else (DNS, a private address, a timeout) is about the host
+ * and reads the same for every URL on it.
+ */
+function thrown(what: string, e: unknown): string {
+  if (e instanceof OutboundError && e.code === "TOO_LARGE") return `${what} is too large to read`;
+  if (e instanceof OutboundError && e.code === "REDIRECT_REFUSED") return `${what}: ${e.message}`;
+  return message(e);
+}
+
+/**
+ * True when the answer is a web page, not an image: a site with no favicon often answers its
+ * not-found or sign-in page with a 200. Read from the body first; the header only decides for
+ * bytes that are no raster, so a real icon behind a wrong header is still taken.
+ */
+function isPage(res: HttpResponse): boolean {
+  const head = res.body.subarray(0, 512).toString("utf8").replace(/^\uFEFF/, "");
+  if (/^\s*(?:<!doctype\s+html|<html[\s>])/i.test(head)) return true;
+  const type = String(res.headers["content-type"] ?? "");
+  return /^\s*(?:text\/html|application\/xhtml\+xml)\b/i.test(type) && !sniffImage(res.body);
+}
 
 async function tryIcon(http: HttpClient, url: string, hosts: ReadonlySet<string>): Promise<FaviconResult> {
+  const path = new URL(url).pathname;
   try {
-    const got = await get(http, url, hosts, FAVICON_MAX_BYTES, "image/png,image/x-icon,image/webp,image/jpeg;q=0.9,*/*;q=0.1");
-    if (got.res.status !== 200) return { ok: false, reason: `${new URL(got.url).pathname} answered ${got.res.status}` };
+    // Read up to a page's worth, not a favicon's: a missing icon is often answered with a whole
+    // page, and its status and body must be seen to say so. checkFavicon holds the 64 KB limit.
+    const got = await get(http, url, hosts, PAGE_MAX_BYTES, "image/png,image/x-icon,image/webp,image/svg+xml,image/jpeg;q=0.9,*/*;q=0.1");
+    const what = got.url === url ? path : `${path} (redirected to ${new URL(got.url).pathname})`;
+    if (got.res.status !== 200) return { ok: false, reason: `${what} answered ${got.res.status}` };
+    if (isPage(got.res)) return { ok: false, reason: `${what} is a web page, not an image` };
     const check = checkFavicon(got.res.body);
-    return check.ok ? { ok: true, url: got.url, bytes: got.res.body, image: check.image } : { ok: false, reason: check.reason };
+    return check.ok ? { ok: true, url: got.url, bytes: Buffer.from(check.bytes), image: check.image } : { ok: false, reason: `${what}: ${check.reason}` };
   } catch (e) {
-    return { ok: false, reason: why(e) };
+    return { ok: false, reason: thrown(path, e) };
   }
 }
 
@@ -150,15 +182,17 @@ export async function findFavicon(http: HttpClient, hosts: string[]): Promise<Fa
       first = `The home page answered ${page.res.status}`;
     }
   } catch (e) {
-    first = why(e);
+    first = thrown("The home page", e);
   }
 
   const fallback = `https://${primary}/favicon.ico`;
-  let last: string | null = null;
+  // Every candidate's own reason, in the order tried, after the home page's when it failed: the
+  // last one alone (always /favicon.ico) hid why the icon the page declares was not taken.
+  const reasons = first ? [first] : [];
   for (const url of [...new Set([...candidates, fallback])]) {
     const r = await tryIcon(http, url, allow);
     if (r.ok) return r;
-    last = r.reason;
+    reasons.push(r.reason);
   }
-  return { ok: false, reason: last ?? first ?? "No favicon found" };
+  return { ok: false, reason: [...new Set(reasons)].join(". ") };
 }

@@ -249,6 +249,54 @@ describe.skipIf(!haveBash)("the container firewall", () => {
     expect(un).toContain('del "$t" INPUT -i dk-deploy -p tcp --dport 80 -j ACCEPT');
     expect(un).toContain('del "$t" INPUT -i dk-deploy -p tcp --dport 443 -j ACCEPT');
   });
+
+  /** The rendered script over a fake iptables that keeps its chains and rules in a file, as a boot before Docker has them. */
+  function beforeDocker() {
+    const root = scratch();
+    const bin = path.join(root, "bin");
+    mkdirSync(bin);
+    const state = posixPath(path.join(root, "state"));
+    writeFileSync(path.join(root, "state"), "");
+    // Shell builtins only: each rule is two runs of this, and a fork per line is slow on Windows.
+    const fake = `#!/bin/sh\nt="\${0##*/}"; op="$1"; shift\nhas() { while IFS= read -r l; do [ "$l" = "$1" ] && return 0; done < '${state}'; return 1; }\ncase "$op" in\n  -N) has "$t chain $1" && exit 1; echo "$t chain $1" >> '${state}' ;;\n  -C) has "$t rule $*" ;;\n  -I) [ "$1" = INPUT ] || has "$t chain $1" || exit 1; echo "$t rule $*" >> '${state}' ;;\n  *) exit 2 ;;\nesac\n`;
+    for (const t of ["iptables", "ip6tables"]) writeFileSync(path.join(bin, t), fake, { mode: 0o755 });
+    const script = posixPath(path.join(root, "dockify-firewall"));
+    expect(lib(`render_firewall > '${script}'`).code).toBe(0);
+    const go = () => spawnSync(BASH, ["-c", `PATH='${posixPath(bin)}':"$PATH" sh '${script}'`], { encoding: "utf8" }).status;
+    return { go, lines: () => readFileSync(path.join(root, "state"), "utf8").trim().split("\n") };
+  }
+
+  it("applies every rule on a boot where Docker has made no chain yet, and a second run adds nothing", () => {
+    const b = beforeDocker();
+    expect(b.go()).toBe(0);
+    const first = b.lines();
+    expect(first).toContain("iptables chain DOCKER-USER");
+    expect(first).toContain("ip6tables chain DOCKER-USER");
+    for (const r of rules()) expect(first).toContain(r.replace(/^ins (\S+) /, "$1 rule "));
+    expect(first.filter((l) => / rule /.test(l))).toHaveLength(rules().length);
+    // After Docker's start: the chains and the rules are there, and nothing is inserted twice.
+    expect(b.go()).toBe(0);
+    expect(b.lines()).toEqual(first);
+  }, 60_000);
+
+  it("runs before Docker starts its containers as well as after, on every Docker start", () => {
+    const unit = (name: string) => new RegExp(`cat > /etc/systemd/system/${name} <<'EOF'\n([\\s\\S]*?)\nEOF\n`).exec(src())![1]!;
+    const early = unit("dockify-firewall-early.service");
+    expect(early).toMatch(/^Before=docker\.service$/m);
+    expect(early).not.toMatch(/^After=.*docker\.service/m);
+    expect(early).toMatch(/^ExecStart=\/usr\/local\/sbin\/dockify-firewall$/m);
+    expect(early).toMatch(/^WantedBy=docker\.service$/m);
+    // A unit that stayed active would not run again when Docker restarts.
+    expect(early).not.toContain("RemainAfterExit");
+    // Left behind by an uninstall that removed the script, it is skipped and not a failed unit.
+    expect(early).toMatch(/^ConditionPathExists=\/usr\/local\/sbin\/dockify-firewall$/m);
+    const late = unit("dockify-firewall.service");
+    expect(late).toMatch(/^After=docker\.service$/m);
+    expect(late).toMatch(/^PartOf=docker\.service$/m);
+    const fn = src().slice(src().indexOf("install_firewall() {"), src().indexOf("# Docker's default pools"));
+    expect(fn).toContain("systemctl enable dockify-firewall-early.service");
+    expect(fn.indexOf("systemctl daemon-reload")).toBeLessThan(fn.indexOf("systemctl enable dockify-firewall-early.service"));
+  });
 });
 
 describe.skipIf(!haveBash)("starting the stack", () => {

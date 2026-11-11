@@ -1,13 +1,15 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { Tone } from "@/lib/derive";
+import { buildShell, type Tone } from "@/lib/derive";
+import { useLatestOverview } from "@/lib/live-overview";
 import { SIDEBAR_KEY } from "@/lib/theme";
 import type { AppKind } from "@/lib/types";
 import { EnvScopeProvider } from "@/components/ui/env-scope";
 import { CommandMenu } from "./command-menu";
 import { focusMain } from "./focus";
+import { iconsStale, isNewer, type ShellFacts } from "./live-shell";
 import { MobileNav, MobileNavContext } from "./mobile-nav";
 import { isApple } from "./mod-key";
 import { Sidebar } from "./sidebar";
@@ -43,8 +45,31 @@ function skipToMain(e: React.MouseEvent<HTMLAnchorElement>) {
   if (focusMain({ scroll: true })) e.preventDefault();
 }
 
-export function Shell({ data, children }: { data: ShellData; children: React.ReactNode }) {
+/**
+ * `data` is the layout's read, at `servedAt`. Once a page has polled a newer overview the shell
+ * shows that instead, so the sidebar, the command menu and the tab title follow the server.
+ */
+export function Shell({ data: served, servedAt = "", children }: { data: ShellData; servedAt?: string; children: React.ReactNode }) {
   const path = usePathname();
+  const router = useRouter();
+  const live = useLatestOverview();
+  const polled = useMemo(() => (live?.data ? { at: live.fetchedAt, shell: buildShell(live.data) } : null), [live]);
+  const data = useMemo<ShellData>(() => (polled && isNewer(polled.at, servedAt) ? { ...polled.shell, preview: served.preview } : served), [polled, served, servedAt]);
+
+  // The icon map is the layout's too. It is read again (router.refresh) only when a snapshot says
+  // it may have changed, never on every tick.
+  const facts = useRef<ShellFacts | null>(null);
+  const readAgain = useRef(false);
+  useEffect(() => {
+    if (!polled) return;
+    const prev = facts.current;
+    facts.current = polled.shell;
+    if (!prev) return;
+    const stale = iconsStale(prev, polled.shell);
+    if (stale.now || readAgain.current) router.refresh();
+    readAgain.current = stale.again;
+  }, [polled, router]);
+
   const collapsed = useSyncExternalStore(subscribeSidebar, readCollapsed, () => false);
   const [ready, setReady] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);

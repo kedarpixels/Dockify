@@ -24,6 +24,7 @@ import type { DeployFilter, DeploymentPage, DeploymentQuery, DeploymentsResult, 
 import { useDayHeading } from "@/lib/time-prefs";
 import type { OverviewResult, RecentDeployment } from "@/lib/types";
 import { DeployKpis } from "./deploy-kpis";
+import { groupCount, refreshed } from "./feed-list";
 import { DEPLOY_ROW_BARS, DEPLOY_ROW_TEMPLATE } from "./skeleton";
 
 /* A status filter leads with its tone dot. The list pages from the server, so the options carry no counts. */
@@ -98,13 +99,6 @@ function statsFrom(items: RecentDeployment[], now: number): DeploymentStats {
     failed24h: last.filter((d) => d.status === "failed").length,
     medianSeconds: secs.length ? (secs.length % 2 ? secs[mid]! : (secs[mid - 1]! + secs[mid]!) / 2) : null,
   };
-}
-
-/** Merges a fresh first page over what is shown: changed rows update, new rows go on top. */
-function merge(shown: RecentDeployment[], fresh: RecentDeployment[]) {
-  const byId = new Map(fresh.map((d) => [d.id, d]));
-  const known = new Set(shown.map((d) => d.id));
-  return [...fresh.filter((d) => !known.has(d.id)), ...shown.map((d) => byId.get(d.id) ?? d)];
 }
 
 export function DeploymentsView({ initial, overview, query }: { initial: DeploymentsResult; overview: OverviewResult; query: DeploymentQuery }) {
@@ -186,7 +180,8 @@ export function DeploymentsView({ initial, overview, query }: { initial: Deploym
         setRefreshing(false);
         if ("page" in r && shownKey.current === key) {
           const page = r.page;
-          setList((l) => (l.phase === "ready" ? { ...l, items: merge(l.items, page.items), next: l.items.length > page.items.length ? l.next : page.nextCursor } : l));
+          const byStatus = (filters.status ?? "all") !== "all";
+          setList((l) => (l.phase === "ready" ? { ...l, ...refreshed(l, page, byStatus) } : l));
           if (page.stats && key === UNFILTERED) setStats(page.stats);
         }
       }
@@ -318,10 +313,11 @@ export function DeploymentsView({ initial, overview, query }: { initial: Deploym
                 )
               ) : (
                 <div className="dep-list">
-                  {groups.map((g) => (
+                  {groups.map((g, i) => (
                     <section key={g.label} aria-label={g.label}>
-                      {/* The page's second level: the day groups sit right under its title. */}
-                      <GroupHead as="h2" label={g.label} count={g.rows.length} noun="deployment" />
+                      {/* The page's second level: the day groups sit right under its title. The last
+                          day may continue on the next page, so it shows no count until it is whole. */}
+                      <GroupHead as="h2" label={g.label} count={groupCount(g.rows.length, i === groups.length - 1, list.next !== null)} noun="deployment" />
                       <ul className="soft-list">
                         {g.rows.map((d) => (
                           <li key={d.id}>

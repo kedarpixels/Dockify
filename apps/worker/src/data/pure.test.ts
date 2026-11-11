@@ -7,7 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { afterAll, describe, expect, it } from "vitest";
 import { assertSafeSpec } from "@dockify/engine";
 import { CronError, nextRun, parseCron } from "./cron.ts";
-import { parseRestoreCheck, pgDumpCommand, psqlCommand, redisDumpCommand, redisSwapCommand, REPLACE_SCHEMAS_SQL, RESTORE_COMMIT, RESTORE_PREAMBLE, RestoreFramer, TERMINATE_OTHERS_SQL } from "./dump.ts";
+import { keepTimeouts, parseRestoreCheck, pgDumpCommand, psqlCommand, redisDumpCommand, redisSwapCommand, REPLACE_SCHEMAS_SQL, RESTORE_COMMIT, RESTORE_PREAMBLE, RestoreFramer, TERMINATE_OTHERS_SQL } from "./dump.ts";
 import { backupKeyFingerprint, CHUNK_BYTES, DecryptStream, EncryptStream, EnvelopeError, peekFingerprint } from "./envelope.ts";
 import { encodeCommand, parseReply, RespError } from "./resp.ts";
 import { failedRowsToDelete, isRetentionDecrease, selectExpired, type RetentionCandidate } from "./retention.ts";
@@ -321,6 +321,22 @@ describe("dump commands and restore framing", () => {
     }
     expect(psqlCommand(c).cmd).not.toContain("--single-transaction");
   });
+  it("a dump gives up on a lock it cannot get, and a failed replay never quotes the failing row", () => {
+    expect(pgDumpCommand(c).cmd).toContain("--lock-wait-timeout=300000");
+    expect(psqlCommand(c).cmd.join(" ")).toContain("-v VERBOSITY=terse -v SHOW_CONTEXT=never");
+  });
+  it("keeps its own timeouts through the replay: the dump's header cannot reset them", async () => {
+    expect(RESTORE_PREAMBLE).toContain("SET lock_timeout = '30s';\nSET statement_timeout = '4h';\nBEGIN;");
+    const header = "--\n-- PostgreSQL database dump\n--\n\nSET statement_timeout = 0;\nSET lock_timeout = 0;\nSET idle_in_transaction_session_timeout = 0;\nSET client_encoding = 'UTF8';\nSELECT pg_catalog.set_config('search_path', '', false);\n\n";
+    const body = "COPY \"public\".\"t\" (\"a\") FROM stdin;\nSET statement_timeout = 0;\nSET lock_timeout = 0;\n\\.\n";
+    // In pieces, so the header is read whole however it arrives.
+    const pieces = [header.slice(0, 40), header.slice(40), body].map((p) => Buffer.from(p));
+    const out = (await collect(Readable.from(pieces).pipe(new RestoreFramer()))).toString();
+    expect(out).toBe(`${RESTORE_PREAMBLE}${header.replace("SET statement_timeout = 0;\nSET lock_timeout = 0;\n", "")}${body}${RESTORE_COMMIT}`);
+    // Bytes that are not UTF-8 pass through as they came.
+    const raw = Buffer.concat([Buffer.from("SET lock_timeout = 0;\nCOPY t FROM stdin;\n"), Buffer.from([0xff, 0xfe, 0x0a])]);
+    expect(keepTimeouts(raw).equals(raw.subarray(22))).toBe(true);
+  });
   it("writes COMMIT only after the source ended cleanly", async () => {
     const out = await collect(Readable.from([Buffer.from("CREATE TABLE t();\n")]).pipe(new RestoreFramer({ replace: true })));
     expect(out.toString()).toBe(`${TERMINATE_OTHERS_SQL}${RESTORE_PREAMBLE}${REPLACE_SCHEMAS_SQL}CREATE TABLE t();\n${RESTORE_COMMIT}`);
@@ -372,6 +388,13 @@ function tarEntry(name: string, type: string, body = Buffer.alloc(0)): Buffer {
   return Buffer.concat([h, pad]);
 }
 const tarOf = (...entries: Buffer[]) => Buffer.concat([...entries, Buffer.alloc(1024)]);
+/** One pax record: "<length> <key>=<value>\n", the length counting itself. */
+const pax = (key: string, value: string) => {
+  const rest = ` ${key}=${value}\n`;
+  let len = rest.length + 1;
+  while (String(len).length + rest.length !== len) len++;
+  return Buffer.from(`${len}${rest}`);
+};
 const guard = async (tar: Buffer) => {
   const g = new TarGuard();
   await pipeline(Readable.from([tar]), g);
@@ -392,6 +415,22 @@ describe("tar guard", () => {
   it("checks GNU long names too", async () => {
     const long = Buffer.from("../" + "a".repeat(150) + "\0");
     await expect(guard(tarOf(tarEntry("././@LongLink", "L", long), tarEntry("short", "0")))).rejects.toThrow(/leaves the volume/);
+  });
+  it("reads as many bytes as a pax size record says, like the extractor will", async () => {
+    // The header says 0 bytes and the pax record 512: what follows is this file's body, not an entry.
+    const hidden = tarEntry("../escape", "0");
+    const tar = tarOf(tarEntry("PaxHeaders/f", "x", pax("size", "512")), tarEntry("f", "0"), hidden, tarEntry("after", "0"));
+    expect(await guard(tar)).toEqual({ files: 2, dirs: 0, bytes: 512 });
+    await expect(guard(tarOf(tarEntry("PaxHeaders/f", "x", pax("size", "1e3")), tarEntry("f", "0")))).rejects.toThrow(/pax size/);
+    await expect(guard(tarOf(tarEntry("pax_global_header", "g", pax("size", "512")), tarEntry("f", "0")))).rejects.toThrow(/global header/);
+  });
+  it("checks the header's own name under a long name or a pax path", async () => {
+    await expect(guard(tarOf(tarEntry("PaxHeaders/f", "x", pax("path", "fine")), tarEntry("../escape", "0")))).rejects.toThrow(/leaves the volume/);
+    await expect(guard(tarOf(tarEntry("././@LongLink", "L", Buffer.from("fine\0")), tarEntry("/etc/passwd", "0")))).rejects.toThrow(/relative/);
+    // A name cut at the field's 100 bytes: its last part is not judged, the parts before it are.
+    const long = `dir/${"a".repeat(94)}..x`;
+    expect(await guard(tarOf(tarEntry("././@LongLink", "L", Buffer.from(`${long}\0`)), tarEntry(long.slice(0, 100), "0")))).toEqual({ files: 1, dirs: 0, bytes: 0 });
+    await expect(guard(tarOf(tarEntry("././@LongLink", "L", Buffer.from("fine\0")), tarEntry(`../${"a".repeat(97)}`, "0")))).rejects.toThrow(/leaves the volume/);
   });
   it("refuses a truncated archive", async () => {
     const t = tarEntry("f", "0", Buffer.alloc(2000));

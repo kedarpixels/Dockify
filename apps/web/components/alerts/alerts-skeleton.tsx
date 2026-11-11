@@ -30,7 +30,7 @@ export function AlertsSkeleton() {
         <Spacer />
         <section className="card al-hist">
           <div className="card-hd">
-            <CardTitle id="al-hist-title" icon="history" title="History" sub="Last 7 days, newest first" />
+            <CardTitle id="al-hist-title" icon="history" title="History" sub="Last 90 days, newest first" />
           </div>
           <SkelRows rows={4} height={56} template="24px minmax(0, 1fr) 96px 80px 24px" cols={[24, { w: "40%", lines: 2 }, 72, 64, 14]} label="Loading history" />
         </section>

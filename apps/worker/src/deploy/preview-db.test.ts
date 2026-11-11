@@ -106,16 +106,23 @@ describe("preview database image", () => {
 });
 
 describe("a fork preview stays isolated", () => {
-  it("runs on the fork network, whatever its base environment is", async () => {
-    const db = {
+  const dbFor = (rowFork: boolean, open: Array<{ fromFork: boolean }>) =>
+    ({
       previewDeployment: {
         findUnique: async () => ({
-          id: "pd", hostname: "pr-7-web.preview.example.com",
-          env: { id: "e", prNumber: 7, fromFork: true, isolatedDb: true, status: "building", baseEnvironmentId: "env-prod", baseEnvironment: { name: "production" }, project: { id: "p", previewCpuLimit: 0.5, previewMemoryMb: 256, previewPidsLimit: 64, previewProductionAccess: true, environments: [{ id: "env-prod" }] } },
+          id: "pd", hostname: "pr-7-web.preview.example.com", deployments: open,
+          env: { id: "e", prNumber: 7, fromFork: rowFork, isolatedDb: true, status: "building", baseEnvironmentId: "env-prod", baseEnvironment: { name: "production" }, project: { id: "p", previewCpuLimit: 0.5, previewMemoryMb: 256, previewPidsLimit: 64, previewProductionAccess: true, environments: [{ id: "env-prod" }] } },
         }),
       },
-    } as unknown as Db;
-    expect(await loadPreviewContext(db, "pd")).toMatchObject({ network: FORK_NETWORK, fromFork: true, isolatedDb: true });
+    }) as unknown as Db;
+
+  it("runs on the fork network, whatever its base environment is", async () => {
+    expect(await loadPreviewContext(dbFor(true, []), "pd")).toMatchObject({ network: FORK_NETWORK, fromFork: true, isolatedDb: true });
+  });
+
+  it("a deployment queued for a fork commit stays a fork build after the preview row stops saying so", async () => {
+    expect(await loadPreviewContext(dbFor(false, [{ fromFork: true }]), "pd")).toMatchObject({ network: FORK_NETWORK, fromFork: true, isolation: "fork" });
+    expect(await loadPreviewContext(dbFor(false, [{ fromFork: false }]), "pd")).toMatchObject({ fromFork: false });
   });
 
   it("gets no secret and its own database URL", () => {

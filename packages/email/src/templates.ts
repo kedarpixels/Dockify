@@ -188,7 +188,7 @@ export function emailChanged(input: EmailChangedInput, theme: Theme = "auto"): E
   );
 }
 
-export type SecurityEvent = "signIn" | "password" | "passwordReset" | "mfaOn" | "mfaOff";
+export type SecurityEvent = "signIn" | "password" | "passwordReset" | "mfaOn" | "mfaOff" | "mfaLocked";
 
 export interface SecurityNoticeInput extends Brand {
   event: SecurityEvent;
@@ -205,6 +205,7 @@ const SECURITY: Record<SecurityEvent, { subject: string; heading: string; lead: 
   passwordReset: { subject: "Your password was reset on your", heading: "Your password was reset", lead: "The password for your account was reset. Every session was signed out and your API tokens were revoked, so make new ones for anything that used them." },
   mfaOn: { subject: "Two-factor sign-in is on for your", heading: "Two-factor sign-in turned on", lead: "Signing in now also asks for a code from your authenticator app." },
   mfaOff: { subject: "Two-factor sign-in is off for your", heading: "Two-factor sign-in turned off", lead: "Signing in now asks only for your password. Other sessions were signed out." },
+  mfaLocked: { subject: "Too many wrong two-factor codes on your", heading: "Two-factor codes are paused", lead: "Someone entered a wrong authenticator code too many times, so codes are refused for a while, longer each time it happens again. If this was not you, someone may have your password or a signed-in session: change your password and sign out the sessions you do not know." },
 };
 
 /** A sign-in from a new device, or a password or two-factor change, sent to the account itself. */

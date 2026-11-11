@@ -46,7 +46,7 @@ export function ProjectSettings({
   now: number;
   onPatch: (fn: (d: ProjectExtras) => ProjectExtras) => void;
   onOpenPreviews: () => void;
-  /** Reloads the extras, for answers the page cannot merge (a DNS check). */
+  /** Reloads the extras, for answers the page cannot merge (a DNS check, an environment added or removed). */
   onReload?: () => void;
   /** Whether the name and auto-deploy card holds unsaved edits, for the page's section strip. */
   onDirty?: (dirty: boolean) => void;
@@ -141,7 +141,7 @@ export function ProjectSettings({
 
       <IconCard target={{ target: "project", slug: p.slug }} name={p.slug} where={p.slug} now={now} />
 
-      <EnvironmentsCard p={p} previews={extras?.previews?.settings ?? null} onChange={onSaved} onOpenPreviews={onOpenPreviews} />
+      <EnvironmentsCard p={p} previews={extras?.previews?.settings ?? null} onChange={onSaved} onOpenPreviews={onOpenPreviews} onReload={onReload} />
 
       <PreviewSettingsCard
         p={p}

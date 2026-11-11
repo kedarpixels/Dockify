@@ -3,15 +3,17 @@
  *
  * Postgres. Every call runs in BEGIN TRANSACTION READ ONLY with statement, lock and idle timeouts
  * set LOCAL, under SET LOCAL ROLE dockify_browser (pg_read_all_data only, not a superuser), and ends
- * in ROLLBACK. User SQL passes the lexer guard first and plain queries run through a cursor, so the
- * server stops at the row cap. Cells are clipped and the whole result has a size budget.
+ * in ROLLBACK. User SQL passes the lexer guard first, then goes over the extended protocol, where
+ * the server refuses a second statement whatever the lexer made of the text. Plain queries run
+ * through a cursor read in batches, so the server stops at the row cap and a result of wide rows
+ * stops early. Cells are clipped (a table's wide columns in SQL) and the result has a size budget.
  *
  * The driver is injected (PgSession) so this file is testable without a database; the worker wires
  * it to node-postgres with rowMode "array" and text parsing.
  */
 import type { RespValue, RedisConn } from "./resp.ts";
 import { RespError } from "./resp.ts";
-import { guardReadOnlySql, quoteQualified } from "./sql-guard.ts";
+import { guardReadOnlySql, quoteIdent, quoteQualified } from "./sql-guard.ts";
 
 export interface PgField {
   name: string;
@@ -22,6 +24,7 @@ export interface PgResult {
   rows: unknown[][];
 }
 export interface PgSession {
+  /** With values, even none ([]), the text is one statement or the server refuses it. */
   query(text: string, values?: unknown[]): Promise<PgResult>;
   close(): Promise<void>;
 }
@@ -38,6 +41,9 @@ export const STATEMENT_TIMEOUT_MS = 15_000;
 export const ROW_CAP = 1_000;
 export const CELL_MAX = 16_384;
 export const RESULT_MAX_CHARS = 4 * 1024 * 1024;
+/** A cursor is read this many rows at a time, until the row cap or this much unclipped text. */
+const FETCH_BATCH = 100;
+const RAW_MAX_CHARS = 2 * RESULT_MAX_CHARS;
 export const BROWSER_ROLE = "dockify_browser";
 
 /**
@@ -144,17 +150,23 @@ export async function tableRows(pg: PgSession, table: string, limit = 50): Promi
   const t = quoteQualified(table);
   return readOnly(pg, async () => {
     const cols = await pg.query(
-      "SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull, coalesce(bool_or(i.indisprimary), false), max(c.reltuples)::bigint " +
+      "SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull, coalesce(bool_or(i.indisprimary), false), max(c.reltuples)::bigint, a.attlen " +
         "FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace " +
         "LEFT JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary AND a.attnum = ANY(i.indkey) " +
         "WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r', 'p', 'v', 'm') AND a.attnum > 0 AND NOT a.attisdropped " +
-        "GROUP BY a.attnum, a.attname, a.atttypid, a.atttypmod, a.attnotnull ORDER BY a.attnum",
+        "GROUP BY a.attnum, a.attname, a.atttypid, a.atttypmod, a.attnotnull, a.attlen ORDER BY a.attnum",
       [t.schema, t.name],
     );
     if (!cols.rows.length) throw new BrowserError(404, `Table ${table} does not exist`, "NOT_FOUND");
     const columns: Column[] = cols.rows.map((r) => ({ name: String(r[0]), type: String(r[1]), nullable: r[2] === true || r[2] === "t", primary: r[3] === true || r[3] === "t" }));
     const n = Math.min(Math.max(1, Math.floor(limit)), 200);
-    const data = await pg.query(`SELECT * FROM ${t.sql} LIMIT ${n}`);
+    // Fixed width columns as they are; the rest clipped by the server, so a row of 20 MB values
+    // never reaches this process. One character over the cap, so the cell still reads as clipped.
+    const list = cols.rows.map((r) => {
+      const name = quoteIdent(String(r[0]));
+      return Number(r[5]) > 0 ? name : `left(${name}::text, ${CELL_MAX + 1}) AS ${name}`;
+    });
+    const data = await pg.query(`SELECT ${list.join(", ")} FROM ${t.sql} LIMIT ${n}`);
     let total = Math.max(0, Number(cols.rows[0]?.[4]) || 0);
     if (total < EXACT_COUNT_BELOW) {
       const c = await pg.query(`SELECT count(*) FROM ${t.sql}`);
@@ -164,16 +176,37 @@ export async function tableRows(pg: PgSession, table: string, limit = 50): Promi
   });
 }
 
+/** Reads the cursor to the row cap, or until the rows read hold more text than a result may. */
+async function fetchCapped(pg: PgSession): Promise<{ result: PgResult; cut: boolean }> {
+  const rows: unknown[][] = [];
+  let fields: PgField[] = [];
+  let size = 0;
+  while (rows.length <= ROW_CAP && size <= RAW_MAX_CHARS) {
+    const want = Math.min(FETCH_BATCH, ROW_CAP + 1 - rows.length);
+    const r = await pg.query(`FETCH FORWARD ${want} FROM dockify_browse`);
+    fields = r.fields;
+    for (const row of r.rows) {
+      rows.push(row);
+      for (const v of row) if (typeof v === "string") size += v.length;
+    }
+    if (r.rows.length < want) return { result: { fields, rows }, cut: false };
+  }
+  return { result: { fields, rows }, cut: size > RAW_MAX_CHARS };
+}
+
 export async function runQuery(pg: PgSession, sql: string, now: () => number = Date.now): Promise<{ columns: Column[]; rows: Cell[][]; rowCount: number; durationMs: number; truncated: boolean }> {
   const g = guardReadOnlySql(sql);
   return readOnly(pg, async () => {
     const started = now();
     let result: PgResult;
+    let cut = false;
+    // The empty value list sends the text as one prepared statement: a lexer that disagrees with
+    // the server (standard_conforming_strings off) cannot smuggle a COMMIT past it.
     if (g.cursor) {
-      await pg.query(`DECLARE dockify_browse NO SCROLL CURSOR FOR ${g.text}`);
-      result = await pg.query(`FETCH FORWARD ${ROW_CAP + 1} FROM dockify_browse`);
+      await pg.query(`DECLARE dockify_browse NO SCROLL CURSOR FOR ${g.text}`, []);
+      ({ result, cut } = await fetchCapped(pg));
     } else {
-      result = await pg.query(g.text);
+      result = await pg.query(g.text, []);
     }
     const durationMs = now() - started;
     const names = await typeNames(pg, result.fields);
@@ -183,7 +216,7 @@ export async function runQuery(pg: PgSession, sql: string, now: () => number = D
       rows: bounded.rows,
       rowCount: Math.min(result.rows.length, ROW_CAP),
       durationMs,
-      truncated: bounded.truncated,
+      truncated: bounded.truncated || cut,
     };
   });
 }

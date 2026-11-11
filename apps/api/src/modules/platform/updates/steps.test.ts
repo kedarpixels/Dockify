@@ -6,6 +6,7 @@ import path from "node:path";
 import type { VerifiedFeed } from "./release.ts";
 import { release } from "./test-fixtures.ts";
 import { run, RESTORE_SCRIPT, checkComposeMatchesRelease, checkInstallTree, dockerSteps, dumpPath, installPaths, loadStepsConfig, parseReleaseEnv, renderReleaseEnv, sha256Hex, type ControlProbe, type GuardFs, type StepsConfig } from "./steps.ts";
+import { plannedSteps, runUpdate, type Journal, type UpdateRecorder } from "./runner.ts";
 import { updateEnv } from "./state.ts";
 import { loadPlatformEnv } from "../shared.ts";
 
@@ -13,8 +14,9 @@ const DIR = "/opt/dockify";
 const P = installPaths(DIR);
 const COMPOSE = Buffer.from("services: {}\n");
 const IMAGES = { control: "r/control@sha256:" + "1".repeat(64), web: "r/web@sha256:" + "2".repeat(64) };
+const NOW = Date.UTC(2026, 10, 11);
 
-interface Entry { uid: number; mode: number; link?: boolean; body?: Buffer }
+interface Entry { uid: number; mode: number; link?: boolean; body?: Buffer; mtimeMs?: number }
 
 /** A fake host tree laid out the way install.sh lays it out. */
 function tree(over: Partial<Record<string, Partial<Entry>>> = {}): GuardFs {
@@ -31,7 +33,7 @@ function tree(over: Partial<Record<string, Partial<Entry>>> = {}): GuardFs {
     return e;
   };
   return {
-    lstat: async (p) => { const e = get(p); return { uid: e.uid, mode: e.mode, isSymbolicLink: () => !!e.link }; },
+    lstat: async (p) => { const e = get(p); return { uid: e.uid, mode: e.mode, mtimeMs: e.mtimeMs ?? NOW, isSymbolicLink: () => !!e.link }; },
     readFile: async (p) => get(p).body ?? Buffer.alloc(0),
   };
 }
@@ -153,6 +155,50 @@ describe("a forged row cannot pin an older signed release", () => {
   it("what is pinned here still runs, whatever its version: a real rollback is release.env.prev", async () => {
     const pinned = dockerSteps({ ...CFG, currentVersion: "2.0.0" }, { ...DEPS, fs: tree(), fetchFeed: feed, arch: "arm64", run: exec });
     await expect(pinned.pull(IMAGES)).resolves.toBeUndefined();
+  });
+
+  describe("release.env.prev vouches for a rollback only inside the rollback window", () => {
+    const PREV = { control: "r/control@sha256:" + "3".repeat(64), web: "r/web@sha256:" + "4".repeat(64) };
+    const DAY = 86_400_000;
+    const aged = (days: number) =>
+      dockerSteps({ ...CFG, currentVersion: "2.0.0" }, {
+        ...DEPS, fetchFeed: feed, arch: "arm64", run: exec, now: () => NOW,
+        fs: tree({ [`${P.releaseEnv}.prev`]: { uid: 1000, mode: 0o100600, body: Buffer.from(renderReleaseEnv(PREV)), mtimeMs: NOW - days * DAY } }),
+      });
+    const forged = (over: Partial<Journal>): Journal => ({
+      id: "u", kind: "update", fromVersion: "2.0.0", version: "2.0.1", manifestSha256: null, fromImages: PREV, toImages: null, phase: "rollback", state: "running",
+      dumpBackupId: null, dumpSha256: null, dumpBytes: null, migrationStarted: false, rollbackOfId: null, steps: plannedSteps(), attempt: 1, error: null, startedAt: new Date(NOW), finishedAt: null, ...over,
+    });
+    const rec: UpdateRecorder = { save: async () => {}, audit: async () => {}, beforeRestore: async () => {}, afterRestore: async () => {}, finish: async () => {}, log: () => {}, now: () => new Date(NOW) };
+
+    it("pulls the previous pins while the last update can still be rolled back", async () => {
+      await expect(aged(6).pull(PREV)).resolves.toBeUndefined();
+      await expect(aged(7.5).pull(PREV)).resolves.toBeUndefined();
+    });
+
+    it("refuses them once the window has passed, and what is pinned now still runs", async () => {
+      ran.length = 0;
+      const old = aged(9);
+      await expect(old.pull(PREV)).rejects.toThrow(/neither pinned on this server nor in the signed release feed/);
+      await expect(old.migrate(PREV)).rejects.toThrow(/refusing to run them/);
+      await expect(old.pin(PREV)).rejects.toThrow(/refusing to run them/);
+      expect(ran).toEqual([]);
+      await expect(old.pull(IMAGES)).resolves.toBeUndefined();
+    });
+
+    it("a forged row in the rollback phase recreates nothing on the old pins", async () => {
+      ran.length = 0;
+      const r = await runUpdate(forged({}), aged(30), rec);
+      expect(r).toMatchObject({ outcome: "failed", error: expect.stringMatching(/ROLLBACK FAILED: these images are neither pinned/) });
+      expect(ran.filter((a) => a.includes("up") || a.includes("pull"))).toEqual([]);
+    });
+
+    it("a forged rollback job that starts at the swap is refused the same way", async () => {
+      ran.length = 0;
+      const r = await runUpdate(forged({ kind: "rollback", phase: "swap_api", fromImages: null, toImages: PREV, version: "1.0.0" }), aged(30), rec);
+      expect(r).toMatchObject({ outcome: "failed", error: expect.stringMatching(/swap api failed: these images are neither pinned/) });
+      expect(ran.filter((a) => a.includes("up") || a.includes("pull"))).toEqual([]);
+    });
   });
 
   it("the version it measures from is the image's own, which compose does not set", () => {

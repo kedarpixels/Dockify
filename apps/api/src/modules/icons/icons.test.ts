@@ -115,6 +115,9 @@ function call(id: (typeof ICON_ENDPOINTS)[number], db: unknown, input: { body?: 
   return { out, r };
 }
 
+/** A stored SVG favicon is always the rebuilt document; any drawable text stands in for it here. */
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32"/></svg>';
+
 const favicon = (data = png(32, 32)): Img => ({
   appId: APP, source: "favicon", mime: "image/png", data, sha256: sha(data), width: 32, height: 32, origin: "https://shop.example.com/favicon.png", updatedAt: new Date("2026-10-30T10:00:00Z"),
 });
@@ -138,6 +141,37 @@ describe("icon routes", () => {
     const miss = await app.inject({ method: "GET", url: "/api/v1/icons/mail/not-a-token" });
     expect(miss.statusCode).toBe(404);
     await app.close();
+  });
+});
+
+describe("an SVG favicon", () => {
+  const data = Buffer.from(SVG);
+  const svg = (): Img => ({ ...favicon(data), mime: "image/svg+xml", origin: "https://shop.example.com/icon.svg" });
+
+  it("is served to the console like a webhook's SVG logo: its own type, inline, sandboxed, cached by version", async () => {
+    const f = fakeDb({ images: [svg()] });
+    const { out, r } = call("apps.icon.get", f.db, { query: { v: sha(data).slice(0, 12) } });
+    await out;
+    expect(r.status).toBe(200);
+    expect(r.headers).toMatchObject({
+      "content-type": "image/svg+xml", "content-disposition": "inline", "content-security-policy": "default-src 'none'; sandbox",
+      "cache-control": "private, max-age=31536000, immutable", etag: `"${sha(data)}"`,
+    });
+    expect((r.body as Buffer).equals(data)).toBe(true);
+  });
+
+  it("lists its app in the project's Icon dropdown, and the project shows it once chosen", async () => {
+    const f = fakeDb({ frontends: [{ env: "production", id: "prod-web", primary: "shop.example.com", fav: svg() }] });
+    const before = (await call("icons.list", f.db).out) as unknown as { projects: Record<string, { image: unknown; borrow: { apps: Array<{ id: string; host: string }> } }> };
+    expect(before.projects.shop!.borrow.apps).toMatchObject([{ id: "prod-web", host: "shop.example.com" }]);
+    expect(before.projects.shop!.image).toBeNull();
+
+    const picked = fakeDb({ pick: "prod-web", frontends: [{ env: "production", id: "prod-web", primary: "shop.example.com", fav: svg() }] });
+    const after = (await call("icons.list", picked.db).out) as unknown as typeof before;
+    expect(after.projects.shop!.image).toMatchObject({ version: sha(data).slice(0, 12), source: "favicon" });
+    const { out, r } = call("projects.icon.get", picked.db, { slug: true });
+    await out;
+    expect(r.headers["content-type"]).toBe("image/svg+xml");
   });
 });
 
@@ -167,6 +201,12 @@ describe("icons.mail.get", () => {
     await same.out;
     expect(same.r.status).toBe(304);
     expect(same.r.body).toBeUndefined();
+  });
+
+  it("never serves an SVG to a mail client, even for a well signed token: the email shows its fallback", async () => {
+    const data = Buffer.from(SVG);
+    const f = fakeDb({ images: [{ ...favicon(data), mime: "image/svg+xml" }] });
+    await expect(call("icons.mail.get", f.db, { params: { token: token("app", APP, sha(data).slice(0, 12)) } }).out).rejects.toMatchObject({ status: 404, code: "NOT_FOUND" });
   });
 
   it("answers 404, never a hint, for a tampered token, another instance's token, a stale version or a missing owner", async () => {

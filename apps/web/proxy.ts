@@ -37,7 +37,7 @@ const STATIC_FILE = /\.(?:png|jpe?g|gif|webp|avif|svg|ico|txt|xml|webmanifest|js
 
 /* Public asset folders. A nested static path is exempt only here; elsewhere a path ending in an
    extension is a dynamic route (e.g. /projects/x.css hits /projects/[slug]) and must be gated. */
-const ASSET_PREFIX = ["/preview/", "/sounds/"];
+const ASSET_PREFIX = ["/preview/"];
 const isStaticAsset = (path: string): boolean =>
   STATIC_FILE.test(path) && (path.indexOf("/", 1) === -1 || ASSET_PREFIX.some((p) => path.startsWith(p)));
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 import { Topbar } from "@/components/shell/topbar";
 import { elevate } from "@/components/step-up/step-up";
@@ -29,6 +29,8 @@ import type { OverviewResult } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
 import { AddDomainDialog } from "./add-domain-dialog";
 import { CfRecordDialog, CfStatePanel, cfRowNote, useCloudflareDomains } from "./cloudflare";
+import { DOMAINS_POLL_MS, domainSettling } from "./live";
+import { usePageRefresh } from "./refresh";
 import { DomainHead, DomainRow as DomainLine, tlsState } from "./shared";
 
 /** A domain needs attention when its certificate is not plainly active, its record does not point here, or Cloudflare's setup breaks it. */
@@ -49,7 +51,28 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
   const live = initial.source === "api";
   // Where a domain's records should point: the server's addresses, or the tunnel.
   const target = useMemo(() => domainTargets(initial.data), [initial.data]);
-  const [items, setItems] = useState<DomainRow[]>(initial.data?.items ?? []);
+  const [items, setRows] = useState<DomainRow[]>(initial.data?.items ?? []);
+  // Counts the changes made here (an add, a remove, a recheck), so a list that was asked for before
+  // one is not laid over it.
+  const writes = useRef(0);
+  const asked = useRef(0);
+  const setItems = (next: (xs: DomainRow[]) => DomainRow[]) => {
+    writes.current += 1;
+    setRows(next);
+  };
+  // A new domain's record lookup and certificate settle on the server, so the list is read again
+  // while any row waits on them. Otherwise it reads Pending and Not checked until a manual recheck.
+  usePageRefresh(live && items.some(domainSettling), DOMAINS_POLL_MS, () => {
+    asked.current = writes.current;
+  });
+  const adopt = useEffectEvent((rows: DomainRow[]) => {
+    if (asked.current === writes.current) setRows(rows);
+  });
+  const listed = initial.data?.items;
+  const firstList = useRef(listed);
+  useEffect(() => {
+    if (listed && listed !== firstList.current) adopt(listed);
+  }, [listed]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [adding, setAdding] = useState(false);

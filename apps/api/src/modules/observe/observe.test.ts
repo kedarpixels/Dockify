@@ -228,6 +228,26 @@ describe("overview projects", () => {
   });
 });
 
+describe("overview viewer", () => {
+  const person = { name: "Sam", email: "sam@example.com", avatarUrl: null, timeZone: "Europe/Berlin", hour12: false };
+  const dbOf = () => Object.assign(overviewDb([], {}), { user: { findUnique: async () => person } }) as unknown as Db;
+  const at = Date.parse("2026-07-01T12:00:00Z");
+
+  it("tells a signed-in person who they are", async () => {
+    const session = { kind: "session", userId: "u", name: "Sam", role: "viewer", sessionId: "s", elevated: false };
+    const out = await overview(dbOf(), session as unknown as Parameters<typeof overview>[1], at);
+    expect(out.viewer).toMatchObject({ name: "Sam", email: "sam@example.com", role: "viewer" });
+  });
+
+  it("tells a token nothing about its owner, and still counts days in the owner's zone", async () => {
+    const token = { kind: "token", userId: "u", name: "ci", role: "viewer", tokenId: "t", scope: "read", allProjects: false, projectIds: ["p1"], grants: [], elevated: false };
+    const out = await overview(dbOf(), token as unknown as Parameters<typeof overview>[1], at);
+    expect("viewer" in out).toBe(false);
+    expect(JSON.stringify(out)).not.toContain("sam@example.com");
+    expect(out.trendZone).toBe("Europe/Berlin");
+  });
+});
+
 describe("overview deploy trend", () => {
   it("queries from the day it zero-fills from, so January counts the end of last year", async () => {
     const seen: { trendFrom?: Date } = {};

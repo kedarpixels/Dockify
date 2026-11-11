@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 import { CfRecordDialog, CfStatePanel, HostPicker, useCloudflareZones } from "@/components/resources-domains/cloudflare";
 import { DnsRecords, recordsFor } from "@/components/resources-domains/shared";
@@ -125,6 +125,8 @@ export function DomainFlow({
   const hostError = !host ? "Enter a domain" : !HOST_RE.test(host) ? "Use a domain such as dockify.example.com" : host === state.host ? "The dashboard already answers on this address" : null;
 
   const note = (text?: string) => describe(text, { preview });
+  // Counts finished writes, so the poll can tell an answer that was asked for before one.
+  const writes = useRef(0);
   /** The one write: its answer is the new state; a closed step-up leaves everything as it is. */
   const send = useCallback(
     async (key: NonNullable<typeof busy>, call: () => Promise<Answer<DashboardDomain>>, what: string, success?: string) => {
@@ -132,6 +134,7 @@ export function DomainFlow({
       const r = await elevate(call, { what });
       setBusy(null);
       if (r.ok) {
+        writes.current += 1;
         setState(r.data);
         if (success) toast.success(success, { description: note() });
       } else if (!isStepUpCancel(r)) {
@@ -169,8 +172,10 @@ export function DomainFlow({
     if (!phase || preview) return;
     const every = phase === "switching" ? 2_000 : 8_000;
     const t = setInterval(() => {
+      const at = writes.current;
       void callJson<DashboardDomain>(STATE_URL).then((r) => {
-        if (r.ok) setState(r.data);
+        // A read that left before a write would put the old state back (a stopped domain pending again).
+        if (r.ok && at === writes.current) setState(r.data);
       });
     }, every);
     return () => clearInterval(t);

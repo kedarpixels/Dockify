@@ -36,9 +36,11 @@ export function checkEntryPath(name: string): void {
   if (n.split("/").some((p) => p === "..")) throw new TarGuardError(`tar entry ${name} leaves the volume`);
 }
 
-function paxPath(data: Buffer): string | null {
+/** The records of a pax header that change what the next entry is: its path and its size. */
+function paxRecords(data: Buffer): { path: string | null; size: number | null } {
   let o = 0;
   let path: string | null = null;
+  let size: number | null = null;
   while (o < data.length) {
     const sp = data.indexOf(0x20, o);
     if (sp === -1) break;
@@ -49,9 +51,25 @@ function paxPath(data: Buffer): string | null {
     const key = rec.slice(0, eq);
     if (key === "path") path = rec.slice(eq + 1);
     if (key === "linkpath") throw new TarGuardError("tar entry carries a link path");
+    if (key === "size") {
+      // An extractor reads this many bytes whatever the header says: read as many, or lose the place.
+      if (!/^\d{1,15}$/.test(rec.slice(eq + 1))) throw new TarGuardError("malformed pax size");
+      size = Number(rec.slice(eq + 1));
+    }
     o += len;
   }
-  return path;
+  return { path, size };
+}
+
+/**
+ * The header's own name of an entry that a long name or a pax path renames: an extractor that
+ * skips those writes this one. It may be cut at the field's 100 bytes, so a last part cut there
+ * is not held against it.
+ */
+function ownName(prefix: string, raw: Buffer): string {
+  const name = cstr(raw);
+  const full = prefix ? `${prefix}/${name}` : name;
+  return raw.indexOf(0) === -1 ? full.slice(0, full.lastIndexOf("/") + 1) : full;
 }
 
 export interface TarSummary {
@@ -66,6 +84,7 @@ export class TarGuard extends Writable {
   #skip = 0;
   #meta: { type: string; left: number; parts: Buffer[] } | null = null;
   #nextName: string | null = null;
+  #nextSize: number | null = null;
   #zeroBlocks = 0;
   #ended = false;
   summary: TarSummary = { files: 0, dirs: 0, bytes: 0 };
@@ -120,25 +139,36 @@ export class TarGuard extends Writable {
     const m = this.#meta!;
     this.#meta = null;
     const data = Buffer.concat(m.parts);
-    if (m.type === "L") this.#nextName = cstr(data);
-    else if (m.type === "x") this.#nextName = paxPath(data) ?? this.#nextName;
-    else if (m.type === "g") paxPath(data);
+    if (m.type === "L") {
+      this.#nextName = cstr(data);
+      return;
+    }
+    const pax = paxRecords(data);
+    if (m.type === "x") {
+      this.#nextName = pax.path ?? this.#nextName;
+      this.#nextSize = pax.size ?? this.#nextSize;
+    } else if (pax.path !== null || pax.size !== null) {
+      throw new TarGuardError("tar global header sets a path or a size");
+    }
   }
 
   #header(h: Buffer): void {
-    const size = octal(h.subarray(124, 136));
     const type = String.fromCharCode(h[156]!) === "\0" ? "0" : String.fromCharCode(h[156]!);
+    const meta = type === "L" || type === "x" || type === "g";
+    const size = meta || this.#nextSize === null ? octal(h.subarray(124, 136)) : this.#nextSize;
     const padded = Math.ceil(size / BLOCK) * BLOCK;
-    if (type === "L" || type === "x" || type === "g") {
+    if (meta) {
       if (size > MAX_META) throw new TarGuardError("tar metadata entry is too large");
       this.#meta = { type, left: size, parts: [] };
       this.#skip = padded;
       return;
     }
     const prefix = h.subarray(257, 263).toString("latin1").startsWith("ustar") ? cstr(h.subarray(345, 500)) : "";
-    const raw = cstr(h.subarray(0, 100));
-    const name = this.#nextName ?? (prefix ? `${prefix}/${raw}` : raw);
+    const raw = h.subarray(0, 100);
+    const name = this.#nextName ?? (prefix ? `${prefix}/${cstr(raw)}` : cstr(raw));
+    if (this.#nextName !== null) checkEntryPath(ownName(prefix, raw));
     this.#nextName = null;
+    this.#nextSize = null;
     checkEntryPath(name);
     if (type === "0" || type === "7") {
       this.summary.files++;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LOGIN_PER_ACCOUNT, LOGIN_PER_NETWORK, LoginGuard, networkKey, rateKey, SubjectGuard } from "./ratelimit.ts";
+import { LOGIN_PER_ACCOUNT, LOGIN_PER_NETWORK, LoginGuard, networkKey, rateKey, RateLimits, SubjectGuard } from "./ratelimit.ts";
 
 describe("rateKey: IPv6 collapses to /64, IPv4 is untouched", () => {
   it("keeps IPv4 and IPv4-mapped addresses whole", () => {
@@ -18,6 +18,12 @@ describe("rateKey: IPv6 collapses to /64, IPv4 is untouched", () => {
   it("separates different /64 networks, and handles :: compression", () => {
     expect(rateKey("2001:db8:abcd:1234::1")).not.toBe(rateKey("2001:db8:abcd:9999::1"));
     expect(rateKey("2001:db8::1")).toBe("2001:db8:0:0::/64");
+  });
+});
+
+describe("authenticator codes have no lockout a restart can clear", () => {
+  it("keeps no in-memory guard for the sign in code: mfa.ts counts on the user row", () => {
+    expect(Object.keys(new RateLimits())).not.toContain("verify");
   });
 });
 

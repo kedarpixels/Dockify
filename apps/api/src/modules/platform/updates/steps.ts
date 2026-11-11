@@ -43,6 +43,12 @@ export function loadStepsConfig(env: NodeJS.ProcessEnv, publicKey: string | null
   };
 }
 
+/**
+ * How long release.env.prev vouches for the images it names: the rollback window (state.ts
+ * ROLLBACK_DAYS) and a day, the same as a pre-update dump is kept.
+ */
+export const PREV_TRUST_MS = 8 * 86_400_000;
+
 const DIGEST_REF = /^[a-z0-9][a-z0-9._/:-]*@sha256:[a-f0-9]{64}$/;
 
 /**
@@ -81,7 +87,8 @@ export const installPaths = (dir: string) => ({
 });
 
 export interface GuardFs {
-  lstat(p: string): Promise<{ uid: number; mode: number; isSymbolicLink(): boolean }>;
+  /** mtimeMs: when the file was last written. A real lstat always says. */
+  lstat(p: string): Promise<{ uid: number; mode: number; mtimeMs?: number; isSymbolicLink(): boolean }>;
   readFile(p: string): Promise<Buffer>;
 }
 const realFs: GuardFs = { lstat: (p) => lstat(p), readFile: (p) => readFile(p) };
@@ -208,6 +215,7 @@ export interface StepsDeps {
   arch?: string;
   /** The channel to re-verify against. */
   channel: () => Promise<Channel>;
+  now?: () => number;
 }
 
 const realFree = async (dir: string) => {
@@ -247,16 +255,27 @@ export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
     }
   };
   /**
+   * The previous pins, while a rollback to them can still be asked for. Past that a row naming them is
+   * no rollback: a forged one (phase rollback, or its images) would be a downgrade nobody approved.
+   * The age is the file's own, which only pin() writes, never a row's.
+   */
+  const pinnedBefore = async (): Promise<Images | null> => {
+    const file = `${releaseEnv}.prev`;
+    const written = await fs.lstat(file).then((st) => st.mtimeMs, () => undefined);
+    if (written !== undefined && (deps.now ?? Date.now)() - written > PREV_TRUST_MS) return null;
+    return pinnedInFile(file);
+  };
+  /**
    * The one gate on what the updater may run, which holds the Docker socket: images must be what
-   * release.env pins or pinned before (files only this process writes), or be listed for this
-   * architecture in a signed feed fetched and verified right now. Everything a journal row says is
-   * a claim: a database write could forge toImages or fromImages, or a row that starts past the pull
-   * step, and this is the step between an api bug and root on the host.
+   * release.env pins or pinned within the rollback window (files only this process writes), or be
+   * listed for this architecture in a signed feed fetched and verified right now. Everything a journal
+   * row says is a claim: a database write could forge toImages or fromImages, or a row that starts past
+   * the pull step, and this is the step between an api bug and root on the host.
    */
   const trustImages = async (images: Images): Promise<void> => {
     const key = imagesKey(images);
     if (checked.has(key)) return;
-    const local = await Promise.all([pinnedInFile(releaseEnv), pinnedInFile(`${releaseEnv}.prev`)]);
+    const local = await Promise.all([pinnedInFile(releaseEnv), pinnedBefore()]);
     if (local.some((l) => l && imagesKey(l) === key)) return void checked.add(key);
     if (!cfg.feedUrl || !cfg.publicKey) throw new Error("these images are not what this server has pinned, and no signed release feed is configured to check them against; refusing to run them");
     const channel = await deps.channel();

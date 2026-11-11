@@ -7,6 +7,7 @@ import { useCan } from "@/lib/viewer";
 import { Group, SaveBar, SettingRow } from "./form";
 import { Segment, SectionTabs } from "./section-tabs";
 import { useSettingsDraft } from "./settings-draft";
+import { notificationsPatch, type NotifyDraft } from "./settings-patch";
 import type { SectionProps } from "./settings-view";
 
 /* Settings, Notifications: which instance events notify, and where the channels live. Rules for
@@ -38,13 +39,11 @@ function EventRow({ label, hint, checked, disabled, onChange }: { label: string;
   );
 }
 
-type NotifyDraft = Record<NotifyEvent, boolean>;
-
 export function NotificationsSection(props: SectionProps) {
   const { manage } = useCan();
   const { draft, setDraft, dirty, saving, error, save, discard } = useSettingsDraft<NotifyDraft>(
     (s) => ({ ...s.notifications.events }),
-    (s, d) => ({ ...s, notifications: { events: d } }),
+    notificationsPatch,
     props,
   );
   const on = EVENTS.filter((e) => draft[e.id]).length;

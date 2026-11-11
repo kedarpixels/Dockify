@@ -32,11 +32,14 @@ type Step = { at: "fields" } | { at: "code"; email: string } | { at: "reset" } |
 
 export function PasswordDialog({
   onClose,
+  onChanged,
   emailEnabled,
   preview,
   email,
 }: {
   onClose: () => void;
+  /** The password changed, which signed every other session out. */
+  onChanged: () => void;
   emailEnabled: boolean;
   preview: boolean;
   /** The signed-in account's address, where a reset link goes. */
@@ -96,6 +99,7 @@ export function PasswordDialog({
     });
     setPending(null);
     if (r.ok) {
+      onChanged();
       onClose();
       return;
     }

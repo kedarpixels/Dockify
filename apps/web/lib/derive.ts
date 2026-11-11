@@ -1,5 +1,6 @@
 import { projectsShowingEnvironments } from "./environments";
 import { appTitle, dayLabel, plural } from "./format";
+import { orderNotices } from "./notices";
 import type { AppStatus, DeploymentStatus, Overview, RecentDeployment, Resource } from "./types";
 
 export type Tone = "ok" | "live" | "pending" | "warn" | "bad" | "idle";
@@ -312,7 +313,10 @@ function deriveProblems(o: Overview, now: number): Notice[] {
   return out;
 }
 
-/** The bell: live problems first, then up to 8 deploy results from the last day not already listed. */
+/**
+ * The bell: live problems first, then up to 8 deploy results from the last day not already listed.
+ * Dockify's own notices join whichever group they belong to and take their place by time.
+ */
 export function deriveNotices(o: Overview, now: number): Notice[] {
   const problems = deriveProblems(o, now);
   const shown = new Set(problems.map((p) => p.id));
@@ -328,7 +332,7 @@ export function deriveNotices(o: Overview, now: number): Notice[] {
       at: d.finishedAt ?? d.createdAt,
       kind: "result",
     }));
-  return [...problems, ...system(o), ...results];
+  return orderNotices([...problems, ...system(o), ...results]);
 }
 
 const SYSTEM_TONE = { info: "idle", ok: "ok", bad: "bad" } as const;

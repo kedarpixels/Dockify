@@ -2,11 +2,12 @@
  * The data browser's PgSession over node-postgres. Rows come back as arrays (rowMode "array") and
  * every value as its text form, so the browser formats cells itself and never trusts a driver
  * parser with tenant data. A query without values goes over the simple protocol, which is what
- * the multi-statement role setup needs.
+ * the multi-statement role setup needs; one with values (an empty list too) goes over the extended
+ * protocol, where the server itself refuses a second statement.
  */
 import type { Duplex } from "node:stream";
 import pg from "pg";
-import type { PgResult, PgSession } from "./browser.ts";
+import { BrowserError, type PgResult, type PgSession } from "./browser.ts";
 
 interface PgRaw {
   fields?: Array<{ name: string; dataTypeID: number }>;
@@ -14,6 +15,11 @@ interface PgRaw {
 }
 
 const CONNECT_TIMEOUT_MS = 5_000;
+/**
+ * The most one query's answer may put on the wire. The server is the tenant's: the row and cell
+ * caps are requests it can ignore, and node-postgres holds a whole answer in memory.
+ */
+export const WIRE_MAX_BYTES = 32 * 1024 * 1024;
 
 export interface PgTarget {
   user: string;
@@ -53,7 +59,7 @@ export function connectedStream(stream: Duplex): Duplex {
   return adapter;
 }
 
-export async function connectPg(stream: Duplex, t: PgTarget): Promise<PgSession> {
+export async function connectPg(stream: Duplex, t: PgTarget, wireMax = WIRE_MAX_BYTES): Promise<PgSession> {
   const client = new pg.Client({
     stream: () => connectedStream(stream),
     user: t.user,
@@ -63,14 +69,32 @@ export async function connectPg(stream: Duplex, t: PgTarget): Promise<PgSession>
     application_name: "dockify-data-browser",
     types: textTypes,
   });
+  // A session cut while idle (the tenant can terminate it) is reported here. With nobody
+  // listening it is an uncaught exception; the next query fails with the reason instead.
+  client.on("error", () => {});
   // A session that could not be made leaves no connection behind (it may be holding a network).
   await client.connect().catch((e: unknown) => {
     stream.destroy();
     throw e;
   });
+  let read = 0;
+  let over = false;
+  stream.on("data", (chunk: Buffer) => {
+    read += chunk.length;
+    if (read <= wireMax || over) return;
+    over = true;
+    stream.destroy();
+  });
   return {
     async query(text: string, values?: unknown[]): Promise<PgResult> {
-      return pgResult(await client.query({ text, values, rowMode: "array" }));
+      read = 0;
+      const config = { text, values, rowMode: "array" as const, ...(values ? { queryMode: "extended" } : {}) };
+      try {
+        return pgResult(await client.query(config));
+      } catch (e) {
+        if (!over) throw e;
+        throw new BrowserError(413, `The result is larger than the ${Math.round(wireMax / (1024 * 1024))} MB the data browser reads for one query. Select fewer rows or columns, or shorten wide values with left(column, 1000).`, "RESULT_TOO_LARGE");
+      }
     },
     async close() {
       await client.end().catch(() => {});

@@ -90,10 +90,24 @@ describe("checkIconUpload", () => {
 });
 
 describe("checkFavicon", () => {
+  it("takes an SVG only as the rebuilt document, so nothing that runs is ever stored", () => {
+    const r = checkFavicon(text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" onload="alert(1)"><script>alert(2)</script><path d="M2 2h20v20z"/></svg>'));
+    expect(r).toMatchObject({ ok: true, image: { mime: "image/svg+xml", width: 24, height: 24 } });
+    const stored = r.ok ? new TextDecoder().decode(r.bytes) : "";
+    expect(stored).toContain("<path");
+    expect(stored).not.toMatch(/onload|script|alert/);
+    // The 64 KB cap is on what the site sent, the same as for a raster.
+    expect(checkFavicon(text(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 2h20v20z"/>${" ".repeat(64 * 1024)}</svg>`))).toEqual({ ok: false, reason: "The favicon is larger than 64 KB" });
+  });
+
+
   it("takes ico, png, webp and jpg up to 64 KB and refuses the rest", () => {
     expect(checkFavicon(icoOf([16, 32])).ok).toBe(true);
-    expect(checkFavicon(pngOf(180, 180)).ok).toBe(true);
-    expect(checkFavicon(text("<svg/>")).ok).toBe(false);
+    const raster = pngOf(180, 180);
+    expect(checkFavicon(raster)).toMatchObject({ ok: true, image: { mime: "image/png", width: 180 }, bytes: raster });
+    expect(checkFavicon(text("<svg/>"))).toEqual({ ok: false, reason: "Give the SVG a viewBox, or a width and height in pixels" });
+    expect(checkFavicon(text("<!doctype html><html><body><svg viewBox='0 0 8 8'><path d='M0 0h8v8z'/></svg></body></html>")).ok).toBe(false);
+    expect(checkFavicon(text("plain words"))).toEqual({ ok: false, reason: "The favicon is not a PNG, ICO, WebP, JPG or SVG image" });
     expect(checkFavicon(pngOf(8, 8)).ok).toBe(false);
     expect(checkFavicon(pngOf(32, 32, 64 * 1024)).ok).toBe(false);
   });

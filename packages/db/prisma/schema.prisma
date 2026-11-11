@@ -649,6 +649,11 @@ model User {
   securityRemindKey String?
   /// When the popup for that alert opens again. Last two columns, as migration 0005 adds them.
   securityRemindAt  DateTime? @db.Timestamptz(3)
+  /// Wrong authenticator codes since the last right one or the last lockout (apps/api/src/mfa.ts).
+  totpFailedCount   Int       @default(0)
+  /// Lockouts in a row; each doubles the next. A right code clears all three.
+  totpLockouts      Int       @default(0)
+  totpLockedUntil   DateTime? @db.Timestamptz(3)
 
   member         Member?
   sessions       Session[]
@@ -1123,8 +1128,8 @@ model App {
 /// A stored icon image: a frontend's fetched favicon or an owner's upload, for one app, one
 /// project or one notification webhook (exactly one owner, CHECK in the migrations). Bytes are
 /// sniffed by magic number before they are written and are served only with the sniffed type. At
-/// most 128 KB. GIF and SVG are a webhook logo's only (CHECK), and an SVG is stored only as the
-/// sanitised text @dockify/contracts rebuilds it into.
+/// most 128 KB. GIF is a webhook logo's only and SVG a webhook logo's or a fetched favicon's
+/// (CHECK), and an SVG is stored only as the sanitised text @dockify/contracts rebuilds it into.
 model IconImage {
   id        String               @id @default(uuid()) @db.Uuid
   appId     String?              @db.Uuid
@@ -1311,6 +1316,9 @@ model Deployment {
   /// two last, as migration 0022 adds them.
   serverId           String             @db.Uuid
   server             Server             @relation(fields: [serverId], references: [id], onDelete: Restrict)
+  /// A preview build of a fork commit, fixed when it was queued: the worker never builds it with a
+  /// secret, whatever the preview row says later. Last, as migration 0032 appends it.
+  fromFork           Boolean            @default(false)
 
   logChunks     DeploymentLogChunk[]
   currentFor    App?                 @relation("CurrentDeployment")
@@ -1375,10 +1383,13 @@ model PreviewEnv {
   /// The state the last preview email was queued for ("ready", "failed:<commit>", "failed"), so a push
   /// that merely updates a ready preview sends nothing. Cleared when the preview closes.
   notifiedKey       String?
+  /// Identity of the base repository (host/owner/name, lowercased). PR numbers are per repository,
+  /// so two repositories of one project never share a row.
+  repoKey           String
 
   apps PreviewDeployment[]
 
-  @@unique([projectId, prNumber])
+  @@unique([projectId, repoKey, prNumber])
   @@index([status])
   @@map("preview_envs")
 }

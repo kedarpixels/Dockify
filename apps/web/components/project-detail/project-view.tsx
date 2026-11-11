@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CardTitle } from "@/components/card-title";
 import { Icon } from "@/components/icon";
 import { AppIcon, ProjectIcon } from "@/components/icons/app-icon";
@@ -35,6 +35,7 @@ import type { AppSummary, PageResult, ProjectDetail, ProjectPage } from "@/lib/p
 import type { OverviewResult } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
 import { useTabSwitchGuard } from "./controls";
+import { previewsMoving, statusKey } from "./live";
 import { ProjectSettings } from "./project-settings";
 import { DeployCard, DetailLead, hostOf, KIND_LABEL, projectState, ResourcePips, useUrlTab } from "./shared";
 
@@ -213,6 +214,7 @@ function DomainsTab({ p, env, now, manage }: { p: ProjectDetail; env: string; no
 /* -------------- Page -------------- */
 
 export function ProjectView({ overview, page, slug }: { overview: OverviewResult; page: PageResult<ProjectPage>; slug: string }) {
+  const router = useRouter();
   const { result } = useOverview(overview);
   const now = useNow(30_000, overview.fetchedAt);
   const can = useCan();
@@ -263,6 +265,27 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
     const live = new Map(o?.resources.map((r) => [r.id, r.status]));
     return { ...base, apps: base.apps.map((a) => ({ ...a, status: live.get(a.id) ?? a.status })) };
   }, [saved, page.data, o]);
+
+  // The page's own snapshot holds the deployments and their counts: read it again when a polled
+  // status moves, as the app page does.
+  const polled = project ? statusKey(project.apps) : null;
+  const lastPolled = useRef(polled);
+  useEffect(() => {
+    if (lastPolled.current === polled) return;
+    lastPolled.current = polled;
+    router.refresh();
+  }, [polled, router]);
+
+  // Previews load with the extras, which have no poll of their own. While one is building or being
+  // deleted they are read again on each overview snapshot, so the row settles.
+  const moving = previewsMoving(extras?.previews?.previews);
+  const tick = result.fetchedAt;
+  const lastTick = useRef(tick);
+  useEffect(() => {
+    if (lastTick.current === tick) return;
+    lastTick.current = tick;
+    if (moving) void reload();
+  }, [tick, moving, reload]);
 
   // A project with one environment shows none: no switcher, nothing narrowed. With several, the
   // header's switcher narrows the apps, deployments, domains and variables to one, or shows them all.

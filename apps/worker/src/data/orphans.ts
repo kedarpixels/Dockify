@@ -24,7 +24,7 @@ export async function deleteOrphanedBackups(deps: Pick<DataDeps, "db" | "storeFo
   if (typeof sourceAppId !== "string" || !UUID.test(sourceAppId)) throw new DataError("backup_delete payload has no valid sourceAppId", true);
   const { db } = deps;
   if (await db.app.findUnique({ where: { id: sourceAppId }, select: { id: true } })) throw new DataError("That app still exists; its backups are not orphaned", true);
-  const rows = await db.backup.findMany({ where: { sourceAppId, appId: null }, select: { id: true, objectKey: true, expiredAt: true, sizeBytes: true, destinationId: true, status: true } });
+  const rows = await db.backup.findMany({ where: { sourceAppId, appId: null, kind: { not: "control_plane" } }, select: { id: true, objectKey: true, expiredAt: true, sizeBytes: true, destinationId: true, status: true } });
   const gone: string[] = [];
   let freedBytes = 0;
   let failed = 0;

@@ -31,7 +31,7 @@ describe.skipIf(!url)("promotePending (postgres)", () => {
 
   it("promotes the push while a preview of the same app is in flight", async () => {
     const { p, env, app } = await seed();
-    const penv = await db.previewEnv.create({ data: { projectId: p.id, prNumber: 1, baseEnvironmentId: env.id, title: "t", branch: "x", domain: "p.example.com", repo: "a/b", status: "building", lastCommitAt: new Date() } });
+    const penv = await db.previewEnv.create({ data: { projectId: p.id, prNumber: 1, baseEnvironmentId: env.id, title: "t", branch: "x", domain: "p.example.com", repo: "a/b", repoKey: "github.com/a/b", status: "building", lastCommitAt: new Date() } });
     const pd = await db.previewDeployment.create({ data: { envId: penv.id, appId: app.id, hostname: "pr-1.p.example.com" } });
     await db.deployment.create({ data: { appId: app.id, serverId, previewId: pd.id, trigger: "preview", status: "queued", actorType: "webhook", steps: [] } });
 

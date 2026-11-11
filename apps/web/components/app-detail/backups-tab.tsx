@@ -87,6 +87,7 @@ function TierFact({ t, runs, resourceId, now, onEdit }: { t: BackupTierSchedule;
 
 function Summary({ b, resourceId, now, onEdit }: { b: AppBackups; resourceId: string; now: number; onEdit?: () => void }) {
   const utcAt = useUtcAt();
+  const can = useCan();
   const s = b.schedule;
   const newestTested = b.runs.find((r) => r.restoreTest.status === "passed" || r.restoreTest.status === "failed");
   const sealed = s?.encryption.enabled ?? b.config?.encryption.enabled ?? false;
@@ -125,7 +126,7 @@ function Summary({ b, resourceId, now, onEdit }: { b: AppBackups; resourceId: st
                 <CopyButton value={fingerprint} what="key fingerprint" />
               </span>
             ) : (
-              <span className="two-sub">No key on this server</span>
+              <span className="two-sub">{can.manage ? "No key on this server" : "Only admins see the key"}</span>
             )}
           </span>
         </dd>

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isCustomHost, projectFavicon, projectFaviconApp, rankFaviconApps, shownProjectIcon, type FaviconApp, type IconImageRow } from "./icons.ts";
 
 const img = (id: string, source: "favicon" | "upload" = "favicon"): IconImageRow => ({
-  id, source, sha256: id.padEnd(64, "0"), width: 32, height: 32, origin: null, updatedAt: new Date(0),
+  id, source, mime: "image/png", sha256: id.padEnd(64, "0"), width: 32, height: 32, origin: null, updatedAt: new Date(0),
 });
 const app = (id: string, born: number, primary: string | null, opts: { test?: boolean; domains?: string[]; fav?: boolean } = {}): FaviconApp => ({
   id, name: id, createdAt: new Date(born * 1000),

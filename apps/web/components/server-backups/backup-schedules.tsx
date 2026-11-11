@@ -25,12 +25,14 @@ const PROVIDER: Record<StorageProvider, string> = { r2: "Cloudflare R2", s3: "AW
 /** Whether a database's backups are encrypted, as one chip: Key pending before the instance key exists. */
 function SealChip({ s }: { s: BackupSchedule }) {
   const enc = s.encryption;
-  return enc.enabled && !enc.fingerprint ? (
+  const { manage } = useCan();
+  // A Viewer is never sent the fingerprint, so its absence says nothing about the key.
+  return enc.enabled && !enc.fingerprint && manage ? (
     <Chip size="xs" tone="warn" tip="The key is created with the first backup">
       Key pending
     </Chip>
   ) : (
-    <Chip size="xs" icon={<Icon name={enc.enabled ? "lock" : "lockOpen"} size={12} />} tip={enc.enabled ? `Key ${enc.fingerprint}` : undefined}>
+    <Chip size="xs" icon={<Icon name={enc.enabled ? "lock" : "lockOpen"} size={12} />} tip={enc.enabled && enc.fingerprint ? `Key ${enc.fingerprint}` : undefined}>
       {enc.enabled ? "Encrypted" : "Not encrypted"}
     </Chip>
   );
@@ -65,7 +67,7 @@ function TierLine({ s, t, runs, now }: { s: BackupSchedule; t: BackupTierSchedul
         {!t.enabled ? null : t.tier === "local" ? (
           <Chip size="xs">This server</Chip>
         ) : t.storage ? (
-          <Chip size="xs" tone="ok" tip={`Bucket ${t.storage.bucket}`}>
+          <Chip size="xs" tone="ok" tip={t.storage.bucket ? `Bucket ${t.storage.bucket}` : undefined}>
             {t.storage.name}
           </Chip>
         ) : (
@@ -182,11 +184,12 @@ export function StorageCard({ config, schedules, now }: { config: BackupConfig; 
   const using = (id: string) => schedules.filter((s) => s.tiers.offsite.enabled && s.tiers.offsite.storage?.id === id).length;
   const enc = config.encryption;
   // The instance key is made on first use, so encryption can be on while no key exists yet.
-  const sealed = !enc.enabled ? "not encrypted" : enc.fingerprint ? "encrypted" : "key pending";
+  // Destinations and the fingerprint are an admin's: a Viewer reads only that backups are encrypted.
+  const sealed = !enc.enabled ? "not encrypted" : enc.fingerprint || !manage ? "encrypted" : "key pending";
   return (
     <section className="card bk-store" aria-labelledby="bk-store-title">
       <div className="card-hd">
-        <CardTitle id="bk-store-title" icon="cloud" title="Storage and encryption" sub={`${plural(config.destinations.length, "destination")}, ${sealed}`} />
+        <CardTitle id="bk-store-title" icon="cloud" title="Storage and encryption" sub={manage ? `${plural(config.destinations.length, "destination")}, ${sealed}` : sealed.charAt(0).toUpperCase() + sealed.slice(1)} />
         {manage ? (
           <Link href={STORAGE_HREF} className="btn btn-sm">
             Manage storage
@@ -194,7 +197,7 @@ export function StorageCard({ config, schedules, now }: { config: BackupConfig; 
         ) : null}
       </div>
       <ul className="soft-list bk-store-list">
-        {config.destinations.length === 0 ? (
+        {manage && config.destinations.length === 0 ? (
           <li className="soft-row bk-store-row">
             <IconTile>
               <Icon name="cloud" />
@@ -278,9 +281,11 @@ export function StorageCard({ config, schedules, now }: { config: BackupConfig; 
                 <CopyButton value={enc.fingerprint} what="key fingerprint" align="end" />
               </>
             ) : enc.enabled ? (
-              <span className="tone-warn" data-tip="The key is created with the first backup" data-tip-align="end">
-                No key yet
-              </span>
+              manage ? (
+                <span className="tone-warn" data-tip="The key is created with the first backup" data-tip-align="end">
+                  No key yet
+                </span>
+              ) : null
             ) : (
               <span className="none">No key</span>
             )}

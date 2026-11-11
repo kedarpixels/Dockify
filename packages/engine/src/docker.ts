@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { request, type IncomingMessage } from "node:http";
 import type { Duplex, Readable } from "node:stream";
 import { assertSafeSpec, containerSpec, type ContainerInput } from "./container-spec.ts";
+import { PermanentDeployError } from "./errors.ts";
 
 export class DockerError extends Error {
   readonly status: number;
@@ -203,12 +204,23 @@ const qs = (q: Record<string, string | number | boolean | undefined>) => {
 const labelFilter = (labels: Record<string, string>, extra: Record<string, string[]> = {}) =>
   JSON.stringify({ label: Object.entries(labels).map(([k, v]) => `${k}=${v}`), ...extra });
 
+const TOO_LARGE = "Docker response too large";
+/**
+ * Docker copies an image's labels onto its container, and every list and inspect of that container
+ * carries them. Past the answer cap below those calls fail, for every tenant's sweeps too.
+ */
+export const MAX_IMAGE_LABEL_BYTES = 64 * 1024;
+export const labelBytes = (labels: Record<string, string> | null | undefined): number =>
+  Object.entries(labels ?? {}).reduce((n, [k, v]) => n + Buffer.byteLength(k) + Buffer.byteLength(String(v)), 0);
+const heavyLabels = (size: string) =>
+  new PermanentDeployError(`This image carries ${size} of labels, and Dockify runs an image with at most ${MAX_IMAGE_LABEL_BYTES / 1024} KB of them. Remove LABEL lines from its Dockerfile, then deploy again.`);
+
 async function readAll(res: IncomingMessage, cap = 8 * 1024 * 1024): Promise<string> {
   const parts: Buffer[] = [];
   let n = 0;
   for await (const c of res) {
     n += (c as Buffer).length;
-    if (n > cap) throw new DockerError(502, "Docker response too large");
+    if (n > cap) throw new DockerError(502, TOO_LARGE);
     parts.push(c as Buffer);
   }
   return Buffer.concat(parts).toString("utf8");
@@ -315,9 +327,20 @@ export class DockerClient implements DockerApi {
   listContainers(labels: Record<string, string>) {
     return this.call<ContainerSummary[]>("GET", `/containers/json${qs({ all: true, filters: labelFilter(labels) })}`);
   }
+  /** Throws when the image's own labels are past the budget. An image that cannot be read is left for the create to report. */
+  async refuseHeavyLabels(image: string): Promise<void> {
+    const info = await this.inspectImage(image).catch((e: unknown) => {
+      // An inspect too large to read is an image config of megabytes, which only labels make.
+      if (e instanceof DockerError && e.message === TOO_LARGE) throw heavyLabels("megabytes");
+      return null;
+    });
+    const size = labelBytes(info?.Config?.Labels);
+    if (size > MAX_IMAGE_LABEL_BYTES) throw heavyLabels(`${Math.ceil(size / 1024)} KB`);
+  }
   async createContainer(name: string, input: ContainerInput): Promise<string> {
     const spec = containerSpec({ ...input, name }, this.cpuCores);
     assertSafeSpec(spec);
+    await this.refuseHeavyLabels(spec.Image);
     const out = await this.call<{ Id: string }>("POST", `/containers/create${qs({ name })}`, spec);
     return out.Id;
   }

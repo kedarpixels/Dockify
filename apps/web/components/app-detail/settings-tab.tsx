@@ -72,6 +72,7 @@ function buildErrors(d: BuildDraft, source: AppSource) {
  * it, and the mirror uses it to place a preview when several apps link one project.
  */
 function VercelBranchSection({ app, mode, multiEnv, onDirty }: { app: AppDetail; mode: "follow" | "deploy" | undefined; multiEnv: boolean; onDirty?: DirtyReport }) {
+  const router = useRouter();
   const can = useCan();
   const saved = app.branch ?? "";
   const [base, setBase] = useState(saved);
@@ -96,6 +97,8 @@ function VercelBranchSection({ app, mode, multiEnv, onDirty }: { app: AppDetail;
     if (!r.ok) return;
     setTried(false);
     setBase(value);
+    // The page still holds the old branch; reading it again keeps the field right after a tab switch.
+    router.refresh();
   };
 
   return (
@@ -125,14 +128,19 @@ function VercelBranchSection({ app, mode, multiEnv, onDirty }: { app: AppDetail;
 }
 
 function BuildSection({ app, multiEnv, onSaved, onDirty }: { app: AppDetail; multiEnv: boolean; onSaved: (s: AppSettings) => void; onDirty?: DirtyReport }) {
+  const router = useRouter();
   const can = useCan();
   const [draft, setDraft] = useState(() => toBuild(app));
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
+  // The image and branch a save just stored. The page's own copy is older until it is read again,
+  // and the form must compare against what the server holds, or it reads unsaved.
+  const [stored, setStored] = useState<{ from: string; image: string; branch: string } | null>(null);
+  const served = `${app.image ?? ""}|${app.branch ?? ""}`;
   const source = sourceOf(app);
   const errs = buildErrors(draft, source);
   const err = (k: keyof BuildDraft) => (tried ? (errs[k] ?? null) : null);
-  const base = toBuild(app);
+  const base = { ...toBuild(app), ...(stored?.from === served ? { image: stored.image, branch: stored.branch } : {}) };
   const dirty = (Object.keys(draft) as Array<keyof BuildDraft>).some((k) => draft[k].trim() !== base[k]);
   useReportDirty(dirty, onDirty);
   const managed = source === "managed";
@@ -163,7 +171,10 @@ function BuildSection({ app, multiEnv, onSaved, onDirty }: { app: AppDetail; mul
     if (!r.ok) return;
     setTried(false);
     setDraft({ ...toBuild(app, settings), image, branch });
+    setStored({ from: served, image, branch });
     onSaved(settings);
+    // The settings ride in the page's override; the source does not, so the page reads it again.
+    if (sourcePatch) router.refresh();
   };
 
   return (

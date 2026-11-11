@@ -235,6 +235,23 @@ function ScopeItems({
   );
 }
 
+/** A key the column cut short shows whole on hover; one that fits gets no tip. */
+function tipCutKey(e: React.PointerEvent) {
+  const key = e.target instanceof Element ? e.target.closest<HTMLElement>(".ev-var-keytext") : null;
+  if (!key) return;
+  if (key.scrollWidth > key.clientWidth) key.title = key.textContent ?? "";
+  else key.removeAttribute("title");
+}
+
+/** The head and rows of one table: its key column is as wide as its longest key (env-table.css). */
+function FitTable({ app = false, children }: { app?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="ev-vars-fit" data-app={app ? "" : undefined} onPointerOver={tipCutKey}>
+      {children}
+    </div>
+  );
+}
+
 function NoMatch({ query, onClear }: { query: string; onClear: () => void }) {
   return (
     <Empty
@@ -414,6 +431,24 @@ export function EnvWorkbench({
           action={
             <button type="button" className="btn btn-sm" onClick={() => void onReload()}>
               Try again
+            </button>
+          }
+        />
+      </div>
+    );
+  }
+  // The switcher picked an environment the loaded variables do not list (added since they were
+  // read): say so, never show and edit another environment's in its place.
+  if (!self && environment && !envNames.includes(environment)) {
+    return (
+      <div className="card">
+        <Empty
+          icon="key"
+          title="Variables need a refresh"
+          body={`${envName(environment)} was added after this page read the project’s variables.`}
+          action={
+            <button type="button" className="btn btn-sm" onClick={() => void onReload()}>
+              Load variables
             </button>
           }
         />
@@ -764,20 +799,22 @@ export function EnvWorkbench({
   } else {
     overridesBody = (
       <div className="ev-vars-wrap">
-        <EnvTableHead targets app={!self} />
-        <ul className="ev-vars" aria-label={self ? `${appTitle(self)} overrides` : "App overrides"}>
-          {overrides.map((g) => (
-            <ScopeItems
-              key={g.app.id}
-              scope={g.scope}
-              rows={g.shown}
-              taken={takenIn(g.rows)}
-              app={self ? undefined : { name: appTitle(g.app), icon: <AppIcon id={g.app.id} kind={g.app.kind} /> }}
-              notes={(key) => (sharedKeys.has(key) ? "Overrides shared" : undefined)}
-              {...rowsProps}
-            />
-          ))}
-        </ul>
+        <FitTable app={!self}>
+          <EnvTableHead targets app={!self} />
+          <ul className="ev-vars" aria-label={self ? `${appTitle(self)} overrides` : "App overrides"}>
+            {overrides.map((g) => (
+              <ScopeItems
+                key={g.app.id}
+                scope={g.scope}
+                rows={g.shown}
+                taken={takenIn(g.rows)}
+                app={self ? undefined : { name: appTitle(g.app), icon: <AppIcon id={g.app.id} kind={g.app.kind} /> }}
+                notes={(key) => (sharedKeys.has(key) ? "Overrides shared" : undefined)}
+                {...rowsProps}
+              />
+            ))}
+          </ul>
+        </FitTable>
         {overrideMiss ? <NoMatch query={query} onClear={() => setQuery("")} /> : null}
       </div>
     );
@@ -873,21 +910,23 @@ export function EnvWorkbench({
             <Empty icon="key" title="No variables yet" body={`Nothing is set for ${where} yet. Add one, or paste a .env file to stage many at once.`} />
           ) : (
             <div className="ev-vars-wrap">
-              <EnvTableHead targets />
-              <ul className="ev-vars" aria-label="Shared variables">
-                <ScopeItems
-                  scope={shared}
-                  rows={sharedShown}
-                  taken={takenIn(sharedRows)}
-                  readOnlyHref={self ? projectEnvHref : undefined}
-                  notes={(key) => {
-                    if (self) return selfKeys.has(key) ? "Overridden here" : undefined;
-                    const n = overriddenBy(key);
-                    return n ? `Overridden in ${plural(n, "app")}` : undefined;
-                  }}
-                  {...rowsProps}
-                />
-              </ul>
+              <FitTable>
+                <EnvTableHead targets />
+                <ul className="ev-vars" aria-label="Shared variables">
+                  <ScopeItems
+                    scope={shared}
+                    rows={sharedShown}
+                    taken={takenIn(sharedRows)}
+                    readOnlyHref={self ? projectEnvHref : undefined}
+                    notes={(key) => {
+                      if (self) return selfKeys.has(key) ? "Overridden here" : undefined;
+                      const n = overriddenBy(key);
+                      return n ? `Overridden in ${plural(n, "app")}` : undefined;
+                    }}
+                    {...rowsProps}
+                  />
+                </ul>
+              </FitTable>
               {q && !sharedShown.length && sharedRows.length ? <NoMatch query={query} onClear={() => setQuery("")} /> : null}
             </div>
           )}

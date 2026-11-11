@@ -73,8 +73,8 @@ function cellLabel(c: Cell) {
   return `${c.today ? "Today" : dayLabel(c.date)}, ${plural(c.total, "deployment")}${c.failed ? `, ${c.failed.toLocaleString("en-US")} failed` : ""}`;
 }
 
-export function DeployHeatmap({ trend, rollbacks, now }: { trend: Overview["deployTrend"]; rollbacks: number; now: number }) {
-  const todayIso = new Date(now).toISOString().slice(0, 10);
+/** `todayIso` is today in the zone the trend's days are counted in (today.ts). */
+export function DeployHeatmap({ trend, rollbacks, todayIso }: { trend: Overview["deployTrend"]; rollbacks: number; todayIso: string }) {
   const cardRef = useRef<HTMLElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);

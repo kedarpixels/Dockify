@@ -54,6 +54,14 @@ export class DataError extends Error {
   }
 }
 
+/** A data job ran past its wall clock limit (handlers.ts). Permanent: a retry would hold the lane as long again. */
+export class DeadlineError extends DataError {
+  constructor(message: string) {
+    super(message, true);
+    this.name = "DeadlineError";
+  }
+}
+
 /**
  * The instance backup key, created on first use. Separate from the master key and from every
  * storage credential (security rule 19); sealed in the secrets table like any other value.

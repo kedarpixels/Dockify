@@ -187,12 +187,15 @@ export function EnvironmentsCard({
   previews,
   onChange,
   onOpenPreviews,
+  onReload,
 }: {
   p: ProjectDetail;
   /** Null while loading or when the API did not answer; the preview row then reads Unknown. */
   previews: PreviewSettings | null;
   onChange: (next: ProjectDetail) => void;
   onOpenPreviews: () => void;
+  /** Reads the project extras again: the Variables tab lists its environments from them. */
+  onReload?: () => void;
 }) {
   const can = useCan();
   const router = useRouter();
@@ -229,6 +232,8 @@ export function EnvironmentsCard({
     setBusy(false);
     if (!r.ok) return;
     onChange({ ...p, environments: [...p.environments, { name, branch }] });
+    // Without this the Variables tab would not know the new environment and show another one's.
+    onReload?.();
     setAdding(false);
   };
 
@@ -247,6 +252,7 @@ export function EnvironmentsCard({
       deployments: p.deployments.filter((d) => d.environment !== name),
       domains: p.domains.filter((d) => d.environment !== name),
     });
+    onReload?.();
     // The overview, the sidebar and every list read the apps that went from the server again.
     router.refresh();
   };

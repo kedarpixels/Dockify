@@ -13,6 +13,7 @@ export interface ExecResult {
 }
 
 export interface ExecHandle {
+  /** Read it or resume() it: the process is held back while nobody takes its output. */
   stdout: Readable;
   /** Present only when the exec was started with stdin. Ending it sends EOF. */
   stdin: Writable | null;

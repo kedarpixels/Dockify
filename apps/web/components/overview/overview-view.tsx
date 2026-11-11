@@ -19,6 +19,7 @@ import { DeployHeatmap } from "./deploy-heatmap";
 import { DeploymentList, InFlight } from "./panels";
 import { ProjectCarousel } from "./project-carousel";
 import { ServerCard } from "./server-card";
+import { dayIn } from "./today";
 
 /** Newest first, the order every list of deployments uses (the Deployments page included). */
 const newestFirst = (list: RecentDeployment[]) => [...list].sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
@@ -30,7 +31,9 @@ export function OverviewView({ initial }: { initial: OverviewResult }) {
   const can = useCan();
   const o = result.data;
 
-  const todayIso = new Date(now).toISOString().slice(0, 10);
+  // The zone the API counted the trend's days in; an older API sends none and counts UTC days.
+  const zone = o?.trendZone;
+  const todayIso = dayIn(now, zone);
   const view = useMemo(() => {
     if (!o) return null;
     const deployments = newestFirst(o.recentDeployments);
@@ -86,7 +89,7 @@ export function OverviewView({ initial }: { initial: OverviewResult }) {
             <Spacer />
             <ProjectCarousel projects={view.projects} now={now} empty={can.manage ? undefined : "An admin can create one. Projects show up here with their health and last deploy."} />
             <Spacer />
-            <DeployHeatmap trend={o.deployTrend} rollbacks={view.rollbacks} now={now} />
+            <DeployHeatmap trend={o.deployTrend} rollbacks={view.rollbacks} todayIso={todayIso} />
             <Spacer />
             <div className="split ov-split" data-stretch="true">
               <DeploymentList deployments={view.recent} now={now} />

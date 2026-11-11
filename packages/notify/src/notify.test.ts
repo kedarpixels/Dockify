@@ -127,6 +127,18 @@ describe("Mattermost and Rocket.Chat", () => {
     expect(JSON.stringify(mattermostBody(msg({ text: "@all down" })))).not.toMatch(/@all/);
     expect(JSON.stringify(rocketChatBody(msg({ text: "@here down" })))).not.toMatch(/@here/);
   });
+  it("leave no masked link, image, HTML or code span in outside text", () => {
+    const line = "[Session expired, sign in](https://evil.example) ![x](https://evil.example/p.png) <https://evil.example|here> `x` a\\b";
+    expect(chatSafe(line)).toBe("\\[Session expired, sign in\\]\\(https://evil.example\\) \\!\\[x\\]\\(https://evil.example/p.png\\) \\<​https://evil.example|here\\> \\`x\\` a\\\\b");
+    const hostile = msg({ title: line, text: line, fields: [{ name: line, value: line }] });
+    for (const body of [mattermostBody(hostile), rocketChatBody(hostile)]) {
+      // Every string as the provider receives it.
+      const seen: string[] = [];
+      JSON.stringify(body, (_k, v: unknown) => (typeof v === "string" && seen.push(v), v));
+      for (const bad of ["](", "<http", " `x` ", " ![", " [Session"]) expect(seen.join(" | "), bad).not.toContain(bad);
+    }
+    expect(chatSafe("plain words, 85% full")).toBe("plain words, 85% full");
+  });
 });
 
 describe("ntfy", () => {

@@ -11,11 +11,13 @@ import {
   type Me,
   type NotifyEvent,
   type Outcome,
+  type Session,
   type SettingsData,
   type TokenGrant,
   type TokenScope,
   type TotpSetup,
 } from "@/lib/pages/activity-settings";
+import type { SettingsPatch } from "@/components/activity-settings/settings-patch";
 import { newPasswordProblem } from "@/lib/password";
 import { previewElevated } from "@/lib/preview-step-up";
 import { stepUpRefusal } from "@/lib/step-up";
@@ -41,7 +43,6 @@ import { BRANCH_NAME, isRecord } from "@/lib/validation";
 const NONE: Outcome<never> = { ok: false, error: "No data source, set DOCKIFY_API_URL for this dashboard" };
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE = /^\d{6}$/;
-const HTTPS = /^https:\/\/\S+$/;
 /** A branch name, as packages/contracts Branch: no leading or trailing slash, no "//" or "..". */
 const AVATAR = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
 const TEAM_ROLES = ["admin", "viewer"] as const;
@@ -255,6 +256,33 @@ export async function revokeOtherSessions(): Promise<Outcome> {
   return NONE;
 }
 
+/* ---------- Lists read again ---------- */
+
+/*
+ * A write elsewhere changes these lists: a password change signs the other sessions out, a removed
+ * member's tokens go with the member, the worker settles a queued invite email. Each answers null in
+ * the preview, which stores nothing, so the page keeps what it shows.
+ */
+
+async function readList<T>(path: string): Promise<Outcome<T | null>> {
+  const source = dataSource();
+  if (source === "api") return apiCall<T>("GET", path);
+  if (source === "preview") return done(null);
+  return NONE;
+}
+
+export async function readSessions(): Promise<Outcome<Session[] | null>> {
+  return readList<Session[]>("/api/v1/me/sessions");
+}
+
+export async function readTeam(): Promise<Outcome<SettingsData["team"] | null>> {
+  return readList<SettingsData["team"]>("/api/v1/team");
+}
+
+export async function readTokens(): Promise<Outcome<ApiToken[] | null>> {
+  return readList<ApiToken[]>("/api/v1/tokens");
+}
+
 /* ---------- Team ---------- */
 
 /** `githubVerified` approves (true) or withdraws (false) a member's GitHub login; `githubLogin: null` removes it. */
@@ -335,37 +363,57 @@ export async function revokeInvite(id: string): Promise<Outcome> {
 const PREVIEW_HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const int = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 
-/** The settings rebuilt from checked fields only, or the first problem found. */
-function cleanSettings(s: unknown): InstanceSettings | string {
-  if (!isRecord(s) || !isRecord(s.notifications) || !isRecord(s.notifications.events)) return "Settings are not valid";
-  const { instanceName, publicUrl, defaultBranch, buildConcurrency, logRetentionDays, previewDomain, terminalEnabled } = s;
-  const { events } = s.notifications;
-  if (!str(instanceName, 60) || !instanceName.trim()) return "Instance name cannot be empty";
-  if (!str(publicUrl, 500) || !HTTPS.test(publicUrl)) return "Public URL must start with https://";
-  if (!str(defaultBranch, 200) || !BRANCH_NAME.test(defaultBranch)) return "Use a branch name like main";
-  if (!int(buildConcurrency, 1, 8)) return "Build concurrency must be 1 to 8";
-  if (!int(logRetentionDays, 1, 365)) return "Log retention must be 1 to 365 days";
-  if (EVENTS.some((e) => typeof events[e] !== "boolean")) return "Notification events are not valid";
-  if (previewDomain !== undefined && previewDomain !== null && (!str(previewDomain, 253) || !PREVIEW_HOST.test(previewDomain))) return "Use a preview domain like preview.example.com";
-  return {
-    instanceName: instanceName.trim(),
-    publicUrl,
-    defaultBranch,
-    buildConcurrency,
-    logRetentionDays,
-    notifications: { events: Object.fromEntries(EVENTS.map((e) => [e, events[e] === true])) as Record<NotifyEvent, boolean> },
+/** The patch rebuilt from checked fields only, or the first problem found. A field that was not sent stays unsent. */
+function cleanPatch(s: unknown): SettingsPatch | string {
+  if (!isRecord(s)) return "Settings are not valid";
+  const { instanceName, defaultBranch, logRetentionDays, previewDomain, terminalEnabled, notifications } = s;
+  const out: SettingsPatch = {};
+  if (instanceName !== undefined) {
+    if (!str(instanceName, 60) || !instanceName.trim()) return "Instance name cannot be empty";
+    out.instanceName = instanceName.trim();
+  }
+  if (defaultBranch !== undefined) {
+    if (!str(defaultBranch, 200) || !BRANCH_NAME.test(defaultBranch)) return "Use a branch name like main";
+    out.defaultBranch = defaultBranch;
+  }
+  if (logRetentionDays !== undefined) {
+    if (!int(logRetentionDays, 1, 365)) return "Log retention must be 1 to 365 days";
+    out.logRetentionDays = logRetentionDays;
+  }
+  if (previewDomain !== undefined) {
     // null goes back to the derived default (preview.<parent of the dashboard host>).
-    previewDomain: typeof previewDomain === "string" ? previewDomain : null,
-    ...(typeof terminalEnabled === "boolean" ? { terminalEnabled } : {}),
-  };
+    if (previewDomain !== null && (!str(previewDomain, 253) || !PREVIEW_HOST.test(previewDomain))) return "Use a preview domain like preview.example.com";
+    out.previewDomain = previewDomain;
+  }
+  if (terminalEnabled !== undefined) {
+    if (typeof terminalEnabled !== "boolean") return "Settings are not valid";
+    out.terminalEnabled = terminalEnabled;
+  }
+  if (notifications !== undefined) {
+    if (!isRecord(notifications) || !isRecord(notifications.events)) return "Notification events are not valid";
+    const events: Partial<Record<NotifyEvent, boolean>> = {};
+    for (const e of EVENTS) {
+      const v = notifications.events[e];
+      if (v === undefined) continue;
+      if (typeof v !== "boolean") return "Notification events are not valid";
+      events[e] = v;
+    }
+    out.notifications = { events };
+  }
+  return out;
 }
 
-export async function saveSettings(next: InstanceSettings): Promise<Outcome<InstanceSettings>> {
-  const clean = cleanSettings(next);
+/**
+ * Saves the fields one section changed, never the whole object: an unsent field keeps its stored
+ * value, so the preview domain stays derived and another admin's newer values stay put. Answers the
+ * stored settings, or null in the preview, which stores nothing.
+ */
+export async function saveSettings(patch: SettingsPatch): Promise<Outcome<InstanceSettings | null>> {
+  const clean = cleanPatch(patch);
   if (typeof clean === "string") return bad(clean);
   const source = dataSource();
   if (source === "api") return apiCall<InstanceSettings>("PATCH", "/api/v1/settings", clean);
-  if (source === "preview") return previewStepUp() ?? done(clean);
+  if (source === "preview") return previewStepUp() ?? done(null);
   return NONE;
 }
 

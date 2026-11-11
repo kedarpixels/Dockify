@@ -302,3 +302,69 @@ describe("the gate in front of a fake Docker", () => {
     proxy.close();
   });
 });
+
+/** An image's own labels land on its container, and megabytes of them make its inspect too large to hold. */
+describe("a container whose inspect is too large to read", () => {
+  const HEAVY = "d".repeat(64);
+  const OTHER = "e".repeat(64);
+  const BLOAT = "x".repeat(9 * 1024 * 1024);
+  const seen: string[] = [];
+  let docker: Server;
+  let front: NetServer;
+  let gate: DockerGate;
+  let client: DockerClient;
+  // name: [the start of its inspect, what the managed list answers for its id]
+  const answers: Record<string, [string, string]> = {
+    "dk-heavy": [`{"Id":"${HEAVY}","Config":{"Labels":{"dockify.managed":"true","junk":"`, `[{"Id":"${HEAVY}","Labels":{"junk":"${BLOAT}"}}]`],
+    "heavy-control": [`{"Id":"${OTHER}","Config":{"Labels":{"junk":"`, "[]\n"],
+    "dk-reordered": [`{"Created":"now","Id":"${HEAVY}","Config":{"Labels":{"junk":"`, `[{"Id":"${HEAVY}"}]`],
+    "dk-mismatch": [`{"Id":"${"f".repeat(64)}","Config":{"Labels":{"junk":"`, `[{"Id":"${HEAVY}"}]`],
+  };
+
+  beforeAll(async () => {
+    docker = createServer((req, res) => {
+      const url = req.url ?? "";
+      seen.push(`${req.method} ${url.split("?")[0]}`);
+      const m = /^\/v1\.43\/containers\/([^/?]+)\/json$/.exec(url);
+      if (m) return void res.end(`${answers[m[1]!]![0]}${BLOAT}"}}}`);
+      if (url.startsWith("/v1.43/containers/json?")) {
+        const filters = JSON.parse(new URL(url, "http://x").searchParams.get("filters")!) as { id: string[]; label: string[] };
+        expect(filters.label).toEqual(["dockify.managed=true"]);
+        const hit = Object.values(answers).find(([head]) => head.includes(`"Id":"${filters.id[0]}"`));
+        return void res.end(hit![1]);
+      }
+      res.writeHead(204);
+      res.end();
+    });
+    await new Promise<void>((r) => docker.listen(0, "127.0.0.1", r));
+    gate = createDockerGate({ host: "127.0.0.1", port: (docker.address() as AddressInfo).port });
+    front = netServer((s) => gate.handle(s));
+    await new Promise<void>((r) => front.listen(0, "127.0.0.1", r));
+    client = new DockerClient({ host: "127.0.0.1", port: (front.address() as AddressInfo).port }, { cpuCores: 4 });
+  });
+  afterAll(() => {
+    gate.close();
+    front.close();
+    docker.closeAllConnections();
+    docker.close();
+  });
+
+  it("is still stopped and removed when it is a tenant's", async () => {
+    await expect(client.stopContainer("dk-heavy", 20)).resolves.toBeUndefined();
+    await expect(client.removeContainer("dk-heavy")).resolves.toBeUndefined();
+    expect(seen).toContain("DELETE /v1.43/containers/dk-heavy");
+  });
+
+  it("is still refused when it is not, with nothing but reads reaching Docker", async () => {
+    seen.length = 0;
+    await expect(client.removeContainer("heavy-control")).rejects.toMatchObject({ status: 400 });
+    expect(seen).toEqual(["GET /v1.43/containers/heavy-control/json", "GET /v1.43/containers/json"]);
+  });
+
+  it("fails closed when the answer does not start with the id, or the list names another container", async () => {
+    seen.length = 0;
+    await expect(client.removeContainer("dk-reordered")).rejects.toMatchObject({ status: 502 });
+    await expect(client.removeContainer("dk-mismatch")).rejects.toMatchObject({ status: 502 });
+    expect(seen.filter((s) => s.startsWith("DELETE"))).toEqual([]);
+  });
+});

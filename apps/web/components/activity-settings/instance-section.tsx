@@ -2,46 +2,22 @@
 
 import { ToggleRow } from "@/components/project-detail/controls";
 import { TextInput } from "@/components/ui/field";
-import type { InstanceSettings } from "@/lib/pages/activity-settings";
 import { useCan } from "@/lib/viewer";
 import { DashboardDomainGroup } from "./dashboard-domain-group";
 import { Group, SaveBar, SettingRow } from "./form";
 import { Segment, SectionTabs } from "./section-tabs";
 import { useSettingsDraft } from "./settings-draft";
+import { instanceDraft, instancePatch, type InstanceDraft } from "./settings-patch";
 import type { SectionProps } from "./settings-view";
 import { BRANCH_NAME, displayNameProblem } from "@/lib/validation";
 
 /* Settings, Instance: the defaults every project on this server shares. The reset lives in Danger zone. */
 
-/** A branch name, as packages/contracts Branch: no leading or trailing slash, no "//" or "..". */
-
-type InstanceDraft = Pick<InstanceSettings, "instanceName" | "defaultBranch"> & { buildConcurrency: string; logRetentionDays: string; previewDomain: string; terminalEnabled: boolean };
-
 const PREVIEW_HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 export function InstanceSection(props: SectionProps) {
   const { manage } = useCan();
-  const { draft, setDraft, dirty, saving, error, save, discard } = useSettingsDraft<InstanceDraft>(
-    (s) => ({
-      instanceName: s.instanceName,
-      defaultBranch: s.defaultBranch,
-      buildConcurrency: String(s.buildConcurrency),
-      logRetentionDays: String(s.logRetentionDays),
-      previewDomain: s.previewDomainCustom ? (s.previewDomain ?? "") : "",
-      terminalEnabled: s.terminalEnabled ?? true,
-    }),
-    (s, d) => ({
-      ...s,
-      instanceName: d.instanceName.trim(),
-      defaultBranch: d.defaultBranch.trim(),
-      buildConcurrency: Number(d.buildConcurrency),
-      logRetentionDays: Number(d.logRetentionDays),
-      // Empty or the derived default means "derive it": the API stores null.
-      previewDomain: d.previewDomain.trim() && d.previewDomain.trim().toLowerCase() !== s.previewDomainDefault ? d.previewDomain.trim().toLowerCase() : null,
-      terminalEnabled: d.terminalEnabled,
-    }),
-    props,
-  );
+  const { draft, setDraft, dirty, saving, error, save, discard } = useSettingsDraft<InstanceDraft>(instanceDraft, instancePatch, props);
   const previewDefault = props.data.settings.previewDomainDefault ?? null;
 
   const days = Number(draft.logRetentionDays);

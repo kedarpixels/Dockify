@@ -5,7 +5,7 @@
  * can remember it was read.
  */
 import type { Db } from "@dockify/db";
-import { bare, chooseRelease, pendingSecurity } from "./release.ts";
+import { bare, chooseRelease, compareVersions, pendingSecurity } from "./release.ts";
 import { storedFeed } from "./state.ts";
 
 const RECENT_MS = 7 * 86_400_000;
@@ -23,13 +23,20 @@ export interface SystemNotice {
 
 const v = (s: string) => `v${bare(s)}`;
 
-export async function updateNotices(db: Db, fallbackVersion: string, now = Date.now()): Promise<SystemNotice[]> {
+/**
+ * `imageVersion` is the version this api's own image carries. The recorded version is written by
+ * the updater and the installer; an install brought forward any other way (images swapped by hand,
+ * or an installer that could not write the row) leaves it behind, and the bell would keep offering
+ * the release that already runs. So the newer of the two is what runs.
+ */
+export async function updateNotices(db: Db, imageVersion: string, now = Date.now()): Promise<SystemNotice[]> {
   const [inst, last] = await Promise.all([
     db.instance.findUnique({ where: { id: 1 }, select: { releaseVersion: true, latestRelease: true, updateChannel: true, updateSkipVersion: true } }),
     db.releaseUpdate.findFirst({ where: { state: { in: ["done", "failed", "rolled_back"] } }, orderBy: { startedAt: "desc" } }),
   ]);
   const out: SystemNotice[] = [];
-  const current = inst?.releaseVersion ?? fallbackVersion;
+  const recorded = inst?.releaseVersion;
+  const current = recorded && compareVersions(recorded, imageVersion) > 0 ? recorded : imageVersion;
   const feed = storedFeed(inst?.latestRelease);
   const usable = feed && feed.channel === inst?.updateChannel ? feed : null;
   const target = usable ? chooseRelease(usable, current) : null;

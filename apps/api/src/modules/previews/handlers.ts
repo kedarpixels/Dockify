@@ -168,8 +168,14 @@ async function stateOf(db: Db, p: Project, ingress: string, serverIpv4: string |
   };
 }
 
+/** The dashboard names a preview by its number alone. Two repositories can share one: the open one first, then the newest. */
+const byNumber = (projectId: string, pr: number) => ({
+  where: { projectId, prNumber: pr },
+  orderBy: [{ closedAt: { sort: "desc" as const, nulls: "first" as const } }, { createdAt: "desc" as const }],
+});
+
 async function previewOf(db: Tx, projectId: string, pr: number) {
-  const row = await db.previewEnv.findUnique({ where: { projectId_prNumber: { projectId, prNumber: pr } }, select: { id: true, status: true, title: true } });
+  const row = await db.previewEnv.findFirst({ ...byNumber(projectId, pr), select: { id: true, status: true, title: true } });
   if (!row) throw notFound("Preview");
   return row;
 }
@@ -182,7 +188,7 @@ export const previewHandlers: Handlers = {
 
   "previews.detail": async ({ params, actor, ctx }) => {
     const p = await projectFor(ctx.db, actor, params.slug);
-    const row = await ctx.db.previewEnv.findUnique({ where: { projectId_prNumber: { projectId: p.id, prNumber: params.pr } }, select: { ...ROW_SELECT, apps: { ...ROW_SELECT.apps, select: { ...ROW_SELECT.apps.select, id: true } } } });
+    const row = await ctx.db.previewEnv.findFirst({ ...byNumber(p.id, params.pr), select: { ...ROW_SELECT, apps: { ...ROW_SELECT.apps, select: { ...ROW_SELECT.apps.select, id: true } } } });
     if (!row) throw notFound("Preview");
     const deps = await ctx.db.deployment.findMany({
       where: { previewId: { in: row.apps.map((a) => a.id) } }, orderBy: { createdAt: "desc" }, take: 30,

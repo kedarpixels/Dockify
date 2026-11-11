@@ -2,7 +2,6 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { Icon } from "@/components/icon";
-import { playClick } from "@/lib/click-sound";
 import { THEME_KEY } from "@/lib/theme";
 import { cx } from "./cx";
 import { ownsKeys, singleKeyShortcutsOn, useSingleKeyShortcuts } from "./shortcuts";
@@ -24,9 +23,8 @@ function release() {
   requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove("theme-switching")));
 }
 
-/** Flip the theme instantly with one tick. Every theme control calls this. */
+/** Flip the theme instantly. Every theme control calls this. */
 function toggleTheme() {
-  playClick();
   const toDark = !document.documentElement.classList.contains("dark");
   applyTheme(toDark);
   release();

@@ -24,7 +24,6 @@ const FILES = [
   ["components/ui/cx.ts", "components/ui/cx.ts"],
   ["components/ui/burger.tsx", "components/ui/burger.tsx"],
   ["app/styles/foundation-shared.css", "app/styles/foundation-shared.css"],
-  ["lib/click-sound.ts", "lib/click-sound.ts"],
 ];
 
 const check = process.argv.includes("--check");

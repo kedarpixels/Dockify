@@ -2,8 +2,9 @@
  * The deploy_notify job, while Deploy failed is on in Settings, Notifications. Every enabled webhook
  * hears it. So does the member who started it, by email: the user who clicked, or for a push the
  * member whose verified GitHub login is the commit author, while email is set up and they kept
- * "Deploys I started that fail" on in Settings, Profile. A deployment on Vercel is told the same way;
- * its branch, commit and error come from a third party, so they lose links and mentions first.
+ * "Deploys I started that fail" on in Settings, Profile. A deployment on Vercel is told the same way.
+ * The branch, the commit and the error are text a repository or its build wrote, on this server as
+ * much as on Vercel, so they lose links and mentions first.
  */
 import { appLabel } from "@dockify/contracts";
 import type { Db } from "@dockify/db";
@@ -58,7 +59,7 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
   const inst = await deps.db.instance.findUnique({ where: { id: 1 }, select: { name: true } });
   const vercel = d.provider === "vercel";
   const preview = vercel && d.externalTarget === "preview";
-  const outside = (s: string | null) => (s && vercel ? inertLine(s) : s);
+  const outside = (s: string | null) => (s ? inertLine(s) : s);
   const branch = outside(d.branch);
   const commit = outside(d.commitSha);
   const source = [vercel ? (preview ? "Vercel preview" : "Vercel") : null, branch, commit?.slice(0, 7)].filter(Boolean).join(", ") || null;
@@ -67,8 +68,10 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
   const env = (project._count?.environments ?? 2) > 1 ? d.app.environment.name : null;
   // What people read as the app's name; the payload's data keeps the name, which is its identity.
   const shown = appLabel(d.app);
+  // Line by line: the error quotes the build's last output under its first line.
+  const inert = (d.error ?? "").split(/\r?\n/).map(inertLine).filter(Boolean).join("\n");
   // The pipeline writes its own through its redactor. Vercel's text has been through nothing yet.
-  const error = (vercel && d.error ? new Redactor().line(inertLine(d.error)) : d.error) || "The deploy did not finish";
+  const error = (vercel ? new Redactor().line(inert) : inert) || "The deploy did not finish";
   await webhooksOnce(deps.db, `deploy-failed:${deploymentId}`, {
     id: `deploy-failed-${deploymentId}`,
     event: "deploy.failed",

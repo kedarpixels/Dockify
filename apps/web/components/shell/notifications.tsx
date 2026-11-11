@@ -9,6 +9,7 @@ import { IconTile } from "@/components/ui/icon-tile";
 import { When } from "@/components/ui/when";
 import type { Notice } from "@/lib/derive";
 import { useOutsidePress } from "@/lib/hooks";
+import { keepSeen } from "@/lib/notices";
 
 /*
  * Read state lives in this browser's storage and is shared by every tab: the stored JSON is the
@@ -66,6 +67,9 @@ const TONE_ICON = { bad: "closeCircle", warn: "alert", ok: "checkCircle", live: 
  */
 let lastKnown: Notice[] | null = null;
 
+/** The ids of the last list this page showed, kept across pages like `lastKnown`. See keepSeen. */
+let listedBefore: Set<string> | null = null;
+
 /**
  * The bell. Problems (degraded, stopped, failed in the last day) stay listed until they clear, and
  * finished deploys stay for a day. Every entry is unread until it is opened or marked read.
@@ -97,12 +101,15 @@ export function Notifications({ notices: given, now }: { notices: Notice[] | nul
   // Merge with what another tab may have written since, so two tabs never undo each other's reads.
   const mark = (ids: string[]) => writeSeen(new Set([...parseSeen(seenRaw()), ...ids]));
 
-  // Forget read ids that are no longer listed, so a problem that cleared and comes back is new.
+  // Forget the read ids of notices that left this page's list, so a problem that cleared and comes
+  // back is new. Only ids this page watched go: another tab can hold a newer list (a hidden tab does
+  // not poll), and forgetting what it just read would turn its notices unread again.
   // Only on real data: a page still loading its overview passes null and keeps the read state.
   useEffect(() => {
     if (!notices || !seen) return;
     const live = new Set(notices.map((n) => n.id));
-    const kept = [...seen].filter((id) => live.has(id));
+    const kept = keepSeen(seen, listedBefore, live);
+    listedBefore = live;
     if (kept.length !== seen.size) writeSeen(kept);
   }, [notices, seen]);
 
