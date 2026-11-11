@@ -1,8 +1,30 @@
 {
   "schema": 2,
   "channel": "beta",
-  "generatedAt": "2026-11-08T06:59:42.929Z",
+  "generatedAt": "2026-11-11T14:39:53.443Z",
   "releases": [
+    {
+      "version": "1.0.5",
+      "date": "2026-11-11",
+      "publishedAt": "2026-11-11T14:39:53.443Z",
+      "minFrom": "0.0.0",
+      "migration": "0032_preview_repo_key",
+      "critical": false,
+      "notesUrl": "https://github.com/kedarpixels/Dockify/releases/tag/v1.0.5",
+      "notes": "## 1.0.5 (2026-11-11)\n\n1.0.4 was tagged but its build never published, so this release carries its changes. A security and reliability release: two-factor codes can no longer be guessed over time, a tenant can no longer stall or crash the worker, and the dashboard keeps up with what the server holds. Three database migrations run on update.\n\n### Security\n- Two-factor codes share one limit per account across sign in, step-up and turning two-factor off. Ten wrong codes lock the account for 15 minutes, each lockout in a row doubles (up to 24 hours), the count survives restarts and updates, and the account's owner gets an email on the first lockout.\n- Previews are kept per repository and pull request. Two repositories in one project no longer share a preview, so closing a pull request in one can never tear down the other's. Whether a preview builds a fork's commit is fixed when the build is queued.\n- Build output in a failed deploy notice can no longer carry a live link to chat or email.\n- Viewers and read tokens no longer see Vercel build and install commands, backup destinations, bucket names, provider errors or the backup key fingerprint. Project-limited tokens no longer see the owner's email.\n- Dockify's own update dump can no longer be downloaded, restored or swept as an orphaned backup.\n- Status page feeds ignore a forwarded host sent by the client.\n- The container firewall rules now load before Docker starts after a reboot. Uninstall removes the new unit.\n- A rollback to the previous release is trusted only within the rollback window.\n- Images whose labels exceed 64 KB are refused before a container is created.\n\n### Fixed\n- A tenant database could crash the worker through the data browser, or stall every project's backups by holding a lock. Data jobs now have deadlines, pg_dump waits at most 5 minutes for a lock, dumps respect backpressure, and the data browser and SQL console read within fixed bounds. The SQL console runs one statement per request.\n- Restore downloads stop at the backup's recorded size. Restore errors no longer include table rows.\n- Sites that declare only an SVG icon now get their favicon: it is sanitized and served like an SVG logo. Emails and pull request comments show the default icon for those.\n- A favicon that is missing now says so (\"/favicon.ico answered 404\") instead of reporting a size or format error.\n- Notifications are ordered by time, \"Mark as read\" sticks with several tabs open, and the update notice no longer shows for the version already running.\n- The Variables tables keep every key on one line, with the lock beside it.\n- After adding or removing an environment, the Variables tab shows that environment's variables.\n- Saving a build branch or image no longer jumps back to the old value.\n- The sidebar, the command menu and the tab title follow the server on every page. Project pages, the Deployments filter, Domains, Resources, Activity and the Settings lists refresh after a change.\n- Saving the Notifications settings no longer pins the preview domain as custom. Each settings section saves only its own fields.\n- The Backups page reads the last 30 days by date, and a bulk backup that starts nothing says so.\n- Alert history says 90 days, as it shows. A webhook test that never reached the endpoint no longer marks the webhook failing.\n\n### Changed\n- The theme toggle no longer plays a sound.\n",
+      "images": {
+        "control": {
+          "amd64": "ghcr.io/kedarpixels/dockify-control@sha256:c1a18bbb76282539a78d4cabad32a69e96baeb462005c65528ea9af6a8d8908a",
+          "arm64": "ghcr.io/kedarpixels/dockify-control@sha256:26542b4edad94d95735274794a871671e7b462cc0734db4906dadd925b832604"
+        },
+        "web": {
+          "amd64": "ghcr.io/kedarpixels/dockify-web@sha256:5f779d9d029c6cb08be01f9599f576eb563c76b5098703e4418911dd9298e4dd",
+          "arm64": "ghcr.io/kedarpixels/dockify-web@sha256:982521dcb3511493a23692000415a0d389d0b5d80530990d737482f38458ea4a"
+        }
+      },
+      "composeSha256": "7742d0c095f02b1d16c26806b9087931bc4fd7f4471f05d551b87c64062956f0",
+      "socketProxySha256": "19d55ffbf94bef940073b91432131ce3a87bce08401076fbd26b4a5967243e98"
+    },
     {
       "version": "1.0.3",
       "date": "2026-11-08",
