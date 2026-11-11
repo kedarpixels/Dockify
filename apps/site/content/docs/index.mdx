@@ -10,7 +10,7 @@ Dockify runs on your own Ubuntu server and manages everything on it from one das
 It is built for one job: several projects on one VPS that stay up. It does less than tools built for fleets of servers, and spends that effort on four things:
 
 - **Deploys that do not take you down.** For a stateless app, the new version starts beside the old one and must pass a health check before it gets traffic. If it fails, the old version keeps serving.
-- **Backups you have restored.** Dumps are encrypted on the server before upload, and a weekly restore test replays them into a throwaway database.
+- **Backups you have restored.** Dumps are encrypted on the server before upload, and a weekly restore test replays them into a throwaway database, or extracts an app's files into a throwaway volume.
 - **A disk that stays clean.** A janitor removes old images and caps the build cache, but keeps the images your rollbacks need.
 - **A locked-down control plane.** No privileged containers, no published database ports, and in tunnel mode no inbound port opened by Dockify.
 
@@ -31,6 +31,6 @@ A **project** is a folder of **apps**: frontends, backends, bots, and managed Po
 
 ## Project status
 
-Dockify 1.0.7 is released, signed, on GitHub. On a real server we have run the install (direct mode), deploys from public and private repositories through the GitHub App, a zero-downtime redeploy, a rollback, a pull request preview from open to close, apps using managed Postgres and Redis, Cloudflare DNS records, following a Vercel project, and scheduled backups both on the server and to S3 compatible storage. The Cloudflare tunnel mode, Vercel import and restore tests have tests but have not yet run end to end on a real server. Where a feature is planned for later, the page says <Soon /> plainly.
+Dockify 1.0.8 is released, signed, on GitHub. On a real server we have run the install (direct mode), deploys from public and private repositories through the GitHub App, a zero-downtime redeploy, a rollback, a pull request preview from open to close, apps using managed Postgres and Redis, Cloudflare DNS records, following a Vercel project, scheduled backups both on the server and to S3 compatible storage, and the backup, restore test and restore of an app's volumes, including a worker that died part way through a restore. The Cloudflare tunnel mode, Vercel import and restore tests of Postgres backups have tests but have not yet run end to end on a real server. Where a feature is planned for later, the page says <Soon /> plainly.
 
 Search the docs at any time with <kbd className="kbd">Ctrl</kbd> <kbd className="kbd">K</kbd>, or <kbd className="kbd">/</kbd>.
