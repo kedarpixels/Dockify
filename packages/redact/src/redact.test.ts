@@ -72,8 +72,8 @@ describe("redactor (one module for deploy and runtime logs)", () => {
   it("stays linear on hostile 16 KiB lines and still hides the secret in them", () => {
     const r = new Redactor();
     const fill = (unit: string) => unit.repeat(Math.ceil(16_384 / unit.length)).slice(0, 16_384);
-    // "dsn." made the old {0,64}keyword{0,64} pattern take 27 ms per line, 500 times normal text.
-    // Ten lines of each shape must take well under 5 ms a line; 50 ms for all ten leaves CI slack.
+    // "dsn." made the old {0,64}keyword{0,64} pattern take 27 ms a line (270 ms for ten). The budget
+    // still catches that, with room for a slow shared CI runner (one took 52 ms for ten).
     for (const unit of ["dsn.", "a.", "passw", 'token:"', "a://b", "connection_strin", "Token "]) {
       const line = `${fill(unit)} password=hunter2-real-secret`;
       r.line(line);
@@ -81,7 +81,7 @@ describe("redactor (one module for deploy and runtime logs)", () => {
       const t0 = performance.now();
       for (let i = 0; i < 10; i++) out.push(r.line(line));
       const ms = performance.now() - t0;
-      expect(ms, unit).toBeLessThan(50);
+      expect(ms, unit).toBeLessThan(150);
       for (const o of out) {
         expect(o, unit).not.toContain("hunter2-real-secret");
         expect(o, unit).toContain(MARK);
