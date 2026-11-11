@@ -8,6 +8,7 @@ import { RestoreDialog, testLine } from "@/components/server-backups/backup-dial
 import { History } from "@/components/server-backups/backup-runs";
 import { STORAGE_HREF } from "@/components/server-backups/backup-schedules";
 import { track } from "@/components/server-backups/live";
+import { isVolumes } from "@/components/server-backups/history";
 import { followRestore } from "@/components/server-backups/restore-follow";
 import { backUpPlaces, lastOf, lastWord, ScheduleDialog, TIER_LABEL, tierPlace, TIERS, tierWords } from "@/components/server-backups/tier-schedule";
 import { readRestore, send } from "@/components/server-backups/use-poll";
@@ -179,6 +180,8 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
   const running = b?.runs.some((r) => r.status === "running") ?? false;
   const testRunning = b?.runs.some((r) => r.restoreTest.status === "running") ?? false;
   const newest = b?.runs.find(restorable) ?? null;
+  // An app's own volumes, not a database: restored over the app, and worded as files.
+  const files = b?.schedule ? isVolumes(b.schedule) : app.kind === "frontend" || app.kind === "backend" || app.kind === "bot";
   const what = dbLabel({ projectSlug: app.projectSlug, name: app.name, ...(app.displayName ? { displayName: app.displayName } : {}), environment: app.environment });
 
   // A live run or test is read again 5s after every answer until it settles; the preview has no
@@ -217,7 +220,7 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
       description: what,
       success: (r) => {
         q.patch((d) => ({ ...d, runs: [...r.runs, ...d.runs] }));
-        return { title: "Backup started", description: [what, b?.schedule ? `One dump, to ${backUpPlaces(b.schedule)}` : "It shows in the history as it runs"] };
+        return { title: "Backup started", description: [what, b?.schedule ? `One ${files ? "archive" : "dump"}, to ${backUpPlaces(b.schedule)}` : "It shows in the history as it runs"] };
       },
       error: "Could not start the backup",
     });
@@ -238,7 +241,7 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
     const stamp = utcAt(run.createdAt);
     await track(send<RestoreOutcome | RestoreAccepted>(`/api/backups/${encodeURIComponent(run.id)}/restore`, "POST", req).then((first) => followRestore(first, readRestore(run.id))), {
       preview,
-      loading: req.mode === "new" ? "Restoring into a new database" : "Restoring database",
+      loading: req.mode === "new" ? "Restoring into a new database" : files ? "Restoring files" : "Restoring database",
       description: req.mode === "new" ? `${app.projectSlug} / ${req.name}, from ${stamp}` : `${what}, from ${stamp}. Keep this page open`,
       success: (out) => {
         const target = dbLabel(out.database);
@@ -248,7 +251,7 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
               description: `${target} created from the backup of ${stamp}`,
               action: preview ? undefined : { label: "View", onClick: () => router.push(`/apps/${encodeURIComponent(out.database.resourceId)}`) },
             }
-          : { title: "Database restored", description: `${target} now matches the backup from ${stamp}` };
+          : { title: files ? "Files restored" : "Database restored", description: `${target} now matches the backup from ${stamp}` };
       },
       error: "Could not restore the backup",
     });
@@ -278,7 +281,7 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
   const actions = can.manage ? (
     <>
       <PendingButton className="btn btn-sm" pending={restoringId !== null} disabled={!newest} onClick={() => newest && setRestoreRun(newest)}>
-        Restore into new database
+        {files ? "Restore newest backup" : "Restore into new database"}
       </PendingButton>
       <button type="button" className="btn btn-sm" disabled={!b?.schedule} onClick={() => void editSchedule()}>
         <Icon name="calendar" />
@@ -296,13 +299,13 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
         id="at-bk-title"
         icon="archive"
         title="Backups"
-        sub={newest ? <When iso={newest.createdAt} now={now} utc prefix="Newest good backup" /> : "Backups of this database"}
+        sub={newest ? <When iso={newest.createdAt} now={now} utc prefix="Newest good backup" /> : files ? "Backups of this app’s volumes" : "Backups of this database"}
         actions={actions}
       >
         {!b && q.loading ? (
           <SummarySkeleton />
         ) : !b ? (
-          <TabFailed error={q.error} onRetry={q.reload} what="Backups for this database" />
+          <TabFailed error={q.error} onRetry={q.reload} what={files ? "Backups for this app" : "Backups for this database"} />
         ) : (
           <Summary b={b} resourceId={app.id} now={now} onEdit={can.manage ? () => void editSchedule() : undefined} />
         )}

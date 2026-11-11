@@ -5,7 +5,7 @@ export {
   bothTiers, DEFAULT_CRON, DEFAULT_KEEP, enabledTiers, loadTiers, primaryTier, tierOfType, TIERS, type Tier, type TierRow,
 } from "../../../../worker/src/data/tiers.ts";
 export {
-  requestBackup, requestRestore, requestRestoreTest, isServiceKind, RequestError, SERVICE_KINDS, type AppSnapshot,
+  BACKED_UP_APPS, backupSourceOf, HELD_BY_RESTORE, NOT_BACKED_UP, requestBackup, requestRestore, requestRestoreTest, isServiceKind, RequestError, SERVICE_KINDS, type AppSnapshot,
 } from "../../../../worker/src/data/requests.ts";
 export { resolveStore, DataError } from "../../../../worker/src/data/context.ts";
 export { DecryptStream, ALGORITHM, backupKeyFingerprint, parseBackupKey } from "../../../../worker/src/data/envelope.ts";

@@ -24,7 +24,7 @@ import type { OverviewResult } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
 import { DeleteOrphansDialog, RestoreDialog, RunDialog, testLine } from "./backup-dialogs";
 import { History, Orphans, type RunActions } from "./backup-runs";
-import { inHistory, notStarted } from "./history";
+import { inHistory, isVolumes, listNoun, notStarted } from "./history";
 import { Schedules, StorageCard } from "./backup-schedules";
 import { track, useSecond, useTween } from "./live";
 import { followRestore } from "./restore-follow";
@@ -227,7 +227,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
     await track(started, {
       preview,
       loading: "Starting backup",
-      description: one ? dbLabel(one.database) : "Every enabled database",
+      description: one ? dbLabel(one.database) : `Every enabled ${listNoun(d.schedules)}`,
       success: (r) => {
         setResult((prev) => (prev.data ? { ...prev, data: { ...prev.data, runs: [...r.runs, ...prev.data.runs] } } : prev));
         const missed = notStarted(asked, r.runs);
@@ -257,7 +257,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
     const stamp = utcAt(run.createdAt);
     await track(send<RestoreOutcome | RestoreAccepted>(`/api/backups/${encodeURIComponent(run.id)}/restore`, "POST", req).then((first) => followRestore(first, readRestore(run.id))), {
       preview,
-      loading: req.mode === "new" ? "Restoring into a new database" : "Restoring database",
+      loading: req.mode === "new" ? "Restoring into a new database" : isVolumes(run) ? "Restoring files" : "Restoring database",
       description: req.mode === "new" ? `${run.database.projectSlug} / ${req.name}, from ${stamp}` : `${name}, from ${stamp}. Keep this page open`,
       success: (out) => {
         const target = dbLabel(out.database);
@@ -268,7 +268,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
               // The preview's new database is not a real app, so there is nowhere to go.
               action: preview ? undefined : { label: "View", onClick: () => router.push(`/apps/${encodeURIComponent(out.database.resourceId)}`) },
             }
-          : { title: "Database restored", description: `${target} now matches the backup from ${stamp}` };
+          : { title: isVolumes(run) ? "Files restored" : "Database restored", description: `${target} now matches the backup from ${stamp}` };
       },
       error: "Could not restore the backup",
     });
@@ -333,9 +333,9 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
   const hasDbs = (d?.schedules.length ?? 0) > 0;
   const lead = d
     ? hasDbs
-      ? `${plural(d.schedules.length, "database")}, ${d.schedules.filter((s) => s.enabled).length} on a schedule, ${plural(recentRuns.length, "run")} in 30 days.`
-      : "No databases to back up yet."
-    : "Encrypted database dumps on a schedule, kept off this server.";
+      ? `${plural(d.schedules.length, listNoun(d.schedules))}, ${d.schedules.filter((s) => s.enabled).length} on a schedule, ${plural(recentRuns.length, "run")} in 30 days.`
+      : "No databases or volumes to back up yet."
+    : "Encrypted backups of databases and volumes on a schedule, kept off this server.";
 
   return (
     <>
@@ -370,11 +370,11 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
             <div className="card">
               <Empty
                 icon="box"
-                title="No databases yet"
+                title="Nothing to back up yet"
                 body={
                   can.manage
-                    ? "Add a Postgres service to a project. It gets a daily backup schedule here, and every run is listed with a restore."
-                    : "Postgres services get a daily backup schedule here once an admin adds them to a project."
+                    ? "Add a Postgres service to a project, or an app with a volume. Each gets a backup schedule here, and every run is listed with a restore."
+                    : "Postgres services and apps with a volume get a backup schedule here once an admin adds them to a project."
                 }
               />
             </div>

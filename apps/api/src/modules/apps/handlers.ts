@@ -12,6 +12,7 @@ import { loadPeople } from "../../actor-view.ts";
 import type { Ctx, Handlers } from "../../app.ts";
 import { audit } from "../../audit.ts";
 import { HttpError, isUniqueViolation } from "../../errors.ts";
+import { HELD_BY_RESTORE } from "../backups/shared.ts";
 import { appShowing, nameShownElsewhere, storedDisplayName } from "./display-name.ts";
 import { assertNoDeployInFlight } from "../deployments/enqueue.ts";
 import { IN_FLIGHT } from "../deployments/mapping.ts";
@@ -102,6 +103,7 @@ async function appDetail(ctx: Ctx, a: Row, viewer: Actor) {
     environment: a.environment.name,
     url: publicUrlOf(a.primaryDomain, a.domains),
     image: a.image,
+    volumes: a._count.volumes,
     repo: a.gitRepository,
     branch: a.gitRepository ? a.gitBranch : null,
     target: targetOf(a),
@@ -206,6 +208,9 @@ async function power(ctx: Ctx, actor: Actor, id: string, op: PowerOp, req: Fasti
     if (open || openJob) {
       throw new HttpError(409, "A deployment of this app is in progress. Wait for it, or cancel it first.", "DEPLOY_IN_FLIGHT", open ? { deploymentId: open.id } : {});
     }
+    // Read under the lock the restore takes its hold under. A stop is always allowed.
+    const held = op === "stop" ? null : await tx.app.findUnique({ where: { id: a.id }, select: { quiescedByJobId: true } });
+    if (held?.quiescedByJobId) throw new HttpError(409, HELD_BY_RESTORE, "RESTORE_IN_PROGRESS");
     if (op !== "restart") await tx.app.update({ where: { id: a.id }, data: { desiredState: op === "stop" ? "stopped" : "running" } });
     await enqueueTx(tx, { kind: "app_power", lane: "deploy", serverId: a.serverId, payload: { appId: a.id, op }, dedupeKey: `app.power:${a.id}:${op}`, maxAttempts: 3 });
     await audit(tx, { category: "deploys", action: `app.${op}`, verb: VERB[op], ...actorFields(actor), targetType: "app", targetId: a.id, targetLabel: label(a), ...meta(req) });

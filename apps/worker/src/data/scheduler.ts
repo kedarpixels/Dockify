@@ -3,9 +3,9 @@ import type { Db } from "@dockify/db";
 import { appsHere } from "../server/apps-here.ts";
 import type { DataDeps, DataStores } from "./context.ts";
 import { nextRun } from "./cron.ts";
-import { resume } from "./pipeline.ts";
+import { leaveStopped, resume } from "./pipeline.ts";
 import { containerNameFor, LABEL_APP, LABEL_ROLE } from "./services.ts";
-import { requestBackup, requestRestoreTest, SERVICE_KINDS, staleReason, type RestorePayload } from "./requests.ts";
+import { BACKED_UP_APPS, requestBackup, requestRestoreTest, staleReason, type RestorePayload } from "./requests.ts";
 import { failedRowsToDelete, selectExpired, type RetentionCandidate, type RetentionPolicy } from "./retention.ts";
 import { bothTiers, tierNextRun, TIERS, tierOfType } from "./tiers.ts";
 import { settleAbandonedUpgrades } from "./upgrade.ts";
@@ -69,7 +69,7 @@ export async function upgradeLegacyServices(deps: DataDeps, serverId: string): P
  */
 export async function fireDueSchedules(db: Db, now: Date, log: (msg: string, extra?: object) => void = () => {}): Promise<number> {
   const rows = await db.backupSchedule.findMany({
-    where: { enabled: true, cron: { not: null }, app: { kind: { in: [...SERVICE_KINDS] } } },
+    where: { enabled: true, cron: { not: null }, app: BACKED_UP_APPS },
     select: { id: true, appId: true, tier: true, cron: true, timezone: true, lastRunAt: true },
     orderBy: [{ appId: "asc" }, { tier: "asc" }],
   });
@@ -115,7 +115,7 @@ async function backupsInUse(db: Db): Promise<Set<string>> {
 /** The stored object is deleted first and the row marked only after, so a failed delete is retried next tick. */
 export async function applyRetention(deps: DataStores, now: Date): Promise<{ expired: number; deleted: number }> {
   const { db } = deps;
-  const apps = await db.app.findMany({ where: { kind: { in: [...SERVICE_KINDS] } }, select: { id: true, backupSchedules: true } });
+  const apps = await db.app.findMany({ where: BACKED_UP_APPS, select: { id: true, backupSchedules: true } });
   const inUse = await backupsInUse(db);
   const select = { id: true, status: true, trigger: true, createdAt: true, objectKey: true, expiredAt: true, destinationId: true, restoreTestStatus: true, destination: { select: { type: true } } } as const;
   let expired = 0;
@@ -203,7 +203,7 @@ export async function scheduleRestoreTests(db: Db, now: Date): Promise<number> {
     return 0;
   }
   if (due > now) return 0;
-  const apps = await db.app.findMany({ where: { kind: { in: [...SERVICE_KINDS] } }, select: { id: true } });
+  const apps = await db.app.findMany({ where: BACKED_UP_APPS, select: { id: true } });
   let n = 0;
   for (const app of apps) {
     const b = await db.backup.findFirst({ where: { appId: app.id, status: "ready", expiredAt: null }, orderBy: { createdAt: "desc" }, select: { id: true } });
@@ -214,9 +214,48 @@ export async function scheduleRestoreTests(db: Db, now: Date): Promise<number> {
   return n;
 }
 
+interface SettledJob {
+  id: string;
+  payload: unknown;
+  attempts: number;
+  maxAttempts: number;
+  failedAt: Date | null;
+  completedAt: Date | null;
+}
+
+const JOB_FIELDS = { id: true, payload: true, attempts: true, maxAttempts: true, failedAt: true, completedAt: true } as const;
+
+/**
+ * What a restore or version change that is over, or dead, still owes its apps. Past the emptying and short of
+ * the last file, a restore of volumes leaves its app stopped. Everything else starts what it stopped: a
+ * restore that got every file back succeeded, whatever the start did after.
+ */
+async function settleQuiesce(deps: DataDeps, j: SettledJob, now: Date): Promise<boolean> {
+  const p = j.payload as unknown as RestorePayload;
+  // An empty list still counts: a restore of a stopped app's volumes holds it, and the hold must end.
+  if (!Array.isArray(p?.quiesced) || p.resumedAt) return false;
+  const abandoned = !j.failedAt && !j.completedAt;
+  if (abandoned && j.attempts < j.maxAttempts) return false; // it will be claimed again
+  if (p.emptiedAt && !p.restoredAt) {
+    const app = await deps.db.app.findUnique({ where: { id: p.targetAppId }, select: { id: true, name: true } });
+    if (app) await leaveStopped(deps, j.id, p, app);
+    if (abandoned) await deps.db.job.update({ where: { id: j.id }, data: { failedAt: now, lastError: "The worker stopped while the volumes were being replaced. The app was left stopped on purpose: restore the backup taken just before this restore, then start it." } });
+    return true;
+  }
+  const down = await resume(deps, j.id, p, p.quiesced);
+  if (abandoned) {
+    const apps = down.length ? `${down.length} of the stopped apps could not be started, and this is retried each minute` : "the stopped apps were started again";
+    const lastError = p.restoredAt
+      ? `The worker stopped after every file was restored; ${apps}.`
+      : `The worker stopped during the restore or version change. A Postgres replay rolls back on its own; ${apps}.`;
+    await deps.db.job.update({ where: { id: j.id }, data: { failedAt: now, lastError } });
+  }
+  return p.quiesced.length > 0;
+}
+
 /**
  * A restore that died after quiescing leaves the environment's apps stopped. Its job row says which
- * (written before the first stop); anything not resumed gets its apps started again.
+ * (written before the first stop), and settleQuiesce decides what each is owed.
  */
 export async function recoverQuiesced(deps: DataDeps, now: Date, serverId: string): Promise<number> {
   const jobs = await deps.db.job.findMany({
@@ -226,17 +265,36 @@ export async function recoverQuiesced(deps: DataDeps, now: Date, serverId: strin
       createdAt: { gt: new Date(now.getTime() - 7 * 86_400_000) },
       OR: [{ failedAt: { not: null } }, { completedAt: { not: null } }, { lockedUntil: { lt: now } }],
     },
-    select: { id: true, payload: true, attempts: true, maxAttempts: true, failedAt: true, completedAt: true },
+    select: JOB_FIELDS,
   });
   let n = 0;
-  for (const j of jobs) {
-    const p = j.payload as unknown as RestorePayload;
-    if (!p?.quiesced?.length || p.resumedAt) continue;
-    const abandoned = !j.failedAt && !j.completedAt;
-    if (abandoned && j.attempts < j.maxAttempts) continue; // it will be claimed again
-    const down = await resume(deps, j.id, p, p.quiesced);
-    if (abandoned) {
-      await deps.db.job.update({ where: { id: j.id }, data: { failedAt: now, lastError: `The worker stopped during the restore or version change. A Postgres replay rolls back on its own; ${down.length ? `${down.length} of the stopped apps could not be started, and this is retried each minute` : "the stopped apps were started again"}.` } });
+  for (const j of jobs) if (await settleQuiesce(deps, j, now)) n++;
+  return n;
+}
+
+/**
+ * Read from the apps, not the jobs, so no hold outlives its restore whatever became of the job: older than
+ * the window above, already settled, or deleted. A job that still runs keeps its hold.
+ */
+export async function releaseStuckHolds(deps: DataDeps, now: Date, serverId: string): Promise<number> {
+  const { db } = deps;
+  const held = await db.app.findMany({ where: { quiescedByJobId: { not: null }, ...appsHere(serverId) }, select: { id: true, name: true, quiescedByJobId: true } });
+  let n = 0;
+  for (const jobId of new Set(held.map((a) => a.quiescedByJobId!))) {
+    const j = await db.job.findUnique({ where: { id: jobId }, select: { ...JOB_FIELDS, lockedUntil: true } });
+    if (j && !j.failedAt && !j.completedAt && (!j.lockedUntil || j.lockedUntil > now)) continue;
+    if (j) await settleQuiesce(deps, j, now);
+    // Whatever is still held: the job is gone, or settled long ago. Nobody knows what it did, so nothing is started.
+    const left = await db.app.findMany({ where: { quiescedByJobId: jobId }, select: { id: true, name: true } });
+    if (!left.length) {
+      n++;
+      continue;
+    }
+    await db.app.updateMany({ where: { quiescedByJobId: jobId }, data: { quiescedByJobId: null } });
+    for (const a of left) {
+      await db.activityLog
+        .create({ data: { category: "system", action: "backup.restore", verb: "released a restore's hold that nothing was left to end, on", actorType: "system", targetType: "app", targetId: a.id, targetLabel: a.name, failed: true, suffix: "It can be deployed and started again. It was left as it is: check its data before you start it." } })
+        .catch(() => {});
     }
     n++;
   }
@@ -255,7 +313,9 @@ export async function dataTick(deps: DataStores): Promise<TickReport> {
 }
 
 export async function dataServerTick(deps: DataDeps, serverId: string): Promise<ServerTickReport> {
-  const resumed = await recoverQuiesced(deps, deps.now?.() ?? new Date(), serverId);
+  const now = deps.now?.() ?? new Date();
+  const resumed = await recoverQuiesced(deps, now, serverId);
+  await releaseStuckHolds(deps, now, serverId);
   const upgraded = await upgradeLegacyServices(deps, serverId);
   return { resumed, upgraded };
 }

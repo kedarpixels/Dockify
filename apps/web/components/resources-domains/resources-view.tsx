@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/icon";
-import { AppIcon } from "@/components/icons/app-icon";
-import { KIND_LABEL } from "@/components/project-detail/shared";
+import { AppIcon, useAppRole } from "@/components/icons/app-icon";
 import { Topbar } from "@/components/shell/topbar";
 import { StatusChip } from "@/components/ui/chip";
 import { Empty } from "@/components/ui/empty";
@@ -100,8 +99,11 @@ function Summary({ items, hostMemory }: { items: ResourceRow[]; hostMemory?: num
 const memPct = (r: ResourceRow) => (r.memory.reservedBytes ? (r.memory.usedBytes / r.memory.reservedBytes) * 100 : 0);
 
 /** Names the environment too when the project's apps sit in several, so twin rows differ. */
-const coverName = (r: ResourceRow, shows: (project: string) => boolean) =>
-  `${r.projectSlug} / ${appTitle(r)}, ${KIND_LABEL[r.kind]}${shows(r.projectSlug) ? `, ${envName(r.environment)}` : ""}`;
+const coverName = (r: ResourceRow, role: string, shows: (project: string) => boolean) =>
+  `${r.projectSlug} / ${appTitle(r)}, ${role}${shows(r.projectSlug) ? `, ${envName(r.environment)}` : ""}`;
+
+// A row's image is what its container runs, a built app's own build included, so what the app is comes by id.
+const refOf = (r: ResourceRow) => ({ id: r.id, kind: r.kind });
 
 /** "horseai" for production (the default says nothing in a row) or a project with one environment, "horseai, Dev" otherwise. */
 function Where({ r }: { r: ResourceRow }) {
@@ -150,11 +152,12 @@ interface RowProps {
 
 function ResourceListRow({ r, now, delay }: RowProps) {
   const shows = useShowsEnv();
+  const roleOf = useAppRole();
   const img = imageParts(r);
   return (
     <li className="reveal" style={{ animationDelay: `${delay}ms` }}>
       <div className="soft-row rs-row" data-hover="true">
-        <Link href={`/apps/${r.id}`} className="rd-cover" aria-label={coverName(r, shows)} />
+        <Link href={`/apps/${r.id}`} className="rd-cover" aria-label={coverName(r, roleOf(refOf(r)).label, shows)} />
         <span className="rs-col-name">
           <AppIcon id={r.id} kind={r.kind} size="md" />
           <span className="two">
@@ -186,11 +189,12 @@ function ResourceListRow({ r, now, delay }: RowProps) {
 
 function ResourceCell({ r, now, delay }: RowProps) {
   const shows = useShowsEnv();
+  const roleOf = useAppRole();
   const img = imageParts(r);
   return (
     <article className="rs-cell reveal" style={{ animationDelay: `${delay}ms` }}>
       <Corners />
-      <Link href={`/apps/${r.id}`} className="rd-cover" aria-label={coverName(r, shows)} />
+      <Link href={`/apps/${r.id}`} className="rd-cover" aria-label={coverName(r, roleOf(refOf(r)).label, shows)} />
       <div className="rs-cell-body">
         <header className="rs-cell-hd">
           <AppIcon id={r.id} kind={r.kind} size="lg" />
@@ -286,6 +290,7 @@ export function ResourcesView({ overview, initial }: { overview: OverviewResult;
   const o = result.data;
   const can = useCan();
   const [query, setQuery] = useState("");
+  const roleOf = useAppRole();
   const [filter, setFilter] = useState<KindFilter>("all");
   const [view, setView] = useLayout();
 
@@ -305,9 +310,9 @@ export function ResourcesView({ overview, initial }: { overview: OverviewResult;
     const q = query.trim().toLowerCase();
     const match = KIND_FILTERS.find((f) => f.id === filter)!.match;
     return items.filter(
-      (r) => match(r.kind) && (!q || [r.name, r.displayName ?? "", r.projectSlug, r.environment, r.image, KIND_LABEL[r.kind]].some((s) => s.toLowerCase().includes(q))),
+      (r) => match(r.kind) && (!q || [r.name, r.displayName ?? "", r.projectSlug, r.environment, r.image, roleOf(refOf(r)).label].some((s) => s.toLowerCase().includes(q))),
     );
-  }, [items, query, filter]);
+  }, [items, query, filter, roleOf]);
 
   const data = initial.data;
   const lead = "Every container on the server: apps, databases and caches.";

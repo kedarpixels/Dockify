@@ -31,6 +31,8 @@ export function parsePower(p: unknown): PowerPayload {
 export interface PowerDeps {
   db: Db;
   docker: DockerApi;
+  /** Queues the deploy a push asked for while the app could not take one (deploy/pipeline.ts promotePending). */
+  promotePending?: (appId: string) => Promise<unknown>;
 }
 
 export type PowerResult = "started" | "stopped" | "restarted" | "skipped";
@@ -59,7 +61,7 @@ async function observe(deps: PowerDeps, appId: string, name: string | null): Pro
 export async function runPower(deps: PowerDeps, payload: unknown): Promise<PowerResult> {
   const { db, docker } = deps;
   const p = parsePower(payload);
-  const app = await db.app.findUnique({ where: { id: p.appId }, select: { id: true, name: true, kind: true, desiredState: true, deployTarget: true, serverId: true } });
+  const app = await db.app.findUnique({ where: { id: p.appId }, select: { id: true, name: true, kind: true, desiredState: true, deployTarget: true, serverId: true, quiescedByJobId: true } });
   // Deleted before the job ran, or moved to Vercel: nothing on this server to power.
   if (!app || app.deployTarget !== "server") return "skipped";
   const wanted = p.op === "stop" ? "stopped" : "running";
@@ -68,6 +70,9 @@ export async function runPower(deps: PowerDeps, payload: unknown): Promise<Power
   // A deploy owns the container while it runs and settles the state itself. A preview build of the
   // app runs in its own container, so it must not swallow a stop of the live one.
   if (await db.deployment.findFirst({ where: { appId: app.id, previewId: null, status: { in: [...IN_FLIGHT] } }, select: { id: true } })) return "skipped";
+
+  // A restore is replacing the app's data: it stopped the container itself, and starts it when it is done.
+  if (app.quiescedByJobId && p.op !== "stop") return "skipped";
 
   const name = canonicalName(app.id);
   const info = await docker.inspectContainer(name).catch((e: unknown) => {
@@ -98,5 +103,7 @@ export async function runPower(deps: PowerDeps, payload: unknown): Promise<Power
   if (ROUTED.has(app.kind)) {
     await enqueueRouteSync(db, app.id, app.serverId);
   }
+  // A push kept while a restore held the app, or left it stopped, deploys now that it runs again.
+  if (result === "started") await deps.promotePending?.(app.id).catch(() => null);
   return result;
 }

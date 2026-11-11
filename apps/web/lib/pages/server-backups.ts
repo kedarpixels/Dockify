@@ -256,6 +256,8 @@ export type BackupDestination = "s3" | "local";
 export type BackupTier = "local" | "offsite";
 export type BackupStatus = "running" | "ready" | "failed";
 export type BackupKind = "scheduled" | "manual" | "preDeploy" | "preUpdate";
+/** What a backup holds: a database dump, or an archive of an app's own volumes. Absent from an older API, which only had databases. */
+export type BackupContent = "database" | "volumes";
 export type StorageProvider = "r2" | "s3" | "minio" | "custom";
 
 export interface BackupDatabase {
@@ -295,6 +297,8 @@ export interface RestoreTest {
   testedAt: string | null;
   tables: number | null;
   rows: number | null;
+  /** A backup of volumes: how many files the test extracted. */
+  files?: number | null;
   error: string | null;
 }
 
@@ -327,7 +331,9 @@ export interface BackupTierSchedule {
 export interface BackupSchedule {
   id: string;
   resourceId: string;
+  /** The resource backed up: a database, or an app with volumes (`content`). */
   database: BackupDatabase;
+  content?: BackupContent;
   /** The flat fields describe one tier (the one that is on, offsite first), for older readers. */
   cron: string;
   timezone: string;
@@ -359,6 +365,7 @@ export interface BackupRun {
   scheduleId: string | null;
   resourceId: string;
   database: BackupDatabase;
+  content?: BackupContent;
   status: BackupStatus;
   kind: BackupKind;
   createdAt: string;

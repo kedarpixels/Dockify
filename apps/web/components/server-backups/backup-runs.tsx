@@ -19,7 +19,8 @@ import { useUtcAt } from "@/lib/time-prefs";
 import type { BackupRun, BackupSchedule } from "@/lib/pages/server-backups";
 import { useCan } from "@/lib/viewer";
 import { testLine } from "./backup-dialogs";
-import { byDay } from "./history";
+import { isOrphan } from "@/lib/pages/server-backups-shared";
+import { byDay, isVolumes, listNoun } from "./history";
 import { KIND_LABEL, dbLabel, dbName, placeName } from "./util";
 
 /** Starts a file download from a same-origin link without leaving the page. */
@@ -169,9 +170,12 @@ function RunRow({ r, now, actions }: { r: BackupRun; now: number; actions: RunAc
               data-tip="Run restore test"
               icon="shieldCheck"
             />
-            <PendingButton className="btn btn-xs" onClick={() => actions.onRestore(r)} pending={restoring} disabled={locked && !restoring}>
-              Restore
-            </PendingButton>
+            {/* The files of a deleted app have nowhere to restore to: they are downloaded. */}
+            {isVolumes(r) && isOrphan(r) ? null : (
+              <PendingButton className="btn btn-xs" onClick={() => actions.onRestore(r)} pending={restoring} disabled={locked && !restoring}>
+                Restore
+              </PendingButton>
+            )}
           </>
         ) : null}
       </span>
@@ -191,13 +195,14 @@ export function History({ runs, schedules, now, actions }: { runs: BackupRun[]; 
   }, [runs]);
   // Each segment names its database; the project joins in only where two databases share a name.
   const segName = (s: BackupSchedule) => (schedules.some((x) => x !== s && dbName(x.database) === dbName(s.database)) ? dbLabel(s.database) : dbName(s.database));
+  const noun = listNoun(schedules);
   // Databases are not states, so the filter counts without dots.
   const options = filterOptions([
     { value: "all", label: "All", count: runs.length },
     ...schedules.map((s) => ({ value: s.resourceId, label: segName(s), count: counts.get(s.resourceId) ?? 0 })),
   ]);
   const choices = [
-    { value: "all", label: "All databases", hint: String(runs.length) },
+    { value: "all", label: `All ${noun}s`, hint: String(runs.length) },
     ...schedules.map((s) => ({ value: s.resourceId, label: dbLabel(s.database), hint: String(counts.get(s.resourceId) ?? 0) })),
   ];
   const pickDb = (v: string) => {
@@ -219,11 +224,11 @@ export function History({ runs, schedules, now, actions }: { runs: BackupRun[]; 
         <>
           <div className="toolbar">
             <span className="sb-tools-wide">
-              <Segmented label="Filter by database" value={db} onChange={pickDb} options={options} />
+              <Segmented label={`Filter by ${noun}`} value={db} onChange={pickDb} options={options} />
             </span>
             {/* Five segments do not fit a phone, so narrow widths get the same filter as a dropdown. */}
             <span className="sb-tools-narrow">
-              <Select label="Filter by database" icon="database" value={db} onChange={pickDb} options={choices} />
+              <Select label={`Filter by ${noun}`} icon="database" value={db} onChange={pickDb} options={choices} />
             </span>
           </div>
           <Rule />
@@ -236,7 +241,7 @@ export function History({ runs, schedules, now, actions }: { runs: BackupRun[]; 
           <Empty
             icon="box"
             title="No backups match"
-            body={`Nothing for ${choices.find((c) => c.value === db)?.label ?? "this database"} in 30 days.`}
+            body={`Nothing for ${choices.find((c) => c.value === db)?.label ?? `this ${noun}`} in 30 days.`}
             action={
               <button type="button" className="btn btn-sm" onClick={() => pickDb("all")}>
                 Clear filters
@@ -306,8 +311,8 @@ export function Orphans({
         <CardTitle
           id="bk-orphans-title"
           icon="archive"
-          title="Backups of deleted databases"
-          sub={`${plural(groups.length, "database")}, ${bytes(total)}, kept until you delete them`}
+          title={`Backups of deleted ${listNoun(runs)}s`}
+          sub={`${plural(groups.length, listNoun(runs))}, ${bytes(total)}, kept until you delete them`}
         />
       </div>
       <div className="sb-hist-list">
@@ -320,7 +325,7 @@ export function Orphans({
             <section key={first.resourceId} aria-label={dbLabel(first.database)}>
               <GroupHead
                 label={dbLabel(first.database)}
-                icon="database"
+                icon={isVolumes(first) ? "folder" : "database"}
                 count={rows.length}
                 noun="backup"
                 actions={

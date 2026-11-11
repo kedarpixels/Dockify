@@ -9,7 +9,7 @@ export const seaweedfs: Template = {
   license: "Apache-2.0",
   homepage: "https://github.com/seaweedfs/seaweedfs",
   docs: "https://github.com/seaweedfs/seaweedfs/wiki/Quick-Start-with-weed-mini",
-  firstRun: "There is no login page. Its address is the S3 endpoint, its keys are AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in its variables, and it starts with one bucket, main. Dockify does not back up its volume.",
+  firstRun: "There is no login page. Its address is the S3 endpoint, its keys are AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in its variables, and it starts with one bucket, main. Its volume has no backup until you turn on a schedule on its Backups tab.",
   primary: "seaweedfs",
   memoryMb: {"seaweedfs": 512},
   secrets: {"ACCESS_KEY": "hex16", "SECRET_KEY": "hex32"},

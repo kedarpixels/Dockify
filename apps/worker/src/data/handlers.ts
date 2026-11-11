@@ -47,6 +47,10 @@ export function parseRestorePayload(payload: unknown): RestorePayload {
     mode: p.mode,
     ...(Array.isArray(p.quiesced) ? { quiesced: p.quiesced.filter((x): x is string => typeof x === "string" && UUID.test(x)) } : {}),
     ...(typeof p.resumedAt === "string" ? { resumedAt: p.resumedAt } : {}),
+    ...(typeof p.preRestoreBackupId === "string" && UUID.test(p.preRestoreBackupId) ? { preRestoreBackupId: p.preRestoreBackupId } : {}),
+    ...(typeof p.emptiedAt === "string" ? { emptiedAt: p.emptiedAt } : {}),
+    ...(typeof p.restoredAt === "string" ? { restoredAt: p.restoredAt } : {}),
+    ...(p.leftStopped === true ? { leftStopped: true } : {}),
   };
 }
 

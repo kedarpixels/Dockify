@@ -148,6 +148,14 @@
   --tile-redis-bottom: #e2332a;
   --tile-minio-top: #db4660;
   --tile-minio-bottom: #b8243e;
+  --tile-storage-top: #f08a3c;
+  --tile-storage-bottom: #d2641a;
+  --tile-monitor-top: #3fb568;
+  --tile-monitor-bottom: #1f8a45;
+  --tile-notify-top: #e05aa8;
+  --tile-notify-bottom: #b8327f;
+  --tile-service-top: #7c8798;
+  --tile-service-bottom: #586172;
   --tile-glyph-top: 92%;
   --tile-glyph-bottom: 72%;
 
@@ -236,6 +244,14 @@
   --tile-redis-bottom: #c22a21;
   --tile-minio-top: #c93a54;
   --tile-minio-bottom: #9e2036;
+  --tile-storage-top: #dc7a30;
+  --tile-storage-bottom: #ac5014;
+  --tile-monitor-top: #32a35a;
+  --tile-monitor-bottom: #187238;
+  --tile-notify-top: #cc4c98;
+  --tile-notify-bottom: #992668;
+  --tile-service-top: #6b7586;
+  --tile-service-bottom: #454d5c;
   --tile-glyph-top: 88%;
   --tile-glyph-bottom: 66%;
 }

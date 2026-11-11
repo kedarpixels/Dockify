@@ -11,11 +11,15 @@ export const BackupDatabase = z.object({
 });
 export const BackupStorageRef = z.object({ id: z.string(), name: z.string(), provider: StorageProvider, bucket: z.string() });
 export const BackupEncryption = z.object({ enabled: z.boolean(), fingerprint: z.string().nullable() });
+/** What a backup holds: a database dump, or an archive of the app's own volumes. */
+export const BackupContent = z.enum(["database", "volumes"]);
 export const RestoreTest = z.object({
   status: z.enum(["passed", "failed", "running", "notTested"]),
   testedAt: Iso.nullable(),
   tables: z.number().nullable(),
   rows: z.number().nullable(),
+  /** A backup of volumes: how many files the test extracted. */
+  files: z.number().nullable().optional(),
   error: z.string().nullable(),
 });
 export const BackupConfig = z.object({
@@ -52,7 +56,9 @@ export const BackupTierSchedule = z.object({
 export const BackupSchedule = z.object({
   id: z.string(),
   resourceId: z.string(),
+  /** The resource backed up, a database or an app with volumes: `content` says which. */
   database: BackupDatabase,
+  content: BackupContent,
   cron: z.string(),
   timezone: z.string(),
   /** Deprecated: about how many days of backups that tier keeps. Read `tiers` instead. */
@@ -71,6 +77,7 @@ export const BackupRun = z.object({
   scheduleId: z.string().nullable(),
   resourceId: z.string(),
   database: BackupDatabase,
+  content: BackupContent,
   status: z.enum(["running", "ready", "failed"]),
   kind: z.enum(["scheduled", "manual", "preDeploy", "preUpdate", "preRestore"]),
   createdAt: Iso,
@@ -104,7 +111,7 @@ export const SchedulePatchBody = z.strictObject({
   /** Offsite: "s3" (the default S3 destination) or a destination id. Without `tier`, "local" moves the schedule to the local tier. */
   destination: z.union([z.enum(["s3", "local"]), Uuid]).optional(),
 });
-/** Without `tier`: every tier of the database that is on, both at once from one dump, else where its schedule points. */
+/** Without `tier`: every tier of the resource that is on, both at once from one dump, else where its schedule points. */
 export const RunBackupsBody = z.strictObject({ resourceId: Uuid.optional(), tier: z.enum(["local", "offsite", "both"]).optional() });
 export const RunBackupsResponse = z.object({ runs: z.array(BackupRun) });
 /** The new service's app name, which becomes its DNS alias: the dk- prefix is Dockify's (common.ts AppName). */

@@ -1,6 +1,7 @@
 /** What every data job needs, kept apart from the pipelines so those can be tested with plain fakes. */
 import { join } from "node:path";
 import { openServiceCredentials, readSecretValue, ServiceCredentialsError, storeSecret, type Db, type SecretAccess, type SecretVault } from "@dockify/db";
+import type { DiskUsageReader } from "../deploy/disk-guard.ts";
 import type { DockerPort } from "./docker-port.ts";
 import { backupKeyFingerprint, newBackupKey, parseBackupKey } from "./envelope.ts";
 import type { ServiceCredentials } from "./services.ts";
@@ -32,6 +33,12 @@ export interface DataDeps {
   controlDumpPath?: (dumpId: string) => string;
   now?: () => Date;
   log?: (msg: string, extra?: object) => void;
+  /** The disk under this server's Docker volumes, as its host reports it. Unset or unreadable stops nothing. */
+  volumeDisk?: DiskUsageReader;
+  /** The disk under tmpDir, where a backup's ciphertext waits for its upload. */
+  scratchDisk?: DiskUsageReader;
+  /** Queues the deploy a push asked for while a restore held the app (deploy/pipeline.ts promotePending). */
+  promotePending?: (appId: string) => Promise<unknown>;
 }
 
 export type DataStores = Omit<DataDeps, "docker">;

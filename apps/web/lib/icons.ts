@@ -1,18 +1,11 @@
-import type { AppKind, OverviewSource } from "./types";
+import type { OverviewSource } from "./types";
 
 /* The default icons and the icon state the API answers (contracts icons.ts), with the same names. */
 
-/** The six default icons. Every kind maps to the nearest one; a frontend's favicon wins over Web. */
-export type IconPreset = "web" | "api" | "bot" | "postgres" | "redis" | "minio";
-
-export const KIND_PRESET: Record<AppKind, IconPreset> = {
-  frontend: "web",
-  backend: "api",
-  bot: "bot",
-  postgres: "postgres",
-  redis: "redis",
-  s3: "minio",
-};
+/** The default icons: one per kind, then what a published image is (lib/app-role.ts). An upload or a favicon wins over any of them. */
+export type IconPreset =
+  | "web" | "api" | "bot" | "postgres" | "redis" | "minio"
+  | "storage" | "monitor" | "uptimekuma" | "notify" | "ntfy" | "notes" | "reader" | "service";
 
 export type IconChoice = "auto" | "upload";
 
@@ -55,9 +48,11 @@ export interface IconState {
 export interface IconMap {
   apps: Record<string, IconState>;
   projects: Record<string, IconState>;
+  /** The published image of every app that runs one, by app id, so a row that carries only a kind can still say what the app is. */
+  stock: Record<string, string>;
 }
 
-export const EMPTY_ICONS: IconMap = { apps: {}, projects: {} };
+export const EMPTY_ICONS: IconMap = { apps: {}, projects: {}, stock: {} };
 
 /** An upload travels as base64. */
 export type IconBody = { choice: "auto" } | { choice: "folder" } | { choice: "app"; appId: string } | { choice: "upload"; image: string };

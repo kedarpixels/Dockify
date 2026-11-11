@@ -259,7 +259,7 @@ export function EnvironmentsCard({
     const what = apps.length
       ? `its ${plural(apps.length, "app")}${dbs ? ` (${plural(dbs, "database")} with ${dbs === 1 ? "its" : "their"} data among them)` : ""}, ${apps.length === 1 ? "its" : "their"} volumes${domains ? `, ${plural(domains, "domain")}` : ""} and every variable set in it`
       : "every variable set in it";
-    return `Deletes ${envName(name)} from ${p.slug} with ${what}. Previews built from it close, and its branch stops deploying. Database backups stay on the Backups page. This cannot be undone.`;
+    return `Deletes ${envName(name)} from ${p.slug} with ${what}. Previews built from it close, and its branch stops deploying. Backups stay on the Backups page. This cannot be undone.`;
   };
 
   /** The focus lands on the first key of the row now in the removed one's place. */

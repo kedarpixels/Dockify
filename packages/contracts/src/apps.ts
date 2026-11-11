@@ -80,6 +80,8 @@ export const AppDetail = Resource.extend({
   terminal: z.boolean().optional(),
   url: z.string().nullable(),
   image: z.string().nullable(),
+  /** How many volumes of its own the app keeps. With one or more, its files are backed up. */
+  volumes: z.number().optional(),
   repo: z.string().nullable(),
   /** A git app's own branch; null follows its environment's branch, and an image app has none. */
   branch: z.string().nullable().optional(),

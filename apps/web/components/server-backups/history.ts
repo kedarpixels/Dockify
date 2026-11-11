@@ -1,5 +1,14 @@
 /** Pure pieces of the Backups page, kept free of React so tests/backups-page.test.mjs can import them. */
 
+type Held = { content?: "database" | "volumes" };
+
+/** A backup of an app's own volumes, not a database dump. */
+export const isVolumes = (x: Held): boolean => x.content === "volumes";
+/** What one backed up thing is called: "database", or "app" for one whose volumes are backed up. */
+export const heldNoun = (x: Held): "database" | "app" => (isVolumes(x) ? "app" : "database");
+/** The word for a list of them: "database" while every one is, else "app". */
+export const listNoun = (xs: readonly Held[]): "database" | "app" => (xs.some(isVolumes) ? "app" : "database");
+
 const DAY = 86_400_000;
 export const HISTORY_DAYS = 30;
 

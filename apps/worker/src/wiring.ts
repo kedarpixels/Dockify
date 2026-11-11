@@ -21,7 +21,7 @@ import { removeOrphanContainers } from "./deploy/janitor.ts";
 import { sweepEnvNetworks, sweepPreviewNetworks } from "./deploy/networks.ts";
 import { isNotFound, type DockerApi } from "@dockify/engine";
 import { deployHandlers, loadDeployConfig, settleOrphanedDeployments, type DeployConfig } from "./deploy/index.ts";
-import { exposedPort } from "./deploy/pipeline.ts";
+import { exposedPort, promotePending } from "./deploy/pipeline.ts";
 import { publicResolver, zoneDns } from "./edge/dns.ts";
 import { loadEdgeSettings, type EdgeSettings } from "./edge/ingress.ts";
 import { queueDashboardCheck } from "./edge/dashboard.ts";
@@ -48,7 +48,7 @@ import { observeJobHandlers, startObserve, startObserveMaintenance } from "./obs
 import type { ServerRuntime } from "./server/runtime.ts";
 import { jsonLogger, type Logger } from "./boot.ts";
 import { DeferJobError, PermanentJobError } from "./errors.ts";
-import { DiskReserve, realDiskFs } from "./deploy/disk-guard.ts";
+import { DiskReserve, hostDiskUsage, realDiskFs, statfsUsage } from "./deploy/disk-guard.ts";
 import { type AliveFile, checkWorkFolder, heartbeat, needsWorkFolder, WorkerHealth } from "./health.ts";
 import type { ClaimedJob } from "./queue.ts";
 import { deleteOrphanedBackups } from "./data/orphans.ts";
@@ -251,7 +251,14 @@ export function buildServerHandlers(runtime: ServerRuntime, deps: WorkerShared):
   const { db, vault, deployConfig, edge, logger } = deps;
   const { docker, serverId, routes, mode, dial, builder, host } = runtime;
   const removeVolume = (name: string) => docker.removeVolume(name);
-  const data = createDataDeps(deps.stores, new EngineDataPort(docker));
+  const data: DataDeps = {
+    ...createDataDeps(deps.stores, new EngineDataPort(docker)),
+    // Volumes live on this server's Docker disk, which only its own host reading sees (a remote server's
+    // is not mounted here). Staged ciphertext is on the worker's work volume, read where it is written.
+    volumeDisk: hostDiskUsage(host),
+    scratchDisk: statfsUsage(deps.stores.tmpDir),
+    promotePending: (appId) => promotePending(db, appId),
+  };
   const previews: PreviewRuntimeDeps = {
     db, docker, serverId, routes, mode, proxyContainer: PROXY_CONTAINER, dashboardHost: deployConfig.dashboardHost,
     builder,
@@ -311,7 +318,7 @@ export function buildServerHandlers(runtime: ServerRuntime, deps: WorkerShared):
   };
   add("power", {
     app_power: async (job) => {
-      await runPower({ db, docker }, job.payload);
+      await runPower({ db, docker, promotePending: (appId) => promotePending(db, appId) }, job.payload);
     },
   });
   const disk: DiskDeps = { db, docker, config: deployConfig, serverId, builder };

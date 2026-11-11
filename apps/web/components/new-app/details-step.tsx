@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icon";
-import { AppIcon } from "@/components/icons/app-icon";
+import { AppIcon, useAppRole } from "@/components/icons/app-icon";
 import { KIND_LABEL } from "@/components/project-detail/shared";
 import { Callout } from "@/components/ui/callout";
 import { envName } from "@/components/ui/env-tag";
@@ -187,6 +187,7 @@ function LinkApps({ link, draft, set, many }: { link: LinkStep; draft: DetailsDr
   const service = draft.name || "the new service";
   const toggle = (id: string, on: boolean) => set((d) => ({ ...d, links: on ? [...d.links.filter((x) => x !== id), id] : d.links.filter((x) => x !== id) }));
   const held = new Map(link.conflict?.apps.map((a) => [a.id, a]));
+  const roleOf = useAppRole();
   return (
     <fieldset className="na-group">
       <legend className="na-legend">Link to apps</legend>
@@ -195,7 +196,7 @@ function LinkApps({ link, draft, set, many }: { link: LinkStep; draft: DetailsDr
           {link.apps.map((a) => {
             const on = draft.links.includes(a.id);
             const has = on ? held.get(a.id) : undefined;
-            const sub = has ? (has.shared ? `Gets ${link.key} from the shared variables` : `Has its own ${link.key}`) : on ? `Gets ${link.key}` : KIND_LABEL[a.kind];
+            const sub = has ? (has.shared ? `Gets ${link.key} from the shared variables` : `Has its own ${link.key}`) : on ? `Gets ${link.key}` : roleOf(a).label;
             // Unchecked is where every row starts, so it is not dimmed the way a left out Compose service is.
             return (
               <li key={a.id} className="na-svc">

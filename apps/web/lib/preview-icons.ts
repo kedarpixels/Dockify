@@ -41,7 +41,7 @@ function projectState(project: string, pick: string | null): IconState {
 export function previewIconMap(): IconMap {
   const apps = Object.fromEntries(Object.entries(FAVICONS).map(([id, f]) => [id, { choice: "auto" as const, image: imageOf(f), favicon: facts(f) }]));
   const projects = Object.fromEntries([...new Set(Object.values(FAVICONS).map((f) => f.project))].map((p) => [p, projectState(p, CHOSEN[p] ?? null)]));
-  return { apps, projects };
+  return { apps, projects, stock: {} };
 }
 
 /** What an icon write answers in the preview. Nothing is kept: the next page load shows the fixture again. */

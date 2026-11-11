@@ -2,7 +2,7 @@
 // Run: node --test tests/
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { byDay, inHistory, notStarted } from "../components/server-backups/history.ts";
+import { byDay, heldNoun, inHistory, isVolumes, listNoun, notStarted } from "../components/server-backups/history.ts";
 import { dayHeading } from "../lib/format.ts";
 
 const NOW = Date.parse("2026-11-11T12:00:00Z");
@@ -29,4 +29,18 @@ test("a bulk run names the enabled databases it started nothing for", () => {
   assert.deepEqual(notStarted(asked, asked), []);
   // One database picked by hand asks for no list.
   assert.deepEqual(notStarted([], [run("2026-11-11T00:00:00Z")]), []);
+});
+
+test("a backup of an app's volumes is worded as an app, and a list says databases only while every one is", () => {
+  const db = { content: "database" };
+  const files = { content: "volumes" };
+  assert.equal(isVolumes(files), true);
+  assert.equal(isVolumes(db), false);
+  // An older API sends no content: it only had databases.
+  assert.equal(isVolumes({}), false);
+  assert.equal(heldNoun(files), "app");
+  assert.equal(heldNoun({}), "database");
+  assert.equal(listNoun([db, {}]), "database");
+  assert.equal(listNoun([db, files]), "app");
+  assert.equal(listNoun([]), "database");
 });

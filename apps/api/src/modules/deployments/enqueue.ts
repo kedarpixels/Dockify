@@ -4,6 +4,7 @@
 import { gzipSync } from "node:zlib";
 import type { Db, Prisma, Tx } from "@dockify/db";
 import { HttpError } from "../../errors.ts";
+import { HELD_BY_RESTORE } from "../backups/shared.ts";
 import { IN_FLIGHT } from "./mapping.ts";
 
 export type NewDeployment = Omit<Prisma.DeploymentUncheckedCreateInput, "appId" | "serverId" | "status" | "steps" | "logSeq">;
@@ -13,6 +14,7 @@ export type DeployRequestOutcome = { kind: "queued"; deploymentId: string; jobId
 /**
  * When a deploy is already in flight, `busy` decides: "reject" answers 409 (a click), "coalesce"
  * stamps pendingDeployAt so the pipeline runs one more deploy after the open one (a push, an env change).
+ * While a restore holds the app the same two answers apply: a click is refused, a push waits for the restore.
  */
 export async function requestDeployTx(
   tx: Prisma.TransactionClient,
@@ -32,8 +34,14 @@ export async function requestDeployTx(
     if (!previewId) await tx.app.updateMany({ where: { id: appId }, data: { pendingDeployAt: new Date() } });
     return { kind: "coalesced" };
   }
-  const app = await tx.app.findUnique({ where: { id: appId }, select: { serverId: true } });
+  const app = await tx.app.findUnique({ where: { id: appId }, select: { serverId: true, quiescedByJobId: true } });
   if (!app) throw new HttpError(404, "App not found", "NOT_FOUND");
+  // A preview runs in its own container on none of the app's volumes, so a restore does not hold it.
+  if (app.quiescedByJobId && !previewId) {
+    if (busy === "reject") throw new HttpError(409, HELD_BY_RESTORE, "RESTORE_IN_PROGRESS");
+    await tx.app.updateMany({ where: { id: appId }, data: { pendingDeployAt: new Date() } });
+    return { kind: "coalesced" };
+  }
   const now = new Date().toISOString();
   const dep = await tx.deployment.create({
     data: { ...data, previewId, appId, serverId: app.serverId, status: "queued", steps: [{ id: "queued", status: "done", startedAt: now, finishedAt: now }] },

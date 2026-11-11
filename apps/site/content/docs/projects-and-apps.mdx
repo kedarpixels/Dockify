@@ -34,7 +34,7 @@ To add one, open the project's **Settings** tab and choose **Add environment** i
 
 With two or more, the project page's header has an environment switcher (**All**, then one key per environment with its app count). It narrows the apps, deployments, domains and variables to one environment, and **New app** starts in the one you picked. App cards name their environment only when the cards on screen come from more than one. Lists that span projects, such as Resources, Domains and Logs, name an app's environment only for projects whose apps sit in more than one.
 
-Removing an environment, from the same card, deletes everything in it: its apps and databases with their data, their volumes, domains and routes, and every variable set in it. Previews built from it close, and if it was the previews' base, they move to one that is left. Database backups stay on the Backups page until you delete them. You type the environment's name, and Dockify asks you to confirm it is you. It is refused while one of its apps is deploying (cancel or wait for it first), and the last environment can never be removed: delete the project instead. Removing down to one hides environments again.
+Removing an environment, from the same card, deletes everything in it: its apps and databases with their data, their volumes, domains and routes, and every variable set in it. Previews built from it close, and if it was the previews' base, they move to one that is left. Backups stay on the Backups page until you delete them. You type the environment's name, and Dockify asks you to confirm it is you. It is refused while one of its apps is deploying (cancel or wait for it first), and the last environment can never be removed: delete the project instead. Removing down to one hides environments again.
 
 Changing an environment's branch also asks you to confirm it is you, because it changes what code runs.
 
@@ -51,6 +51,8 @@ The name is the app's **name**, the lowercase one it was created with, never its
 | `bot` | A worker with no port, such as a Discord bot or a queue consumer. |
 | `postgres` | Managed Postgres. See [Databases](/docs/databases). |
 | `redis` | Managed Redis. |
+
+The kind decides how an app is deployed. What the dashboard calls it, and the icon it draws, also depend on what it runs. An app built from your repository reads as its kind. An app that runs a published image reads as what that image is: SeaweedFS, MinIO and Garage as **Storage**, Uptime Kuma, Grafana and Prometheus as **Monitoring**, ntfy and Gotify as **Notifications**, Memos as **Notes**, Miniflux as **Feed reader**, and a Postgres or Redis image by its own name. Any other image under the `backend` kind reads as **Service**. An icon you upload, or a frontend's favicon, still wins over all of these.
 
 ## Sources
 
@@ -71,7 +73,7 @@ The name is the app's **name**, the lowercase one it was created with, never its
 | Health check | Path, expected status, timeout, grace, interval. See [First deploy](/docs/first-deploy#health-checks). |
 | CPU and memory limits | CPU from 0.1 to 64 cores, memory from 64 MB. With no CPU set, an app gets every core but one, at least 1. A pids limit is always set. |
 | Release command | Runs once before traffic moves, for migrations. |
-| Volumes | Named volumes only, up to ten. An app with a volume deploys stop then start. |
+| Volumes | Named volumes only, up to ten. An app with a volume deploys stop then start, and gets a Backups tab: see [Backups and restore](/docs/backups). |
 
 Changes to anything that alters what runs, or with what privilege (the release command, the root directory, extra capabilities, sysctls), ask you to confirm it is you. Capabilities come from a short allowlist (`NET_ADMIN`, `NET_RAW`), and sysctls only from `net.ipv4.*` and `net.ipv6.conf.*`.
 
@@ -104,4 +106,4 @@ Every pull request can get its own copy of the project, `pr-<n>`, cloned from th
 
 ## Deleting
 
-Deleting a project, an environment or an app asks you to type its name and to confirm it is you. Containers, volumes, routes, networks and the app's images are removed. Backups are not deleted with a database: they stay in the bucket, listed as orphans, until you remove them on purpose.
+Deleting a project, an environment or an app asks you to type its name and to confirm it is you. Containers, volumes, routes, networks and the app's images are removed. Backups are not deleted with a database or with an app's volumes: they stay in the bucket, listed as orphans, until you remove them on purpose.

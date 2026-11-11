@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { afterAll, describe, expect, it } from "vitest";
-import { assertSafeSpec } from "@dockify/engine";
+import { assertSafeSpec, containerSpec } from "@dockify/engine";
 import { CronError, nextRun, parseCron } from "./cron.ts";
 import { keepTimeouts, parseRestoreCheck, pgDumpCommand, psqlCommand, redisDumpCommand, redisSwapCommand, REPLACE_SCHEMAS_SQL, RESTORE_COMMIT, RESTORE_PREAMBLE, RestoreFramer, TERMINATE_OTHERS_SQL } from "./dump.ts";
 import { backupKeyFingerprint, CHUNK_BYTES, DecryptStream, EncryptStream, EnvelopeError, peekFingerprint } from "./envelope.ts";
@@ -18,6 +18,8 @@ import { isPermanentError } from "../errors.ts";
 import { guardReadOnlySql, maskSql, quoteQualified, SqlGuardError } from "./sql-guard.ts";
 import { assertKey, backupObjectKey, LocalStore, S3Store, signRequest, StoreError } from "./store.ts";
 import { TarGuard, TarGuardError } from "./tar-guard.ts";
+import { backupSourceOf } from "./requests.ts";
+import { backupHelperName, setgidCommand, VOLUME_HELPER_IMAGE, volumeExtractCommand, volumeHelperInput, volumeMounts, volumeTarCommand } from "./volume-backup.ts";
 
 const collect = async (r: Readable): Promise<Buffer> => {
   const parts: Buffer[] = [];
@@ -400,6 +402,161 @@ const guard = async (tar: Buffer) => {
   await pipeline(Readable.from([tar]), g);
   return g.summary;
 };
+
+/** A link entry: its target sits in the header's linkname field. */
+function tarLink(name: string, type: "1" | "2", target: string): Buffer {
+  const h = tarEntry(name, type);
+  h.write(target, 157, 100, "utf8");
+  return h;
+}
+const volumeGuard = async (tar: Buffer) => {
+  const g = new TarGuard({ volumes: true });
+  await pipeline(Readable.from([tar]), g);
+  return g;
+};
+
+describe("tar guard, for an archive of app volumes", () => {
+  it("collects the volume folders and counts links beside files", async () => {
+    const g = await volumeGuard(tarOf(
+      tarEntry("dk-a-uploads/", "5"), tarEntry("dk-a-uploads/1.png", "0", Buffer.from("png")), tarLink("dk-a-uploads/latest", "2", "/data/1.png"),
+      tarLink("dk-a-uploads/same", "1", "dk-a-uploads/1.png"), tarEntry("dk-a-cache/", "5"),
+    ));
+    expect(g.roots).toEqual(["dk-a-uploads", "dk-a-cache"]);
+    expect(g.summary).toEqual({ files: 1, dirs: 2, bytes: 3 });
+    expect(g.links).toBe(2);
+  });
+  it("still refuses traversal, devices, FIFOs and a hard link to outside the archive", async () => {
+    await expect(volumeGuard(tarOf(tarEntry("dk-a-uploads/../../etc/passwd", "0")))).rejects.toThrow(/leaves the volume/);
+    await expect(volumeGuard(tarOf(tarEntry("dk-a-uploads/sda", "4")))).rejects.toThrow(/a device/);
+    await expect(volumeGuard(tarOf(tarEntry("dk-a-uploads/pipe", "6")))).rejects.toThrow(/a FIFO/);
+    await expect(volumeGuard(tarOf(tarLink("dk-a-uploads/shadow", "1", "/etc/shadow")))).rejects.toThrow(/relative/);
+    await expect(volumeGuard(tarOf(tarLink("dk-a-uploads/shadow", "1", "../../etc/shadow")))).rejects.toThrow(/leaves the volume/);
+    await expect(volumeGuard(tarOf(tarLink("dk-a-uploads/none", "1", "")))).rejects.toThrow(/to nothing/);
+  });
+  it("reads a hard link's long target from its pax record or GNU long link, and holds it to the same rule", async () => {
+    const far = `dk-a-uploads/${"d/".repeat(60)}f`;
+    const ok = await volumeGuard(tarOf(tarEntry("PaxHeaders/l", "x", pax("linkpath", far)), tarLink("dk-a-uploads/l", "1", "cut")));
+    expect(ok.links).toBe(1);
+    await expect(volumeGuard(tarOf(tarEntry("PaxHeaders/l", "x", pax("linkpath", "../out")), tarLink("dk-a-uploads/l", "1", "in")))).rejects.toThrow(/leaves the volume/);
+    await expect(volumeGuard(tarOf(tarEntry("././@LongLink", "K", Buffer.from("/etc/shadow\0")), tarLink("dk-a-uploads/l", "1", "in")))).rejects.toThrow(/relative/);
+  });
+  it("accepts every name Linux allows in a volume: backslash, control characters, a leading dash, long and non-UTF-8 names", async () => {
+    const odd = ["up\\load.txt", "-rf", "--checkpoint-action=exec=sh", "line\nbreak", "tab\tbell\x07", " lead and trail ", "..hidden..", "a:b*c?d|e"];
+    const g = await volumeGuard(tarOf(tarEntry("dk-a-uploads/", "5"), ...odd.map((n) => tarEntry(`dk-a-uploads/${n}`, "0"))));
+    expect(g.summary.files).toBe(odd.length);
+    // 0xff 0xfe is no UTF-8 at all: a name is bytes to Linux and to tar.
+    const raw = tarEntry("dk-a-uploads/xx", "0");
+    raw[14] = 0xff;
+    raw[15] = 0xfe;
+    expect((await volumeGuard(tarOf(raw))).summary.files).toBe(1);
+    // 255 bytes a segment and far past the header's 100: carried in a pax path, or a GNU long name.
+    const long = `dk-a-uploads/${"d".repeat(255)}/${"f\\".repeat(120)}`;
+    expect((await volumeGuard(tarOf(tarEntry("PaxHeaders/l", "x", pax("path", long)), tarEntry("dk-a-uploads/cut", "0")))).roots).toEqual(["dk-a-uploads"]);
+    expect((await volumeGuard(tarOf(tarEntry("././@LongLink", "L", Buffer.from(`${long}\0`)), tarEntry("dk-a-uploads/cut", "0")))).summary.files).toBe(1);
+    // Still refused: a NUL in a pax path, which no file name can hold.
+    await expect(volumeGuard(tarOf(tarEntry("PaxHeaders/l", "x", pax("path", "dk-a-uploads/a\0b")), tarEntry("dk-a-uploads/cut", "0")))).rejects.toThrow(/relative/);
+  });
+  it("a database's guard still refuses a backslash", async () => {
+    await expect(guard(tarOf(tarEntry("up\\load.txt", "0")))).rejects.toThrow(/relative/);
+  });
+  it("a hard link stays inside its own volume's folder", async () => {
+    await expect(volumeGuard(tarOf(tarLink("dk-a-uploads/x", "1", "dk-a-cache/y")))).rejects.toThrow(/into another volume/);
+    await expect(volumeGuard(tarOf(tarLink("dk-a-uploads/x", "1", "elsewhere")))).rejects.toThrow(/into another volume/);
+    expect((await volumeGuard(tarOf(tarLink("dk-a-uploads/x", "1", "./dk-a-uploads/sub/y\\z")))).links).toBe(1);
+  });
+  it("lists the folders and files that carry the setgid bit, with their group, so a restore can put it back", async () => {
+    const owned = (name: string, type: string, mode: string, gid: string) => {
+      const h = tarEntry(name, type);
+      h.write(`${mode}\0`, 100);
+      h.write(`${gid}\0`, 116);
+      return h;
+    };
+    // The real case: a folder 2750 owned 1000:1000 came back 750 from a helper without CAP_FSETID.
+    const far = owned("dk-a-uploads/far", "5", "0002770", "0000000");
+    const big = owned("dk-a-uploads/big", "0", "0002755", "0000000");
+    // A gid past the octal field: base-256 in the header, as GNU tar writes it outside pax.
+    big.fill(0, 116, 124);
+    big[116] = 0x80;
+    big.writeUInt32BE(3_000_000, 120);
+    const g = await volumeGuard(tarOf(
+      owned("dk-a-uploads/shared/", "5", "0002750", "0001750"),
+      owned("dk-a-uploads/shared/tool", "0", "0002755", "0000144"),
+      owned("dk-a-uploads/plain/", "5", "0000750", "0001750"),
+      owned("dk-a-uploads/suid", "0", "0004755", "0001750"),
+      tarEntry("PaxHeaders/far", "x", pax("gid", "4000000")), far,
+      big,
+    ));
+    expect(g.setgid).toEqual([
+      { path: "dk-a-uploads/shared/", gid: 1000 },
+      { path: "dk-a-uploads/shared/tool", gid: 100 },
+      { path: "dk-a-uploads/far", gid: 4_000_000 },
+      { path: "dk-a-uploads/big", gid: 3_000_000 },
+    ]);
+    expect(g.setgidCut).toBe(false);
+    // A database's guard collects nothing.
+    const plain = new TarGuard();
+    await pipeline(Readable.from([tarOf(owned("shared/", "5", "0002750", "0001750"))]), plain);
+    expect(plain.setgid).toEqual([]);
+  });
+  it("sets the bit again as the entry's own group, since the helper has no CAP_FSETID and gets none", () => {
+    const cmd = setgidCommand();
+    expect(cmd.slice(0, 5)).toEqual(["xargs", "-0", "-r", "-n", "2"]);
+    expect(cmd.join(" ")).toContain('setpriv --regid "$1" --clear-groups chmod g+s -- "./$2"');
+    // chmod follows a symlink, and only real files and folders carry the bit: one that is a link by now is skipped.
+    expect(cmd.join(" ")).toContain('if [ ! -L "./$2" ]; then exec setpriv');
+    const spec = containerSpec(volumeHelperInput({ name: backupHelperName("b1"), image: VOLUME_HELPER_IMAGE, role: "restore-helper", appId: "a1", backupId: "b1", mounts: volumeMounts(["dk-a-uploads"], false) }), 4);
+    expect(spec.HostConfig.CapAdd).not.toContain("FSETID");
+    // What the pass needs is in every tenant container's set already.
+    expect(spec.HostConfig.CapAdd).toEqual(expect.arrayContaining(["SETGID", "FOWNER"]));
+    const asked = JSON.parse(JSON.stringify(spec)) as { HostConfig: { CapAdd: string[] } };
+    asked.HostConfig.CapAdd.push("FSETID");
+    expect(() => assertSafeSpec(asked)).toThrow(/FSETID is not allowed/);
+  });
+  it("is not an archive of volumes with too many top-level names", async () => {
+    const many = Array.from({ length: 65 }, (_, i) => tarEntry(`f${i}`, "0"));
+    await expect(volumeGuard(tarOf(...many))).rejects.toThrow(/too many top-level/);
+  });
+  it("a database's guard keeps refusing every link, and a long link too", async () => {
+    await expect(guard(tarOf(tarEntry("PaxHeaders/l", "x", pax("linkpath", "a")), tarEntry("l", "0")))).rejects.toThrow(/link path/);
+    await expect(guard(tarOf(tarEntry("././@LongLink", "K", Buffer.from("a\0")), tarEntry("l", "0")))).rejects.toThrow(/of type K/);
+  });
+});
+
+describe("what is backed up", () => {
+  const vol = [{ id: "v" }];
+  it("a managed service by its kind, an app only while it has a volume of its own", () => {
+    expect(backupSourceOf({ kind: "postgres", volumes: vol })).toBe("postgres");
+    expect(backupSourceOf({ kind: "redis", volumes: vol })).toBe("redis");
+    expect(backupSourceOf({ kind: "backend", volumes: vol })).toBe("volume");
+    expect(backupSourceOf({ kind: "frontend", volumes: vol })).toBe("volume");
+    expect(backupSourceOf({ kind: "bot", volumes: vol })).toBe("volume");
+    expect(backupSourceOf({ kind: "backend", volumes: [] })).toBeNull();
+  });
+  it("tar keeps owners as numbers, writes pax, and names each volume after a --", () => {
+    const cmd = volumeTarCommand(["dk-a-uploads", "dk-a-cache"]);
+    expect(cmd.slice(0, 3)).toEqual(["tar", "--create", "--file=-"]);
+    expect(cmd).toContain("--format=pax");
+    expect(cmd).toContain("--numeric-owner");
+    expect(cmd.slice(cmd.indexOf("--"))).toEqual(["--", "dk-a-uploads", "dk-a-cache"]);
+  });
+  it("a restore empties the volumes below their mounts, a restore test empties nothing", () => {
+    expect(volumeExtractCommand(true)[2]).toMatch(/^find \/v -mindepth 2 -delete && exec tar --extract /);
+    expect(volumeExtractCommand(false)[2]).toMatch(/^exec tar --extract /);
+    expect(volumeExtractCommand(true)[2]).toContain("--same-owner");
+  });
+  it("the helper passes the container policy: read-only root, no way out, and its image pinned by digest", () => {
+    const spec = containerSpec(volumeHelperInput({ name: backupHelperName("b1"), image: VOLUME_HELPER_IMAGE, role: "backup-helper", appId: "a1", backupId: "b1", mounts: volumeMounts(["dk-a-uploads"], true) }), 4);
+    expect(() => assertSafeSpec(spec)).not.toThrow();
+    expect(VOLUME_HELPER_IMAGE).toMatch(/@sha256:[0-9a-f]{64}$/);
+    expect(spec.HostConfig.ReadonlyRootfs).toBe(true);
+    expect(spec.HostConfig.NetworkMode).toBe("dockify-helpers");
+    expect(spec.HostConfig.RestartPolicy).toEqual({ Name: "no" });
+    expect(spec.HostConfig.Mounts).toEqual([{ Type: "volume", Source: "dk-a-uploads", Target: "/v/dk-a-uploads", ReadOnly: true }]);
+    // Nothing beyond what every tenant container gets.
+    expect(spec.HostConfig.CapAdd).not.toContain("NET_ADMIN");
+    expect(() => containerSpec(volumeHelperInput({ name: backupHelperName("b1"), image: VOLUME_HELPER_IMAGE, role: "backup-helper", appId: "a1", backupId: "b1", mounts: volumeMounts(["dockify_dockify-db"], true) }), 4)).toThrow(/named volume/);
+  });
+});
 
 describe("tar guard", () => {
   it("accepts files and directories inside the root", async () => {

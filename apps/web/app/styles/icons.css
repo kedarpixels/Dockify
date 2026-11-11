@@ -45,6 +45,10 @@
 .aicon-tile[data-hue="postgres"] { --ai-back-top: var(--tile-postgres-top); --ai-back-bottom: var(--tile-postgres-bottom); }
 .aicon-tile[data-hue="redis"] { --ai-back-top: var(--tile-redis-top); --ai-back-bottom: var(--tile-redis-bottom); }
 .aicon-tile[data-hue="minio"] { --ai-back-top: var(--tile-minio-top); --ai-back-bottom: var(--tile-minio-bottom); }
+.aicon-tile[data-hue="storage"] { --ai-back-top: var(--tile-storage-top); --ai-back-bottom: var(--tile-storage-bottom); }
+.aicon-tile:is([data-hue="monitor"], [data-hue="uptimekuma"]) { --ai-back-top: var(--tile-monitor-top); --ai-back-bottom: var(--tile-monitor-bottom); }
+.aicon-tile:is([data-hue="notify"], [data-hue="ntfy"]) { --ai-back-top: var(--tile-notify-top); --ai-back-bottom: var(--tile-notify-bottom); }
+.aicon-tile:is([data-hue="notes"], [data-hue="reader"], [data-hue="service"]) { --ai-back-top: var(--tile-service-top); --ai-back-bottom: var(--tile-service-bottom); }
 
 /* Icon card */
 .ic-card {

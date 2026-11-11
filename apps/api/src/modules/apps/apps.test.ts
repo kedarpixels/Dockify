@@ -199,6 +199,16 @@ describe("apps.start, apps.stop, apps.restart", () => {
     expect(busy.jobs).toHaveLength(0);
   });
 
+  it("refuses a start or a restart while a restore replaces the app's data, and still lets it be stopped", async () => {
+    const held = fakeDb(row({ quiescedByJobId: "0f0e0d0c-0000-4000-8000-0000000000f1" }));
+    for (const op of ["apps.start", "apps.restart"] as const) {
+      await expect(call(op, held.db)).rejects.toMatchObject({ status: 409, code: "RESTORE_IN_PROGRESS", message: "A restore of this app's data is running. Try again when it finishes." });
+    }
+    expect(held.jobs).toHaveLength(0);
+    await call("apps.stop", held.db);
+    expect(held.jobs).toHaveLength(1);
+  });
+
   it("refuses a token limited to other projects before anything is queued", async () => {
     const f = fakeDb(row());
     await expect(call("apps.start", f.db, { actor: limitedToken })).rejects.toMatchObject({ status: 403 });

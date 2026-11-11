@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CardTitle } from "@/components/card-title";
 import { Icon } from "@/components/icon";
-import { AppIcon, ProjectIcon } from "@/components/icons/app-icon";
+import { AppIcon, ProjectIcon, useAppRole } from "@/components/icons/app-icon";
 import { NewAppDialog } from "@/components/new-app/new-app-dialog";
 import type { SourceType } from "@/components/new-app/spec";
 import { useProjectExtras } from "@/components/project-extras/api";
@@ -37,7 +37,7 @@ import { useCan } from "@/lib/viewer";
 import { useTabSwitchGuard } from "./controls";
 import { previewsMoving, statusKey } from "./live";
 import { ProjectSettings } from "./project-settings";
-import { DeployCard, DetailLead, hostOf, KIND_LABEL, projectState, ResourcePips, useUrlTab } from "./shared";
+import { DeployCard, DetailLead, hostOf, projectState, ResourcePips, useUrlTab } from "./shared";
 
 const PROJECT_TABS = ["apps", "deployments", "previews", "env", "domains", "settings"] as const;
 type ProjectTab = (typeof PROJECT_TABS)[number];
@@ -54,6 +54,7 @@ const TAB_LABEL: Record<ProjectTab, string> = {
 function AppCard({ a, now, multiEnv, delay, repoUrl }: { a: AppSummary; now: number; multiEnv: boolean; delay: number; repoUrl: string | null }) {
   // A deployment read without a repository takes the project's, so its branch and hash still link.
   const d = a.lastDeployment ? withRepo([a.lastDeployment], repoUrl)[0] : undefined;
+  const role = useAppRole()(a);
   return (
     <article className="pj-cell reveal" style={{ animationDelay: `${delay}ms` }}>
       <Corners />
@@ -64,7 +65,7 @@ function AppCard({ a, now, multiEnv, delay, repoUrl }: { a: AppSummary; now: num
             <span className="pj-id">
               <h2 className="pj-name ellipsis">{appTitle(a)}</h2>
               <span className="pd-app-sub">
-                {KIND_LABEL[a.kind]}
+                {role.label}
                 {multiEnv ? <EnvTag env={a.environment} compact /> : null}
               </span>
             </span>

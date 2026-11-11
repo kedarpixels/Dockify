@@ -19,6 +19,10 @@ Yes, for stateless apps. The new version must pass its readiness check before tr
 
 The old version keeps serving. The deploy is marked failed with the reason. To hear about it, add an alert rule or turn on notifications: see [Alerts and notifications](/docs/alerts).
 
+## Are my uploads backed up?
+
+Yes, once you turn a schedule on. Any app that keeps a named volume, such as a file server or an app with an uploads folder, has a Backups tab beside the databases, with the same tiers, encryption and restore tests. See [Backups and restore](/docs/backups).
+
 ## Where do my backups go?
 
 To your own S3-compatible bucket, such as Cloudflare R2, Backblaze B2 or AWS S3. They are encrypted on the server before they leave it. Until you add a bucket, they are kept on the server's own disk, which is not off the server. See [Backups and restore](/docs/backups).

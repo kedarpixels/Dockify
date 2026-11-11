@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { PassThrough, Transform, Writable, type Readable, type TransformCallback } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, createGzip } from "node:zlib";
-import type { Backup, Prisma } from "@dockify/db";
+import type { Backup, Prisma, Tx } from "@dockify/db";
 import { reason as message } from "@dockify/engine";
 import { isPermanentError } from "../errors.ts";
 import type { DataDeps } from "./context.ts";
@@ -29,13 +29,15 @@ import {
   containerNameFor, generateCredentials, HELPER_NETWORK, LABEL_APP, LABEL_ROLE, provisionService, SERVICE_IMAGES, STORAGE_UNAVAILABLE, waitReady,
   type ServiceApp, type ServiceCredentials, type ServiceKind,
 } from "./services.ts";
-import { backupKindFor, isServiceKind, type AppSnapshot, type RestorePayload } from "./requests.ts";
+import { backupKindFor, backupSourceOf, isServiceKind, type AppSnapshot, type RestorePayload } from "./requests.ts";
 import { backupObjectKey } from "./store.ts";
 import { tierOfType } from "./tiers.ts";
 import { TarGuard } from "./tar-guard.ts";
+import { assertRoom, openVolumeDump, restoreVolumes, RoomWatch, TAR_CHANGED_EXIT, TarChecked, testVolumeRestore, type VolumeApp } from "./volume-backup.ts";
 
 const STDERR_TAIL = 2_000;
 const SERVICE_KINDS_SIBLINGS = ["frontend", "backend", "bot"] as const;
+const DEPLOY_IN_FLIGHT = ["queued", "building", "deploying", "cancelling"] as const;
 
 export class HashCount extends Transform {
   #h = createHash("sha256");
@@ -103,6 +105,14 @@ export async function target(deps: DataDeps, appId: string): Promise<ServiceTarg
   return { app, containerId: await locate(deps, app), creds: await deps.credentials(app.id) };
 }
 
+/** An app whose own volumes are backed up as files. It need not be running: a helper mounts them. */
+export async function volumeApp(deps: DataDeps, appId: string): Promise<VolumeApp> {
+  const app = await deps.db.app.findUnique({ where: { id: appId }, select: { id: true, name: true, kind: true, environmentId: true, volumes: { select: { name: true }, orderBy: { createdAt: "asc" } } } });
+  if (!app) throw new DataError("That app no longer exists", true);
+  if (isServiceKind(app.kind) || backupSourceOf(app) !== "volume") throw new DataError(`${app.name} has no volume of its own to back up`, true);
+  return { id: app.id, name: app.name, environmentId: app.environmentId, volumes: app.volumes.map((v) => v.name) };
+}
+
 const exec = (deps: DataDeps, id: string, c: Command, stdin = false) => deps.docker.exec(id, { cmd: c.cmd, env: c.env, stdin });
 /** An exec whose output nobody reads: discarded, so the process is never held back on it. */
 const execQuiet = async (deps: DataDeps, id: string, c: Command, stdin = false) => {
@@ -119,7 +129,7 @@ interface DumpSource {
 async function openDump(deps: DataDeps, backup: Backup, t: ServiceTarget): Promise<DumpSource> {
   if (backup.kind === "postgres") return { handle: await exec(deps, t.containerId, pgDumpCommand(t.creds)), cleanup: async () => {} };
   if (backup.kind === "redis") return { handle: await exec(deps, t.containerId, redisDumpCommand(t.creds)), cleanup: async () => {} };
-  // Only a Storage service took volume backups, and none runs any more.
+  // The volume of a Storage service, which no longer runs. An app's own volumes go through openVolumeDump.
   if (backup.kind === "volume") throw new DataError(STORAGE_UNAVAILABLE, true);
   throw new DataError(`backups of kind ${backup.kind} are taken by the control plane updater`, true);
 }
@@ -163,15 +173,19 @@ interface Copy {
 /**
  * One dump, gzipped once, then encrypted and stored once per copy: a bucket that is down never fails the local
  * copy. `final` (the last attempt) or a permanent error fails a row at once; otherwise the retry dumps again.
+ * Answers the bytes of the files in an archive of volumes, null for any other dump.
  */
-export async function runBackup(deps: DataDeps, backupId: string, final = true, copyIds: readonly string[] = []): Promise<void> {
+export async function runBackup(deps: DataDeps, backupId: string, final = true, copyIds: readonly string[] = []): Promise<number | null> {
   const { db } = deps;
   const backup = await db.backup.findUnique({ where: { id: backupId } });
   if (!backup) throw new DataError("That backup row no longer exists", true);
-  if (backup.kind === "control_plane") return backup.status === "running" ? copyControlPlaneDump(deps, backup, final) : undefined;
+  if (backup.kind === "control_plane") {
+    if (backup.status === "running") await copyControlPlaneDump(deps, backup, final);
+    return null;
+  }
   const extra = copyIds.length ? await db.backup.findMany({ where: { id: { in: [...copyIds] }, sourceAppId: backup.sourceAppId } }) : [];
   const rows = [backup, ...extra].filter((r) => r.status === "running");
-  if (!rows.length) return;
+  if (!rows.length) return null;
   if (!backup.appId) {
     const gone = new DataError("The app was deleted before its backup ran", true);
     for (const r of rows) await db.backup.update({ where: { id: r.id }, data: failureData(gone, true) });
@@ -181,6 +195,7 @@ export async function runBackup(deps: DataDeps, backupId: string, final = true, 
   const copies: Copy[] = rows.map((row) => ({ row, tmp: join(deps.tmpDir, `backup-${row.id}.dkbk`), counter: new HashCount() }));
   let source: DumpSource | null = null;
   let fan: Fan | null = null;
+  let checked: TarChecked | null = null;
   let firstError: unknown = null;
   const settled = new Set<string>();
   const fail = async (c: Copy, e: unknown) => {
@@ -191,7 +206,10 @@ export async function runBackup(deps: DataDeps, backupId: string, final = true, 
   try {
     // Inside the try: a scratch folder that cannot be made fails the rows with its reason.
     await mkdir(deps.tmpDir, { recursive: true, mode: 0o700 });
-    const t = await target(deps, backup.appId);
+    const sourceApp = await db.app.findUnique({ where: { id: backup.appId }, select: { kind: true } });
+    // An app's own volumes, read by a helper. A Storage service's volume backup still ends in openDump's refusal.
+    const files = backup.kind === "volume" && !!sourceApp && !isServiceKind(sourceApp.kind) ? await volumeApp(deps, backup.appId) : null;
+    const t = files ? null : await target(deps, backup.appId);
     const keys = await deps.backupKeys();
     // Each destination first: one that cannot be reached fails its copy before anything is dumped.
     const live: Array<Copy & { dest: Awaited<ReturnType<DataDeps["storeFor"]>> }> = [];
@@ -203,19 +221,26 @@ export async function runBackup(deps: DataDeps, backupId: string, final = true, 
       }
     }
     if (!live.length) throw firstError;
-    source = await openDump(deps, backup, t);
+    source = files ? await openVolumeDump(deps, backup.id, files) : await openDump(deps, backup, t!);
     const branches = live.map((c) => {
       const into = new PassThrough();
       return { into, done: pipeline(into, new EncryptStream(keys.active, c.row.id), c.counter, createWriteStream(c.tmp, { mode: 0o600 })) };
     });
     fan = new Fan(branches.map((b) => b.into));
-    const flow = pipeline(source.handle.stdout, createGzip({ level: 6 }), fan);
+    if (files) checked = new TarChecked();
+    // An archive of volumes can be as large as the disk, so its staged ciphertext is watched (scratchDisk).
+    const flow = checked ? pipeline(source.handle.stdout, checked, createGzip({ level: 6 }), new RoomWatch(deps.scratchDisk), fan) : pipeline(source.handle.stdout, createGzip({ level: 6 }), fan);
     const [, result] = await Promise.all([flow, source.handle.done, ...branches.map((b) => b.done)]);
-    checkExit(backup.kind === "postgres" ? "pg_dump" : backup.kind === "redis" ? "redis-cli" : "tar", result);
+    if (files && result.exitCode === TAR_CHANGED_EXIT) {
+      // Nothing is paused for a backup of volumes, so this is expected of a busy one. The archive is whole.
+      await activity(deps, "backup.run", "backed up the volumes of", files.id, files.name, false, `Some files changed while they were read: ${result.stderr.slice(-200).trim() || "tar named none"}`);
+    } else checkExit(backup.kind === "postgres" ? "pg_dump" : backup.kind === "redis" ? "redis-cli" : "tar", result);
 
     for (const c of live) {
       try {
         const key = backupObjectKey(c.dest.prefix, { sourceAppId: c.row.sourceAppId, backupId: c.row.id, createdAt: c.row.createdAt, kind: c.row.kind });
+        // A local copy lands on the same disk as the staged one, so it needs that much room again.
+        if (files && c.dest.type === "local") await assertRoom(deps.scratchDisk, c.counter.bytes, (need, free, floor) => `The copy on this server needs ${need} and its disk has ${free} free. Dockify keeps ${floor} free, so it was not stored.`);
         await c.dest.store.put(key, createReadStream(c.tmp), c.counter.bytes);
         // The backup key travels with the dumps, sealed under the master key, so losing this server's
         // database never makes the offsite copies unreadable (key-escrow.ts).
@@ -245,6 +270,7 @@ export async function runBackup(deps: DataDeps, backupId: string, final = true, 
       }
     }
     if (firstError) throw firstError;
+    return checked ? checked.guard.summary.bytes : null;
   } catch (e) {
     await source?.handle.kill().catch(() => {});
     fan?.destroy();
@@ -301,7 +327,7 @@ function restorable(b: Backup | null): asserts b is Backup & { objectKey: string
  * Downloads the ciphertext and proves it whole before anything is touched: sha256, every chunk through the
  * final one, a clean gzip end, the tar guard. Returns the scratch path (still ciphertext).
  */
-export async function fetchVerified(deps: DataDeps, backup: Backup & { objectKey: string }): Promise<string> {
+export async function fetchVerified(deps: DataDeps, backup: Backup & { objectKey: string }, guard?: TarGuard): Promise<string> {
   await mkdir(deps.tmpDir, { recursive: true, mode: 0o700 });
   const tmp = join(deps.tmpDir, `restore-${backup.id}-${Date.now()}.dkbk`);
   try {
@@ -313,7 +339,7 @@ export async function fetchVerified(deps: DataDeps, backup: Backup & { objectKey
     await pipeline(await dest.store.get(backup.objectKey, max), counter, createWriteStream(tmp, { mode: 0o600 }));
     if (backup.sha256 && counter.digest() !== backup.sha256) throw new DataError("The stored backup does not match its checksum", true);
     const keys = await deps.backupKeys();
-    const sink = backup.kind === "volume" ? new TarGuard() : devNull();
+    const sink = guard ?? (backup.kind === "volume" ? new TarGuard() : devNull());
     await pipeline(createReadStream(tmp), new DecryptStream(keys.all, backup.id), createGunzip(), sink);
     return tmp;
   } catch (e) {
@@ -367,37 +393,134 @@ async function replayRedis(deps: DataDeps, tmp: string, backupId: string, t: Ser
   }
 }
 
-export async function quiesce(deps: DataDeps, jobId: string, payload: Pick<RestorePayload, "quiesced" | "resumedAt">, environmentId: string): Promise<string[]> {
+export async function quiesce(deps: DataDeps, jobId: string, payload: Pick<RestorePayload, "quiesced" | "resumedAt">, environmentId: string, opts: QuiesceOptions = {}): Promise<string[]> {
   const siblings = await deps.db.app.findMany({
     where: { environmentId, kind: { in: [...SERVICE_KINDS_SIBLINGS] }, desiredState: "running" },
     select: { id: true },
   });
-  const running: string[] = [];
-  for (const s of siblings) {
-    const st = await deps.docker.inspect(containerNameFor(s.id));
-    if (st?.running && st.labels[LABEL_APP] === s.id) running.push(s.id);
+  return stopRunning(deps, jobId, payload, siblings.map((s) => s.id), opts);
+}
+
+const lockDeploy = (tx: Tx, appId: string) => {
+  const key = `deploy:${appId}`;
+  return tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+};
+
+/**
+ * Marks the apps as held by this restore (App.quiescedByJobId) and records what will be stopped, in one
+ * transaction under each app's deploy lock. What runs is read under those locks, and an open deploy or start of
+ * a held app refuses the restore: so nothing can start one between this look and the mark.
+ */
+async function hold(deps: DataDeps, jobId: string, payload: object, ids: readonly string[], own: string | null): Promise<string[]> {
+  return deps.db.$transaction(
+    async (tx) => {
+      for (const id of [...new Set([...(own ? [own] : []), ...ids])].sort()) await lockDeploy(tx, id);
+      const running: string[] = [];
+      for (const id of ids) {
+        const st = await deps.docker.inspect(containerNameFor(id));
+        if (st?.running && st.labels[LABEL_APP] === id) running.push(id);
+      }
+      const held = [...new Set([...(own ? [own] : []), ...running])];
+      const rows = held.length ? await tx.app.findMany({ where: { id: { in: held } }, select: { id: true, name: true, quiescedByJobId: true } }) : [];
+      for (const a of rows) {
+        if (a.quiescedByJobId && a.quiescedByJobId !== jobId) throw new DataError(`Another restore is holding ${a.name}. Restore when it has finished.`, true);
+        const busy =
+          (await tx.deployment.findFirst({ where: { appId: a.id, previewId: null, status: { in: [...DEPLOY_IN_FLIGHT] } }, select: { id: true } })) ??
+          (await tx.job.findFirst({ where: { dedupeKey: { in: [`deploy:${a.id}`, `app.power:${a.id}:start`, `app.power:${a.id}:restart`] }, completedAt: null, failedAt: null }, select: { id: true } }));
+        if (busy) throw new DataError(`A deployment or a start of ${a.name} is in progress. Restore when it has finished.`, true);
+      }
+      if (held.length) await tx.app.updateMany({ where: { id: { in: held } }, data: { quiescedByJobId: jobId } });
+      // Written BEFORE anything stops: if the worker dies from here on, recovery knows what to start.
+      await tx.job.update({ where: { id: jobId }, data: { payload: { ...payload, quiesced: running } as unknown as Prisma.InputJsonValue } });
+      return running;
+    },
+    { timeout: 30_000 },
+  );
+}
+
+export interface QuiesceOptions {
+  /** A restore: no deploy, start or restart of these apps until resume. A version change leaves this off, it redeploys them itself. */
+  hold?: boolean;
+  /** The app whose own volumes are replaced: held even when stopped. */
+  own?: string;
+}
+
+/** Stops those of `ids` that run, and returns them. */
+async function stopRunning(deps: DataDeps, jobId: string, payload: Pick<RestorePayload, "quiesced" | "resumedAt">, ids: readonly string[], opts: QuiesceOptions = {}): Promise<string[]> {
+  let running: string[];
+  if (opts.hold) running = await hold(deps, jobId, payload, ids, opts.own ?? null);
+  else {
+    running = [];
+    for (const id of ids) {
+      const st = await deps.docker.inspect(containerNameFor(id));
+      if (st?.running && st.labels[LABEL_APP] === id) running.push(id);
+    }
+    // Written BEFORE anything stops: if the worker dies from here on, recovery knows what to start.
+    await deps.db.job.update({ where: { id: jobId }, data: { payload: { ...payload, quiesced: running } as unknown as Prisma.InputJsonValue } });
   }
-  // Written BEFORE anything stops: if the worker dies from here on, recovery knows what to start.
-  await deps.db.job.update({ where: { id: jobId }, data: { payload: { ...payload, quiesced: running } as unknown as Prisma.InputJsonValue } });
-  for (const id of running) await deps.docker.stop(containerNameFor(id), 20);
+  try {
+    for (const id of running) await deps.docker.stop(containerNameFor(id), 20);
+  } catch (e) {
+    // A caller that gets this error holds nothing: what did stop is started and the hold ends here.
+    if (opts.hold) await resume(deps, jobId, payload, running).catch(() => {});
+    throw e;
+  }
   return running;
 }
 
-/** Starts the apps a quiesce stopped. With any left down, resumedAt stays unset, so recovery tries them again. */
+/**
+ * Starts the apps a quiesce stopped, then ends this job's hold. With any left down, resumedAt stays unset, so
+ * recovery tries them again. An app another restore holds by now is never started.
+ */
 export async function resume(deps: DataDeps, jobId: string, payload: Pick<RestorePayload, "quiesced" | "resumedAt">, ids: string[]): Promise<string[]> {
   const failed: string[] = [];
   for (const id of ids) {
-    const app = await deps.db.app.findUnique({ where: { id }, select: { desiredState: true } });
-    if (!app || app.desiredState !== "running") continue;
-    await deps.docker.start(containerNameFor(id)).catch((e: unknown) => {
-      if ((e as { status?: unknown } | null)?.status !== 304) failed.push(id);
-    });
+    // Under the app's deploy lock, which a restore takes its hold under: it never finds a start half done.
+    await deps.db.$transaction(
+      async (tx) => {
+        await lockDeploy(tx, id);
+        const app = await tx.app.findUnique({ where: { id }, select: { desiredState: true, quiescedByJobId: true } });
+        if (!app || app.desiredState !== "running" || (app.quiescedByJobId && app.quiescedByJobId !== jobId)) return;
+        await deps.docker.start(containerNameFor(id)).catch((e: unknown) => {
+          if ((e as { status?: unknown } | null)?.status !== 304) failed.push(id);
+        });
+      },
+      { timeout: 60_000 },
+    );
   }
-  await deps.db.job.update({
-    where: { id: jobId },
-    data: { payload: { ...payload, quiesced: ids, ...(failed.length ? {} : { resumedAt: new Date().toISOString() }) } as unknown as Prisma.InputJsonValue },
+  // One transaction: a job that reads resumed holds no app. The hold ends even for an app that would not
+  // start, since a deploy may be what fixes it.
+  const freed = await deps.db.$transaction(async (tx) => {
+    const rows = await tx.app.findMany({ where: { quiescedByJobId: jobId }, select: { id: true } });
+    if (rows.length) await tx.app.updateMany({ where: { quiescedByJobId: jobId }, data: { quiescedByJobId: null } });
+    await tx.job.update({
+      where: { id: jobId },
+      data: { payload: { ...payload, quiesced: ids, ...(failed.length ? {} : { resumedAt: new Date().toISOString() }) } as unknown as Prisma.InputJsonValue },
+    });
+    return rows;
   });
+  // A push that arrived meanwhile was kept, not dropped: it deploys now.
+  for (const a of freed) await deps.promotePending?.(a.id).catch(() => null);
   return failed;
+}
+
+/**
+ * A restore of volumes that failed after they were emptied: the app must not run on what is left. It stays
+ * stopped, by its desired state, until its owner restores the backup taken just before and starts it.
+ */
+export async function leaveStopped(deps: DataDeps, jobId: string, payload: RestorePayload, app: { id: string; name: string }): Promise<void> {
+  const { db } = deps;
+  const waiting = await db.$transaction(async (tx) => {
+    await tx.app.updateMany({ where: { id: app.id }, data: { desiredState: "stopped" } });
+    await tx.app.updateMany({ where: { quiescedByJobId: jobId }, data: { quiescedByJobId: null } });
+    await tx.job.update({ where: { id: jobId }, data: { payload: { ...payload, leftStopped: true, resumedAt: new Date().toISOString() } as unknown as Prisma.InputJsonValue } });
+    return (await tx.app.findUnique({ where: { id: app.id }, select: { pendingDeployAt: true } }))?.pendingDeployAt ?? null;
+  });
+  const pre = payload.preRestoreBackupId ? await db.backup.findUnique({ where: { id: payload.preRestoreBackupId }, select: { createdAt: true } }) : null;
+  const which = pre ? `the pre-restore backup from ${pre.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC` : "the backup taken just before this restore";
+  await activity(deps, "backup.restore", "left stopped on purpose, after a failed restore of the volumes of", app.id, app.name, true, `Its volumes are empty or half filled, so it was not started. Restore ${which}, then start the app.`);
+  // The push is kept on the app (pendingDeployAt) and deploys when the app is started (power.ts).
+  if (waiting) await activity(deps, "deploy.pending", "is holding a push that arrived during the restore of", app.id, app.name, false, "It deploys when the app is started.");
 }
 
 async function activity(deps: DataDeps, action: string, verb: string, targetId: string, label: string, failed = false, suffix?: string): Promise<void> {
@@ -406,10 +529,78 @@ async function activity(deps: DataDeps, action: string, verb: string, targetId: 
     .catch(() => {});
 }
 
+/** A dump of what is about to be replaced, so a wrong restore is itself undoable. `fileBytes`: see runBackup. */
+async function backupBeforeRestore(deps: DataDeps, appId: string, backup: Backup): Promise<{ id: string; fileBytes: number | null }> {
+  const pre = await deps.db.backup.create({
+    data: {
+      appId,
+      sourceAppId: appId,
+      appSnapshot: (backup.appSnapshot ?? {}) as Prisma.InputJsonValue,
+      kind: backup.kind,
+      trigger: "pre_restore",
+      status: "running",
+      destinationId: backup.destinationId,
+    },
+    select: { id: true },
+  });
+  return { id: pre.id, fileBytes: await runBackup(deps, pre.id, true) };
+}
+
+/**
+ * Over the app the backup came from, and only the volumes it still has. Verified in full first. The app is
+ * stopped before the pre-restore backup, so that copy misses no write. A failure before the volumes are
+ * emptied starts the app again, unchanged; one after leaves it stopped (leaveStopped).
+ */
+async function runVolumeRestore(deps: DataDeps, jobId: string, payload: RestorePayload, backup: Backup & { objectKey: string }): Promise<void> {
+  if (payload.mode !== "replace") throw new DataError("A backup of volumes restores over the app it came from, not into a new one", true);
+  const app = await volumeApp(deps, payload.targetAppId);
+  if (backup.sourceAppId !== app.id) throw new DataError("A backup of volumes restores only over the app it came from", true);
+  const guard = new TarGuard({ volumes: true });
+  await assertRoom(deps.scratchDisk, Number(backup.sizeBytes ?? 0), (need, free, floor) => `The backup is ${need} and the disk it is staged on has ${free} free. Dockify keeps ${floor} free, so nothing was changed.`);
+  const tmp = await fetchVerified(deps, backup, guard);
+  let p: RestorePayload = payload;
+  let stopped: string[] | null = null;
+  let emptied = false;
+  try {
+    const volumes = guard.roots;
+    const gone = volumes.filter((v) => !app.volumes.includes(v));
+    if (gone.length) throw new DataError(`This backup holds ${gone.join(", ")}, which ${app.name} no longer has. Download the backup to get those files.`, true);
+    if (!volumes.length) throw new DataError("This backup holds no volume", true);
+    stopped = await stopRunning(deps, jobId, p, [app.id], { hold: true, own: app.id });
+    p = { ...p, quiesced: stopped };
+    const pre = await backupBeforeRestore(deps, app.id, backup);
+    // Emptied first, then filled: only what the archive holds beyond the files there now is new room.
+    await assertRoom(deps.volumeDisk, Math.max(0, guard.summary.bytes - (pre.fileBytes ?? 0)), (need, free, floor) => `The restore needs ${need} more than the volumes hold now and the server's disk has ${free} free. Dockify keeps ${floor} free, so nothing was changed.`);
+    p = { ...p, preRestoreBackupId: pre.id, emptiedAt: new Date().toISOString() };
+    // Written BEFORE the volumes are touched: recovery reads it to know the app must stay stopped.
+    await deps.db.job.update({ where: { id: jobId }, data: { payload: p as unknown as Prisma.InputJsonValue } });
+    emptied = true;
+    const note = await restoreVolumes(deps, { backupId: backup.id, app, volumes, archive: await plain(deps, tmp, backup.id), setgid: guard.setgid });
+    // On the job before the app is started: a start that fails must never read as a restore that did.
+    p = { ...p, restoredAt: new Date().toISOString() };
+    await deps.db.job.update({ where: { id: jobId }, data: { payload: p as unknown as Prisma.InputJsonValue } });
+    emptied = false;
+    const cut = guard.setgidCut ? `The setgid bit was set again on the first ${guard.setgid.length} files and folders that had it, not on the rest.` : null;
+    await activity(deps, "backup.restore", "restored a backup over the volumes of", app.id, app.name, false, note ?? cut ?? undefined);
+  } catch (e) {
+    await activity(deps, "backup.restore", "failed to restore a backup over the volumes of", app.id, app.name, true, message(e));
+    throw e;
+  } finally {
+    if (emptied) await leaveStopped(deps, jobId, p, app);
+    else if (stopped) {
+      const down = await resume(deps, jobId, p, stopped);
+      if (down.length) await activity(deps, "backup.restore", "could not start the app again after the restore of the volumes of", app.id, app.name, true, p.restoredAt ? "The files were restored. Only the start failed, and it is retried each minute." : "Its files were not changed. The start is retried each minute.");
+    }
+    await rm(tmp, { force: true });
+  }
+}
+
 export async function runRestore(deps: DataDeps, jobId: string, payload: RestorePayload): Promise<void> {
   const { db } = deps;
   const backup = await db.backup.findUnique({ where: { id: payload.backupId } });
   restorable(backup);
+  const into = await db.app.findUnique({ where: { id: payload.targetAppId }, select: { kind: true } });
+  if (backup.kind === "volume" && into && !isServiceKind(into.kind)) return runVolumeRestore(deps, jobId, payload, backup);
   const app = await serviceApp(deps, payload.targetAppId);
   if (backupKindFor(app.kind) !== backup.kind) throw new DataError(`A ${backup.kind} backup cannot be restored into a ${app.kind} service`, true);
   if (backup.kind === "volume") throw new DataError(STORAGE_UNAVAILABLE, true);
@@ -421,21 +612,8 @@ export async function runRestore(deps: DataDeps, jobId: string, payload: Restore
       const out = await deployManagedService({ db, vault: deps.vault, docker: deps.docker, log: () => {} }, app.id, { fromRestore: true });
       await db.app.update({ where: { id: app.id }, data: { status: "running", desiredState: "running", containerId: out.containerId } });
     } else {
-      // A dump of what is about to be replaced, so a wrong restore is itself undoable.
-      const pre = await db.backup.create({
-        data: {
-          appId: app.id,
-          sourceAppId: app.id,
-          appSnapshot: (backup.appSnapshot ?? {}) as Prisma.InputJsonValue,
-          kind: backup.kind,
-          trigger: "pre_restore",
-          status: "running",
-          destinationId: backup.destinationId,
-        },
-        select: { id: true },
-      });
-      await runBackup(deps, pre.id, true);
-      quiesced = await quiesce(deps, jobId, payload, app.environmentId);
+      await backupBeforeRestore(deps, app.id, backup);
+      quiesced = await quiesce(deps, jobId, payload, app.environmentId, { hold: true });
     }
     const t = await target(deps, app.id);
     if (backup.kind === "postgres") await replayPostgres(deps, tmp, backup.id, t.containerId, t.creds, payload.mode === "replace");
@@ -470,9 +648,12 @@ export async function runRestoreTest(deps: DataDeps, backupId: string): Promise<
   let tmp: string | null = null;
   try {
     restorable(backup);
-    tmp = await fetchVerified(deps, backup);
+    const snap = (backup.appSnapshot ?? {}) as Partial<AppSnapshot>;
+    // An app's own volumes. A Storage service's older archive has no folder per volume and gets the format check alone.
+    const guard = backup.kind === "volume" && snap.kind !== "s3" ? new TarGuard({ volumes: true }) : undefined;
+    if (guard) await assertRoom(deps.scratchDisk, Number(backup.sizeBytes ?? 0), (need, free, floor) => `The backup is ${need} and the disk it is staged on has ${free} free. Dockify keeps ${floor} free, so the test was not run.`);
+    tmp = await fetchVerified(deps, backup, guard);
     if (backup.kind === "postgres") {
-      const snap = (backup.appSnapshot ?? {}) as Partial<AppSnapshot>;
       const app: ServiceApp = { id: backup.sourceAppId, name: "restore-test", kind: "postgres", environmentId: snap.environmentId ?? backup.sourceAppId, projectId: "restore-test", memoryLimitMb: 512 };
       const creds = generateCredentials("postgres", RESTORE_TEST_NAME);
       const rtName = restoreTestContainer(backup.id);
@@ -498,6 +679,12 @@ export async function runRestoreTest(deps: DataDeps, backupId: string): Promise<
       const head = await readAll(await plain(deps, tmp, backup.id), 16);
       if (!Buffer.from(head, "latin1").subarray(0, 5).equals(REDIS_MAGIC)) throw new DataError("The snapshot is not a Redis RDB file");
       outcome = { status: "passed", tables: null, rows: null, error: null };
+    } else if (guard) {
+      // Extracted for real into a scratch volume; for volumes `rows` is the number of files that came out.
+      scratch = true;
+      await discardRestoreScratch(deps.docker, backup.id);
+      const files = await testVolumeRestore(deps, { backupId: backup.id, sourceAppId: backup.sourceAppId, archive: await plain(deps, tmp, backup.id), expected: guard });
+      outcome = { status: "passed", tables: null, rows: files, error: null };
     } else {
       outcome = { status: "passed", tables: null, rows: null, error: null };
     }

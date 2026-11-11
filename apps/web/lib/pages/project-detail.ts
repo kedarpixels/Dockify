@@ -105,6 +105,8 @@ export interface AppDetail extends Resource {
   url: string | null;
   /** Managed services (postgres, redis, s3) run from an image and have no build step. */
   image: string | null;
+  /** How many volumes of its own the app keeps: with one or more it has backups of its files. Absent from older APIs. */
+  volumes?: number;
   repo?: string | null;
   /** A git app's own branch; null follows its environment's branch. Absent from older APIs. */
   branch?: string | null;

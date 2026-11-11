@@ -1,5 +1,5 @@
 // Long work (dumps, restores, tests) runs on the worker's data lane; these handlers validate, queue and report.
-// Route policies live in policy.ts. Handlers here re-check role-independent facts: the app is a service, the backup is restorable, a token's project limit.
+// Route policies live in policy.ts. Handlers here re-check role-independent facts: the app has backups, the backup is restorable, a token's project limit.
 import { randomUUID } from "node:crypto";
 import { pipeline } from "node:stream";
 import { defaultServerId, enqueue, generateServiceCredentials, readSecretValue, sealServiceCredentials, type Db, type Prisma, type Tx } from "@dockify/db";
@@ -12,8 +12,8 @@ import { nameShownElsewhere } from "../apps/display-name.ts";
 import { WORKER_SILENT_MS } from "../platform/server.ts";
 import { limitRun, limitSchedule, toRun, toSchedule, type BackupRowIn, type DestinationRow, type ScheduleAppIn, type ScheduleContext } from "./map.ts";
 import {
-  ALGORITHM, backupKeyFingerprint, bothTiers, CronError, DataError, DecryptStream, DEFAULT_CRON, dataPathFor, enabledTiers, isRetentionDecrease,
-  isServiceKind, loadTiers, LOCAL_FLAG, localBackupsAllowed, nextRun, parseBackupKey, parseCron, primaryTier, publicOnlyGuard, RequestError, requestBackup,
+  ALGORITHM, BACKED_UP_APPS, backupKeyFingerprint, backupSourceOf, bothTiers, CronError, DataError, DecryptStream, DEFAULT_CRON, dataPathFor, enabledTiers, isRetentionDecrease,
+  isServiceKind, loadTiers, LOCAL_FLAG, localBackupsAllowed, nextRun, NOT_BACKED_UP, parseBackupKey, parseCron, primaryTier, publicOnlyGuard, RequestError, requestBackup,
   requestRestore, requestRestoreTest, resolveStore, SERVICE_IMAGES, SERVICE_KINDS, SERVICE_PORTS, STORAGE_UNAVAILABLE, volumeNameFor,
   type AppSnapshot, type ServiceKind, type Tier, type TierRow,
 } from "./shared.ts";
@@ -39,6 +39,7 @@ const BACKUP_INCLUDE = { destination: { include: { integration: true } }, app: {
 const SCHEDULE_INCLUDE = {
   environment: { include: { project: { select: { slug: true } } } },
   backupSchedules: true,
+  volumes: { select: { id: true } },
 } as const;
 
 const actorFields = (a: Actor | null) => ({ actorType: (a?.kind === "token" ? "token" : "user") as "token" | "user", actorId: a?.kind === "token" ? a.tokenId : (a?.userId ?? null), actorName: a?.name ?? null });
@@ -85,11 +86,12 @@ async function tiersToRun(db: Tx, appId: string, asked: "local" | "offsite" | "b
 
 const policyOf = (r: TierRow) => ({ keep: r.keep, keepDays: r.keepDays, enabled: r.enabled });
 
-async function loadServiceApp(ctx: Ctx, actor: Actor | null, id: string) {
+/** A managed service, or an app with a volume of its own. */
+async function loadBackedUpApp(ctx: Ctx, actor: Actor | null, id: string) {
   const app = await ctx.db.app.findUnique({ where: { id }, include: SCHEDULE_INCLUDE });
   if (!app) throw new HttpError(404, "That app does not exist", "NOT_FOUND");
   if (actor) assertProjectScope(actor, app.environment.projectId);
-  if (!isServiceKind(app.kind)) throw new HttpError(400, "Only Postgres, Redis and storage services have backups", "NOT_A_SERVICE");
+  if (!backupSourceOf(app)) throw new HttpError(400, NOT_BACKED_UP, "NOT_A_SERVICE");
   return app;
 }
 
@@ -260,7 +262,7 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
     "backups.schedules": async ({ ctx, actor }) => {
       const projects = projectFilter(actor);
       const apps = await ctx.db.app.findMany({
-        where: { kind: { in: [...SERVICE_KINDS] }, ...(projects ? { environment: { projectId: { in: projects } } } : {}) },
+        where: { ...BACKED_UP_APPS, ...(projects ? { environment: { projectId: { in: projects } } } : {}) },
         include: SCHEDULE_INCLUDE,
         orderBy: { name: "asc" },
       });
@@ -272,7 +274,7 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
     "backups.config": async ({ ctx, actor }) => configPayload(ctx, await instanceFingerprint(ctx), readsStorage(actor)),
 
     "backups.schedules.patch": async ({ ctx, actor, params, body, req }) => {
-      const app = await loadServiceApp(ctx, actor, params.id);
+      const app = await loadBackedUpApp(ctx, actor, params.id);
       const c = await scheduleContext(ctx, opts.env);
       const tiers = bothTiers(app.backupSchedules);
       const primary = primaryTier(tiers, c.defaultType);
@@ -357,25 +359,32 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
       let ids: string[];
       const skipped: string[] = [];
       const label = new Map<string, string>();
+      // Named in the audit line as databases while every one is, else as apps.
+      let onlyDatabases: boolean;
       if (body.resourceId) {
-        ids = [(await loadServiceApp(ctx, actor, body.resourceId)).id];
+        const one = await loadBackedUpApp(ctx, actor, body.resourceId);
+        ids = [one.id];
+        onlyDatabases = isServiceKind(one.kind);
       } else {
         const projects = projectFilter(actor);
         const apps = await ctx.db.app.findMany({
-          where: { kind: { in: [...SERVICE_KINDS] }, backupSchedules: { some: { enabled: true } }, ...(projects ? { environment: { projectId: { in: projects } } } : {}) },
-          select: { id: true, name: true, displayName: true, desiredState: true, environment: { select: { project: { select: { slug: true } } } } },
+          where: { ...BACKED_UP_APPS, backupSchedules: { some: { enabled: true } }, ...(projects ? { environment: { projectId: { in: projects } } } : {}) },
+          select: { id: true, name: true, kind: true, displayName: true, desiredState: true, environment: { select: { project: { select: { slug: true } } } } },
           orderBy: { name: "asc" },
         });
-        if (!apps.length) throw new HttpError(409, "No database has a backup schedule turned on", "NOTHING_TO_BACK_UP");
+        if (!apps.length) throw new HttpError(409, "No database or volume has a backup schedule turned on", "NOTHING_TO_BACK_UP");
         for (const a of apps) label.set(a.id, `${a.environment.project.slug} / ${a.displayName || a.name}`);
-        ids = apps.filter((a) => a.desiredState === "running").map((a) => a.id);
-        skipped.push(...apps.filter((a) => a.desiredState !== "running").map((a) => `${label.get(a.id)} (it is stopped)`));
+        // A database is dumped through its own server, so it must run. Volumes are read by a helper either way.
+        const ready = (a: (typeof apps)[number]) => a.desiredState === "running" || !isServiceKind(a.kind);
+        ids = apps.filter(ready).map((a) => a.id);
+        skipped.push(...apps.filter((a) => !ready(a)).map((a) => `${label.get(a.id)} (it is stopped)`));
+        onlyDatabases = apps.every((a) => isServiceKind(a.kind));
       }
       const backupIds: string[] = [];
       let started = 0;
       for (const id of ids) {
         try {
-          // One dump per database, a copy to each tier it runs for.
+          // One dump per resource, a copy to each tier it runs for.
           backupIds.push(...(await requestBackup(ctx.db, id, "manual", { tiers: await tiersToRun(ctx.db, id, body.tier) })).backupIds);
           started++;
         } catch (e) {
@@ -385,7 +394,7 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
       }
       // A bulk run that started nothing is a failure, not "0 backups started".
       if (!started) throw new HttpError(409, `No backup was started. ${skipped.join("; ")}`, "NOTHING_STARTED");
-      await audit(ctx.db, { category: "system", action: "backup.run", verb: "started a backup of", ...actorFields(actor), targetType: "backup", targetLabel: body.resourceId ? `1 database` : `${started} databases`, ...(skipped.length ? { suffix: `${skipped.length} not started` } : {}), ...meta(req) });
+      await audit(ctx.db, { category: "system", action: "backup.run", verb: "started a backup of", ...actorFields(actor), targetType: "backup", targetLabel: body.resourceId ? `1 ${onlyDatabases ? "database" : "app"}` : `${started} ${onlyDatabases ? "databases" : "apps"}`, ...(skipped.length ? { suffix: `${skipped.length} not started` } : {}), ...meta(req) });
       return { runs: await listRuns(ctx, { id: { in: backupIds } }) };
     },
 
@@ -393,15 +402,19 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
       const b = await loadBackup(ctx, actor, params.id);
       assertRestorable(b);
       const snap = (b.appSnapshot ?? {}) as Partial<AppSnapshot>;
+      // An app's own volumes; a Storage service's older volume backup keeps its own refusal.
+      const volumes = b.kind === "volume" && snap.kind !== "s3";
       let targetAppId: string;
       if (body.mode === "replace") {
-        if (!b.appId) throw new HttpError(409, "The app this backup came from was deleted. Restore it into a new database instead.", "ORPHANED");
-        const app = await loadServiceApp(ctx, actor, b.appId);
+        if (!b.appId) throw new HttpError(409, volumes ? "The app this backup came from was deleted. Download the backup to get its files." : "The app this backup came from was deleted. Restore it into a new database instead.", "ORPHANED");
+        const app = await loadBackedUpApp(ctx, actor, b.appId);
+        if (volumes !== !isServiceKind(app.kind)) throw new HttpError(409, "This backup does not fit what the app is now", "KIND_MISMATCH");
         // The same text the dialog asks for (web components/server-backups/util.ts dbRef).
         const ref = `${app.environment.project.slug}/${app.name}`;
         if (body.confirm !== ref) throw new HttpError(400, `Type ${ref} to confirm replacing its data`, "CONFIRM_MISMATCH", { field: "confirm" });
         targetAppId = app.id;
       } else {
+        if (volumes) throw new HttpError(400, "A backup of volumes restores over the app it came from. Download it to use the files anywhere else.", "NOT_RESTORABLE");
         targetAppId = await createRestoreTarget(ctx, b, body.name);
       }
       const jobId = await requestRestore(ctx.db, { backupId: b.id, mode: body.mode, targetAppId }).catch(fromRequestError);
@@ -493,7 +506,7 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
       const app = await ctx.db.app.findUnique({ where: { id: params.id }, include: SCHEDULE_INCLUDE });
       if (!app) throw new HttpError(404, "That app does not exist", "NOT_FOUND");
       if (actor) assertProjectScope(actor, app.environment.projectId);
-      if (!isServiceKind(app.kind)) return { schedule: null, runs: [], config: null };
+      if (!backupSourceOf(app)) return { schedule: null, runs: [], config: null };
       const fp = await instanceFingerprint(ctx);
       const full = readsStorage(actor);
       const schedule = toSchedule(app as unknown as ScheduleAppIn, await scheduleContext(ctx, opts.env, fp.fingerprint));

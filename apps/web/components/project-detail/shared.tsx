@@ -14,17 +14,10 @@ import { NO_APPS, notRunning, PROJECT_STATE_LABEL, projectTone, type Tone } from
 import { bytes } from "@/lib/format";
 import type { AppUsage } from "@/lib/pages/project-detail";
 import { useDayHeading } from "@/lib/time-prefs";
-import type { AppKind, AppStatus, RecentDeployment } from "@/lib/types";
+import type { AppStatus, RecentDeployment } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
 
-export const KIND_LABEL: Record<AppKind, string> = {
-  frontend: "Frontend",
-  backend: "Backend",
-  bot: "Bot",
-  postgres: "Postgres",
-  redis: "Redis",
-  s3: "Storage",
-};
+export { KIND_LABEL } from "@/lib/app-role";
 
 /** The same project state rule as the projects page (projectTone): worst app wins. */
 export function projectState(apps: Array<{ status: AppStatus }>): { tone: Tone; label: string } {

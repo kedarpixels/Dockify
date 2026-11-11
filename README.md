@@ -11,6 +11,7 @@ Docs: https://dockify.sh/docs
 - Apps from a Git repository (a Dockerfile or Railpack), a Docker image, or a pasted
   docker-compose.yml.
 - Managed Postgres and Redis, with scheduled backups.
+- Scheduled, encrypted backups of app volumes, with the same restore tests.
 - Six app templates: Gotify, ntfy, Memos, SeaweedFS, Uptime Kuma and Miniflux.
 
 ## Install

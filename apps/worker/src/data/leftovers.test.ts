@@ -47,8 +47,10 @@ function fakes(s: Setup = {}) {
   } as unknown as DockerPort;
   const db = {
     job: {
-      findFirst: async ({ where }: { where: { dedupeKey: string } }) => ((s.liveBackups ?? []).some((b) => where.dedupeKey === `restore-test:${b}`) ? { id: "j" } : null),
+      findFirst: async ({ where }: { where: { dedupeKey?: string; payload?: { equals: string } } }) =>
+        (s.liveBackups ?? []).some((b) => where.dedupeKey === `restore-test:${b}` || where.payload?.equals === b) ? { id: "j" } : null,
     },
+    backup: { findFirst: async ({ where }: { where: { id: string } }) => ((s.liveBackups ?? []).includes(where.id) ? { id: where.id } : null) },
     app: { findMany: async () => [] },
   } as unknown as Db;
   return { docker, db, log, deps: { db, serverId: "s1", docker, volumes: async () => s.volumes ?? [], log: () => {} } };
@@ -145,5 +147,22 @@ describe("sweepLeftovers", () => {
     const f = fakes({ volumes: [vol("dockify-data-x", 500)], localImage: false });
     await sweepLeftovers(f.deps);
     expect(f.log).toEqual([]);
+  });
+});
+
+describe("volume backup helpers", () => {
+  it("removes a helper a dead worker left with an app's volumes mounted, never one in use", async () => {
+    const f = fakes({
+      containers: [
+        { id: "bk-dead", names: [`dockify-bk-${BACKUP}`], labels: { "dockify.role": "backup-helper" } },
+        { id: "bk-live", names: [`dockify-bk-${LIVE}`], labels: { "dockify.role": "backup-helper" } },
+        { id: "rs-dead", names: [`dockify-rs-${BACKUP}`], labels: { "dockify.role": "restore-helper" } },
+        { id: "rs-live", names: [`dockify-rs-${LIVE}`], labels: { "dockify.role": "restore-helper" } },
+      ],
+      liveBackups: [LIVE],
+    });
+    const r = await sweepLeftovers(f.deps);
+    expect(r.scratchContainers).toBe(2);
+    expect(f.log).toEqual(["remove:bk-dead:with-volumes", "remove:rs-dead:with-volumes"]);
   });
 });

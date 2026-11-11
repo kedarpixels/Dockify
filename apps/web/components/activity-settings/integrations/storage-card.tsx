@@ -17,7 +17,7 @@ import { intFetch, intOrThrow, upsert, type Setter } from "./client";
 import { plural } from "@/lib/format";
 import { useStepUp } from "@/components/step-up/step-up";
 
-/* S3-compatible buckets that database backups upload to. A test writes, reads and deletes a small object. */
+/* S3-compatible buckets that backups upload to. A test writes, reads and deletes a small object. */
 
 const PROVIDERS: Record<StorageProvider, { label: string; endpoint: string; region: string }> = {
   r2: { label: "Cloudflare R2", endpoint: "https://<account id>.r2.cloudflarestorage.com", region: "auto" },
