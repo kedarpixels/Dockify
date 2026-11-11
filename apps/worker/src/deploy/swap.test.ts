@@ -10,6 +10,7 @@ import { DeployLog } from "./log.ts";
 import { waitUntilReady, type HealthConfig, type ProbeDeps } from "./readiness.ts";
 import { RolledBackError, swap, type SwapApp } from "./swap.ts";
 import { fileRouteStore } from "@dockify/engine";
+import { withRouteLock } from "../edge/route-lock.ts";
 import type { Dialer } from "../server/runtime.ts";
 
 interface FakeContainer {
@@ -205,6 +206,38 @@ describe("swap", () => {
     expect(route).not.toContain("new.example.com");
     await swap(app({ hosts: ["new.example.com"], routeHosts: [] }), "d2", IMG, {}, deps, new AbortController().signal);
     await expect(readFile(routeFile, "utf8")).rejects.toThrow();
+  });
+
+  it("names the hosts as they are at each route write, not as the deploy loaded them before its build", async () => {
+    const { routeFile, deps, duringProbe } = await setup(true, [routeAlias("d0")]);
+    // new.example.com was added during the build, old.example.com was removed.
+    const routeHosts = async () => ["shop.example.com", "new.example.com"];
+    await swap(app({ hosts: ["shop.example.com", "old.example.com"], routeHosts: ["shop.example.com", "old.example.com"] }), "d1", IMG, {}, { ...deps, routeHosts }, new AbortController().signal);
+    for (const route of [duringProbe[0]!, await readFile(routeFile, "utf8")]) {
+      expect(route).toContain("Host(`new.example.com`)");
+      expect(route).not.toContain("old.example.com");
+    }
+  });
+
+  it("keeps the hosts it has when the fresh read fails, so a database blip never fails the flip", async () => {
+    const { routeFile, deps } = await setup(true, [routeAlias("d0")]);
+    await swap(app(), "d1", IMG, {}, { ...deps, routeHosts: async () => { throw new Error("database gone"); } }, new AbortController().signal);
+    const route = await readFile(routeFile, "utf8");
+    expect(route).toContain("Host(`shop.example.com`)");
+    expect(route).toContain(`"http://${routeAlias("d1")}.:3000"`);
+  });
+
+  it("writes the route only under the app's route lock: a holder of it keeps the swap waiting", async () => {
+    const { routeFile, deps } = await setup(true, [routeAlias("d0")]);
+    let release!: () => void;
+    const held = withRouteLock(APP_ID, () => new Promise<void>((r) => (release = r)));
+    const swapping = swap(app(), "d1", IMG, {}, deps, new AbortController().signal);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(await readFile(routeFile, "utf8").catch(() => "")).not.toContain(routeAlias("d1"));
+    release();
+    await held;
+    await swapping;
+    expect(await readFile(routeFile, "utf8")).toContain(`"http://${routeAlias("d1")}.:3000"`);
   });
 
   it("stop-then-start for volume apps, restarting the old one when the new one fails", async () => {

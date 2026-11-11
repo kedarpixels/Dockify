@@ -11,6 +11,7 @@ import type { EdgeMode, EdgeSettings } from "./ingress.ts";
 import { loadCloudflare, tunnelLock } from "./integration.ts";
 import type { ProbeResult } from "./probe.ts";
 import { dashboardHandler, dashboardReservedHosts, syncDashboardEdge } from "./dashboard.ts";
+import { withRouteLock } from "./route-lock.ts";
 import { ensureSystemRoutes, isBackendName, readRoute, rekeyRoute, removeRoute, sweepRoutes, writeRoute, type WriteResult } from "./routes.ts";
 import { appsHere } from "../server/apps-here.ts";
 import type { RouteStore } from "../server/runtime.ts";
@@ -59,6 +60,8 @@ export type EdgeJobHandler = (job: ClaimedJob, signal: AbortSignal) => Promise<v
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROUTED_KINDS = ["frontend", "backend"] as const;
 const IN_FLIGHT = ["queued", "building", "deploying", "cancelling"] as const;
+/** The lane of edge_route_sync. The api names the same one (modules/domains/handlers.ts). */
+export const ROUTE_SYNC_LANE = "maintenance";
 const obj = (p: unknown): Record<string, unknown> => (p && typeof p === "object" && !Array.isArray(p) ? (p as Record<string, unknown>) : {});
 const uuidField = (p: Record<string, unknown>, key: string): string => {
   const v = p[key];
@@ -89,27 +92,33 @@ async function system(db: Db, action: string, verb: string, target: { type: stri
 }
 
 /**
- * Runs on the deploy lane, so never during a swap. Collapses onto a queued sync only while nobody has
- * claimed it, so a change made while one already runs still gets its own pass.
+ * On the server's maintenance lane, so a sync never waits behind another app's build. It cannot race its
+ * own app's swap: both hold the app's route lock (route-lock.ts). Collapses onto a queued sync only while
+ * nobody has claimed it, so a change made while one already runs still gets its own pass.
  */
-export async function enqueueRouteSync(db: Db, appId: string): Promise<void> {
+export async function enqueueRouteSync(db: Db, appId: string, knownServerId?: string): Promise<void> {
   const key = `edge.route:${appId}`;
   await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
-    const open = await tx.job.findFirst({ where: { dedupeKey: key, completedAt: null, failedAt: null, lockedBy: null }, select: { id: true } });
+    // Only this lane: a sync an older version left on the deploy lane may still sit behind a build.
+    const open = await tx.job.findFirst({ where: { dedupeKey: key, lane: ROUTE_SYNC_LANE, completedAt: null, failedAt: null, lockedBy: null }, select: { id: true } });
     if (open) return;
     // A deleted app's route still has to go (syncAppRoute removes it), from the primary server for now.
-    const app = await tx.app.findUnique({ where: { id: appId }, select: { serverId: true } });
-    const serverId = app?.serverId ?? (await defaultServerId(tx));
-    await tx.job.create({ data: { kind: "edge_route_sync", lane: "deploy", serverId, payload: { appId }, dedupeKey: key, maxAttempts: 5, runAfter: new Date() } });
+    const serverId = knownServerId ?? (await tx.app.findUnique({ where: { id: appId }, select: { serverId: true } }))?.serverId ?? (await defaultServerId(tx));
+    await tx.job.create({ data: { kind: "edge_route_sync", lane: ROUTE_SYNC_LANE, serverId, payload: { appId }, dedupeKey: key, maxAttempts: 5, runAfter: new Date() } });
   });
 }
 
 /**
  * The backend is the live container's route alias, never an address, so this is safe to run at any
  * time. While a deploy of the app is under way its swap owns the backend: only the hosts are updated.
+ * The whole read and write holds the app's route lock, as each of the swap's writes does.
  */
-export async function syncAppRoute(deps: EdgeDeps, appId: string): Promise<WriteResult | "kept"> {
+export function syncAppRoute(deps: EdgeDeps, appId: string): Promise<WriteResult | "kept"> {
+  return withRouteLock(appId, () => syncLocked(deps, appId));
+}
+
+async function syncLocked(deps: EdgeDeps, appId: string): Promise<WriteResult | "kept"> {
   const { db, settings, routes, mode } = deps;
   const app = await db.app.findUnique({
     where: { id: appId },

@@ -20,6 +20,7 @@ import { checkout, discard, repoHost } from "./git.ts";
 import { installationCredential } from "./github.ts";
 import { queueIconFetch } from "../icons/index.ts";
 import { routableHosts } from "../edge/hosts.ts";
+import { enqueueRouteSync } from "../edge/jobs.ts";
 import { writeObservedStatus } from "../observe/app-status.ts";
 import { dbSink, DeployLog } from "./log.ts";
 import { runReleaseCommand } from "./release-command.ts";
@@ -91,14 +92,34 @@ export function exposedPort(image: Pick<ImageInfo, "Config">): number | null {
   return ports.length ? Math.min(...ports) : null;
 }
 
+type HostRows = { domains: Array<{ hostname: string; dnsStatus: string }>; primaryDomain: { hostname: string } | null };
+
+/** Every domain, primary first. */
+function orderedHosts(app: HostRows): string[] {
+  const hosts = app.domains.map((d) => d.hostname);
+  const primary = app.primaryDomain?.hostname;
+  return primary ? [primary, ...hosts.filter((h) => h !== primary)] : hosts;
+}
+
+function routable(app: HostRows, routed: ReadonlySet<string>): string[] {
+  const dns = new Map(app.domains.map((d) => [d.hostname, d.dnsStatus as string]));
+  return routableHosts(orderedHosts(app).map((h) => ({ hostname: h, dnsStatus: dns.get(h) ?? "unchecked" })), { routed });
+}
+
+/** What the swap names in a route write: the domains as they are now, not as the deploy loaded them before its build. */
+async function currentRouteHosts(db: Db, routes: RouteStore, appId: string): Promise<string[]> {
+  const app = await db.app.findUnique({
+    where: { id: appId },
+    select: { primaryDomain: { select: { hostname: true } }, domains: { select: { hostname: true, dnsStatus: true }, orderBy: { createdAt: "asc" } } },
+  });
+  return app ? routable(app, await routedHosts(routes, appId)) : [];
+}
+
 /** `routed`: the hosts the app's route file has now, which keep their router while DNS cannot be checked. */
 export function toSwapApp(app: Loaded["app"], routed: ReadonlySet<string> = new Set()): SwapApp {
   const sysctls: Record<string, string> = {};
   for (const [k, v] of Object.entries((app.sysctls ?? {}) as Record<string, unknown>)) if (typeof v === "string") sysctls[k] = v;
-  const hosts = app.domains.map((d) => d.hostname);
-  const primary = app.primaryDomain?.hostname;
-  const ordered = primary ? [primary, ...hosts.filter((h) => h !== primary)] : hosts;
-  const dns = new Map(app.domains.map((d) => [d.hostname, d.dnsStatus as string]));
+  const ordered = orderedHosts(app);
   return {
     id: app.id,
     name: app.name,
@@ -114,7 +135,7 @@ export function toSwapApp(app: Loaded["app"], routed: ReadonlySet<string> = new 
     sysctls,
     volumes: app.volumes.map((v) => ({ id: v.id, name: v.name, mountPath: v.mountPath })),
     hosts: ordered,
-    routeHosts: routableHosts(ordered.map((h) => ({ hostname: h, dnsStatus: dns.get(h) ?? "unchecked" })), { routed }),
+    routeHosts: routable(app, routed),
     health: {
       path: app.healthCheckPath?.trim() || null,
       expectedStatus: app.healthExpectedStatus,
@@ -163,8 +184,13 @@ async function queueFailureNotice(db: Db, deploymentId: string): Promise<void> {
   await enqueue(db, { kind: "deploy_notify", lane: "maintenance", payload: { deploymentId }, dedupeKey: `deploy_notify:${deploymentId}`, maxAttempts: 5 }).catch(() => undefined);
 }
 
-async function queueCommitStatus(db: Db, deploymentId: string): Promise<void> {
-  await enqueue(db, { kind: "deploy_status", lane: "maintenance", payload: { deploymentId }, dedupeKey: `deploy_status:${deploymentId}`, maxAttempts: 5 }).catch(() => undefined);
+/**
+ * The job posts what the row says when it runs. The pending post has its own key: a pending job
+ * already claimed would otherwise swallow the final one.
+ */
+async function queueCommitStatus(db: Db, deploymentId: string, phase: "pending" | "final" = "final"): Promise<void> {
+  const dedupeKey = phase === "pending" ? `deploy_status:${deploymentId}:pending` : `deploy_status:${deploymentId}`;
+  await enqueue(db, { kind: "deploy_status", lane: "maintenance", payload: { deploymentId }, dedupeKey, maxAttempts: 5 }).catch(() => undefined);
 }
 
 /** App.status only ever comes from what the daemon reports, by the observe pass's rule (observe/app-status.ts). */
@@ -229,6 +255,7 @@ export async function settleOrphanedDeployments(deps: Pick<DeployDeps, "db" | "d
       : await settle(db, r.id, "failed", steps, ORPHAN_ERROR);
     if (!ok) continue;
     settled.push(r.id);
+    if (!r.previewId) await queueCommitStatus(db, r.id);
     if (r.previewId) {
       const pd = await db.previewDeployment.findUnique({ where: { id: r.previewId }, select: { envId: true } });
       if (pd) await settlePreview(db, pd.envId).catch(() => {});
@@ -260,7 +287,8 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
   if (dep.status === "cancelling" || onVercel || (dep.previewId && !preview)) {
     log.system(dep.status === "cancelling" ? "cancelled before the build started" : onVercel ? "this app is hosted on Vercel, so nothing is built here" : "the preview was removed before the build started");
     await log.flush();
-    await settle(db, deploymentId, "cancelled", track.steps, null);
+    const cancelled = await settle(db, deploymentId, "cancelled", track.steps, null);
+    if (cancelled && !preview) await queueCommitStatus(db, deploymentId);
     await observe();
     return;
   }
@@ -402,6 +430,8 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
       checkoutRoot = co.root;
       log.system(`checked out ${co.commit.slice(0, 12)}${co.subject ? ` ${co.subject}` : ""} from ${branch}`);
       await track.set("clone", "done", { commitSha: co.commit, branch, ...(dep.message ? {} : { message: co.subject }) });
+      // The api queued the pending status when the row was created with its commit; a retry loads the commit too.
+      if (!preview && !dep.commitSha) await queueCommitStatus(db, deploymentId, "pending");
       await noteAuthor(co.commit);
       checkCancel();
 
@@ -490,6 +520,7 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
       dial: deps.dial,
       proxyContainer: PROXY_CONTAINER,
       dashboardHost: config.dashboardHost,
+      routeHosts: () => currentRouteHosts(db, deps.routes, app.id),
       ...deps.swap,
     }, signal);
     track.steps = setStep(setStep(track.steps, "health", "done", new Date().toISOString()), "deploy", "done", new Date().toISOString());
@@ -508,7 +539,8 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
     if (cancel.signal.aborted) {
       log.system("deploy cancelled; whatever was serving before still serves");
       await log.flush();
-      await settle(db, deploymentId, "cancelled", track.steps, null);
+      const cancelled = await settle(db, deploymentId, "cancelled", track.steps, null);
+      if (cancelled && !preview) await queueCommitStatus(db, deploymentId);
       await observe();
       return;
     }
@@ -545,6 +577,9 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
     // directory under the build root, so a removal still running never touches a later deploy.
     if (checkoutRoot) void discard(checkoutRoot).catch(() => {});
     await log.flush();
+    // A sync that ran during this deploy only touched the hosts of a route that was there. This one, after
+    // the deployment has settled, covers a domain that became routable while there was none.
+    if (!retrying && !preview) await enqueueRouteSync(db, app.id, app.serverId).catch(() => undefined);
     if (!retrying) await (preview ? promotePreview(db, preview.pdId) : promotePending(db, app.id)).catch(() => null);
   }
 }

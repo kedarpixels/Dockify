@@ -43,6 +43,11 @@ export async function requestDeployTx(
     data: { kind: "deploy", lane: "deploy", serverId: app.serverId, payload: { deploymentId: dep.id, appId, previewId }, dedupeKey: key, maxAttempts: 3 },
     select: { id: true },
   });
+  // The commit is known already (a push, a redeploy, a rollback): GitHub shows this app pending while it
+  // waits its turn. Without one the worker queues this after the clone; either way once per deployment.
+  if (!previewId && typeof data.commitSha === "string" && /^[0-9a-f]{40}$/.test(data.commitSha)) {
+    await tx.job.create({ data: { kind: "deploy_status", lane: "maintenance", payload: { deploymentId: dep.id }, dedupeKey: `deploy_status:${dep.id}:pending`, maxAttempts: 5 } });
+  }
   if (!previewId) await tx.app.update({ where: { id: appId }, data: { status: "deploying", pendingDeployAt: null, desiredState: "running" } });
   return { kind: "queued", deploymentId: dep.id, jobId: job.id };
 }

@@ -51,6 +51,12 @@ export type EdgeJob =
   | { kind: "dns_check"; payload: { domainId: string }; dedupeKey: string; runAfterMs?: number };
 
 /**
+ * A route sync is a quick file write: on the server's maintenance lane it never waits behind a build
+ * (the worker's ROUTE_SYNC_LANE; it keeps a sync off its own app's swap with a lock, not with the lane).
+ */
+export const edgeLane = (kind: EdgeJob["kind"]): "maintenance" | "deploy" => (kind === "dns_check" || kind === "edge_route_sync" ? "maintenance" : "deploy");
+
+/**
  * The worker routes a domain only once a DNS check passes. In direct mode the first check runs at
  * once; in tunnel mode it waits 30 s for the wire job to create the record.
  */

@@ -3,8 +3,8 @@
  * stop that runs after a newer start (or the reverse) does nothing. The route follows through edge_route_sync.
  */
 import type { Db } from "@dockify/db";
-import { enqueue } from "@dockify/db";
 import { canonicalName, LABEL } from "./deploy/containers.ts";
+import { enqueueRouteSync } from "./edge/jobs.ts";
 import { isNotFound, isNotModified, type DockerApi } from "@dockify/engine";
 import { STOP_TIMEOUT_S } from "./deploy/swap.ts";
 import { PermanentJobError } from "./errors.ts";
@@ -96,7 +96,7 @@ export async function runPower(deps: PowerDeps, payload: unknown): Promise<Power
   // right after its start reads exited or restarting, not running.
   await observe(deps, app.id, name);
   if (ROUTED.has(app.kind)) {
-    await enqueue(db, { kind: "edge_route_sync", serverId: app.serverId, payload: { appId: app.id }, dedupeKey: `edge.route:${app.id}` });
+    await enqueueRouteSync(db, app.id, app.serverId);
   }
   return result;
 }

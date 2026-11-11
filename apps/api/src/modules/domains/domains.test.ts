@@ -7,7 +7,7 @@ import { describePolicy, POLICIES } from "../../policy.ts";
 import { noDb, testConfig, testRing } from "../../test-helpers.ts";
 import { hostOf, registerDomainCheckRoute } from "./check-route.ts";
 import { domainHandlers } from "./handlers.ts";
-import { isReserved, jobsForCreate, jobsForDelete, reservedHosts, toDomainRow } from "./logic.ts";
+import { edgeLane, isReserved, jobsForCreate, jobsForDelete, reservedHosts, toDomainRow } from "./logic.ts";
 
 const publicUrl = new URL("https://dash.example.com");
 
@@ -78,6 +78,12 @@ describe("edge jobs", () => {
     const dns = (ingress: "cloudflare_tunnel" | "direct_tls") => jobsForCreate({ id: "d", appId: "a" }, ingress).find((j) => j.kind === "dns_check");
     expect(dns("direct_tls")).toMatchObject({ runAfterMs: 0 });
     expect(dns("cloudflare_tunnel")).toMatchObject({ runAfterMs: 30_000 });
+  });
+  it("puts a route sync on the maintenance lane, where it never waits behind a build", () => {
+    expect(edgeLane("edge_route_sync")).toBe("maintenance");
+    expect(edgeLane("dns_check")).toBe("maintenance");
+    expect(edgeLane("edge_cf_wire")).toBe("deploy");
+    expect(edgeLane("edge_cf_unwire")).toBe("deploy");
   });
   it("delete unwires Cloudflare only when the row recorded what Dockify made", () => {
     const base = { id: "d", appId: "a", hostname: "x.example.com" };

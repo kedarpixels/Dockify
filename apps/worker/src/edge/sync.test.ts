@@ -7,7 +7,8 @@ import { ensureDashboardApiRule, type CfClient, type CfIngress } from "./cloudfl
 import { checkDns, serverAddresses, type DnsLookup } from "./dns.ts";
 import { routableHosts } from "./hosts.ts";
 import type { EdgeSettings } from "./ingress.ts";
-import { checkDomain, dnsRecheckDelayMs, dnsRecheckDue, queueWaitingDnsChecks, edgeServerHandlers, resyncRoutes, syncAppRoute, type EdgeDeps } from "./jobs.ts";
+import { checkDomain, dnsRecheckDelayMs, dnsRecheckDue, enqueueRouteSync, queueWaitingDnsChecks, edgeServerHandlers, resyncRoutes, syncAppRoute, type EdgeDeps } from "./jobs.ts";
+import { withRouteLock } from "./route-lock.ts";
 import { DockerError, fileRouteStore } from "@dockify/engine";
 import { LABEL } from "../deploy/containers.ts";
 import { imagePortFor } from "../wiring.ts";
@@ -33,7 +34,7 @@ interface Domain { id?: string; hostname: string; dnsStatus: string; appId?: str
 interface World {
   app: { id: string; name?: string; serverId: string; port: number | null; kind: string; desiredState: string; primaryDomain: { hostname: string } | null; domains: Domain[] } | null;
   deploying: boolean;
-  jobs: Array<{ kind: string; payload: unknown; dedupeKey: string | null; lockedBy: string | null; completedAt: Date | null; failedAt: Date | null }>;
+  jobs: Array<{ kind: string; lane?: string; serverId?: string; payload: unknown; dedupeKey: string | null; lockedBy: string | null; completedAt: Date | null; failedAt: Date | null }>;
   domainRows: Domain[];
   updates: Array<Record<string, unknown>>;
   activity?: Array<Record<string, unknown>>;
@@ -44,8 +45,8 @@ function fakeDb(w: World): Db {
     $executeRaw: async () => 0,
     app: { findUnique: async () => ({ serverId: "s1" }) },
     job: {
-      findFirst: async ({ where }: { where: { dedupeKey: string; lockedBy?: null } }) =>
-        w.jobs.find((j) => j.dedupeKey === where.dedupeKey && !j.completedAt && !j.failedAt && (where.lockedBy === undefined || j.lockedBy === null)) ?? null,
+      findFirst: async ({ where }: { where: { dedupeKey: string; lane?: string; lockedBy?: null } }) =>
+        w.jobs.find((j) => j.dedupeKey === where.dedupeKey && !j.completedAt && !j.failedAt && (where.lane === undefined || j.lane === where.lane) && (where.lockedBy === undefined || j.lockedBy === null)) ?? null,
       create: async ({ data }: { data: { kind: string; payload: unknown; dedupeKey: string } }) => {
         w.jobs.push({ ...data, lockedBy: null, completedAt: null, failedAt: null });
         return { id: `j${w.jobs.length}` };
@@ -149,6 +150,36 @@ describe("syncAppRoute", () => {
     await syncAppRoute(d, APP);
     // The canonical name may hold the deploy's new container before it is ready: never route to it here.
     expect(await readRoute(fileRouteStore(dir), APP)).toEqual({ hosts: ["shop.example.com", "www.example.com"], backend: OLD });
+  });
+
+  it("waits for the app's route lock, so it reads what a swap's flip wrote and keeps that backend", async () => {
+    const w = world([{ hostname: "shop.example.com", dnsStatus: "ok" }, { hostname: "new.example.com", dnsStatus: "ok" }], { deploying: true });
+    const { d } = deps(w, NEW);
+    const routes = fileRouteStore(dir);
+    await writeRoute(routes, { id: APP, port: 3000, hosts: ["shop.example.com"] }, OLD, d.mode, new Set());
+    let flip!: () => void;
+    const flipping = new Promise<void>((r) => (flip = r));
+    // The swap, between reading the hosts and writing its flip.
+    const swap = withRouteLock(APP, async () => {
+      await flipping;
+      await writeRoute(routes, { id: APP, port: 3000, hosts: ["shop.example.com"] }, NEW, d.mode, new Set());
+    });
+    const sync = syncAppRoute(d, APP);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await readRoute(routes, APP)).toEqual({ hosts: ["shop.example.com"], backend: OLD });
+    flip();
+    await swap;
+    expect(await sync).toBe("written");
+    expect(await readRoute(routes, APP)).toEqual({ hosts: ["shop.example.com", "new.example.com"], backend: NEW });
+  });
+
+  it("does not hold up another app's sync while one app's route is locked", async () => {
+    const { d } = deps(world([{ hostname: "shop.example.com", dnsStatus: "ok" }]));
+    let done!: () => void;
+    const held = withRouteLock(PV, () => new Promise<void>((r) => (done = r)));
+    expect(await syncAppRoute(d, APP)).toBe("written");
+    done();
+    await held;
   });
 
   it("removes the route when the app should not run, is not routable, or has no running container", async () => {
@@ -301,6 +332,33 @@ describe("the periodic sweep of route files", () => {
     const names = Object.keys(await fileRouteStore(dir).snapshot());
     expect(names).toContain(routeFileName(`pv-${PV}`));
     expect(names).not.toContain(routeFileName(`pv-${CLOSED}`));
+  });
+});
+
+describe("enqueueRouteSync", () => {
+  it("queues on the server's maintenance lane, never behind the deploy lane's builds", async () => {
+    const w = world([]);
+    await enqueueRouteSync(fakeDb(w), APP);
+    expect(w.jobs).toHaveLength(1);
+    expect(w.jobs[0]).toMatchObject({ kind: "edge_route_sync", lane: "maintenance", serverId: "s1", payload: { appId: APP }, dedupeKey: `edge.route:${APP}` });
+  });
+
+  it("collapses onto a queued sync, and adds one behind a sync somebody already claimed", async () => {
+    const w = world([]);
+    const db = fakeDb(w);
+    await enqueueRouteSync(db, APP);
+    await enqueueRouteSync(db, APP);
+    expect(w.jobs).toHaveLength(1);
+    w.jobs[0]!.lockedBy = "worker:1";
+    await enqueueRouteSync(db, APP);
+    expect(w.jobs).toHaveLength(2);
+  });
+
+  it("does not collapse onto a sync an older version left on the deploy lane", async () => {
+    const w = world([]);
+    w.jobs.push({ kind: "edge_route_sync", lane: "deploy", payload: { appId: APP }, dedupeKey: `edge.route:${APP}`, lockedBy: null, completedAt: null, failedAt: null });
+    await enqueueRouteSync(fakeDb(w), APP, "s9");
+    expect(w.jobs.map((j) => [j.lane, j.serverId])).toEqual([["deploy", undefined], ["maintenance", "s9"]]);
   });
 });
 
