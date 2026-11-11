@@ -3,11 +3,7 @@ import { Node } from "@/components/ui/rule";
 import { repoHref } from "@/lib/site";
 import { Cell, Grid, Section, Src, TONE_WORD, ToneDot, type Tone } from "./kit";
 
-/*
- * Comparison data. Every competitor cell links where it was read; all were checked against their
- * sources on 6 November 2026. Dockify cells describe what the code does and link the docs page that
- * explains it. A row about your own servers does not apply to a hosted platform, and says so.
- */
+/* Every competitor cell links where it was read; all were checked against their sources on 6 November 2026. */
 
 type CmpCell = { tone: Tone; text: string; src?: { href: string; label?: string }[]; docs?: string };
 type Row = { feature: string; note?: string; dockify: CmpCell; coolify: CmpCell; dokploy: CmpCell; vercel: CmpCell };
@@ -158,11 +154,7 @@ function CellBody({ c }: { c: CmpCell }) {
   );
 }
 
-/**
- * The table. Every row rule carries a node where it crosses a column divider or a rail, the same
- * marking as the ruled rows on the other pages. Below 1001px each row becomes a ruled block with the
- * product named on every line.
- */
+/** Below 1001px each row becomes a ruled block with the product named on every line. */
 export function CompareTable() {
   const issue = repoHref("issues/new");
   const last = ROWS.length - 1;

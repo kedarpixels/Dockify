@@ -4,30 +4,15 @@ import { isPublicAddress } from "@dockify/net-guard";
 import type { IngressMode } from "./ingress.ts";
 
 /**
- * The DNS check for one domain: resolve its A, AAAA and CNAME records and judge them against what
- * the ingress mode needs. Its "ok" is what lets a domain get a Traefik router (edge/hosts.ts), so
- * Traefik only asks Let's Encrypt for names that lead here.
- *
- *   direct_tls          every A and AAAA record must be one of this server's addresses: the
- *                       configured DOCKIFY_SERVER_IPV4 (and DOCKIFY_SERVER_IPV6), plus whatever the
- *                       dashboard host resolves to, since in direct mode that record already leads
- *                       here (it covers a server behind NAT, where the interface address is
- *                       private). A CNAME chain is fine as long as it ends there. A record that
- *                       names somewhere else, such as a Cloudflare proxied one, is a mismatch here;
- *                       checkDomain (edge/jobs.ts) then asks the domain itself (edge/probe.ts).
- *   cloudflare_tunnel   the record must be proxied by Cloudflare, so public DNS answers with
- *                       Cloudflare edge addresses. An A record at the server itself is a mismatch:
- *                       in tunnel mode the server has no public port.
+ * An "ok" is what lets a domain get a Traefik router, so Traefik only asks Let's Encrypt for names
+ * that lead here.
  */
 export type DnsStatus = "ok" | "mismatch" | "missing" | "unchecked";
 
 export interface DnsResult {
   status: DnsStatus;
-  /** CNAME targets first ("cname:<target>"), then the A addresses, then the AAAA ones. */
   resolved: string[];
-  /** Why the status is unchecked or mismatch, in one line for the UI. */
   detail: string | null;
-  /** The A addresses alone, for the TLS probe. */
   addresses: string[];
   /** True when the lookups themselves failed, so the result says nothing about the records. */
   lookupFailed: boolean;
@@ -36,47 +21,37 @@ export interface DnsResult {
 export interface DnsLookup {
   resolve4(host: string): Promise<string[]>;
   resolveCname(host: string): Promise<string[]>;
-  /** Optional: a lookup without it sees no AAAA records. */
   resolve6?(host: string): Promise<string[]>;
 }
 
-/** The addresses that count as this server. */
 export interface ServerAddresses {
   v4: string[];
   v6: string[];
 }
 
-/** Public resolvers, a short timeout and one retry: the check runs inside a request or a job. */
 export function publicResolver(servers = ["1.1.1.1", "8.8.8.8"], timeoutMs = 3000): DnsLookup {
   const r = new Resolver({ timeout: timeoutMs, tries: 2 });
   r.setServers(servers);
   return { resolve4: (h) => r.resolve4(h), resolve6: (h) => r.resolve6(h), resolveCname: (h) => r.resolveCname(h) };
 }
 
-/** What finding a zone's own nameservers needs: their names, then their addresses. */
 export interface ZoneLookup {
   resolveNs(host: string): Promise<string[]>;
   resolve4(host: string): Promise<string[]>;
 }
 
-/** The lookups for finding a zone's nameservers, through the same public resolvers. */
 export function publicZoneLookup(servers = ["1.1.1.1", "8.8.8.8"], timeoutMs = 3000): ZoneLookup {
   const r = new Resolver({ timeout: timeoutMs, tries: 2 });
   r.setServers(servers);
   return { resolveNs: (h) => r.resolveNs(h), resolve4: (h) => r.resolve4(h) };
 }
 
-/** At most this many nameservers are asked, and at most this many labels walked. */
 const MAX_ZONE_SERVERS = 4;
 const MAX_LABELS = 12;
 
 /**
- * The public IPv4 addresses of the nameservers of the zone that holds `host`, or [] when they cannot
- * be found. The zone is the deepest of host's parents with NS records, found from the top down. The
- * name itself is never asked about here: a public resolver that heard "no such name" keeps saying it
- * for the zone's negative TTL (30 minutes on Cloudflare), and the record may be minutes from existing.
- * A top-level domain alone is never taken as the zone. Only public addresses are kept, so the
- * question can only go to a public DNS server, whatever a zone's owner set as its nameservers.
+ * The name itself is never asked: a resolver that heard "no such name" repeats it for the zone's negative
+ * TTL (30 minutes on Cloudflare). Only public addresses are kept, whatever a zone's owner set.
  */
 export async function zoneServers(lookup: ZoneLookup, host: string): Promise<string[]> {
   const labels = host.toLowerCase().replace(/\.$/, "").split(".");
@@ -115,12 +90,8 @@ export function zoneDns(lookup: ZoneLookup = publicZoneLookup(), timeoutMs = 300
 }
 
 /**
- * checkDns for a name whose record was made moments ago: the zone's own nameservers answer first, so
- * no negative cache stands between a new record and the check. When they say the name does not exist
- * (NXDOMAIN), that is the answer: asking a public resolver then would only plant "no such name" in its
- * cache, for every visitor, for the zone's negative TTL. When they cannot be found or asked, or have
- * the name but no address for it (a CNAME that leads out of the zone, a name that is a zone of its
- * own), the public resolvers decide, as before.
+ * Asks the zone's own nameservers first, so no negative cache hides a new record. Their NXDOMAIN is
+ * final: asking a public resolver then would plant "no such name" in its cache for every visitor.
  */
 export async function checkDnsFresh(lookup: DnsLookup, zone: ZoneDns | undefined, host: string, ingress: IngressMode, server: string | null | ServerAddresses): Promise<DnsResult> {
   const at = zone ? await zone(host).catch(() => null) : null;
@@ -181,10 +152,7 @@ const canon = (ip: string): string => {
 const asServer = (server: string | null | ServerAddresses): ServerAddresses =>
   typeof server === "string" ? { v4: [server], v6: [] } : server ?? { v4: [], v6: [] };
 
-/**
- * Judges one host's records. `server` is this server's addresses; a bare IPv4 string still works
- * for callers that know only DOCKIFY_SERVER_IPV4.
- */
+/** `server` may be a bare IPv4 string, for callers that know only DOCKIFY_SERVER_IPV4. */
 export async function checkDns(lookup: DnsLookup, host: string, ingress: IngressMode, server: string | null | ServerAddresses): Promise<DnsResult> {
   const here = asServer(server);
   const [a, aaaa, cname] = await Promise.all([
@@ -232,20 +200,12 @@ export async function checkDns(lookup: DnsLookup, host: string, ingress: Ingress
   return { ...base, status: "mismatch", detail: `${host} is not proxied through Cloudflare.` };
 }
 
-/**
- * How long a domain that does not point here yet waits before its next check: a tenth of its age,
- * between 30 seconds and 15 minutes (the full sweep's interval). A record is usually added minutes
- * after the domain, so a new domain is retried quickly and an old one slowly.
- */
+/** A tenth of the domain's age, between 30 seconds and 15 minutes (the full sweep's interval). */
 export function dnsRecheckDelayMs(ageMs: number): number {
   return Math.min(15 * 60_000, Math.max(30_000, Math.floor(ageMs / 10)));
 }
 
-/**
- * This server's addresses for the direct-mode check: the configured ones plus what the dashboard
- * host resolves to. A dashboard lookup that fails adds nothing; the configured ones still count.
- * A Cloudflare edge address never counts: thousands of unrelated sites share it.
- */
+/** A Cloudflare edge address never counts as this server: thousands of unrelated sites share it. */
 export async function serverAddresses(lookup: DnsLookup, o: { serverIpv4: string | null; serverIpv6: string | null; dashboardHost: string | null }): Promise<ServerAddresses> {
   const v4 = new Set<string>(o.serverIpv4 ? [o.serverIpv4] : []);
   const v6 = new Set<string>(o.serverIpv6 ? [canon(o.serverIpv6)] : []);

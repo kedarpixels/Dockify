@@ -1,26 +1,7 @@
 /**
- * Builds a repository that has no Dockerfile, with Railpack. Two steps, both inside rootless BuildKit,
- * so a hostile repository meets the same walls as a hostile Dockerfile:
- *
- *   plan    `railpack prepare` reads the repository's files. It runs as a RUN step in BuildKit's
- *           process sandbox, never in this process: the worker holds the database password and the
- *           internal token, and a Procfile that is a symlink to /run/secrets/internal_token would
- *           otherwise put that token in the plan. The step gets no secret at all: every variable
- *           reaches it by name with a placeholder value, except a non-secret RAILPACK_* setting.
- *   build   Railpack's own BuildKit frontend, pinned by digest, turns the plan into a solve. The
- *           plan is parsed inside the frontend's container, and the plan can do what a Dockerfile
- *           can: RUN steps, FROM any image. It cannot name another frontend, read a BuildKit
- *           local this client does not offer, or ask for a privilege, since no entitlement is sent.
- *
- * Cache mounts: the frontend prefixes every cache id with the `cache-key` argument set here, and the
- * plan has no way to change it, so one app cannot seed another's package cache. Every preview gets a
- * key of its own (buildCacheScope), and its scope goes into the secrets hash too, which keys apart the
- * layers of every step that takes secrets (the frontend mounts the hash into those steps).
- *
- * The binaries come from the worker image (deploy/Dockerfile), checked against a sha256 when the
- * image is built. Railpack downloads mise with no check when it is missing, so it is put where
- * Railpack looks first and nothing is fetched. railpack-pins.test.ts keeps the pins here, in the
- * Dockerfile and in the daemon's allowlist the same.
+ * Builds a repository with no Dockerfile. `railpack prepare` runs as a RUN step in BuildKit's sandbox, never
+ * in this process: the worker holds secrets a symlinked Procfile could pull into the plan, and the step gets
+ * placeholder values only. The frontend is pinned by digest and prefixes every cache id with `cache-key`.
  */
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -56,10 +37,8 @@ export interface Overrides {
 }
 
 /**
- * The variables the plan step is told about. Railpack adds every name it is given to the plan's
- * `secrets`, which is how a build command gets to see them; the values only matter to its own
- * RAILPACK_* settings. So a value goes in only for a non-secret RAILPACK_* variable: everything else
- * gets a placeholder, and a secret's value never enters this step, its argv or BuildKit's cache.
+ * Railpack adds every name it is given to the plan's `secrets`. A value goes in only for a non-secret
+ * RAILPACK_* variable: everything else gets a placeholder, so no secret enters this step, its argv or the cache.
  */
 export function planEnvArgs(vars: readonly BuildVar[], o: Pick<Overrides, "installCommand">): string[] {
   const args: string[] = [];
@@ -82,9 +61,8 @@ export function planEnvArgs(vars: readonly BuildVar[], o: Pick<Overrides, "insta
 const PLAN_WRAPPER = `mkdir -p /out; railpack prepare /app --hide-pretty-plan --plan-out /out/plan.json --info-out /out/info.json "$@" >/dev/null 2>/out/stderr; echo $? >/out/code; exit 0`;
 
 /**
- * The Dockerfile of the plan step. Values reach it only as JSON strings in an exec-form RUN, which
- * BuildKit neither expands nor hands to a shell: JSON.stringify keeps every value on one line and
- * valid, and the wrapper takes them through "$@". The repository is mounted read-only.
+ * Values reach it only as JSON strings in an exec-form RUN, which BuildKit neither expands nor hands to a
+ * shell; the wrapper takes them through "$@". The repository is mounted read-only.
  */
 export function planDockerfile(args: readonly string[]): string {
   const run = JSON.stringify(["/bin/sh", "-c", PLAN_WRAPPER, "railpack", ...args]);
@@ -162,10 +140,7 @@ export function planRailpackBuild(input: {
   return { args, env, imageName: input.imageName, buildArgKeys: [], secretKeys };
 }
 
-// ------------------------------------------------------------------ reading what the plan step wrote
-
 export interface PlanInfo {
-  /** The plan as the frontend will read it. */
   planJson: string;
   framework: string | null;
   provider: string | null;
@@ -225,9 +200,8 @@ function stepCommand(steps: unknown, name: string): string {
 }
 
 /**
- * Checks the plan is a plan, and keeps only the secrets this build offers: a name it does not offer
- * would fail the solve, and that includes our own RAILPACK_INSTALL_CMD, which Railpack lists too.
- * Everything else stays as the plan has it; what it can do is the sandbox's business.
+ * Keeps only the secrets this build offers: a name it does not offer would fail the solve, and that includes
+ * our own RAILPACK_INSTALL_CMD. Everything else stays; what the plan can do is the sandbox's business.
  */
 export function readPlan(planText: string | null, infoText: string | null, offered: ReadonlySet<string>): PlanInfo {
   const info = parse(infoText);
@@ -276,15 +250,12 @@ function logMessages(info: unknown, level: string): string[] {
 /** Railpack's exit code for a failure worth another try (a version lookup that could not connect). */
 const EXIT_TEMPORARY = 75;
 
-/** Plain sentences for a repository Railpack could not plan. */
 export function planFailure(code: number, infoText: string | null, stderr: string): Error {
   if (code === EXIT_TEMPORARY) return new Error("Railpack could not reach its version service; this deploy will try again.");
   const errors = logMessages(parse(infoText), "error");
   const why = errors.join(" ") || shown(stderr, 600) || `it exited with code ${code}`;
   return new PermanentDeployError(`Dockify could not work out how to build this repository: ${why} Add a Dockerfile, or set the install, build and start commands in the app's settings.`);
 }
-
-// ------------------------------------------------------------------ the plan step itself
 
 export interface PlanInput {
   checkoutRoot: string;
@@ -342,11 +313,7 @@ export interface RepoHints {
 /** The config with its comments gone, so a commented-out `output` setting does not count. */
 const withoutComments = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-/**
- * What a Next.js config's `output` asks for, when Dockify has to step in. Decides from the file text
- * alone. A repository with its own railpack.json has said how it starts, and so has a start script of
- * its own (node .next/standalone/server.js, say).
- */
+/** Decides from the file text alone. A repository with its own railpack.json or start script has said how it starts. */
 function nextOutput(files: RepoHints): { output: "standalone" | "export"; config: string } | null {
   if (files.railpackJson !== null || !files.nextConfig) return null;
   const config = withoutComments(files.nextConfig);
@@ -363,10 +330,8 @@ export function nextStandaloneStart(files: RepoHints): string | null {
 }
 
 /**
- * The folder a Next.js static export writes, or null when this repository is not one. Railpack serves
- * that folder with Caddy once told it; left to itself it matches the setting's exact spacing, then
- * plans `next start`, which refuses an export. The folder name comes from a hostile repository, so
- * it must be a plain relative path.
+ * Railpack serves the export folder with Caddy once told; left alone it plans `next start`, which refuses an
+ * export. The folder name comes from a hostile repository, so it must be a plain relative path.
  */
 export function nextExportDir(files: RepoHints): string | null {
   const next = nextOutput(files);
@@ -376,8 +341,8 @@ export function nextExportDir(files: RepoHints): string | null {
 }
 
 /**
- * The commands' settings the plan step gets because of what the repository is, for an owner who set
- * neither a start command nor the setting itself.
+ * Settings the plan step gets because of what the repository is, when the owner set neither a start command
+ * nor the setting itself.
  */
 export function planHintArgs(o: Pick<Overrides, "startCommand">, vars: readonly BuildVar[], hints: RepoHints): string[] {
   const dir = nextExportDir(hints);
@@ -407,7 +372,7 @@ export async function readRepoHints(contextDir: string): Promise<RepoHints> {
   };
 }
 
-/** Runs the plan step; answers what it wrote. Throws a PermanentDeployError for a repository it cannot plan. */
+/** Throws a PermanentDeployError for a repository it cannot plan. */
 export async function runPlanStep(buildkitAddr: string, p: PlanInput, onLine: (line: string) => string | null, signal: AbortSignal): Promise<PlanInfo & { contextDir: string; planDir: string }> {
   const contextDir = await insideCheckout(p.checkoutDir, p.rootDir);
   const stepDir = join(p.checkoutRoot, "plan-step");

@@ -1,8 +1,6 @@
 /**
- * The narrow seam between integrations and the deploy pipeline. Integrations decide WHEN to deploy
- * (a push, a pull request); the deployments module owns HOW, through requestDeployTx: one open
- * deploy per app (or per preview), and a push that lands during a build stamps pendingDeployAt
- * instead of being dropped.
+ * The seam to the deploy pipeline: integrations decide WHEN to deploy, the deployments module owns HOW
+ * (one open deploy per app or preview; a push during a build stamps pendingDeployAt and is not dropped).
  */
 import { defaultServerId, type ActorType, type Db, type DeploymentTrigger, type Tx } from "@dockify/db";
 import { requestDeployTx } from "../deployments/enqueue.ts";
@@ -16,7 +14,7 @@ export interface DeployRequest {
   /** Lowercased GitHub login of a push's author. */
   gitAuthor?: string | null;
   gitAuthorAvatarUrl?: string | null;
-  /** The commit's git name, when its author has no GitHub account. */
+  /** The commit's git name, set when its author has no GitHub account. */
   gitAuthorName?: string | null;
   branch?: string | null;
   commitSha?: string | null;
@@ -28,7 +26,7 @@ export type DeployOutcome = { kind: "queued"; deploymentId: string; jobId: strin
 
 export interface DeployRequester {
   request(db: Db, req: DeployRequest): Promise<DeployOutcome>;
-  /** Queues the teardown of a preview; idempotent per preview. */
+  /** Idempotent per preview. */
   teardownPreview(db: Tx, previewId: string): Promise<void>;
 }
 

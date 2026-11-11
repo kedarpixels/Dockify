@@ -1,8 +1,4 @@
-/*
- * The catalog: one reviewed file per template, read from each app's own docs and image README (the
- * docs field names the page), and listed here. Written for Dockify, not copied from any other
- * project's catalog. A new template needs its own file, a line here and a pass of templates.test.ts.
- */
+// One reviewed file per template, written from each app's own docs. A new template needs its own file, a line here and a pass of templates.test.ts.
 import type { Template } from "../format.ts";
 import { n8n } from "./n8n.ts";
 import { uptimeKuma } from "./uptime-kuma.ts";

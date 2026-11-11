@@ -39,7 +39,6 @@ const RUN_GLYPH = { ready: "ready", failed: "failed", running: "building" } as c
 
 const secs = (r: BackupRun) => (r.finishedAt ? (Date.parse(r.finishedAt) - Date.parse(r.createdAt)) / 1000 : null);
 
-/** What every run row can do, and which rows are busy. */
 export interface RunActions {
   onRestore: (r: BackupRun) => void;
   onTest: (r: BackupRun) => void;
@@ -49,7 +48,6 @@ export interface RunActions {
   testing: Set<string>;
 }
 
-/** The run's status mark: the shared deploy StatusIcon, announced in backup words. */
 function RunMark({ status }: { status: BackupRun["status"] }) {
   return (
     <span className="sb-run-mark">
@@ -61,7 +59,6 @@ function RunMark({ status }: { status: BackupRun["status"] }) {
   );
 }
 
-/** The restore test result as the one status chip, with what the test found in its tip. */
 function TestCell({ r }: { r: BackupRun }) {
   const utcAt = useUtcAt();
   if (r.status !== "ready" || r.expired) return <span className="bk-test" />;
@@ -92,7 +89,6 @@ function TestCell({ r }: { r: BackupRun }) {
   return <span className="bk-test none">Not tested</span>;
 }
 
-/** Kind and place, then a lock that says whether the backup is encrypted with the instance key. */
 function RunDetail({ r }: { r: BackupRun }) {
   const { manage } = useCan();
   // A failed run's reason wraps in full, so it needs no tip.
@@ -183,7 +179,6 @@ function RunRow({ r, now, actions }: { r: BackupRun; now: number; actions: RunAc
   );
 }
 
-/** Runs of live databases, grouped by UTC day, filterable by database. */
 export function History({ runs, schedules, now, actions }: { runs: BackupRun[]; schedules: BackupSchedule[]; now: number; actions: RunActions }) {
   const [pickedDb, setDb] = useState("all");
   // A database that left the list since it was picked falls back to all.
@@ -281,10 +276,7 @@ export function History({ runs, schedules, now, actions }: { runs: BackupRun[]; 
   );
 }
 
-/**
- * Backups whose database was deleted, one group per database, newest first. They stay until deleted
- * here, so the last copy of a removed database's data is never lost by accident.
- */
+/** They stay until deleted here, so the last copy of a removed database's data is never lost by accident. */
 export function Orphans({
   runs,
   now,

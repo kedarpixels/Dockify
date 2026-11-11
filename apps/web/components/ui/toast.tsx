@@ -4,26 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExter
 import { Icon, type IconName } from "@/components/icon";
 import { IconTile } from "./icon-tile";
 
-/**
- * The one toast. Call `toast(...)` from anywhere on the client; <Toaster /> (mounted once in the
- * root layout) renders the stack.
- *
- *   toast.success("Deployment started", { description: "horseai / web, main 9c0d4e2" })
- *   toast.error("Could not save", { description: err.message })
- *   toast.promise(save(), { loading: "Saving", success: "Saved", error: (e) => e.message })
- *   toast.promise(recheck(), { loading: "Checking DNS", success: (r) => ({ title: "Wrong IP", tone: "warn" }), error: "Check failed" })
- *
- * At most three exist at once, newest in front; older ones tuck behind and fan out on hover or
- * focus. A fourth makes room by sending one card out at the back: the oldest confirmation first,
- * then progress, then problems, so a newer success never pushes an error away. Nothing waits off
- * screen, so no card ever comes back in from the top.
- *
- * The stack fans out on hover or focus, but only the focus holds the clock: the pointer resting on a
- * toast never stops it (the owner's call), and a keyboard user reaching a key gets the time. Timers
- * also pause while a card is swiped and while the tab is hidden. A toast with an action (Undo, View) stays at least 10 seconds, and Alt+T moves the
- * focus to the newest toast's keys from anywhere, so the action is in reach for the keyboard too;
- * Esc dismisses it and puts the focus back where it was. Swipe down to dismiss on touch.
- */
+// At most three exist at once; a fourth sends out the oldest confirmation first, then progress,
+// then problems. Only focus holds the clock, never a resting pointer. Alt+T focuses the newest toast.
 
 export type ToastTone = "neutral" | "ok" | "bad" | "warn" | "info" | "loading";
 
@@ -53,17 +35,14 @@ const DEFAULT_MS: Record<ToastTone, number> = { neutral: 3200, ok: 3600, info: 4
 /** The least time a toast with an action stays up, so the action can be reached and read. */
 const ACTION_MS = 10_000;
 const ICON: Record<ToastTone, IconName> = { neutral: "info", ok: "checkCircle", bad: "closeCircle", warn: "alert", info: "info", loading: "loader" };
-/** The icon tile's tone per toast tone: neutral stays plain, loading is info's blue. */
 const TILE: Record<ToastTone, "ok" | "warn" | "bad" | "info" | undefined> = { neutral: undefined, ok: "ok", bad: "bad", warn: "warn", info: "info", loading: "info" };
 
-/** Cards on screen at once. */
 const VISIBLE = 3;
 /** A leaving card fades in 200ms (foundation.css); it is removed a little after, never mid-fade. */
 const REMOVE_MS = 260;
 /** Which card makes room for a new one: the lowest rank goes first, the oldest within a rank. */
 const KEEP: Record<ToastTone, number> = { neutral: 0, ok: 0, info: 0, loading: 1, warn: 2, bad: 2 };
 
-/* -------------- Store -------------- */
 let items: ToastItem[] = [];
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
@@ -74,7 +53,6 @@ const subscribe = (l: () => void) => {
 let seq = 0;
 let keys = 0;
 
-/** Marks a card as leaving and removes it once its fade has run. */
 function leave(t: ToastItem, why: NonNullable<ToastItem["leaving"]>) {
   items = items.map((x) => (x === t ? { ...t, leaving: why } : x));
   setTimeout(() => {
@@ -167,7 +145,6 @@ export const toast: ToastFn = Object.assign((title: string, o?: ToastOptions) =>
   },
 });
 
-/* -------------- View -------------- */
 const EMPTY: ToastItem[] = [];
 const GAP = 8; // between cards when the stack is fanned out
 const PEEK = 10; // how far each tucked card shows above the one in front of it
@@ -177,12 +154,8 @@ const FALLBACK_H = 56;
 
 const spoken = (t: ToastItem) => (t.description ? `${t.title}. ${t.description}` : t.title);
 
-/*
- * Every card sits at the bottom of the list and moves with `translate`, so tucking and fanning are
- * one continuous transition. Fanned offsets come from measured heights; tucked cards borrow the
- * front card's height so their edges line up. A card sent out to make room keeps moving with the
- * stack: it steps one place further back as it fades, so nothing jumps.
- */
+// Every card sits at the bottom of the list and moves with `translate`, so tucking and fanning are
+// one continuous transition. Tucked cards borrow the front card's height so their edges line up.
 export function Toaster() {
   const list = useSyncExternalStore(subscribe, () => items, () => EMPTY);
   const [expanded, setExpanded] = useState(false);
@@ -265,9 +238,8 @@ export function Toaster() {
 
   const listH = !order.length ? 0 : expanded ? acc - GAP : (frontH ?? FALLBACK_H) + (order.length - 1) * PEEK;
 
-  // Screen readers hear each new or replaced toast through two regions that stay mounted, so the
-  // text always lands in a region the reader already watches (one created with its text is often
-  // skipped). Problems interrupt; the rest wait their turn.
+  // Two regions that stay mounted, so the text lands in a region the reader already watches.
+  // Problems interrupt; the rest wait their turn.
   const [said, setSaid] = useState<{ polite?: { n: number; text: string }; urgent?: { n: number; text: string } }>({});
   const heard = useRef(new Set<number>());
   useEffect(() => {

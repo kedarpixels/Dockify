@@ -3,7 +3,6 @@ import { NotFound } from "@/components/ui/not-found";
 import { Rule, Spacer } from "@/components/ui/rule";
 import { StatusFoot, StatusTop } from "./frame";
 
-/* One centred message between two bands, the frame the signed-out pages use. */
 function Frame({ children }: { children: React.ReactNode }) {
   return (
     <>

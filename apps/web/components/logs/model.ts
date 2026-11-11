@@ -1,13 +1,9 @@
-/*
- * The runtime log explorer's shared model: types, filters, level inference and search patterns.
- * Pure code only, so the client view, the loader and the route handlers all import it.
- */
+/* Pure code only, so the client view, the loader and the route handlers all import it. */
 
 export type LogStream = "stdout" | "stderr";
 export type LogLevel = "error" | "warn" | "info" | "debug";
 export type LogRange = "15m" | "1h" | "24h" | "7d" | "custom";
 
-/** One line a container printed. */
 export interface RuntimeLogLine {
   /** Opaque, unique and URL safe. It is the permalink and the stream's resume point. */
   id: string;
@@ -19,7 +15,7 @@ export interface RuntimeLogLine {
   text: string;
 }
 
-/** What the operator picked. `from` and `to` only matter for a custom range. */
+/** `from` and `to` only matter for a custom range. */
 export interface LogFilters {
   /** Empty means every app. */
   apps: string[];
@@ -37,9 +33,7 @@ const DAY = 86_400_000;
 
 /** Logs are kept for 7 days; nothing older can be asked for. */
 export const RETENTION_MS = 7 * DAY;
-/** Longest search the API accepts. */
 const MAX_Q = 200;
-/** Most apps one query may name. */
 export const MAX_APPS = 64;
 
 const RANGE_MS: Record<Exclude<LogRange, "custom">, number> = {
@@ -69,7 +63,7 @@ export const isIso = (v: string) => v.length <= 40 && !Number.isNaN(Date.parse(v
 
 export const DEFAULT_FILTERS: LogFilters = { apps: [], range: "1h", q: "", regex: false, stream: "all", level: "all" };
 
-/** The filters the page URL carries, with anything malformed dropped rather than refused. */
+/** Anything malformed is dropped rather than refused. */
 export function filtersFrom(get: (key: string) => string | undefined): LogFilters {
   const apps = (get("apps") ?? "").split(",").filter((a) => a && isToken(a)).slice(0, MAX_APPS);
   const from = get("from");
@@ -90,7 +84,6 @@ export function filtersFrom(get: (key: string) => string | undefined): LogFilter
   };
 }
 
-/** The filters as page URL parameters, defaults left out. */
 export function filtersSearch(f: LogFilters) {
   const p = new URLSearchParams();
   if (f.apps.length) p.set("apps", f.apps.join(","));
@@ -105,14 +98,13 @@ export function filtersSearch(f: LogFilters) {
   return p;
 }
 
-/** The time window the filters cover at `now`. A relative range has no end: it runs to now. */
+/** A relative range has no end: it runs to now. */
 function windowOf(f: LogFilters, now: number): { from: string; to?: string } {
   if (f.range === "custom" && f.from && f.to) return { from: f.from, to: f.to };
   const span = RANGE_MS[f.range === "custom" ? "1h" : f.range];
   return { from: new Date(now - span).toISOString() };
 }
 
-/** What one history or stream request asks the API for. */
 export interface LogQuery {
   apps: string[];
   from: string;
@@ -124,7 +116,7 @@ export interface LogQuery {
   cursor?: string | null;
 }
 
-/** The request the filters make at `now`, or null when the search cannot run. */
+/** Null when the search cannot run. */
 export function queryOf(f: LogFilters, now: number): LogQuery | null {
   if (checkPattern(f.q, f.regex)) return null;
   return {
@@ -137,7 +129,6 @@ export function queryOf(f: LogFilters, now: number): LogQuery | null {
   };
 }
 
-/** A query as URL parameters, for the same-origin routes and the API alike. */
 export function querySearch(q: LogQuery, extra: Record<string, string | null | undefined> = {}) {
   const p = new URLSearchParams();
   const put = (k: string, v: string | null | undefined) => (v ? p.set(k, v) : undefined);
@@ -153,11 +144,8 @@ export function querySearch(q: LogQuery, extra: Record<string, string | null | u
 /** A relative range keeps growing, so it can be tailed; a custom one is a fixed window. */
 export const isLiveRange = (f: LogFilters) => f.range !== "custom";
 
-/** Everything that changes which lines the server sends, as one comparable string. */
 export const filterKey = (f: LogFilters) =>
   [f.apps.join(","), f.range, f.from ?? "", f.to ?? "", f.q, f.regex && f.q ? "re" : "", f.stream, f.level].join("|");
-
-// -------------- Level --------------
 
 const STRUCTURED = /"(?:level|severity|lvl)"\s*:\s*"(\w+)"|\blevel=(\w+)/i;
 const LEADING = /^\W{0,3}(fatal|panic|crit(?:ical)?|error|err|warn(?:ing)?|notice|info|log|debug|trace)\b/i;
@@ -179,12 +167,8 @@ export function leadingLevel(text: string): LogLevel | null {
   return lead ? named(lead[1]!) : null;
 }
 
-/**
- * The level a line most likely has: a structured level field first, then a leading level word,
- * then error or warning vocabulary. A stderr line with none of these reads as an error, the way
- * most hosts show it. Build tools such as BuildKit print their normal progress on stderr, so the
- * build log turns that last rule off with `stderrIsError: false`.
- */
+// A stderr line with no level word reads as an error. BuildKit prints normal progress on stderr,
+// so the build log turns that rule off with `stderrIsError: false`.
 export function inferLevel(line: Pick<RuntimeLogLine, "stream" | "text">, { stderrIsError = true }: { stderrIsError?: boolean } = {}): LogLevel {
   const s = STRUCTURED.exec(line.text);
   const fromField = s ? named(s[1] ?? s[2] ?? "") : null;
@@ -198,18 +182,12 @@ export function inferLevel(line: Pick<RuntimeLogLine, "stream" | "text">, { stde
 
 export const levelOf = (l: RuntimeLogLine): LogLevel => l.level ?? inferLevel(l);
 
-// -------------- Search --------------
-
 const SPECIAL = /[.*+?^${}()|[\]\\]/g;
 /** A repeat applied to a group that itself repeats, such as (a+)+: the classic catastrophic case. */
 const NESTED = /\((?:[^()\\]|\\.)*[+*}](?:[^()\\]|\\.)*\)\s*[+*{]/;
 const BACKREF = /\\[1-9]|\\k</;
 
-/**
- * Why a search cannot run, or null when it can. Plain text always can. A regex is refused when it
- * does not compile, or when it has nested repeats or back references, which can make a matcher
- * run for minutes. The API applies the same rule and matches with a linear time engine.
- */
+/** A regex with nested repeats or back references is refused: it can run for minutes. The API applies the same rule. */
 export function checkPattern(q: string, regex: boolean): string | null {
   if (q.length > MAX_Q) return `Search is longer than ${MAX_Q} characters`;
   if (!q || !regex) return null;
@@ -222,26 +200,25 @@ export function checkPattern(q: string, regex: boolean): string | null {
   return null;
 }
 
-/** A case-insensitive global matcher for the search, or null when there is none or it cannot run. */
+/** Null when there is no search or it cannot run. */
 export function compile(q: string, regex: boolean): RegExp | null {
   if (!q || checkPattern(q, regex)) return null;
   return new RegExp(regex ? q : q.replace(SPECIAL, "\\$&"), "gi");
 }
 
-/** True when `re` matches `text`. Resets the global matcher first, so calls never share state. */
+/** Resets the global matcher first, so calls never share state. */
 function hits(re: RegExp, text: string) {
   re.lastIndex = 0;
   return re.test(text);
 }
 
-/** The line passes the stream, level and search filters (the apps and time are the caller's). */
 export function passes(line: RuntimeLogLine, f: Pick<LogFilters, "stream" | "level">, re: RegExp | null) {
   if (f.stream !== "all" && line.stream !== f.stream) return false;
   if (f.level !== "all" && levelOf(line) !== f.level) return false;
   return !re || hits(re, line.text);
 }
 
-/** Splits text into plain and matched parts for highlighting. Empty matches are skipped. */
+/** Empty matches are skipped. */
 export function splitHits(text: string, re: RegExp | null): Array<{ text: string; hit: boolean }> {
   if (!re) return [{ text, hit: false }];
   const out: Array<{ text: string; hit: boolean }> = [];
@@ -260,8 +237,6 @@ export function splitHits(text: string, re: RegExp | null): Array<{ text: string
   return out.length ? out : [{ text, hit: false }];
 }
 
-// -------------- Apps --------------
-
 /** Identity colours (logs.css --lx-c0 to --lx-c7): blues and greys only, so red and amber keep meaning a status. */
 const APP_COLORS = 8;
 
@@ -277,11 +252,9 @@ function hashOf(s: string) {
   return h;
 }
 
-/** Terminal colour and cursor codes. */
 const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
 
 /** The text without terminal colour codes, which containers often print and a page cannot show. */
 export const cleanText = (text: string) => (text.includes("\u001b") ? text.replace(ANSI, "") : text);
 
-/** One line as plain text, for Copy all and Download. */
 export const plainLine = (l: RuntimeLogLine, app: string) => `${l.ts} ${app} ${l.stream === "stderr" ? "ERR" : "OUT"} ${cleanText(l.text)}`;

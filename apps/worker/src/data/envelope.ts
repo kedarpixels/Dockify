@@ -1,19 +1,7 @@
 /**
- * Client-side backup encryption. Every dump is encrypted on this server before it reaches any
- * destination, with a key that is not the storage credential: a leaked S3 key reads ciphertext.
- *
- * Layout (all integers big endian):
- *
- *   "DKBK" 0x01                  magic and version
- *   u8 n, n bytes                fingerprint of the backup key (ascii hex)
- *   12 nonce, 32 ct, 16 tag      the per-backup data key, wrapped by the backup key (AES-256-GCM)
- *   12 bytes                     base nonce for the chunks
- *   chunks: u32 len, len bytes ciphertext, 16 tag
- *
- * The wrap is bound to the backup id (AAD), so a blob cannot be passed off as another backup. Each
- * chunk's nonce is the base nonce with its counter mixed in, and its AAD carries the counter and a
- * final flag. Reordered, dropped or appended chunks fail, and a stream that ends without the final
- * chunk fails as truncated: a cut download can never decrypt into a shorter "valid" dump.
+ * Client-side backup encryption: a dump is encrypted before it reaches any destination, with a key that is
+ * not the storage credential. The data key's wrap is bound to the backup id, and each chunk's AAD carries its
+ * counter and a final flag, so a reordered, dropped, appended or cut stream never decrypts as a valid dump.
  */
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { Transform, type TransformCallback } from "node:stream";
@@ -111,7 +99,6 @@ export class EncryptStream extends Transform {
   }
 }
 
-/** Reads only the header fields that do not need a key: which key encrypted this blob. */
 export function peekFingerprint(head: Buffer): string | null {
   if (head.length < MAGIC.length + 1 || !head.subarray(0, MAGIC.length).equals(MAGIC)) return null;
   const n = head[MAGIC.length]!;
@@ -127,7 +114,6 @@ export class DecryptStream extends Transform {
   #base: Buffer | null = null;
   #counter = 0;
   #done = false;
-  /** Fingerprint of the key that opened this blob, once the header is read. */
   fingerprint: string | null = null;
 
   /** `keys` maps fingerprint to key, so a rotated-out key still opens old backups. */

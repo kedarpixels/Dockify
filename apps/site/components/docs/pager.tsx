@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { docHref, type DocLink } from "@/lib/docs-nav";
 
-/** Previous and next links at the foot of a docs page. */
 export function Pager({ prev, next }: { prev?: DocLink; next?: DocLink }) {
   if (!prev && !next) return null;
   return (

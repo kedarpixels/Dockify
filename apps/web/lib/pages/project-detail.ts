@@ -16,22 +16,8 @@ import { isReservedProjectSlug } from "@/lib/validation";
 import { isPreviewMode } from "@/lib/preview-mode";
 import { hex, seeded } from "@/lib/preview-random";
 
-/*
- * Project detail and app detail pages, and the New project popup.
- *
- * The routes are in packages/contracts/src/endpoints.ts (every call forwards the session cookie, no-store).
- *
- * The app tabs (Metrics, Domains, Data, Backups, Settings) add their own routes; see the
- * "App tabs" section at the end of this file.
- *
- * Errors answer with a status and optionally { error: string }. The browser never calls the API
- * directly: mutations go through POST /api/project-detail, which maps a typed action onto one of
- * those routes (see `toUpstream`). Patching or deleting a project, creating, changing, stopping,
- * restarting or deleting an app and every env write are elevated: without a fresh step-up the API
- * answers the shared refusal (lib/step-up.ts), and the browser confirms it is you and sends again.
- */
-
-/* -------------- Types -------------- */
+// Server loaders for the project and app pages. The browser never calls the API directly:
+// writes go through POST /api/project-detail, which maps a typed action onto a route (toUpstream).
 
 export type TlsStatus = "active" | "pending" | "failed";
 
@@ -47,7 +33,6 @@ export interface AppUsage {
   memoryLimitBytes: number;
 }
 
-/** One app as the project page lists it: the overview Resource plus what its card shows. */
 export interface AppSummary extends Resource {
   url: string | null;
   usage?: AppUsage;
@@ -59,11 +44,9 @@ export interface ProjectDomain {
   host: string;
   appId: string;
   appName: string;
-  /** The app's display name, when it has one. */
   appDisplayName?: string;
   environment: string;
   tls: TlsStatus;
-  /** Certificate expiry, when issued. */
   expiresAt: string | null;
 }
 
@@ -122,7 +105,6 @@ export interface AppDetail extends Resource {
   url: string | null;
   /** Managed services (postgres, redis, s3) run from an image and have no build step. */
   image: string | null;
-  /** The repository URL a git app builds from; absent from APIs that do not send it. */
   repo?: string | null;
   /** A git app's own branch; null follows its environment's branch. Absent from older APIs. */
   branch?: string | null;
@@ -144,7 +126,6 @@ export interface LogLine {
   text: string;
 }
 
-/** What the New project popup collects. The create route adds what the API body also needs (toUpstream). */
 export interface NewProjectInput {
   name: string;
   /** Left out, the project starts with one environment, production (the API's default). */
@@ -185,7 +166,6 @@ export interface AppPage {
   logsError?: string;
 }
 
-/** Every write the pages make, as one typed action the proxy route maps onto the API. */
 export type Mutation =
   | { type: "app.action"; id: string; op: "deploy" | "restart" | "stop" | "start" }
   | { type: "app.settings"; id: string; settings: AppSettings; source?: AppSource }
@@ -211,8 +191,6 @@ export interface MutationResult {
   /** Whatever the API answered with, for example { slug } or { deploymentId }. */
   data?: unknown;
 }
-
-/* -------------- API access -------------- */
 
 type Got<T> = { ok: true; data: T } | { ok: false; status: number; error: string; code?: string };
 
@@ -267,9 +245,8 @@ async function fetchAppPage(id: string): Promise<PageResult<AppPage>> {
   if (process.env.DOCKIFY_API_URL) {
     const app = await apiGet<AppDetail>(`/api/v1/apps/${enc(id)}`);
     if (!app.ok) return { source: "api", data: null, notFound: app.status === 404, error: app.error, fetchedAt };
-    // Like the project page, the app page reads the secret-free env/state route: this result ships to
-    // the browser in the page data, so a secret value must never be in it (env/reveal is the only path).
-    // An app on Vercel reads its logs from Vercel in the tab itself, which takes seconds; no page waits on that.
+    // This result ships to the browser in the page data, so it reads the secret-free env/state route;
+    // env/reveal is the only path to a secret value.
     const [env, logs] = await Promise.all([
       apiGet<EnvState>(appEnvPath(app.data.projectSlug)),
       app.data.target?.kind === "vercel" ? Promise.resolve({ ok: true as const, data: { lines: [] as LogLine[] } }) : apiGet<{ lines: LogLine[] }>(`/api/v1/apps/${enc(id)}/logs?tail=200`),
@@ -308,11 +285,7 @@ async function fetchAppPage(id: string): Promise<PageResult<AppPage>> {
   return { source: "none", data: null, fetchedAt };
 }
 
-/**
- * Where the New project popup is pointed, and which slugs are taken, for its inline check. The list
- * comes from GET /api/v1/projects; when that read fails the list is empty and the API's own 409
- * (SLUG_TAKEN, field "name") still refuses a duplicate.
- */
+/** The taken slugs feed the popup's inline check. When that read fails, the API's own 409 (SLUG_TAKEN) still refuses a duplicate. */
 export async function getNewProjectContext(): Promise<{ source: OverviewSource; taken: string[] }> {
   await connection();
   if (process.env.DOCKIFY_API_URL) {
@@ -325,8 +298,6 @@ export async function getNewProjectContext(): Promise<{ source: OverviewSource; 
   }
   return { source: "none", taken: [] };
 }
-
-/* -------------- Mutations (server side, called by app/api/project-detail) -------------- */
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 
@@ -393,10 +364,7 @@ export async function runMutation(m: Mutation): Promise<MutationResult> {
   return { ok: false, source: "none", error: "No data source, set DOCKIFY_API_URL for this dashboard", status: 503 };
 }
 
-/* -------------- Preview fixture -------------- */
-/* Derived from buildPreviewOverview, so the apps, ids, statuses and deployments match the
-   overview, the sidebar and the command menu exactly. Only what the overview does not carry
-   (repos, domains, env vars, settings, logs) is added here. */
+// Preview fixture, derived from buildPreviewOverview so apps, ids, statuses and deployments match the overview.
 
 const MB = 1024 ** 2;
 const GB = 1024 ** 3;
@@ -647,33 +615,19 @@ function previewLogs(app: AppDetail, now: Date): LogLine[] {
 }
 
 
-/* ============== Project extras: env v2, environments, previews, status page ============== */
-/*
- * Project-level features the project page loads on the client, through GET and POST
- * /api/project-extras. Appended here so the project page keeps one loader module.
- *
- * API contract assumed (every call forwards the session cookie, no-store).
- *
- *   Linked variables (contracts env-refs.ts): a change may carry `ref: { resourceId, field }` instead
- *   of `value`, naming a Postgres, Redis or S3 service in the SAME project (the API refuses any
- *   other). It stores the reference, not the credential; the API resolves it at deploy time, so a
- *   rotated password reaches the app on its next deploy. Listings send `ref` (EnvRefView) with a
- *   null value; a linked row always reads as secret.
- *
- */
+// Project extras (env, environments, previews, status page), loaded on the client through /api/project-extras.
+// A linked variable stores a reference, not the credential; the API resolves it at deploy time.
 
 export type EnvTarget = "build" | "runtime" | "both";
 
 export type StatefulKind = "postgres" | "redis" | "s3";
 export type EnvRefField = "url" | "urlNoTls" | "host" | "port" | "user" | "password" | "database" | "endpoint" | "bucket" | "accessKey" | "secretKey";
 
-/** What a change sends to link a variable to a service in this project. */
 export interface EnvRef {
   resourceId: string;
   field: EnvRefField;
 }
 
-/** What a listing sends for a linked variable. */
 export interface EnvRefView extends EnvRef {
   resourceName: string;
   /** Null when the service was deleted since. */
@@ -703,7 +657,6 @@ export interface EnvOverride {
 
 export interface EnvState {
   version: number;
-  /** Shared variables, per environment. */
   environments: Array<{ name: string; vars: EnvEntry[] }>;
   /** Per-app variables that win over the shared ones. Apps without any are left out. */
   overrides: EnvOverride[];
@@ -711,10 +664,7 @@ export interface EnvState {
 
 export type EnvOp = "add" | "change" | "remove";
 
-/**
- * One staged edit. A change without `value` keeps the stored value (a secret edited for its flags
- * only). `ref` links a service instead of setting a value; the two never travel together.
- */
+/** A change without `value` keeps the stored value. `ref` links a service instead; the two never travel together. */
 export interface EnvChange {
   environment: string;
   appId?: string;
@@ -740,7 +690,6 @@ export interface EnvVersion {
   redeployed: number;
 }
 
-/** Every guardrail of a project's pull request previews (contracts PreviewSettings). */
 export interface PreviewSettings {
   enabled: boolean;
   /** The environment each preview copies. Production is never the default. */
@@ -864,17 +813,11 @@ export type ExtrasMutation =
   | { type: "statusPage.set"; slug: string; enabled: boolean };
 
 export interface ExtrasMutationResult extends MutationResult {
-  /**
-   * step_up_required (lib/step-up.ts) when the API wants a fresh step-up, "conflict" when the env
-   * version moved on, "dangerous" when a change sets a process hook key and the API wants an
-   * explicit confirmation, or another code the API sent.
-   */
+  /** step_up_required, "conflict" (the env version moved on), "dangerous" (a process hook key needs confirming), or the API's own code. */
   code?: typeof STEP_UP_REQUIRED | "conflict" | "dangerous" | (string & {});
   /** With "dangerous": the keys that need confirming. */
   keys?: string[];
 }
-
-/* -------------- Loader -------------- */
 
 export async function getProjectExtras(slug: string): Promise<PageResult<ProjectExtras>> {
   await connection();
@@ -912,8 +855,6 @@ export async function getProjectExtras(slug: string): Promise<PageResult<Project
 
   return { source: "none", data: null, fetchedAt };
 }
-
-/* -------------- Mutations (server side, called by app/api/project-extras) -------------- */
 
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 const TARGETS: readonly string[] = ["build", "runtime", "both"];
@@ -1079,9 +1020,7 @@ export async function runExtrasMutation(m: ExtrasMutation): Promise<ExtrasMutati
   return { ok: false, source: "none", error: "No data source, set DOCKIFY_API_URL for this dashboard", status: 503 };
 }
 
-/* -------------- Preview fixture -------------- */
-/* Built on previewProject and previewEnv, so keys, apps, ids and environments match the rest of
-   the project page. Secret values stay on the server here too and come back only from reveal. */
+// Preview fixture, built on previewProject and previewEnv. Secret values stay on the server here too.
 
 /** NEXT_PUBLIC_ names are inlined at build time; NODE_ENV matters to both. */
 const previewTarget = (key: string): EnvTarget => (key.startsWith("NEXT_PUBLIC_") ? "build" : key === "NODE_ENV" ? "both" : "runtime");
@@ -1241,20 +1180,8 @@ function previewExtrasMutation(m: ExtrasMutation): ExtrasMutationResult {
   }
 }
 
-/* ============================== App tabs ============================== */
-/*
- * Loaders for the app page's Metrics, Domains, Data, Backups and Settings tabs. They are
- * read on the client when a tab opens, through GET /api/project-detail/apps/:id/:tab (which calls
- * `getAppTab`), so the page itself stays one fetch. Writes join the Mutation union above.
- *
- * API contract assumed (session cookie forwarded, no-store, errors answer { error }).
- *
- *   Backups reuse the Backups page contract (lib/pages/server-backups.ts): GET /api/v1/backups,
- *        /backups/schedules and /backups/config, filtered here to this database. "Back up now" and
- *        "Restore into new database" post to the existing same-origin /api/backups routes.
- *   Every elevated call above that meets a session without a fresh step-up answers the shared
- *   refusal (lib/step-up.ts); the browser confirms it is you (components/step-up) and sends again.
- */
+// App tabs (Metrics, Domains, Data, Backups, Settings). Each loads on the client when its tab opens,
+// through GET /api/project-detail/apps/:id/:tab (getAppTab), so the page itself stays one fetch.
 
 export type AppTabKey = "metrics" | "domains" | "tables" | "rows" | "keys" | "backups" | "config" | "vercel" | "vercelEnv";
 export const APP_TAB_KEYS: readonly AppTabKey[] = ["metrics", "domains", "tables", "rows", "keys", "backups", "config", "vercel", "vercelEnv"];
@@ -1353,7 +1280,6 @@ export interface QueryResult {
   truncated: boolean;
 }
 
-/** One database's slice of the Backups page data. */
 export interface AppBackups {
   schedule: BackupSchedule | null;
   /** Newest first. */
@@ -1373,10 +1299,7 @@ export interface HealthCheck {
 /** Why a deploy has to stop the old container before the new one starts. */
 export type ZeroDowntimeBlocker = "volume" | "fixed-port";
 
-/**
- * Where an app runs. follow: Dockify only reads the Vercel project. deploy: it sends the app's variables
- * and secrets there and asks Vercel to deploy.
- */
+/** follow: Dockify only reads the Vercel project. deploy: it sends the app's variables and secrets there and asks Vercel to deploy. */
 export interface VercelTargetRef {
   kind: "server" | "vercel";
   vercelProjectId: string | null;
@@ -1387,7 +1310,6 @@ export type VercelSyncState = "synced" | "pending" | "failed";
 
 export interface VercelLink {
   connected: boolean;
-  /** Vercel projects the token can see. */
   projects: Array<{ id: string; name: string; framework: string | null }>;
   /** Why that list could not be read (a refused token, a rate limit); absent from older APIs. */
   projectsError?: string | null;
@@ -1401,11 +1323,7 @@ export interface VercelLink {
   } | null;
 }
 
-/*
- * What an app that follows a Vercel project shows of it, read live from Vercel by the API
- * (GET /api/v1/apps/:id/vercel/project and /vercel/env). Read only: Dockify never writes to Vercel
- * for a followed app, and never asks Vercel to decrypt a variable.
- */
+// Read only: Dockify never writes to Vercel for a followed app, and never asks Vercel to decrypt a variable.
 export interface VercelDeploymentView {
   id: string;
   url: string | null;
@@ -1501,8 +1419,6 @@ export type AppTabMutation =
   | { type: "app.query"; id: string; sql: string }
   | { type: "app.terminalTicket"; id: string };
 
-/* -------------- Validation -------------- */
-
 const isWhole = (v: unknown, lo: number, hi: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi;
 const isNumIn = (v: unknown, lo: number, hi: number): v is number => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
 const TABLE = /^[a-z_][a-z0-9_]{0,62}\.[a-z_][a-z0-9_$]{0,62}$/i;
@@ -1510,7 +1426,6 @@ const TABLE = /^[a-z_][a-z0-9_]{0,62}\.[a-z_][a-z0-9_$]{0,62}$/i;
 /** A path the health probe may request: starts with /, printable, no spaces, no scheme or host. */
 const isProbePath = (v: unknown): v is string => typeof v === "string" && (v === "" || /^\/[\x21-\x7e]{0,255}$/.test(v));
 
-/** A plain object to check field by field, or null. */
 const fields = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
 function validPatch(p: unknown): p is AppConfigPatch {
@@ -1543,7 +1458,6 @@ function validPatch(p: unknown): p is AppConfigPatch {
   return true;
 }
 
-/** The app tab writes, mapped onto their API routes. Called from `toUpstream`. */
 function appTabUpstream(m: AppTabMutation): Upstream | null {
   const ok = (v: unknown): v is string => typeof v === "string" && ID.test(v);
   switch (m.type) {
@@ -1560,12 +1474,7 @@ function appTabUpstream(m: AppTabMutation): Upstream | null {
   }
 }
 
-/* -------------- Reads -------------- */
-
-/**
- * One app tab's data. `params` is the browser's query string, checked here so nothing it carries
- * can steer the upstream path: a known range, a schema.table name, a bounded glob.
- */
+/** `params` is the browser's query string, checked here so nothing it carries can steer the upstream path. */
 export async function getAppTab(id: string, tab: AppTabKey, params: URLSearchParams): Promise<TabResult<unknown> & { status: number }> {
   const fetchedAt = new Date().toISOString();
   const bad = (error: string) => ({ source: "none" as const, data: null, error, fetchedAt, status: 400 });
@@ -1615,9 +1524,7 @@ export async function getAppTab(id: string, tab: AppTabKey, params: URLSearchPar
   return { source: "none", data: null, fetchedAt, status: 200 };
 }
 
-/* -------------- App tab preview fixture -------------- */
-/* Derived from previewApp (itself from buildPreviewOverview), the domains page fixture and the
-   backups page fixture, so every tab agrees with the rest of the console. */
+// Preview fixture for the tabs, derived from previewApp and the domains and backups fixtures so every tab agrees.
 
 const PIDS_NOW: Record<AppKind, number> = { frontend: 38, backend: 54, bot: 21, postgres: 41, redis: 6, s3: 18 };
 const NET_KBPS: Record<AppKind, number> = { frontend: 220, backend: 140, bot: 12, postgres: 90, redis: 60, s3: 310 };
@@ -1923,7 +1830,6 @@ async function previewTab(app: AppDetail, tab: AppTabKey, p: { range: MetricRang
   }
 }
 
-/** What the preview answers for a write that returns data. */
 function previewAnswer(m: Mutation): unknown {
   switch (m.type) {
     case "app.query": {
@@ -1937,8 +1843,6 @@ function previewAnswer(m: Mutation): unknown {
       return undefined;
   }
 }
-
-// -------------- A managed service's version --------------
 
 export interface ServiceVersionView {
   kind: "postgres" | "redis";

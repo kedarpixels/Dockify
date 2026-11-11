@@ -13,11 +13,8 @@ export interface ShellFacts {
 
 const members = (s: ShellFacts) => [...s.projects.map((p) => `p:${p.slug}`), ...s.apps.map((a) => `a:${a.id}`)].sort().join(" ");
 
-/**
- * Whether the icon map the layout read may be out of date. A project or app that came or went
- * needs it read `now`. A build that ended does too, and `again` on the next snapshot: the worker
- * fetches the app's favicon just after the deploy, so the first read can be a moment early.
- */
+// A project or app that came or went needs the icon map read `now`. A build that ended needs it
+// `again` on the next snapshot too: the worker fetches the favicon just after the deploy.
 export function iconsStale(prev: ShellFacts, next: ShellFacts): { now: boolean; again: boolean } {
   const ended = next.inFlight < prev.inFlight;
   return { now: ended || members(prev) !== members(next), again: ended };

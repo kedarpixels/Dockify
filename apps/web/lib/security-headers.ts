@@ -1,11 +1,5 @@
-/*
- * Security headers for every console response, set by proxy.ts. Pure, so it tests without Next.
- *
- * frame-ancestors 'none' and X-Frame-Options stop a tenant app on a sibling subdomain (same site,
- * so the SameSite=Strict session cookie still rides along) from framing the signed-in console and
- * steering clicks. Scripts run only from this origin or with the per-request nonce, which Next
- * applies to its own inline scripts when it finds the nonce in the request's CSP header.
- */
+// frame-ancestors 'none' stops a tenant app on a sibling subdomain (same site, so the session cookie
+// rides along) from framing the console. Next applies the nonce it finds in the request's CSP header.
 
 export const NONCE_HEADER = "x-nonce";
 
@@ -37,7 +31,6 @@ export function securityHeaders(nonce: string, dev = false, https = false): Reco
   };
 }
 
-/** A fresh base64 nonce: 16 random bytes. */
 export function makeNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   let bin = "";

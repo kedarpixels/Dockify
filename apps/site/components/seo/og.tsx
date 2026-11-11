@@ -3,17 +3,15 @@ import path from "node:path";
 import { ImageResponse } from "next/og";
 import { SITE_HOST } from "./config";
 
-/* Social cards, drawn in the site's own language: the ruled frame with nodes where the rules cross
-   the rails, two 50% Bayer dither bands, the pixel display face for the title, Geist for the rest,
-   and the blue accent. Every route ships two cards, dark first, then light. */
+/* Every route ships two cards, dark first, then light. */
 
 const OG_SIZE = { width: 1200, height: 630 };
 const OG_CONTENT_TYPE = "image/png";
 
 type Theme = "dark" | "light";
 
-/* The foundation.css tokens for each theme. The dither runs one step darker than --cloud-core in
-   dark so the checker survives the thumbnail scale; everything else is the token as is. */
+/* The foundation.css tokens per theme, except the dither: one step darker than --cloud-core in dark, so the
+   checker survives the thumbnail scale. */
 const PALETTE: Record<Theme, { bg: string; ink: string; ink3: string; line: string; node: string; dither: string; blue: string }> = {
   dark: { bg: "#0a0a0a", ink: "#ededed", ink3: "#8f8f8f", line: "#1e1e1e", node: "#333333", dither: "#1a1a1a", blue: "#0a84ff" },
   light: { bg: "#ffffff", ink: "#0a0a0a", ink3: "#6b6b6b", line: "#e8e8e8", node: "#d4d4d4", dither: "#ececec", blue: "#0070f3" },
@@ -60,7 +58,6 @@ function sizeFor(title: string) {
 }
 
 export type OgCard = {
-  /** Display title, set in the pixel face. */
   title: string;
   /** Trailing words of the title drawn in the accent, for example "and sleep.". */
   accent?: string;

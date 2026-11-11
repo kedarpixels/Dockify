@@ -9,17 +9,8 @@ import type { RestoreProgress } from "@/lib/pages/server-backups";
 /** A poll shows the page's "Updating" mark only once it has taken this long, as useOverview does. */
 const SLOW_MS = 600;
 
-/**
- * Refetches a page result from its own route on an interval, pausing while the tab is hidden,
- * the same way useOverview does. Only live API data polls: the preview fixture is static, and
- * re-reading it would undo the local effects of the preview's actions.
- *
- * One request runs at a time. A local write (setResult) wins over any poll already in flight,
- * and `hold()` drops polls entirely while an optimistic change waits on its save, so a snapshot
- * read before the save never flips the screen back. `accept` can turn a snapshot away, so a
- * page keeps its last good data through a failed read. `refreshing` turns on only when a poll is
- * slow, so a quick one never flashes the "Updating" mark.
- */
+// Only live API data polls: re-reading the preview fixture would undo its local actions. A local
+// write (setResult) wins over a poll in flight, and `hold()` drops polls while an optimistic save waits.
 export function usePoll<T extends { source: string }>(initial: T, url: string, ms: number, accept: (next: T) => boolean = () => true) {
   const [result, setLocal] = useState(initial);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,7 +70,7 @@ export function usePoll<T extends { source: string }>(initial: T, url: string, m
     };
   }, [initial.source, ms, pull]);
 
-  /** Pauses polling until the returned release runs; safe to release more than once. */
+  /** Safe to release more than once. */
   const hold = useCallback(() => {
     holds.current++;
     let held = true;
@@ -93,10 +84,8 @@ export function usePoll<T extends { source: string }>(initial: T, url: string, m
   return { result, setResult, refreshing, hold };
 }
 
-/** Follows a restore's job, for followRestore. */
 export const readRestore = (runId: string) => (jobId: string) => callJson<RestoreProgress>(`/api/backups/${encodeURIComponent(runId)}/restore/${encodeURIComponent(jobId)}`);
 
-/** What an elevated write on these pages needs the check for, as "Confirm it is you" says it. */
 const WHAT: Array<[RegExp, string]> = [
   [/^\/api\/server\/updates\/apply$/, "Installing an update"],
   [/^\/api\/server\/updates\/rollback$/, "Rolling back Dockify"],
@@ -106,11 +95,7 @@ const WHAT: Array<[RegExp, string]> = [
   [/^\/api\/backups\/schedules\//, "Changing a backup schedule"],
 ];
 
-/**
- * Sends JSON to one of this app's routes; resolves to the body or throws its error (with the
- * route's `code`). An elevated write the API refuses for a missing step-up asks "Confirm it is you"
- * and is sent once more; closing that dialog throws an error `wasCancelled` (components/step-up) reads.
- */
+/** Throws the route's error with its `code`. A closed step-up throws an error `wasCancelled` (components/step-up) reads. */
 export function send<T>(url: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body?: unknown): Promise<T> {
   const what = WHAT.find(([re]) => re.test(url))?.[1];
   return elevateThrowing(async () => {

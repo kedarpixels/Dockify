@@ -1,15 +1,7 @@
 /**
- * The read-only data browser: Postgres tables, rows and SQL; Redis keys with type and TTL.
- *
- * Postgres. Every call runs in BEGIN TRANSACTION READ ONLY with statement, lock and idle timeouts
- * set LOCAL, under SET LOCAL ROLE dockify_browser (pg_read_all_data only, not a superuser), and ends
- * in ROLLBACK. User SQL passes the lexer guard first, then goes over the extended protocol, where
- * the server refuses a second statement whatever the lexer made of the text. Plain queries run
- * through a cursor read in batches, so the server stops at the row cap and a result of wide rows
- * stops early. Cells are clipped (a table's wide columns in SQL) and the result has a size budget.
- *
- * The driver is injected (PgSession) so this file is testable without a database; the worker wires
- * it to node-postgres with rowMode "array" and text parsing.
+ * The read-only data browser. Every Postgres call runs in a READ ONLY transaction under SET LOCAL ROLE
+ * dockify_browser (pg_read_all_data, not a superuser) and ends in ROLLBACK. User SQL passes the lexer guard,
+ * then goes over the extended protocol, where the server itself refuses a second statement.
  */
 import type { RespValue, RedisConn } from "./resp.ts";
 import { RespError } from "./resp.ts";
@@ -41,7 +33,6 @@ export const STATEMENT_TIMEOUT_MS = 15_000;
 export const ROW_CAP = 1_000;
 export const CELL_MAX = 16_384;
 export const RESULT_MAX_CHARS = 4 * 1024 * 1024;
-/** A cursor is read this many rows at a time, until the row cap or this much unclipped text. */
 const FETCH_BATCH = 100;
 const RAW_MAX_CHARS = 2 * RESULT_MAX_CHARS;
 export const BROWSER_ROLE = "dockify_browser";
@@ -62,7 +53,6 @@ export const READ_ONLY_PROLOGUE = [
   `SET LOCAL ROLE ${BROWSER_ROLE}`,
 ];
 
-/** Runs `work` inside the read-only box and always rolls back. */
 export async function readOnly<T>(pg: PgSession, work: () => Promise<T>): Promise<T> {
   await pg.query(ENSURE_ROLE_SQL);
   for (const s of READ_ONLY_PROLOGUE) await pg.query(s);
@@ -176,7 +166,6 @@ export async function tableRows(pg: PgSession, table: string, limit = 50): Promi
   });
 }
 
-/** Reads the cursor to the row cap, or until the rows read hold more text than a result may. */
 async function fetchCapped(pg: PgSession): Promise<{ result: PgResult; cut: boolean }> {
   const rows: unknown[][] = [];
   let fields: PgField[] = [];
@@ -220,8 +209,6 @@ export async function runQuery(pg: PgSession, sql: string, now: () => number = D
     };
   });
 }
-
-// -------------------------------------------------------------------------------------- redis
 
 const KEY_TYPES = new Set(["string", "hash", "list", "set", "zset", "stream"]);
 type KeyType = "string" | "hash" | "list" | "set" | "zset" | "stream";

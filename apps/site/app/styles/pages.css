@@ -1,8 +1,6 @@
-/* Pages: compare, install, changelog, security, open source and the 404. Builds on the
-   foundation.css tokens, the ruled frame and .shead; every block here is a direct child of
-   main.page, between the rails. Inner insets are --gutter from rails and from inner dividers. */
+/* Every block here is a direct child of main.page, between the rails. Inner insets are --gutter. */
 
-/* -------------- Section and body -------------- */
+/* Section and body */
 .pg-lead {
   max-width: 640px;
   text-wrap: pretty;
@@ -48,7 +46,6 @@
   border-top: 1px solid var(--line);
 }
 
-/* A path or a flag in running text, in the code face. */
 .pg-path {
   padding: 1px 5px;
   border-radius: 6px;
@@ -76,7 +73,6 @@
   color: var(--ink);
 }
 
-/* Bulleted lines with a round dot, the site's list marker. */
 .pg-ticks {
   display: grid;
   gap: 8px;
@@ -146,9 +142,7 @@
   background: var(--ok);
 }
 
-/* -------------- Tone marks -------------- */
-/* The one yes, partly, no mark (here, on /compare and on the landing table): an 18px tinted square,
-   radius 6, with a 10px glyph; or the Soon chip. */
+/* Tone marks */
 .pg-tone {
   display: inline-flex;
   align-items: center;
@@ -193,10 +187,9 @@
   gap: 8px;
 }
 
-/* -------------- Ruled grid -------------- */
-/* Cells sit on 1px gaps over the line colour; the grid opens on a rule and closes on a band. Every
-   column but the last is a whole number of pixels and the last takes the rest, so every gap lands
-   on a whole pixel. */
+/* Ruled grid */
+/* Every column but the last is a whole number of pixels and the last takes the rest, so every gap lands on
+   a whole pixel. */
 .pg-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -230,7 +223,6 @@
   background: var(--bg);
 }
 
-/* The dashboard's icon tile: a 24px tile, no fill, the glyph in --ink-3. */
 .pg-cell-ic {
   margin: 0 0 4px -5px;
 }
@@ -275,7 +267,7 @@
   color: var(--ink-3);
 }
 
-/* -------------- Numbered steps -------------- */
+/* Numbered steps */
 .pg-steps {
   margin: 0;
   padding: 0;
@@ -336,7 +328,7 @@
   color: var(--ink-2);
 }
 
-/* -------------- Term rows -------------- */
+/* Term rows */
 .pg-rows {
   margin: 0;
 }
@@ -379,7 +371,7 @@
   text-wrap: pretty;
 }
 
-/* -------------- Compare table -------------- */
+/* Compare table */
 .cmp-legend {
   display: flex;
   flex-wrap: wrap;
@@ -390,9 +382,8 @@
   color: var(--ink-3);
 }
 
-/* The four product columns are whole pixels; the feature column takes the rest. A table column
-   treats a width that mixes a percentage into calc() or round() as auto, so the width is a share of
-   the section's container width instead, which is a plain length. */
+/* A table column treats a width that mixes a percentage into calc() or round() as auto, so the width is a
+   share of the section's container width instead, which is a plain length. */
 .cmp {
   container-type: inline-size;
 }
@@ -494,7 +485,7 @@
   color: var(--ink-3);
 }
 
-/* -------------- Changelog entry -------------- */
+/* Changelog entry */
 .cl {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
@@ -566,7 +557,7 @@
   color: var(--ink-3);
 }
 
-/* -------------- Closing band -------------- */
+/* Closing band */
 .pg-closer {
   display: flex;
   align-items: center;
@@ -595,9 +586,9 @@
   gap: 12px;
 }
 
-/* -------------- Not found (the dashboard's 404) -------------- */
-/* Its height is rounded down to an even pixel and every line in it is even, so the centred content
-   and everything under the block start on whole pixels. */
+/* Not found */
+/* Its height is rounded down to an even pixel and every line in it is even, so the centred content and
+   everything under the block start on whole pixels. */
 .nf {
   min-height: calc(72vh - var(--top-h));
   min-height: round(down, calc(72vh - var(--top-h)), 2px);
@@ -642,7 +633,7 @@
   margin-top: 32px;
 }
 
-/* -------------- 1100 -------------- */
+/* 1100 */
 @media (max-width: 1100px) {
   /* Three-up grids stay three-up only when they hold exactly three cells. */
   .pg-grid[data-cols="4"],
@@ -667,9 +658,7 @@
   }
 }
 
-/* -------------- 1000: the comparison stacks -------------- */
-/* Below 1000px five columns leave each cell too narrow to read, so each row becomes a ruled block
-   with the product named on every line. */
+/* 1000: the comparison stacks, because five columns leave each cell too narrow to read. */
 @media (max-width: 1000px) {
   .cmp-table,
   .cmp-table tbody,
@@ -728,7 +717,7 @@
   }
 }
 
-/* -------------- 760 -------------- */
+/* 760 */
 @media (max-width: 760px) {
   .pg-grid[data-cols] {
     grid-template-columns: minmax(0, 1fr);
@@ -797,7 +786,7 @@
   }
 }
 
-/* -------------- 420 -------------- */
+/* 420 */
 @media (max-width: 420px) {
   .pg-closer-ctas,
   .pg-closer-ctas .btn {

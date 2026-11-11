@@ -1,8 +1,4 @@
-/**
- * Metric reads. Each range reads one resolution (1h raw, 24h five_min, 7d hour) and fills the
- * stretch after the newest rollup from the next finer resolution, so a chart is never missing its
- * most recent minutes while a rollup is pending.
- */
+// Each range reads one resolution and fills the stretch after the newest rollup from the next finer one, so a chart never lacks its latest minutes.
 import { statfs } from "node:fs/promises";
 import os from "node:os";
 import { defaultCpuCores } from "@dockify/contracts";
@@ -65,7 +61,7 @@ export async function appMetrics(
   };
 }
 
-/** Host totals the sample table does not store; read from this kernel. */
+/** Host totals the sample table does not store. */
 export async function hostTotals(diskPath = process.env.DOCKIFY_METRICS_DISK_PATH || "/") {
   let diskTotal = 0;
   try {
@@ -79,7 +75,6 @@ export async function hostTotals(diskPath = process.env.DOCKIFY_METRICS_DISK_PAT
 
 const pct = (part: number, whole: number): number => (whole > 0 ? Math.min(100, Math.max(0, Math.round((part / whole) * 1000) / 10)) : 0);
 
-/** The overview's host card: the latest host sample, a one-hour history, and running containers. */
 export async function hostSnapshot(db: Db, instanceName: string, now = Date.now()) {
   const totals = await hostTotals();
   const rows = await readSeries(db, null, "1h", now);
@@ -103,7 +98,7 @@ export async function hostSnapshot(db: Db, instanceName: string, now = Date.now(
     cpu: { usedPct: last ? Math.round(last.cpuPct * 10) / 10 : 0, cores: os.cpus().length },
     memory: { usedBytes: last ? Number(last.memoryBytes) : os.totalmem() - os.freemem(), totalBytes: totals.memoryBytes },
     disk: { usedBytes: last?.diskBytes ? Number(last.diskBytes) : 0, totalBytes: totals.diskBytes, reclaimableBytes: 0 },
-    // The link speed only the installer can know; null (the page hides it) rather than a made-up 1000.
+    // Only the installer knows the link speed; null hides it on the page.
     network: { outMbps: Math.round(outMbps * 10) / 10, capacityMbps: loadPlatformEnv().networkCapacityMbps },
     history: buckets.map((b, i) => {
       const p = buckets[i - 1];

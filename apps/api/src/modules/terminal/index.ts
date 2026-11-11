@@ -1,8 +1,4 @@
-/**
- * The terminal's two catalog routes. The ticket is an ordinary elevated POST. A plain GET on the socket's
- * path reaches the handler only when it did not ask to upgrade, and gets told so; the upgrade itself is
- * gateway.ts, on the http server's upgrade event.
- */
+// A plain GET on the socket's path reaches the handler only when it did not ask to upgrade. The upgrade itself is handled in gateway.ts.
 import type { Handlers } from "../../app.ts";
 import { assertProjectScope, requireSession } from "../../actor.ts";
 import { HttpError, rateLimited } from "../../errors.ts";

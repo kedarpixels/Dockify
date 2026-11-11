@@ -1,11 +1,6 @@
 import type { FaviconApp, IconBody, IconMap, IconState, IconTarget } from "./icons";
 
-/*
- * The design preview's icons: fictional favicons for a few frontends of the fixture (preview-fixture.ts,
- * app ids by their place in its list), so the project Icon dropdown has apps to choose from and the
- * sidebar shows one project on an app's favicon beside the folders. The images are drawn here as SVG;
- * nothing is fetched.
- */
+// Fictional favicons for a few fixture frontends, drawn here as SVG; nothing is fetched.
 
 interface PreviewFavicon {
   project: string;

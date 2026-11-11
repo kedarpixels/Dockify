@@ -15,7 +15,7 @@ import { triggerLabel } from "./actions";
 import { secondsBetween } from "./deployment-steps";
 import { hostOfUrl } from "./vercel-links";
 
-/** How Vercel says a deployment started, in words. Anything newer reads as Vercel wrote it. */
+/** Anything newer reads as Vercel wrote it. */
 const SOURCE_LABEL: Record<string, string> = {
   git: "Git push",
   "git-deploy-hook": "Git deploy hook",
@@ -25,17 +25,11 @@ const SOURCE_LABEL: Record<string, string> = {
   import: "Import on Vercel",
 };
 
-/**
- * The ruled facts grid in the Details card, a node on every cell corner as on every ruled grid. The
- * start time reads like every other time: relative, the absolute moment in its tip.
- */
 export function DeploymentMeta({ d, now, multiEnv }: { d: DeploymentDetail; now: number; multiEnv: boolean }) {
   const live = IN_FLIGHT.includes(d.status);
   const wall = secondsBetween(d.createdAt, d.finishedAt ?? now);
   const repo = githubRepo(d.repo);
   const source = deploySource(d);
-  // In full on the page rather than in a tip: "acme-labs" and "Sam", "API token ci", or
-  // "Dockify" for nobody.
   const { main, deployedBy } = deployPeople(d);
   const person = (p: DeployPerson, note?: string) => (
     <span className="dpd-meta-ic">

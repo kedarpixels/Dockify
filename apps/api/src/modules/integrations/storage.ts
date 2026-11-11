@@ -1,10 +1,6 @@
 /**
- * Storage destinations (S3 compatible) for backups. Each one is an integrations row plus the
- * BackupDestination row the backups module points apps at, kept in step here.
- *
- * Row: integrations kind storage, name = the destination name. config { provider, endpoint, bucket,
- * region }, secretId the access key (integration_token), secondSecretId the secret key
- * (storage_secret_key). lastCheckedAt is the last successful test.
+ * S3-compatible backup destinations. Each is an integration row plus the BackupDestination row apps point at, kept
+ * in step here. secretId is the access key, secondSecretId the secret key.
  */
 import type { Keyring } from "@dockify/crypto";
 import type { Integration, Tx } from "@dockify/db";
@@ -34,7 +30,7 @@ export interface S3Target {
   secretKey: string;
 }
 
-/** Path-style URL: works on R2, MinIO and AWS alike, and never puts the bucket in a hostname. */
+/** Path-style: works on R2, MinIO and AWS alike, and never puts the bucket in a hostname. */
 export function bucketUrl(endpoint: string, bucket: string, query: Record<string, string> = {}): URL {
   const u = new URL(endpoint);
   u.pathname = `${u.pathname.replace(/\/+$/, "")}/${bucket}`;
@@ -111,7 +107,7 @@ export function storageHandlers(deps: IntegrationDeps): Handlers {
       const problem = outboundUrlProblem(body.endpoint);
       if (problem) throw badField(problem, "endpoint");
       const region = regionFor(body.provider, body.region);
-      // Tested before anything is stored: a destination that cannot be written is not saved.
+      // Tested before anything is stored: a destination that cannot be reached is not saved.
       await testS3(deps.http, { endpoint: body.endpoint, bucket: body.bucket, region, accessKey: body.accessKey, secretKey: body.secretKey });
       const row = await ctx.db.$transaction(async (tx) => {
         let r: Integration;

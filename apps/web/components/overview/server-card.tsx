@@ -13,11 +13,8 @@ import { useHydrated } from "@/lib/hooks";
 import { useTimeFormat } from "@/lib/time-prefs";
 import type { HostSnapshot } from "@/lib/types";
 
-/**
- * When this browser received the snapshot stamped `fetchedAt`. The first render uses the stamp so
- * it matches the server HTML; then each snapshot is re-anchored on the local clock before paint,
- * so a browser clock that is off by minutes never shifts the uptime.
- */
+// The first render uses the server's stamp so it matches the HTML; then each snapshot is anchored
+// on the local clock, so a browser clock that is off by minutes never shifts the uptime.
 function useReceivedAt(fetchedAt: string) {
   const [at, setAt] = useState(() => Date.parse(fetchedAt));
   // eslint-disable-next-line react-hooks/set-state-in-effect -- the local clock is read once per snapshot, after hydration and before paint; reading it during render would make the server and client renders disagree.
@@ -25,7 +22,6 @@ function useReceivedAt(fetchedAt: string) {
   return at;
 }
 
-/** The host on the Overview: uptime, CPU, memory, disk and network over the last day, then its facts. */
 export function ServerCard({ host, now, fetchedAt }: { host?: HostSnapshot; now: number; fetchedAt: string }) {
   const receivedAt = useReceivedAt(fetchedAt);
   // Sample times read local, but the server cannot know the browser's zone: UTC until hydrated
@@ -51,9 +47,8 @@ export function ServerCard({ host, now, fetchedAt }: { host?: HostSnapshot; now:
   const up = host.uptimeSeconds + Math.max(0, now - receivedAt) / 1000;
   const series = (key: "cpu" | "memory" | "disk" | "network", scale = 1) =>
     host.history?.map((h, i, a) => ({ label: i === a.length - 1 ? "Now" : time.clock(h.at, { utc }), value: h[key] * scale }));
-  // Network history comes in Mbps. With the link speed the installer recorded it reads as a share of
-  // the link like the other meters; without it (null) the meter shows the Mbps themselves, never a
-  // share of a link nobody sized.
+  // With the link speed the installer recorded, network reads as a share of the link like the other
+  // meters; without it (null) the meter shows the Mbps themselves.
   const link = host.network.capacityMbps;
   const meters: Array<{ name: string; detail: string; pct: number | null; value?: string; history?: Array<{ label: string; value: number }> }> = [
     { name: "CPU", detail: cores(host.cpu.cores), pct: host.cpu.usedPct, history: series("cpu") },

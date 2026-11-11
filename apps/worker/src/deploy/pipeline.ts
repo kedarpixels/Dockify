@@ -1,9 +1,6 @@
 /**
- * The deploy job. One writer per deployment: only this handler writes building, deploying and the
- * terminal statuses. The api only moves an in-flight deployment to `cancelling`; this handler sees
- * that, unwinds and writes `cancelled`. What a deployment is gets pinned as soon as it is known
- * (commit sha after the clone, image id after the build), so a retry never rebuilds and never ships
- * a newer branch head, and a rollback reuses the image by id.
+ * One writer per deployment: only this handler writes building, deploying and the terminal statuses. The commit
+ * sha and image id are pinned as soon as known, so a retry never rebuilds and never ships a newer branch head.
  */
 import { enqueue, type Db, type Prisma, type SecretVault } from "@dockify/db";
 import type { DockerPort } from "../data/docker-port.ts";
@@ -46,14 +43,10 @@ export interface DeployDeps {
   dial: Dialer;
   builder: Pick<Builder, "build">;
   host: ServerRuntime["host"];
-  /** Overrides for tests (readiness timing, route settle). */
   swap?: Partial<Pick<SwapDeps, "probe" | "settleMs">>;
   cancelPollMs?: number;
-  /** The data module's Docker port for managed services; by default the same client, wrapped. */
   services?: DockerPort;
-  /** Overrides how the commit author lookup reaches GitHub, for tests. */
   commitAuthorFetch?: typeof fetch;
-  /** Overrides how the disk guard reads the disk, for tests. */
   diskUsage?: DiskUsageReader;
   /** Direct TLS only: lets a preview wait for its certificate before it says Ready. */
   certificateReady?: CertificateCheck;
@@ -89,7 +82,6 @@ const loadDeployment = (db: Db, id: string) =>
   });
 type Loaded = NonNullable<Awaited<ReturnType<typeof loadDeployment>>>;
 
-/** The lowest TCP port an image says it listens on, or null. */
 export function exposedPort(image: Pick<ImageInfo, "Config">): number | null {
   const ports = Object.keys(image.Config?.ExposedPorts ?? {}).flatMap((k) => {
     const m = /^(\d{1,5})(?:\/tcp)?$/.exec(k);
@@ -167,21 +159,15 @@ async function settle(db: Db, id: string, status: "ready" | "failed" | "cancelle
   return n.count === 1;
 }
 
-/** Mail for whoever started the deploy; best effort, so a full queue never fails the settle. */
 async function queueFailureNotice(db: Db, deploymentId: string): Promise<void> {
   await enqueue(db, { kind: "deploy_notify", lane: "maintenance", payload: { deploymentId }, dedupeKey: `deploy_notify:${deploymentId}`, maxAttempts: 5 }).catch(() => undefined);
 }
 
-/** The green or red tick on the commit; best effort like the notice. Previews have their own, in the sticky comment's job. */
 async function queueCommitStatus(db: Db, deploymentId: string): Promise<void> {
   await enqueue(db, { kind: "deploy_status", lane: "maintenance", payload: { deploymentId }, dedupeKey: `deploy_status:${deploymentId}`, maxAttempts: 5 }).catch(() => undefined);
 }
 
-/**
- * App.status only ever comes from what the daemon reports, by the observe pass's own rule
- * (observe/app-status.ts): a first deploy that failed with no container left reads failed, an app
- * that went live and lost its container reads missing.
- */
+/** App.status only ever comes from what the daemon reports, by the observe pass's rule (observe/app-status.ts). */
 async function observeApp(deps: Pick<DeployDeps, "db" | "docker">, appId: string): Promise<void> {
   let container: { id: string; state: string; health: string | null; startedAt: string | null } | null = null;
   try {
@@ -193,11 +179,7 @@ async function observeApp(deps: Pick<DeployDeps, "db" | "docker">, appId: string
   await writeObservedStatus(deps.db, appId, container).catch(() => null);
 }
 
-/**
- * A push that landed while this deploy ran was coalesced into App.pendingDeployAt. Once the deploy
- * settles, promote it to a fresh deployment of the branch head, under the same per-app lock and
- * dedupe key the api's enqueue uses.
- */
+/** A push coalesced into App.pendingDeployAt becomes a fresh deployment, under the api's per-app lock and dedupe key. */
 export async function promotePending(db: Db, appId: string): Promise<string | null> {
   return db.$transaction(async (tx) => {
     const key = `deploy:${appId}`;
@@ -223,11 +205,8 @@ export const ORPHAN_ERROR = "The worker stopped before this deployment finished"
 const ORPHAN_MIN_AGE_MS = 2 * 60_000;
 
 /**
- * Deployments still in flight whose deploy job is gone: completed, failed (for example by
- * failExhausted after three dead workers) or deleted. Nothing will ever run them, and an in-flight
- * row blocks every later deploy, push, env apply, rollback and alert of the app, so each is settled
- * (cancelled if a cancel was asked for, else failed), its app status is re-read from the daemon, and
- * a coalesced push is promoted. Runs on a timer.
+ * Settles in-flight deployments whose job is gone: nothing will run them, and an in-flight row blocks every
+ * later deploy, push, env apply and rollback of the app.
  */
 export async function settleOrphanedDeployments(deps: Pick<DeployDeps, "db" | "docker" | "serverId">, now = Date.now()): Promise<string[]> {
   const { db } = deps;
@@ -306,11 +285,7 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
     if (cancel.signal.aborted) throw new DeployCancelled();
     if (shutdown.aborted) throw new Error("the worker is shutting down; the deploy will resume");
   };
-  /**
-   * The cancel check at the last point a cancel can still win: the row itself, not the poll, which can
-   * be up to cancelPollMs behind. A Cancel pressed in the last seconds of a build otherwise read as
-   * cancelled in the activity while the deploy went on to serve.
-   */
+  /** The last point a cancel can still win: reads the row itself, not the poll, which can be cancelPollMs behind. */
   const checkCancelNow = async () => {
     checkCancel();
     if (await cancelAsked(db, deploymentId)) {
@@ -318,7 +293,6 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
       throw new DeployCancelled();
     }
   };
-  /** A cancel that came once the new version was serving: it is overruled, and the log says so. */
   const noteLateCancel = async () => {
     if (cancel.signal.aborted || (await cancelAsked(db, deploymentId).catch(() => false))) log.system(LATE_CANCEL);
   };
@@ -326,7 +300,6 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
   const app = dep.app;
   let checkoutRoot: string | null = null;
   let retrying = false;
-  // Who wrote the commit, once it is known: best effort, it can neither fail nor hold up the deploy.
   const noteAuthor = async (sha: string | null) => {
     if (!sha || !app.gitRepository) return;
     await recordCommitAuthor({ db, vault, apiBase: config.githubApiBase, ...(deps.commitAuthorFetch ? { fetch: deps.commitAuthorFetch } : {}) }, dep, app.gitRepository, sha, app.environment.project.gitInstallation?.installationId ?? null);
@@ -371,7 +344,6 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
     log.system(`this deploy has ${vars.length} ${vars.length === 1 ? "variable" : "variables"}, read when it started`);
     checkCancel();
 
-    // The image: reuse a pinned one, pull an image app, or clone and build.
     let imageId = dep.imageId;
     // Defence in depth for the api's preview-promotion refusal: never run an image that was built
     // for a preview (fork/PR code) in the live app, whatever row pinned it here.
@@ -577,11 +549,7 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
   }
 }
 
-/**
- * The deploy of a managed Postgres or Redis (data/managed.ts does the container work). Settles
- * the deployment and the app row on success; on failure it throws for handleDeploy's own retry,
- * cancel and settle rules, as a RolledBackError when the previous container runs again.
- */
+/** On failure it throws for handleDeploy's rules, as a RolledBackError when the previous container runs again. */
 async function deployService(deps: DeployDeps, dep: Loaded, track: Tracker, log: DeployLog, checkCancel: () => void): Promise<void> {
   const { db, vault } = deps;
   const port = deps.services ?? new EngineDataPort(deps.docker as DockerClient);

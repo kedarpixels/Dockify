@@ -1,9 +1,4 @@
-/**
- * One run of a scheduled job: a short-lived container from the image the app is serving, with its
- * variables, network and limits, through containerSpec() like every tenant container. Never in the
- * control plane, and a command only goes through a shell when it needs one, as a start command does.
- * No volume: a second writer on an app's data is a choice the owner has not made (fix log).
- */
+/** No volume: a second writer on an app's data is a choice the owner has not made. */
 import type { Db, SecretVault } from "@dockify/db";
 import { Redactor } from "@dockify/redact";
 import type { ContainerInput } from "@dockify/engine";
@@ -22,7 +17,6 @@ export interface JobRunDeps {
   db: Db;
   vault: SecretVault;
   docker: DockerApi;
-  /** Test hooks. */
   pollMs?: number;
   flushMs?: number;
 }
@@ -64,12 +58,10 @@ const runnableApp = (a: LoadedRun["job"]["app"]): RunnableApp => {
   };
 };
 
-/** A run's container input: the release one-off's shape, under its own role and name. */
 export function jobContainerInput(app: RunnableApp, o: { runId: string; imageId: string; env: Record<string, string>; deploymentId: string; command: string }): ContainerInput {
   return appContainerInput(app, { name: jobRunName(app.id, o.runId), imageId: o.imageId, env: o.env, deploymentId: o.deploymentId, role: "job", cmd: o.command });
 }
 
-/** The variables the app is running with, or today's for a deployment that kept none. */
 async function runVars(deps: JobRunDeps, r: LoadedRun): Promise<ResolvedVar[]> {
   const a = r.job.app;
   const sealed = a.currentDeployment?.envSecretId;
@@ -86,10 +78,7 @@ async function settle(deps: JobRunDeps, r: LoadedRun, out: Outcome, log: string,
   if (done.count === 1 && (out.status === "failed" || out.status === "timed_out")) await announceFailure(deps.db, r, out.reason ?? `It exited with code ${out.exitCode}.`);
 }
 
-/**
- * One notice when a job starts failing, not one per run: a job that runs every five minutes and has
- * been broken since Tuesday should not send 600 mails. A success ends the streak.
- */
+/** One notice when a job starts failing, not one per run. A success ends the streak. */
 export async function announceFailure(
   db: Db,
   r: { id: string; createdAt: Date; jobId: string; job: { name: string; app: { id: string; name: string; environment: { name: string; project: { slug: string } } } } },
@@ -224,6 +213,5 @@ async function drain(docker: DockerApi, id: string, tail: TailLog, redactor: Red
     for await (const chunk of stream) demux.push(chunk as Buffer, (_s, d) => lines.push(d.toString("utf8")));
     lines.end();
   } catch {
-    // Output is diagnostic only.
   }
 }

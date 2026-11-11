@@ -1,8 +1,5 @@
-/**
- * Deployment endpoints: list, detail, logs (JSON page or SSE stream), redeploy, rollback, cancel.
- * The api never writes a terminal status: cancel moves an in-flight deployment to `cancelling` and
- * the worker that owns it unwinds and writes `cancelled`.
- */
+// The api never writes a terminal status for a server build: cancel moves it to `cancelling` and
+// the worker that owns it unwinds and writes `cancelled`.
 import { meta, requireActor } from "../../actor.ts";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { Db, Prisma } from "@dockify/db";
@@ -25,14 +22,13 @@ import {
 
 const PAGE = 50;
 const MAX_LINES_PER_PAGE = 5_000;
-/** Decoded bytes one page may hold (roughly; text plus per-line overhead). */
+/** Decoded bytes per page, roughly: text plus per-line overhead. */
 export const MAX_PAGE_BYTES = 1024 * 1024;
 const CHUNKS_PER_READ = 100;
 const SSE_POLL_MS = 1_000;
 const SSE_HEARTBEAT_MS = 15_000;
 const SSE_MAX_MS = 60 * 60_000;
-/** Each open deploy-log stream polls the DB for up to an hour; cap how many one user can hold at
- * once (the runtime-log stream has the same cap), so a viewer or read token cannot open hundreds. */
+/** Each open stream polls the DB for up to an hour, so a viewer or read token must not hold hundreds. */
 const MAX_DEPLOY_STREAMS_PER_USER = 4;
 const openDeployStreams = new Map<string, number>();
 
@@ -50,10 +46,9 @@ async function load(db: Db, id: string, actor: Actor) {
 const who = (a: Actor) => ({ actorType: a.kind === "token" ? ("token" as const) : ("user" as const), actorId: a.kind === "token" ? a.tokenId : a.userId, actorName: a.name });
 
 /**
- * Lines after `after`, oldest first, capped by count and by bytes. A repetitive log gzips about
- * a thousand to one, so a line cap alone would let one small row inflate to tens of MiB per
- * request; the byte budget stops decoding once the page is full and reports more, so the caller
- * pages on with the cursor. At least one line is always returned so paging makes progress.
+ * Lines after `after`, oldest first. A repetitive log gzips about a thousand to one, so the line
+ * cap alone would let one request inflate tens of MiB: the byte budget is the real bound.
+ * At least one line is always returned so paging makes progress.
  */
 export async function readLines(
   db: Db, deploymentId: string, after: number, max = MAX_LINES_PER_PAGE, maxBytes = MAX_PAGE_BYTES,
@@ -77,11 +72,9 @@ export async function readLines(
   return { lines, more: chunks.length === CHUNKS_PER_READ };
 }
 
-/** Log page reads one user may have in flight at once. */
 const MAX_LOG_READS_PER_USER = 2;
 const logReads = new Map<string, number>();
 
-/** Runs a log page read inside the caller's concurrency slot, or answers 429. */
 export async function withLogReadSlot<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   const n = logReads.get(userId) ?? 0;
   if (n >= MAX_LOG_READS_PER_USER) throw new HttpError(429, "Too many log reads at once", "TOO_MANY_READS");
@@ -127,11 +120,7 @@ async function stats(db: Db, scope: Prisma.DeploymentWhereInput) {
   };
 }
 
-/** Server-sent log stream for the live viewer. Resumes from Last-Event-ID; ends with `done`. */
-/**
- * The stream's standing check: the route policy again (session still live, user still a member
- * with the role) and the token's project limit, once a minute.
- */
+/** A stream outlives the request's auth check, so it re-runs the route policy and the token's project limit while open. */
 export function streamReauth(ctx: Pick<Ctx, "db" | "web">, req: FastifyRequest, endpoint: "deployments.logs" | "deployments.logs.stream", projectId: string): Reauthorizer {
   return createReauthorizer(async () => {
     const actor = await enforce(ctx.db, req, ctx.web, POLICIES[endpoint]);
@@ -140,8 +129,9 @@ export function streamReauth(ctx: Pick<Ctx, "db" | "web">, req: FastifyRequest, 
   });
 }
 
+/** SSE. Resumes from Last-Event-ID and ends with a `done` event. */
 async function streamLogs(db: Db, req: FastifyRequest, reply: FastifyReply, id: string, after: number, allowed: Reauthorizer): Promise<void> {
-  // Per-user cap, checked before hijack so it answers a clean 429 instead of opening the stream.
+  // Checked before hijack so the cap answers a clean 429 instead of opening the stream.
   const userId = req.actor?.userId ?? null;
   if (userId && (openDeployStreams.get(userId) ?? 0) >= MAX_DEPLOY_STREAMS_PER_USER) {
     throw new HttpError(429, "Too many open deployment log streams", "TOO_MANY_STREAMS");
@@ -200,7 +190,6 @@ async function streamLogs(db: Db, req: FastifyRequest, reply: FastifyReply, id: 
   }
 }
 
-/** A Vercel deployment's build log, live from Vercel. It ends with the status the row settles on. */
 async function streamVercel(ctx: Ctx, req: FastifyRequest, reply: FastifyReply, d: { id: string; externalId: string | null; projectId: string; status: string }, after: number, endpoint: "deployments.logs" | "deployments.logs.stream"): Promise<void> {
   const settled = async () => {
     const row = await ctx.db.deployment.findUnique({ where: { id: d.id }, select: { status: true } });
@@ -209,7 +198,6 @@ async function streamVercel(ctx: Ctx, req: FastifyRequest, reply: FastifyReply, 
   await streamBuildLog(ctx.db, ctx.ring, req, reply, d, after, streamReauth(ctx, req, endpoint, d.projectId), settled, req.actor?.userId ?? "anonymous");
 }
 
-/** How a cancel reaches Vercel; tests swap it so nothing leaves the process. */
 let vercelHttp: HttpClient | undefined;
 export const setDeploymentsVercelHttp = (h: HttpClient | undefined): void => {
   vercelHttp = h;
@@ -224,8 +212,7 @@ export const deploymentHandlers: Handlers = {
     const and: Prisma.DeploymentWhereInput[] = [];
     const limit = tokenProjectLimit(a);
     if (limit) and.push({ app: { environment: { projectId: { in: limit } } } });
-    // The KPI strip covers everything this caller may see and ignores the list's filters (the
-    // contract in apps/web/lib/pages/deployments.ts), so its scope is taken before any filter.
+    // The KPI strip ignores the list's filters, so its scope is taken before any is added.
     const scope: Prisma.DeploymentWhereInput = and.length ? { AND: [...and] } : {};
     const statuses = statusFilter(query.status);
     if (statuses) and.push({ status: { in: statuses } });
@@ -316,10 +303,9 @@ export const deploymentHandlers: Handlers = {
   "deployments.redeploy": async ({ params, actor, req, ctx }) => {
     const a = requireActor(actor);
     const src = await load(ctx.db, params.id, a);
-    // A preview build is fork/PR code built for an isolated preview env; redeploying it would run
-    // that code in the app's real environment with its production secrets. Never promote one.
+    // Never promote a preview build: it is fork/PR code, and redeploying it would run that code
+    // in the app's real environment with its production secrets.
     if (src.previewId) throw new HttpError(409, "A preview deployment cannot be redeployed into the live app", "PREVIEW_NOT_PROMOTABLE");
-    // A Vercel-target app deploys through sync, not a server build; the worker has no path for it.
     if (src.provider === "vercel" || src.app.deployTarget !== "server") throw new HttpError(409, "This deployment ran on Vercel. Press Deploy on the app, or redeploy it on Vercel.", "NOT_SERVER_TARGET");
     // Same commit and, while it still exists, the same image; env is resolved fresh.
     const id = await enqueueDeployment(ctx.db, src.appId, {
@@ -341,14 +327,13 @@ export const deploymentHandlers: Handlers = {
   "deployments.rollback": async ({ params, actor, req, ctx }) => {
     const a = requireActor(actor);
     const target = await load(ctx.db, params.id, a);
-    // A settled preview deployment satisfies ready+imageId, but it is fork/PR code built for an
-    // isolated preview env; rolling back to it would serve that code with production secrets.
+    // A settled preview passes the ready+imageId check below, but it is fork/PR code: rolling
+    // back to it would serve that code with production secrets.
     if (target.previewId) throw new HttpError(409, "A preview deployment cannot be rolled back into the live app", "PREVIEW_NOT_PROMOTABLE");
     if (target.provider === "vercel" || target.app.deployTarget !== "server") throw new HttpError(409, "This deployment ran on Vercel. Roll it back on Vercel: Instant Rollback there also pauses automatic production domains, which Dockify cannot undo for you.", "NOT_SERVER_TARGET");
     if (target.status !== "ready" || !target.imageId) throw new HttpError(409, "Only a deployment that went ready can be rolled back to", "NOT_ROLLBACK_TARGET");
     const app = await ctx.db.app.findUnique({ where: { id: target.appId }, select: { currentDeploymentId: true } });
     if (app?.currentDeploymentId === target.id) throw new HttpError(409, "This deployment is already the one serving", "ALREADY_CURRENT");
-    // Instant: the pinned image by id and the env snapshot it shipped with, no rebuild.
     const id = await enqueueDeployment(ctx.db, target.appId, {
       trigger: "rollback",
       rollbackOfId: target.id,

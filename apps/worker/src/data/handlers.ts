@@ -1,12 +1,4 @@
-/**
- * The data lane's job handlers, for the worker's handler table:
- *
- *   const data = createDataDeps({ db, vault, docker, tmpDir, localRoot, guard });
- *   Object.assign(handlers, dataJobHandlers(data));
- *   setInterval(() => void dataTick(data), 60_000);
- *
- * Errors carry `permanent: true` when a retry cannot help; the claim loop should fail those at once.
- */
+/** The data lane's job handlers. Errors carry `permanent: true` when a retry cannot help. */
 import type { Db, JobKind } from "@dockify/db";
 import { isPermanentError } from "../errors.ts";
 import type { ClaimedJob } from "../queue.ts";
@@ -18,11 +10,7 @@ import { parseUpgradePayload, runServiceUpgrade } from "./upgrade.ts";
 
 const reasonOf = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 2_000) || "The backup failed";
 
-/**
- * The job is over (its last attempt, or an error a retry cannot fix): a row it leaves running is
- * failed now, with this error. Only a row still running is touched, so a reason the pipeline
- * already wrote stays.
- */
+/** Only a row still running is touched, so a reason the pipeline already wrote stays. */
 export async function settleBackupRow(db: Db, backupId: string, e: unknown, now = new Date()): Promise<void> {
   await db.backup.updateMany({ where: { id: backupId, status: "running" }, data: { status: "failed", error: reasonOf(e), finishedAt: now } });
 }
@@ -41,7 +29,6 @@ function field(payload: unknown, key: string): string {
   return v;
 }
 
-/** The other copies one backup job writes from the same dump (requests.ts BackupJobPayload). */
 export function copiesOf(payload: unknown): string[] {
   const v = (payload as { copies?: unknown } | null)?.copies;
   if (v === undefined) return [];
@@ -65,11 +52,8 @@ export function parseRestorePayload(payload: unknown): RestorePayload {
 
 const HOUR_MS = 60 * 60_000;
 /**
- * The wall clock limit of each data job. A server has one data lane, so a job that never ends (a
- * dump waiting on a lock its tenant holds) would hold up every other project's backups. A dump
- * through gzip moves 10 MB/s at the slow end, so six hours is over 200 GB of SQL. A replay rebuilds
- * indexes and is slower than its dump, and a restore or a version change takes a dump first:
- * twelve hours.
+ * A server has one data lane, so a job that never ends would hold up every project's backups. A gzipped dump
+ * moves 10 MB/s at the slow end (six hours is over 200 GB); a replay is slower and takes a dump first.
  */
 export const DATA_JOB_LIMITS_MS = { backup: 6 * HOUR_MS, restore: 12 * HOUR_MS, restore_test: 12 * HOUR_MS, service_upgrade: 12 * HOUR_MS };
 export type DataJobKind = keyof typeof DATA_JOB_LIMITS_MS;
@@ -107,13 +91,8 @@ export function limitedDocker(docker: DockerPort, signal: AbortSignal, late: () 
   });
 }
 
-/**
- * Each handler settles its own row on the way out when the job is over, whatever failed: the
- * pipeline marks the row itself, and this catches an error that came before it could, so
- * a row never waits for the next sweep to stop reading "running".
- */
+/** Each handler settles its own row when the job is over, so none waits for a sweep to stop reading "running". */
 export function dataJobHandlers(base: DataDeps, limits: Record<DataJobKind, number> = DATA_JOB_LIMITS_MS): Partial<Record<JobKind, DataJobHandler>> {
-  /** Runs one job with its own clock: its deps reach Docker through limitedDocker. */
   const timed = (kind: DataJobKind, run: (deps: DataDeps, job: ClaimedJob) => Promise<void>): DataJobHandler => async (job) => {
     const clock = new AbortController();
     const ms = limits[kind];

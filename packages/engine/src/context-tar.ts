@@ -1,9 +1,6 @@
 /**
- * A build's context as a tar stream: the worker clones on the control plane and sends the checkout to
- * the server that builds it. Files, folders and symlinks with their modes and nothing else, in the
- * form apps/agent/src/context-tar-guard.ts reads: ustar headers, plus a pax header for a long name.
- * .git goes too, as it always reached a build: a Dockerfile may read it. It holds no token, since the
- * clone's credential lives only in that clone's environment (deploy/git.ts).
+ * ustar headers plus a pax header for a long name, the form apps/agent/src/context-tar-guard.ts reads. .git
+ * goes too (a Dockerfile may read it); it holds no token: the clone's credential lives only in its environment.
  */
 import { createReadStream } from "node:fs";
 import { lstat, readdir, readlink } from "node:fs/promises";
@@ -90,7 +87,6 @@ async function* walk(root: string, rel: string): AsyncGenerator<Buffer> {
   }
 }
 
-/** The whole tree under `root`, as one tar stream. */
 export function packContext(root: string): Readable {
   async function* all(): AsyncGenerator<Buffer> {
     yield* walk(root, "");

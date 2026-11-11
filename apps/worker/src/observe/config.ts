@@ -1,22 +1,12 @@
-/**
- * Observability settings, read once from the environment. Every value has a safe default, so the
- * worker runs with none of them set.
- */
+/** Every value has a safe default, so the worker runs with none of them set. */
 export interface ObserveConfig {
-  /** Sampler tick. Each tick writes one raw row for the host and one per running app container. */
   sampleMs: number;
-  /** Alert evaluation tick. */
   alertMs: number;
-  /** Control-plane probes for the "service" rule. Internal, operator-set addresses only. */
+  /** Internal, operator-set addresses only. */
   probes: { api: string | null };
-  /** The status page reachability probe (reach.ts), once per everyMs. */
   reach: { everyMs: number };
-  /**
-   * Runtime log lines are kept for the owner's Log retention setting (Instance.logRetentionDays,
-   * logs.ts logRetentionDays); this value (DOCKIFY_RUNTIME_LOG_DAYS) counts only when the row has none.
-   */
+  /** Fallback only (DOCKIFY_RUNTIME_LOG_DAYS): counts when Instance.logRetentionDays holds no value. */
   logRetentionDays: number;
-  /** Hard caps on runtime_log_lines on top of age: total size and rows per app (logs.ts enforceLogCaps). */
   logCaps: { maxTableBytes: number; maxRowsPerApp: number };
   /** Raw rows kept 24 h, five_min 30 d, hour 1 year (the MetricSample model comment). */
   retention: { rawHours: number; fiveMinDays: number; hourDays: number };

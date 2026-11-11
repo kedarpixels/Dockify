@@ -8,19 +8,8 @@ import { buildPreviewOverview } from "@/lib/preview-fixture";
 import type { AppKind, Overview, OverviewSource, Resource } from "@/lib/types";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/*
- * Resources and Domains pages. The routes are in packages/contracts/src/endpoints.ts (all JSON, session
- * cookie auth, every read sent with cache: no-store).
- *
- *   Connection details are never listed here: an app reads a service's credentials through an
- *   env reference (see project-detail.ts, EnvRef), which the API resolves at deploy time.
- *
- * The browser never calls the API directly: it goes through the same-origin route handlers in
- * app/api/domains, which guard the origin (`guardWrite`), validate ids and bodies, and forward the
- * cookie with `forward()` below.
- */
-
-/* -------------- Types -------------- */
+// Loaders and route helpers for the Resources and Domains pages. The browser never calls the API
+// directly: it goes through app/api/domains, which forwards with `forward()` below.
 
 export type StatefulKind = Extract<AppKind, "postgres" | "redis" | "s3">;
 
@@ -47,17 +36,12 @@ export interface DomainRow {
   hostname: string;
   appId: string;
   appName: string;
-  /** The app's display name, when it has one: what the row reads. */
   appDisplayName?: string;
   projectSlug: string;
   environment: string;
   /** "expiring" is derived in the UI from expiresAt, it is never sent. */
   tls: { status: TlsStatus; issuer: string | null; expiresAt: string | null };
-  /**
-   * `resolved` holds what the last lookup found (CNAME targets as "cname:<name>", then addresses).
-   * `detail` says in one line why the domain does not point here; null when it does, absent from
-   * an API older than the field.
-   */
+  /** `resolved`: what the last lookup found (CNAME targets as "cname:<name>", then addresses). `detail`: why the domain does not point here, null when it does. */
   dns: { status: DnsStatus; resolved: string[]; checkedAt: string | null; detail?: string | null };
   /** The ownership probe, for records that name a proxy; absent from an API older than it. */
   probe?: { status: ProbeStatus; detail: string | null; checkedAt: string | null };
@@ -68,19 +52,13 @@ export interface DomainRow {
   createdAt: string;
 }
 
-/**
- * The list and an app's Domains tab. getDomains hands the server's targets on as strings ("" when
- * unknown); an app's tab gets the API's payload as it is, where an unknown target is null and an
- * older API sends neither the mode nor the IPv6 address. Read both through domainTargets
- * (lib/domain-targets.ts).
- */
+/** An unknown target is "" from getDomains and null on an app's tab; read both through domainTargets (lib/domain-targets.ts). */
 export interface DomainsPayload {
   items: DomainRow[];
   ingress: IngressMode;
   server: { ipv4: string | null; ipv6?: string | null; tunnelTarget?: string | null };
 }
 
-/** Whether this server can offer free test domains. */
 export interface TestDomainOffer {
   available: boolean;
   reason: string | null;
@@ -94,8 +72,6 @@ export interface PageResult<T> {
   fetchedAt: string;
 }
 
-/* -------------- API access -------------- */
-
 /** One read (lib/api.ts, bounded): a line for the status on a failure, never the API's wording. */
 async function apiGet<T>(path: string): Promise<{ data: T | null; error?: string; status: number }> {
   const r = await apiRequest<T>(path);
@@ -103,7 +79,7 @@ async function apiGet<T>(path: string): Promise<{ data: T | null; error?: string
   return r.data === null ? { data: null, error: UNREADABLE, status: 502 } : { data: r.data, status: r.status };
 }
 
-/** Lists may come back bare or wrapped, the same tolerance as the deployments day feed. */
+/** Lists may come back bare or wrapped. */
 const rows = <T,>(body: T[] | { items?: T[]; data?: T[] }) => (Array.isArray(body) ? body : (body.items ?? body.data ?? []));
 
 export const getResources = cache(async (): Promise<PageResult<ResourceRow[]>> => {
@@ -130,8 +106,6 @@ export const getDomains = cache(async (): Promise<PageResult<DomainsPayload>> =>
   return { source: "none", data: null, fetchedAt };
 });
 
-/* -------------- Route helpers -------------- */
-
 /** Ids are opaque API tokens. Anything else, ".." above all, never reaches an upstream path. */
 export const isId = (id: unknown): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id);
 
@@ -151,13 +125,7 @@ export async function readAddDomain(request: Request): Promise<{ hostname: strin
   return { hostname, appId };
 }
 
-/**
- * Forwards a write from a same-origin route handler to the API (lib/api.ts) with the caller's cookie
- * and hands the API's answer back. A refusal keeps the API's 4xx and code (401 ends the session, a
- * step-up refusal asks for one; removing a domain is elevated), and an answer this dashboard cannot
- * read becomes `{ ok: false, error }`, so the browser always reads one shape. Without an API there is
- * nothing to write to: the preview applies its writes in local state and never calls these routes.
- */
+/** Forwards a write with the caller's cookie. A refusal keeps the API's 4xx and code; an unreadable answer becomes `{ ok: false, error }`, so the browser always reads one shape. */
 export async function forward(method: "POST" | "DELETE", path: string, body?: unknown): Promise<Response> {
   if (!process.env.DOCKIFY_API_URL) return refuse(503, "No data source");
   const r = await apiRequest<unknown>(path, { method, body });
@@ -166,9 +134,7 @@ export async function forward(method: "POST" | "DELETE", path: string, body?: un
   return refuse(upstreamStatus(r.status), r.error, r.code ? { code: r.code } : {});
 }
 
-/* -------------- Preview fixture -------------- */
-// Derived from buildPreviewOverview so ids, projects, statuses and the domain count agree with
-// the overview. Stats are seeded per resource, so every refresh shows the same numbers.
+// Preview fixture, derived from buildPreviewOverview and seeded per resource, so every refresh shows the same numbers.
 
 const MB = 1024 ** 2;
 const GB = 1024 ** 3;
@@ -246,11 +212,7 @@ const PREVIEW_IPV6 = "2001:db8::24";
 /** Two addresses in Cloudflare's published edge ranges, as a proxied record resolves. */
 const PREVIEW_CF_EDGE = ["104.21.48.12", "172.67.181.40"];
 
-/**
- * The domains that wait for DNS, and why: one added minutes ago with no record yet, and one behind
- * Cloudflare whose check cannot get through while Cloudflare insists on a certificate this server
- * only asks for once the check passes. The rest point here.
- */
+/** The domains that wait for DNS, and why. The rest point here. */
 const WAITING: Record<string, { resolved: string[]; detail: string; probe?: string }> = {
   "devapi.fieldnote.example": { resolved: [], detail: "No A or AAAA record for devapi.fieldnote.example yet." },
   "www.brightlane.example": {

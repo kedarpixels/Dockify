@@ -7,13 +7,11 @@ import type { OverviewSource } from "@/lib/types";
 import type { DeployTemplateInput, DeployTemplateResult, TemplateRow } from "./template-spec";
 import { LINK_CONFLICT, readConflict, type CreateAppsInput, type CreateAppsResult, type DetectInput, type DetectResult, type LinkConflict, type NewAppAnswer, type NewAppContext } from "./spec";
 
-/* Browser side of the new app flow: calls to the same-origin proxy under app/api/new-app. */
-
 export type Call<T> =
   | { ok: true; source: OverviewSource; data: T }
   | { ok: false; source: OverviewSource; error: string; code?: string; conflict?: LinkConflict };
 
-/** One call to app/api/new-app. Never throws; an aborted call resolves to a failed answer nobody reads. */
+/** Never throws; an aborted call resolves to a failed answer nobody reads. */
 async function call<T>(path: string, init?: { body?: unknown; signal?: AbortSignal }): Promise<Call<T>> {
   const r = await callJson<NewAppAnswer<T>>(`/api/new-app${path}`, { body: init?.body, signal: init?.signal });
   if (r.ok && r.data && r.data.data !== null) return { ok: true, source: r.data.source, data: r.data.data };
@@ -28,11 +26,9 @@ export const detect = (input: DetectInput, signal: AbortSignal) => call<DetectRe
 export const createApps = (input: CreateAppsInput) =>
   elevate(() => call<CreateAppsResult>("", { body: input }), { what: input.apps.length > 1 ? "Importing apps" : "Adding an app" });
 
-/** The API refuses without a step-up the same way: a press asks "Confirm it is you" and sends again. */
 export const deployTemplate = (input: DeployTemplateInput) =>
   elevate(() => call<DeployTemplateResult>("/templates", { body: input }), { what: "Deploying a template" });
 
-/** The release's templates, fetched once a person opens that choice. */
 export function useTemplates(wanted: boolean) {
   const [rows, setRows] = useState<TemplateRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +50,6 @@ export function useTemplates(wanted: boolean) {
 
 export type ContextState = { state: "loading" } | { state: "ready"; data: NewAppContext } | { state: "error"; error: string };
 
-/** Registries and the Vercel account, loaded once when the dialog opens. */
 export function useNewAppContext() {
   const [ctx, setCtx] = useState<ContextState>({ state: "loading" });
   useEffect(() => {

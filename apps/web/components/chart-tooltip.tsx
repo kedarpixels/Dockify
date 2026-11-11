@@ -4,11 +4,7 @@ export interface TooltipRow {
   color: string;
 }
 
-/**
- * Pointer-following chart tooltip in the portfolio tooltip style: inverted ink card, 8px radius,
- * 12px text, a down caret under the point. x and y are the point in the positioned parent; the
- * card sits centred above it. Keep it unclipped by placing it outside overflow: hidden boxes.
- */
+/** x and y are the point in the positioned parent. Place it outside overflow: hidden boxes or it clips. */
 export function ChartTooltip({ x, y, title, rows }: { x: number; y: number; title: string; rows: TooltipRow[] }) {
   return (
     <div className="ctip" style={{ left: x, top: y }} role="tooltip">

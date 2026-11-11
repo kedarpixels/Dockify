@@ -86,7 +86,6 @@ const HOSTED_HIDES: ReadonlySet<AppTab> = new Set(["jobs", "metrics", "terminal"
 
 type Op = "deploy" | "restart" | "stop" | "start";
 
-/* Toast copy per action: the loading line while the request runs, then the result. */
 const OP_COPY: Record<Op, { loading: string; success: string; error: string }> = {
   deploy: { loading: "Starting deployment", success: "Deployment started", error: "Could not start the deployment" },
   restart: { loading: "Restarting", success: "Restart requested", error: "Could not restart" },
@@ -94,7 +93,6 @@ const OP_COPY: Record<Op, { loading: string; success: string; error: string }> =
   start: { loading: "Starting", success: "App started", error: "Could not start the app" },
 };
 
-/** The deployment id a deploy answered with, when the API sends one. */
 const deploymentIdOf = (data: unknown) =>
   data && typeof data === "object" && "deploymentId" in data && typeof data.deploymentId === "string" ? data.deploymentId : null;
 
@@ -106,18 +104,13 @@ const OP_STATUS: Record<Op, AppStatus> = {
   start: "running",
 };
 
-/* -------------- Overview -------------- */
-
 /** The limits in force with the defaults resolved, as the Metrics tab reads them. */
 type Limits = AppMetrics["limits"];
 
 const MIB = 1024 ** 2;
 
-/*
- * The app read carries only the overrides (null uses the server default, never "no limit"), so the
- * numbers come from the metrics read and say when they are the default. Null while that read is
- * out and no override says it either.
- */
+// The app read carries only the overrides (null means the server default, never "no limit"), so
+// the numbers come from the metrics read. Null while that read is out and no override says it.
 function cpuText(s: AppSettings, limits: Limits | null): string | null {
   if (limits) return `${cores(limits.cpuCores)}${s.cpuLimit === null ? " (default)" : ""}`;
   return s.cpuLimit !== null ? cores(s.cpuLimit) : null;
@@ -272,8 +265,7 @@ function Latest({ app, now }: { app: AppDetail; now: number }) {
   );
 }
 
-/** Usage across the page, then the latest deployment and the runtime facts side by side. An app on
-    Vercel shows what Vercel serves and the project it follows instead. */
+/** An app on Vercel shows what Vercel serves and the project it follows instead. */
 function OverviewTab({ app, now, onTab }: { app: AppDetail; now: number; onTab: (t: "deployments") => void }) {
   if (onVercel(app)) return <VercelOverview app={app} now={now} onTab={onTab} />;
   return <ServerOverview app={app} now={now} />;
@@ -294,13 +286,7 @@ function ServerOverview({ app, now }: { app: AppDetail; now: number }) {
   );
 }
 
-/* -------------- Variables -------------- */
-
-/**
- * The project workbench, narrowed to this app. It reads the project extras itself; the overview
- * lists the project's other apps (for links and reach), and this app stands in for itself, so the
- * tab never waits on the poll.
- */
+/** This app stands in for itself among the project's apps, so the tab never waits on the poll. */
 function AppEnvTab({ app, apps, now }: { app: AppDetail; apps: Resource[]; now: number }) {
   const { load, reload, patch } = useProjectExtras(app.projectSlug);
   const extras = load.state === "ready" ? load.result.data : null;
@@ -324,16 +310,10 @@ function AppEnvTab({ app, apps, now }: { app: AppDetail; apps: Resource[]; now: 
   );
 }
 
-/* -------------- Page -------------- */
-
 /** One empty list while the overview has not answered, so the Variables tab does not rebuild every tick. */
 const NO_RESOURCES: Resource[] = [];
 
-/**
- * A head key that changes what runs. It keeps the focus while its action runs (PendingButton);
- * another action in flight, or a state it cannot act on, makes it unavailable. A Viewer can run
- * none of them, so a Viewer's head has no keys.
- */
+/** Keeps the focus while its action runs (PendingButton). A Viewer's head has no keys. */
 function OpKey({
   op,
   label,
@@ -371,7 +351,6 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
   const o = result.data;
   const notices = useMemo(() => (o ? deriveNotices(o, now) : null), [o, now]);
   const [tab, setTab] = useUrlTab(APP_TABS);
-  // Switching away from Settings with unsaved edits asks first.
   const tabGuard = useTabSwitchGuard(tab, "settings", setTab);
   const [override, setOverride] = useState<{ status: AppStatus; at: string } | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);

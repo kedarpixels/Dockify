@@ -6,19 +6,8 @@ import { SITE_URL } from "@/components/seo/config";
 import { hstsFor } from "./lib/hsts";
 
 /*
- * Security headers for every response on the marketing and docs site. The site takes no input and
- * holds no session, but it is still framed-clickjacking and MIME-sniffing surface, and the install
- * page shows commands people paste as root, so it must not be embeddable or sniffable.
- *
- * Every page is prerendered at build time, so the CSP allows scripts by hash instead of by nonce:
- * a nonce has to be fresh per response, which would force every page to render on each request.
- * The first request reads the prerendered pages (.next/server/app/**.html) once, hashes each page's
- * inline scripts (the pre-paint theme script and Next's own inline bootstrap), and every response
- * then lists exactly its page's hashes: no 'unsafe-inline', no nonce, nothing else can run.
- * Client-side navigation keeps the document it started on, and fetches no inline script.
- *
- * A path with no prerendered page is answered by the prerendered 404, so it gets that page's hashes.
- * Development renders on demand, so `next dev` gets 'unsafe-inline' and 'unsafe-eval' instead.
+ * Pages are prerendered, so the CSP allows inline scripts by hash: a nonce must be fresh per response, which
+ * would force every page to render per request. The first request hashes each prerendered page's scripts once.
  */
 
 const BASE = [
@@ -69,10 +58,8 @@ function build(): Map<string, string> {
 function cspFor(pathname: string): string {
   if (process.env.NODE_ENV === "development") return policy(" 'unsafe-inline' 'unsafe-eval'");
   table ??= build();
-  // Hosts that do not ship the prerendered pages beside the proxy (Vercel runs it apart from the
-  // build output) leave nothing to hash. A hash-only policy there would block Next's own bootstrap
-  // and the page would never start, so inline scripts are allowed instead. The site takes no input
-  // and holds no session, so this costs little; a self-hosted server keeps the hash-only policy.
+  // A host that runs the proxy apart from the build output (Vercel) leaves nothing to hash. A hash-only policy
+  // would block Next's own bootstrap there, so inline scripts are allowed instead.
   if (table.size === 0) return policy(" 'unsafe-inline'");
   const route = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   return table.get(route) ?? table.get("/_not-found") ?? policy("");

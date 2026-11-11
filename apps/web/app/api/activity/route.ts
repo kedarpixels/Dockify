@@ -3,7 +3,6 @@ import { CATEGORIES, getActivity, type ActivityCategory } from "@/lib/pages/acti
 
 const isCategory = (v: string): v is ActivityCategory => CATEGORIES.some((c) => c === v);
 
-/** GET /api/activity?cursor&category&actor&q: one page of the activity log for the Activity view. */
 export async function GET(request: Request) {
   const p = new URL(request.url).searchParams;
   const category = p.get("category") || null;

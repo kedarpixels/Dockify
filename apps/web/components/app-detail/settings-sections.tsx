@@ -18,16 +18,13 @@ import { mutate } from "@/components/project-detail/controls";
 import { Optional } from "@/components/project-detail/shared";
 import { TabCard } from "./states";
 
-/* The config cards of the Settings tab. Each holds its own draft and sends only its own slice of
-   AppConfigPatch; the answer (or, in the preview, the patch applied locally) becomes the new config.
-   Each card tells the tab whether it holds unsaved edits (`onDirty`), so leaving the page asks first. */
+/* Each card holds its own draft and sends only its own slice of AppConfigPatch. */
 
 const INTEGRATIONS_HREF = "/settings?section=integrations";
 
-/** What every settings card takes on top of its own data: where it reports unsaved edits. */
 export type DirtyReport = (dirty: boolean) => void;
 
-/** Tells the tab whether this card holds unsaved edits, and that it holds none once it goes. */
+/** Also reports clean when the card goes. */
 export function useReportDirty(dirty: boolean, onDirty?: DirtyReport) {
   useEffect(() => {
     onDirty?.(dirty);
@@ -35,11 +32,7 @@ export function useReportDirty(dirty: boolean, onDirty?: DirtyReport) {
   }, [dirty, onDirty]);
 }
 
-/**
- * Discard and Save at the end of a card's form. Save keeps the focus while it saves. A Viewer gets
- * neither key: the cards are read-only for them, under the tab's one note (the card's own save
- * refuses too, so Enter does nothing).
- */
+/** Save keeps the focus while it saves. A Viewer gets neither key. */
 export function SaveRow({ dirty, busy, ready = true, onDiscard }: { dirty: boolean; busy: boolean; ready?: boolean; onDiscard: () => void }) {
   const can = useCan();
   if (!can.manage) return null;
@@ -55,13 +48,12 @@ export function SaveRow({ dirty, busy, ready = true, onDiscard }: { dirty: boole
   );
 }
 
-/** The one note a Viewer reads above the read-only settings cards. */
 export function ReadOnlyNote() {
   const can = useCan();
   return can.manage ? null : <Callout tone="info">Only an admin can change these settings.</Callout>;
 }
 
-/** Sends one slice. Resolves to the new config, or null after an error toast. */
+/** Resolves to the new config, or null after an error toast. */
 async function savePatch(app: AppDetail, config: AppConfig, patch: AppConfigPatch, m: { success: string; error: string; what: string }) {
   const r = report(await mutate({ type: "app.config", id: app.id, patch }), { ...m, what: `${app.projectSlug} / ${appTitle(app)}, ${m.what}` });
   if (!r.ok) return null;
@@ -69,11 +61,8 @@ async function savePatch(app: AppDetail, config: AppConfig, patch: AppConfigPatc
   return answered ?? { ...config, ...patch, target: patch.target ?? config.target };
 }
 
-/** Whole number field text to a number, or null when empty. */
 const whole = (v: string) => (v.trim() === "" ? null : Number(v.trim()));
 const isWhole = (v: string, lo: number, hi: number) => /^\d+$/.test(v.trim()) && +v >= lo && +v <= hi;
-
-/* -------------- Health check -------------- */
 
 type HealthDraft = Record<"path" | "expectedStatus" | "timeoutSeconds" | "gracePeriodSeconds" | "intervalSeconds", string>;
 
@@ -202,8 +191,6 @@ export function HealthSection({ app, config, onSaved, onDirty }: { app: AppDetai
   );
 }
 
-/* -------------- Resource limits -------------- */
-
 type LimitsDraft = Record<"cpuCores" | "memoryMb" | "pids", string>;
 const text = (n: number | null) => (n === null ? "" : String(n));
 
@@ -272,8 +259,6 @@ export function LimitsSection({ app, config, onSaved, onDirty }: { app: AppDetai
   );
 }
 
-/* -------------- Release command -------------- */
-
 export function ReleaseSection({ app, config, onSaved, onDirty }: { app: AppDetail; config: AppConfig; onSaved: (c: AppConfig) => void; onDirty?: DirtyReport }) {
   const can = useCan();
   const [cmd, setCmd] = useState(config.release.command);
@@ -328,8 +313,6 @@ export function ReleaseSection({ app, config, onSaved, onDirty }: { app: AppDeta
     </TabCard>
   );
 }
-
-/* -------------- Deploy target -------------- */
 
 /** Where it runs, as the card offers it: following a Vercel project is the default for a link. */
 type Target = "server" | "follow" | "deploy";
@@ -395,7 +378,6 @@ export function TargetSection({ app, config, now, onSaved, onDirty }: { app: App
       >
         <Field label="Serve from">
           {(ids) =>
-            // A Viewer reads the choice in a read-only field, like every other field in these cards.
             can.manage ? (
               <Segmented
                 ids={ids}

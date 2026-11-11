@@ -31,10 +31,7 @@ export const NO_PEOPLE: People = { avatars: new Map(), logins: new Map(), loginO
 /** Webhooks and schedules both read as Dockify itself acting. */
 export const actorKind = (t: ActorType): ActorKind => (t === "user" || t === "token" ? t : "system");
 
-/**
- * The lookup tables from current members, for callers that already hold the team. Only a verified
- * login names a member: an unverified one is a claim nobody checked, so its pushes stay GitHub's.
- */
+/** Only a verified login names a member: an unverified one is a claim nobody checked, so its pushes stay GitHub's. */
 export function peopleOf(members: ReadonlyArray<{ id: string; name: string; avatarUrl: string | null; githubLogin: string | null; githubVerifiedAt: Date | null }>): People {
   return {
     avatars: new Map(members.map((u) => [u.id, u.avatarUrl])),
@@ -44,9 +41,8 @@ export function peopleOf(members: ReadonlyArray<{ id: string; name: string; avat
 }
 
 /**
- * The members behind `rows`: pictures by user id, and push authors by linked GitHub login. Shown
- * where team.get shows people: to signed-in sessions, for current members. Token callers cannot
- * read the team, so they get none, and a former member is never resolved.
+ * The members behind `rows`, for signed-in sessions only: a token cannot read the team, so it gets none,
+ * and a former member is never resolved.
  */
 export async function loadPeople(db: Tx, viewer: Actor | null, rows: Iterable<ActorColumns>): Promise<People> {
   if (viewer?.kind !== "session") return NO_PEOPLE;
@@ -76,10 +72,7 @@ export function avatarOf(r: ActorColumns, people: People): string | null {
 /** A push author's public GitHub picture: the one the push carried, else GitHub's by login. */
 export const githubAvatar = (login: string, url?: string | null): string => url ?? `https://avatars.githubusercontent.com/${encodeURIComponent(login)}?s=64`;
 
-/**
- * The contract shape, or null when nobody is named (Dockify acted on its own, or a push carried no
- * login). A push by anyone but a verified member is named by its GitHub login, never as a member.
- */
+/** Null when nobody is named. A push by anyone but a verified member is named by its GitHub login, never as a member. */
 export function actorRef(r: ActorColumns, people: People): ActorRef | null {
   const author = pushAuthor(r, people);
   if (author) return { name: author.name, avatarUrl: author.avatarUrl, kind: "user" };
@@ -89,9 +82,8 @@ export function actorRef(r: ActorColumns, people: People): ActorRef | null {
 }
 
 /**
- * Who wrote a deployment's commit, as GitHub knows them, even when a member's account is linked to
- * that login: the row shows the GitHub person and `actor` keeps who started it. A git name wins over
- * a login, since on such a row the login is the pusher's. Null on a row with no author recorded.
+ * Who wrote a deployment's commit, as GitHub knows them, even when a member links that login.
+ * A git name wins over a login, since on such a row the login is the pusher's.
  */
 export function authorRef(r: ActorColumns, people: People): GitAuthor | null {
   if (r.gitAuthorName) return { name: r.gitAuthorName, login: null, avatarUrl: null, isActor: false };
@@ -103,7 +95,6 @@ export function authorRef(r: ActorColumns, people: People): GitAuthor | null {
 /** The kinds Dockify runs itself: a deployment of one never has a commit. */
 const SERVICE_KINDS: ReadonlySet<string> = new Set(["postgres", "redis", "s3"]);
 
-/** The repository of an image reference, without a tag or a digest. */
 const repositoryOf = (ref: string): string => {
   const bare = ref.split("@")[0] ?? "";
   const colon = bare.lastIndexOf(":");
@@ -111,9 +102,8 @@ const repositoryOf = (ref: string): string => {
 };
 
 /**
- * What a deployment with no commit ran: the reference it recorded, else the app's. A pull records
- * repo@sha256:..., which has lost its tag, so the app's own reference stands in while it is the same
- * repository. Null for a Git deployment, a commit always meaning Git.
+ * What a deployment with no commit ran. A pull records repo@sha256:..., which has lost its tag,
+ * so the app's own reference stands in while it names the same repository.
  */
 export function deployedImage(d: { commitSha: string | null; imageRef?: string | null }, app: { kind?: string | null; image?: string | null }): string | null {
   if (d.commitSha || (!SERVICE_KINDS.has(app.kind ?? "") && !app.image)) return null;
@@ -124,7 +114,7 @@ export function deployedImage(d: { commitSha: string | null; imageRef?: string |
   return lostTag && configured && repositoryOf(configured) === repositoryOf(ref) ? configured : ref;
 }
 
-/** The author and source fields every deployment row carries; a row with no commit has no branch either. */
+/** A row that ran an image shows no branch. */
 export function deploymentSource(d: ActorColumns & { branch: string | null; commitSha: string | null; imageRef?: string | null }, app: { kind?: string | null; image?: string | null }, people: People) {
   const image = deployedImage(d, app);
   return { branch: image ? null : d.branch, author: authorRef(d, people), image };

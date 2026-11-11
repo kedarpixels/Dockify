@@ -10,10 +10,7 @@ import { PASSWORD_MISMATCH } from "@/lib/password";
 import { CooldownNotice, MatchHint, Notice, PasswordInput, StrengthMeter, SubmitButton, useCooldown } from "./fields";
 import { settle } from "./util";
 
-/**
- * /reset/[token]: a new password from an emailed link. The link works once; setting the password
- * ends every session, so the visitor signs in fresh (and still meets two-factor, when it is on).
- */
+/** The link works once; setting the password ends every session, so the visitor signs in fresh. */
 export function ResetView({ token, reset }: { token: string; reset: ResetPreview }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");

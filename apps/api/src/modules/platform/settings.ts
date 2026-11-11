@@ -28,10 +28,8 @@ export interface SettingsChange {
 }
 
 /**
- * Turns a patch into an update plus the audit diff. The public URL is owned by DOCKIFY_PUBLIC_URL
- * (cookies and CSRF derive from it at boot), so a different value is refused rather than silently
- * overwritten on the next restart. The Dashboard domain flow is how it changes
- * (modules/integrations/dashboard-domain.ts).
+ * The public URL is owned by DOCKIFY_PUBLIC_URL (cookies and CSRF derive from it at boot), so a
+ * different value is refused here. It changes only through the Dashboard domain flow.
  */
 export function planSettings(row: SettingsRow, body: BodyOf<"settings.patch">, configuredOrigin: string): SettingsChange {
   const data: Prisma.InstanceUpdateInput = {};
@@ -86,7 +84,7 @@ export const settingsHandlers: Handlers = {
     const next = await ctx.db.$transaction(async (tx) => {
       const r = await tx.instance.update({ where: { id: 1 }, data: plan.data });
       if (plan.data.name !== undefined) await tx.team.updateMany({ data: { name: r.name } });
-      // A new instance preview domain needs its wildcard record (and the old one goes once unused).
+      // Both domains: the new one needs its wildcard record and the old one is dropped once unused.
       if (plan.data.previewDomain !== undefined) {
         for (const d of [row.previewDomain ?? P.defaultPreviewDomain(row.publicUrl), r.previewDomain ?? P.defaultPreviewDomain(r.publicUrl)]) if (d) await enqueuePreviewTx(tx, "preview_dns", d);
       }

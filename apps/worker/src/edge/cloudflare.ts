@@ -2,17 +2,8 @@ import { assertTenantHost, normalizeHost } from "./hostnames.ts";
 import { API_PATH_PREFIX, API_UPSTREAM, TUNNEL_SERVICE, WEB_UPSTREAM } from "./ingress.ts";
 
 /**
- * Cloudflare automation, ported from the old api's cloudflare.ts with its two defects fixed:
- *
- *   1. Nothing is adopted or overwritten. Wiring refuses when the hostname already has any DNS
- *      record or any tunnel rule, and reports it as "external" instead.
- *   2. Teardown deletes only what Dockify recorded: the record by its stored id (and only while it
- *      still is the tunnel CNAME we made), and the tunnel rule only when it still points at our
- *      proxy service. Hand-made records and rules are never touched.
- *
- * The tunnel is the one the installer recorded for this box (by id, never looked up by name or
- * position). Tunnel config edits are a read-modify-write, so the caller serialises them with
- * `withTunnelLock`. The token goes only in the Authorization header and is never logged.
+ * Wiring adopts nothing: a hostname that already has a DNS record or tunnel rule is "external".
+ * Teardown removes only what Dockify recorded, and only while it is still ours. The token is never logged.
  */
 
 const CF_API = "https://api.cloudflare.com/client/v4";
@@ -80,11 +71,7 @@ interface CfTunnelConfig { config?: ({ ingress?: CfIngress[] } & Record<string, 
 
 const enc = encodeURIComponent;
 
-/**
- * The managed zone that owns `host`: walks the host's suffixes longest first and asks for each by
- * exact name, so the account's zone count never matters. Only zones the owner marked managed in
- * Dockify count; a zone the token can see but nobody opted in is never written to.
- */
+/** Only zones the owner marked managed count; a zone nobody opted in is never written to. */
 export async function findZoneForHost(cf: CfClient, host: string, managedZoneIds: ReadonlySet<string>): Promise<CfZone | null> {
   const labels = host.split(".");
   for (let i = 0; i <= labels.length - 2; i++) {
@@ -105,25 +92,19 @@ export function withRule(ingress: CfIngress[], rule: CfIngress): CfIngress[] {
   return [...ingress, rule, { service: CATCH_ALL }];
 }
 
-/** Our rule for `host`: that exact hostname, no path, pointing at our proxy service. */
 export const isOurRule = (r: CfIngress, host: string): boolean =>
   r.hostname === host && r.service === TUNNEL_SERVICE && (r.path === undefined || r.path === "");
 
 export interface WireInput {
   cf: CfClient;
   accountId: string;
-  /** The tunnel the installer recorded for this box. */
   tunnelId: string;
   host: string;
   reserved: Set<string>;
   managedZoneIds: ReadonlySet<string>;
   withTunnelLock: <T>(fn: () => Promise<T>) => Promise<T>;
-  /**
-   * Set on a retry of a job that had already started adding the rule, so a rule we added before a
-   * crash is recognised as ours instead of being reported as hand-made.
-   */
+  /** Set on a retry, so a rule added before a crash is recognised as ours, not reported as hand-made. */
   resumingRule: boolean;
-  /** Persists "about to add the rule" before the PUT, so a retry can tell. */
   markRuleIntent: () => Promise<void>;
 }
 
@@ -202,14 +183,11 @@ export interface UnwireInput {
   cf: CfClient;
   accountId: string;
   host: string;
-  /** Exactly what the Domain row recorded. */
   zoneId: string;
   recordId: string;
-  /** The tunnel recorded at wire time, when known; otherwise read from the record we made. */
   tunnelId: string | null;
   reserved: Set<string>;
   withTunnelLock: WireInput["withTunnelLock"];
-  /** This server's addresses: an A or AAAA record Dockify made in direct mode still names one. */
   serverAddresses?: readonly string[];
 }
 
@@ -220,10 +198,7 @@ export interface UnwireOutcome {
   message: string;
 }
 
-/**
- * Removes what wireDomain created, by the recorded ids. A record someone has since edited (other
- * name, other target) is left in place, and so is any tunnel rule that is not exactly ours.
- */
+/** A record someone has since edited is left in place, and so is any tunnel rule that is not exactly ours. */
 export async function unwireDomain(u: UnwireInput): Promise<UnwireOutcome> {
   const host = normalizeHost(u.host);
   if (u.reserved.has(host)) return { ok: false, record: "changed", rule: "skipped", message: `${host} is reserved; nothing was changed.` };
@@ -238,7 +213,6 @@ export async function unwireDomain(u: UnwireInput): Promise<UnwireOutcome> {
   }
   const fromRecord = record?.content.endsWith(TUNNEL_SUFFIX) ? record.content.slice(0, -TUNNEL_SUFFIX.length) : null;
   const tunnelId = u.tunnelId ?? fromRecord;
-  // Direct mode's record, made from the Domains page: still at this name, still naming this server.
   const directIsOurs = !!record && (record.type === "A" || record.type === "AAAA") && record.name === host && !!u.serverAddresses?.includes(record.content);
   const recordIsOurs = directIsOurs || (!!record && record.type === "CNAME" && record.name === host && !!fromRecord && (u.tunnelId === null || fromRecord === u.tunnelId));
 
@@ -262,18 +236,9 @@ export async function unwireDomain(u: UnwireInput): Promise<UnwireOutcome> {
     : { ok: true, record: recordState, rule, message: `Removed ${host} and the Cloudflare record and tunnel rule Dockify made for it.` };
 }
 
-// ------------------------------------------------------------------ the dashboard's api path
-
-/** The tunnel rule that sends the api's prefix on the dashboard host to the api (installer render_tunnel_ingress). */
 export const dashboardApiRule = (dashboardHost: string): CfIngress => ({ hostname: dashboardHost, path: `^${API_PATH_PREFIX}`, service: API_UPSTREAM });
 
-/**
- * Adds the dashboard's api rule to a tunnel the installer made before the api had its own path on
- * the dashboard host, so API tokens, GitHub's webhook and GitHub's return URLs reach the api on
- * those installs too. cloudflared takes the first rule that matches, so it goes
- * right above the dashboard's own rule. Nothing else changes: a tunnel with no plain dashboard
- * rule (edited by hand), or with any rule for that path already, is left exactly as it is.
- */
+/** cloudflared takes the first rule that matches, so this goes right above the dashboard's own rule. */
 export async function ensureDashboardApiRule(o: {
   cf: CfClient;
   accountId: string;
@@ -298,20 +263,11 @@ export async function ensureDashboardApiRule(o: {
   });
 }
 
-/** Rules Dockify gives the dashboard's hosts: the api, the web, or the proxy for a host it left. */
 const DASHBOARD_SERVICES = new Set([API_UPSTREAM, WEB_UPSTREAM, TUNNEL_SERVICE, "http://dockify-proxy:80"]);
 
 /**
- * The tunnel's rules for the dashboard's address, as a change of address needs them. Only rules for
- * those hosts move, and only ones Dockify could have written:
- *
- *   the current host   the api path and the web, right at the top, when addCurrent says it is new
- *   a host it left     its api path stays on the api, for GitHub; the rest goes to the proxy, whose
- *                      router redirects (edge/routes.ts renderDashboardOld)
- *   a host forgotten   its rules go
- *
- * Nothing is written when nothing has to change. A first-match table, so a rule for the current host
- * goes above everything; the hostnames are exact, so no other rule can shadow it.
+ * Only rules Dockify could have written move. A host it left keeps its api path on the api (for GitHub);
+ * the rest goes to the proxy, whose router redirects. First match wins, so the current host goes on top.
  */
 export async function syncDashboardTunnel(o: {
   cf: CfClient;
@@ -337,7 +293,6 @@ export async function syncDashboardTunnel(o: {
     let next = ingress.filter((r) => !(r.hostname && forget.has(r.hostname) && DASHBOARD_SERVICES.has(r.service ?? "")));
     next = next.map((r) => {
       if (r.hostname && previous.has(r.hostname) && isPlain(r) && r.service === WEB_UPSTREAM) return { ...r, service: TUNNEL_SERVICE };
-      // Back on a host it left: the rule that sent it to the redirect serves the dashboard again.
       if (r.hostname === host && isPlain(r) && r.service !== undefined && DASHBOARD_SERVICES.has(r.service)) return { ...r, service: WEB_UPSTREAM };
       return r;
     });
@@ -353,27 +308,18 @@ export async function syncDashboardTunnel(o: {
   });
 }
 
-// ------------------------------------------------------------------ preview wildcard
-
 export interface WildcardInput {
   cf: CfClient;
   accountId: string | null;
-  /** Tunnel mode: the tunnel the wildcard CNAME and rule point at. Null in direct mode. */
   tunnelId: string | null;
-  /** Direct mode: the A record target. */
   serverIpv4: string | null;
-  /** The preview domain; the record is *.<domain>. */
   domain: string;
   reserved: Set<string>;
   managedZoneIds: ReadonlySet<string>;
   withTunnelLock: WireInput["withTunnelLock"];
 }
 
-/**
- * One wildcard record for a preview domain: a proxied CNAME to the tunnel plus the tunnel rule
- * (tunnel mode), or a DNS-only A record to the server (direct mode). Like wireDomain, nothing that
- * already exists is adopted or overwritten; the ids of what Dockify made are returned.
- */
+/** Like wireDomain, nothing that already exists is adopted or overwritten. */
 export async function wireWildcard(w: WildcardInput): Promise<WireOutcome> {
   const domain = assertTenantHost(w.domain, w.reserved);
   const name = `*.${domain}`;
@@ -407,7 +353,6 @@ export async function wireWildcard(w: WildcardInput): Promise<WireOutcome> {
   return { state: "managed", zoneId: zone.id, recordId: record.id, tunnelId: tunnel ?? "", message: `Created ${name} on Cloudflare.` };
 }
 
-/** Removes exactly what wireWildcard made, by the recorded ids, and only while it is unchanged. */
 export async function unwireWildcard(u: { cf: CfClient; accountId: string | null; domain: string; zoneId: string; recordId: string; tunnelId: string | null; withTunnelLock: WireInput["withTunnelLock"] }): Promise<{ ok: boolean; message: string }> {
   const name = `*.${normalizeHost(u.domain)}`;
   if (!CF_ID.test(u.zoneId) || !CF_ID.test(u.recordId)) return { ok: false, message: "The recorded Cloudflare ids are not valid." };

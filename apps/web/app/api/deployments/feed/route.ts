@@ -4,7 +4,6 @@ import { getDeployments, isFilter } from "@/lib/pages/deployments";
 /** Longer filters are refused rather than forwarded. */
 const MAX = 200;
 
-/** GET /api/deployments/feed?cursor&status&project&q: one page of the deployments list. */
 export async function GET(request: Request) {
   const p = new URL(request.url).searchParams;
   const status = p.get("status");

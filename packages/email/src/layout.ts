@@ -1,32 +1,7 @@
 /**
- * The one email layout: the dashboard's ruled frame. Hand-written for mail clients: nested tables,
- * inline styles, bgcolor and width attributes for Outlook. Light is the inline default; dark comes
- * from a prefers-color-scheme block that overrides by class, so a client that ignores it keeps the
- * light design instead of a broken half-dark one.
- *
- * The frame is a nine-column table: gutter | 2 | rail | 2 | 594 | 2 | rail | 2 | gutter. The two
- * 1px rails stand 600px apart on a white page that runs edge to edge; every rule crosses the whole
- * page, and a 5px node sits on each crossing (the 2px columns beside each rail are the node's
- * overhang). Sections are parted by 40px dither bands: a 6px checker tile as the background image
- * of the band cells, over a solid light grey, which is what Outlook for Windows paints instead.
- *
- * Brand assets ride on the instance's own origin: the whale, the tone badge, the kind tiles and
- * folder, the dither tiles, the fact and footer icons and the button arrow. Every word is real text:
- * "Dockify" in the header and each title in Geist Pixel Square, the rest in Geist. Two faces load
- * with @font-face inside @media screen (Apple Mail, iOS and Samsung render them; Outlook for Windows
- * never sees the rule and keeps its fallback instead of swapping the message to Times New Roman).
- * Gmail drops web fonts, so there the text is Helvetica Neue or Arial, at the same size and spacing.
- *
- * An image with a dark variant is a pair: the light one shows inline, the dark one is hidden inline
- * and the dark rules swap them. A client without prefers-color-scheme (Gmail) keeps the light one.
- *
- * Phones: one media query lets the 594px column give way, so the rails sit at the screen edges,
- * fact labels stack over their values, and a project chip loses its dividers and wraps between
- * its segments. No scripts, forms, stylesheet links or @import: clients block them and the tests
- * forbid them.
- *
- * `theme` forces one look for the dashboard preview: "light" drops the dark block, "dark" applies
- * it without the media query. Real sends use "auto".
+ * The one email layout, hand-written for mail clients: nested tables, inline styles, Outlook attributes.
+ * Light is the inline default; dark overrides by class under prefers-color-scheme, so a client that ignores
+ * it keeps the full light design. No scripts, forms, stylesheet links or @import: the tests forbid them.
  */
 import { esc, safeUrl } from "./html.ts";
 
@@ -44,14 +19,10 @@ export interface EmailMessage {
 /** An app's kind, as the apps table stores it. It picks the kind tile in a project chip. */
 export type AppKind = "frontend" | "backend" | "bot" | "postgres" | "redis" | "s3";
 
-/**
- * Where something happened, as the dashboard shows it: the project, its environment and the app. A
- * project with one environment shows none anywhere, so its place leaves `env` out.
- */
+/** A project with one environment shows none anywhere, so its place leaves `env` out. */
 export interface AppRef {
   projectName: string;
   projectSlug: string;
-  /** "production", "development", ...; absent or null when the project has only one. */
   env?: string | null;
   /** The app as people read it: its display name when it has one, else its name. */
   appName: string;
@@ -66,7 +37,6 @@ export interface AppRef {
 export const whereText = (where: AppRef | string): string =>
   typeof where === "string" ? where : [where.projectSlug, ...(where.env ? [where.env] : []), where.appName].join(" / ");
 
-/** A fact's value: text, or a place shown as the dashboard's project chip. */
 export type FactValue = string | AppRef;
 
 /** One fact row: label, value and, optionally, the fact icon to use instead of the one its label picks. */
@@ -98,7 +68,6 @@ export interface Email {
 }
 
 export interface Brand {
-  /** The Dockify instance name the owner chose at setup. */
   instanceName: string;
   /** The dashboard's public origin, so the logo, icons and fonts load from it. No origin, no assets. */
   origin?: string;
@@ -137,7 +106,6 @@ const GLYPH: Record<Tone, { char: string; light: string; dark: string }> = {
 /** A URL inside a single-quoted CSS url(''): drop line breaks and escape what could end the string. */
 const cssUrl = (u: string) => u.replace(/[\n\r]/g, "").replace(/[\\']/g, (c) => `\\${c}`);
 
-/** An absolute, checked URL of one brand asset on the instance origin. */
 const asset = (origin: string, file: string) => safeUrl(`${origin}/${file}`);
 
 function darkRules(origin?: string): string {
@@ -159,10 +127,8 @@ function darkRules(origin?: string): string {
 }
 
 /**
- * Phones: the 594px column gives way (gutters to 0, the inner cells to auto), the rails sit at the
- * edges, content padding tightens, the title steps down one size, a fact label stacks over its
- * value, and a project chip drops its dividers and wraps between segments, so no divider can
- * start a line.
+ * Phones: the 594px column gives way, the rails sit at the edges, a fact label stacks over its value, and a
+ * project chip drops its dividers and wraps between segments, so no divider can start a line.
  */
 const PHONE =
   "@media (max-width:620px){" +
@@ -185,9 +151,8 @@ function styleBlock(theme: Theme, origin?: string): string {
     `@font-face{font-family:'${family}';font-style:normal;font-weight:${weight};font-display:swap;src:url('${cssUrl(asset(origin ?? "", file))}') format('woff2')}`;
   const faces = origin ? `@media screen{${font("Geist", "100 900", "geist-sans.woff2")}${font("Geist Pixel Square", "400 700", "geist-pixel.woff2")}}` : "";
   const base =
-    // border-collapse:separate keeps border-radius on bordered cells (collapsed borders square the
-    // corners in WebKit); every table carries cellspacing="0" and border-spacing 0, so the grid
-    // stays seamless.
+    // border-collapse:separate keeps border-radius on bordered cells (collapsed borders square the corners in
+    // WebKit); cellspacing="0" and border-spacing 0 keep the grid seamless.
     "body{margin:0;padding:0;-webkit-text-size-adjust:100%}table{border-collapse:separate;border-spacing:0}td{padding:0}a{text-decoration:none}img{border:0;outline:none}" +
     PHONE;
   const tag = (css: string) => (css ? `<style>${css}</style>` : "");
@@ -198,7 +163,7 @@ function styleBlock(theme: Theme, origin?: string): string {
   return `${head}${tag(`@media (prefers-color-scheme:dark){${darkRules(origin)}}`)}${tag("[data-ogsc] .dk-l{display:none!important}[data-ogsc] .dk-d{display:inline-block!important}[data-ogsc] .dk-db{display:block!important}")}`;
 }
 
-// ---------------------------------------------------------------- the grid
+// Nine columns: gutter, 2, rail, 2, 594, 2, rail, 2, gutter. The 2px columns are the rail nodes' overhang.
 
 const INNER = 594;
 /** A cell that is only colour. */
@@ -216,7 +181,6 @@ function ditherCell(origin: string | undefined, x: number, y: number, style = ""
   return `<td${attrs ? ` ${attrs}` : ""} class="dk-dither${cls}" bgcolor="${L.band}" style="background-color:${L.band};${image}${Z}${style}"></td>`;
 }
 
-/** The rail column cell for a content row: 1px of line colour. */
 const rail = () => lineCell("width:1px;", 'width="1"');
 
 type Ground = "bg" | "dither";
@@ -258,8 +222,6 @@ function row(inner: string, o: { pad?: string; border?: boolean; height?: number
   return `<tr>${gutCell()}${bgCell("width:2px;", 'width="2"')}${rail()}<td colspan="3"${h} class="dk-bg dk-pad${o.border ? " dk-rule" : ""}" bgcolor="${L.bg}" valign="middle" style="background-color:${L.bg};padding:${pad};${b}${hs}vertical-align:middle">${inner}</td>${rail()}${bgCell("width:2px;", 'width="2"')}${gutCell()}</tr>`;
 }
 
-// ---------------------------------------------------------------- the pieces
-
 const T = (size: number, lh: number, weight: number, color: string) => `font-family:${SANS};font-size:${size}px;line-height:${lh}px;font-weight:${weight};color:${color};`;
 
 /**
@@ -271,14 +233,9 @@ function pair(light: string, dark: string, attrs: string, style: string, block: 
   return `<img class="dk-l" src="${esc(light)}" ${attrs} style="${style}"><!--[if !mso]><!--><img class="${shown}" src="${esc(dark)}" ${attrs} style="${style}display:none;mso-hide:all"><!--<![endif]-->`;
 }
 
-/** A vertical gap between two items in one content row. */
 const GAP = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td height="24" style="height:24px;font-size:0;line-height:0;mso-line-height-rule:exactly">&nbsp;</td></tr></table>`;
 
-/**
- * The head: the whale, "Dockify" as text in the dashboard's wordmark face (Geist Pixel Square, 18px,
- * weight 400), and the instance name at the right end. With no origin (no assets) a blue "D" tile
- * stands in for the whale.
- */
+/** With no origin (no assets) a blue "D" tile stands in for the whale. */
 function head(instance: string, origin?: string): string {
   const logo = origin
     ? `<img src="${esc(asset(origin, "dk-logo.png"))}" width="40" height="29" alt="" style="display:block;width:40px;height:29px;border:0;outline:none">`
@@ -290,11 +247,7 @@ function head(instance: string, origin?: string): string {
 </tr></table>`;
 }
 
-/**
- * The 40px key tile at the top of the card (the dashboard's IconTile on surface-key) holding the
- * tone's geist-icon as an image, so it looks identical in every client. No origin, no image: a
- * drawn glyph in the tone's colour, swapped for dark by class.
- */
+/** The tone's icon is an image, so it looks identical in every client. No origin: a drawn glyph in the tone's colour. */
 function keyTile(tone: Tone, origin?: string): string {
   const inner = origin
     ? pair(asset(origin, `dk-badge-${tone}.png`), asset(origin, `dk-badge-${tone}-dark.png`), 'width="18" height="18" alt=""', "display:block;width:18px;height:18px;border:0;outline:none;", true)
@@ -304,7 +257,6 @@ function keyTile(tone: Tone, origin?: string): string {
 </tr></table>`;
 }
 
-/** The title in the dashboard's pixel display face, set like its page headings (32/40, -0.01em). */
 function title(text: string): string {
   return `<h1 class="dk-ink dk-h1" style="margin:0;font-family:${PIXEL};font-feature-settings:'ss09';font-size:32px;line-height:40px;font-weight:400;letter-spacing:-0.32px;color:${L.ink}">${esc(text)}</h1>`;
 }
@@ -313,17 +265,15 @@ const para = (text: string) => `<p class="dk-ink2" style="margin:0;${T(15, 24, 4
 const note = (text: string) => `<p class="dk-muted" style="margin:0;${T(13, 20, 400, L.ink3)}">${esc(text)}</p>`;
 
 function code(value: string, label: string): string {
-  // One block, not per-digit cells: it selects and copies as the bare "482913" in a single tap, where
-  // separate cells copy with tabs between them and no mail client can offer a working copy button (no
-  // JS). Tabular figures keep the digits evenly spaced; the extra left padding cancels the trailing
-  // letter-spacing so the number sits optically centred in its tile.
+  // One block, not per-digit cells: it copies as the bare "482913", where separate cells copy with tabs.
+  // The extra left padding cancels the trailing letter-spacing, so the number sits optically centred.
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td>
 <div class="dk-muted" style="${T(11, 16, 600, L.ink3)}letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">${esc(label)}</div>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td class="dk-code dk-key dk-ink" bgcolor="${L.bg}" align="center" aria-label="${esc(label)}" style="padding:14px 24px 14px 34px;background-color:${L.bg};border:1px solid ${L.line};border-radius:10px;font-family:${SANS};font-size:34px;line-height:40px;font-weight:600;letter-spacing:10px;font-variant-numeric:tabular-nums;mso-line-height-rule:exactly;color:${L.ink}">${esc(value)}</td></tr></table>
 </td></tr></table>`;
 }
 
-/** Build output: 12/18 monospace in a keyed tile, wrapping long lines. Every line escaped. */
+/** Every line is escaped. */
 function logBlock(label: string, lines: readonly string[]): string {
   const mono = "ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace";
   const body = lines.map((l) => esc(l)).join("<br>");
@@ -333,25 +283,21 @@ function logBlock(label: string, lines: readonly string[]): string {
 </td></tr></table>`;
 }
 
-/** The dashboard's primary button: 36px, radius 8, solid blue, 14px medium, the arrow glyph after the label. */
 function button(label: string, rawUrl: string, origin?: string): string {
   const url = esc(safeUrl(rawUrl));
-  // A white 16px ArrowRight (the dashboard's own geist-icon) after the label. The key's 8px gap is
-  // drawn into the image: Gmail drops a margin with a negative side, and Outlook drops image padding.
-  // Image off or an old client just drops it, and the labelled button stands on its own.
+  // The arrow's 8px gap is drawn into the image: Gmail drops a margin with a negative side, and Outlook
+  // drops image padding.
   const arrow = origin
     ? `<img src="${esc(asset(origin, "dk-arrow-gap.png"))}" width="24" height="16" alt="" style="display:inline-block;vertical-align:-3px;width:24px;height:16px;border:0">`
     : "";
-  // The button only: the link carries a secret token, so the raw URL is never shown as copyable text.
-  // Padding on the td, not the anchor: Word ignores padding on an inline-block <a>, so the blue box
-  // would hug the label in Outlook. On the td it holds everywhere.
+  // The link carries a secret token, so the raw URL is never shown as copyable text. Padding sits on the td:
+  // Word ignores padding on an inline-block <a>, so the blue box would hug the label in Outlook.
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
 <td class="dk-btn" align="center" height="36" bgcolor="${L.blue}" style="height:36px;padding:0 16px;border-radius:8px;background-color:${L.blue};mso-line-height-rule:exactly">
 <a href="${url}" target="_blank" rel="noopener" style="display:block;${T(14, 20, 500, "#ffffff")}text-decoration:none;white-space:nowrap">${esc(label)}${arrow}</a>
 </td></tr></table>`;
 }
 
-/** A secondary link: 14px medium in the accent blue (a lighter blue in dark, by class), no underline, as the dashboard's text links. */
 function textLink(label: string, rawUrl: string): string {
   return `<a href="${esc(safeUrl(rawUrl))}" target="_blank" rel="noopener" class="dk-link" style="${T(14, 20, 500, L.blue)}text-decoration:none">${esc(label)}</a>`;
 }
@@ -364,8 +310,7 @@ function buttonWithLink(btn: string, link: string): string {
 /** The fact icons that exist as /dk-f-<name>.png on the instance origin. */
 export type FactIcon = "device" | "ip" | "time" | "app" | "source" | "github" | "role" | "user" | "mail" | "why" | "version" | "commit" | "database" | "status";
 
-// A small muted geist-icon for a fact row, chosen by its label unless the row names one. Order
-// matters: the first match wins ("IP address" must reach ip before "address" reaches mail).
+// Order matters: the first match wins ("IP address" must reach ip before "address" reaches mail).
 const FACT_ICONS: ReadonlyArray<readonly [RegExp, FactIcon]> = [
   [/device/i, "device"],
   [/\bip\b/i, "ip"],
@@ -387,12 +332,8 @@ const ENV_NAMES: Record<string, string> = { production: "Production", developmen
 const envName = (env: string) => ENV_NAMES[env] ?? env.charAt(0).toUpperCase() + env.slice(1);
 
 /**
- * The project chip, as the dashboard draws it: the project's icon (its upload, else the folder),
- * its name, the EnvTag (the branch glyph; ink for production, muted for the rest) and the app
- * with its icon (its upload or favicon, else its kind tile), parted by thin vertical dividers in
- * the frame's line colour. Each segment is a cell, so the chip is one line; on phones the dividers
- * hide and the segments wrap between themselves. No origin, no images: the names stand alone. A place
- * with no environment (its project has only one) has no EnvTag segment.
+ * Each segment is a cell, so the chip is one line; on phones the dividers hide and the segments wrap.
+ * No origin, no images: the names stand alone. A place with no environment has no EnvTag segment.
  */
 function chip(ref: AppRef, origin?: string): string {
   const prod = ref.env === "production";
@@ -415,7 +356,6 @@ ${seg(pic(ref.appIcon, `dk-kind-${KIND_TILE[ref.appKind]}.png`, 24, 8, !!ref.app
 </tr></table>`;
 }
 
-/** One fact row, rail to rail: the label with its glyph in a 146px column, the value beside it. */
 function factRow([label, value, icon]: FactRow, origin?: string): string {
   const name = origin ? (icon ?? factIcon(label)) : null;
   const ic = name
@@ -446,13 +386,10 @@ function textBlock(b: Block): string {
   }
 }
 
-/** The project's public repository and website, which the footer links to. */
 export const REPO_URL = "https://github.com/kedarpixels/Dockify";
 export const SITE_URL = "https://dockify.sh";
 
-/** A row of brand links under the footer text: the project's GitHub repository and its website,
- * drawn with the dashboard's muted geist-icons. The images load from the instance, so the row is
- * drawn only when an origin carries them. */
+/** The images load from the instance, so the row is drawn only when an origin carries them. */
 function social(origin: string): string {
   const link = (href: string, name: string, alt: string) =>
     `<td style="padding-right:14px"><a href="${esc(safeUrl(href))}" target="_blank" rel="noopener" style="text-decoration:none">${pair(asset(origin, `${name}.png`), asset(origin, `${name}-dark.png`), `width="18" height="18" alt="${alt}"`, "display:block;width:18px;height:18px;border:0;outline:none;", true)}</a></td>`;
@@ -462,8 +399,7 @@ ${link(SITE_URL, "dk-s-web", "Dockify website")}
 </tr></table>`;
 }
 
-/** The instance origin as scheme://host[:port], whatever the caller passed (a trailing slash, a path,
- * spaces). Anything that is not an http(s) URL means no brand assets rather than broken ones. */
+/** Anything that is not an http(s) URL means no brand assets rather than broken ones. */
 function originOf(raw: string | undefined): string | undefined {
   const s = raw?.trim();
   if (!s) return undefined;
@@ -476,9 +412,8 @@ function originOf(raw: string | undefined): string | undefined {
 }
 
 /**
- * The card: the key tile, the pixel title and the lead (the first paragraph) as the sign-in card
- * lays out its head, then the blocks. Runs of text, buttons, codes and notes become padded rows
- * with 24px between items; facts become rail-to-rail rows, and a run after them sits on a rule.
+ * Text, buttons, codes and notes become padded rows with 24px between items; facts become rail-to-rail
+ * rows, and a run after them sits on a rule.
  */
 function card(email: Email, tone: Tone, origin?: string): string {
   const rows: string[] = [];
@@ -540,7 +475,7 @@ function card(email: Email, tone: Tone, origin?: string): string {
   return rows.join("\n");
 }
 
-/** Renders one email into its subject, HTML and plain text parts. */
+/** `theme` forces one look for the dashboard preview; real sends use "auto". */
 export function render(email: Email, brand: Brand, theme: Theme = "auto"): EmailMessage {
   const instance = brand.instanceName.trim() || "Dockify";
   const origin = originOf(brand.origin);

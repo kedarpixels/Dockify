@@ -1,8 +1,4 @@
-/**
- * Fixed sample data for every template: the dashboard's "Preview emails" dialog and the preview
- * script render these. Deterministic on purpose (no clock, no randomness), so a rendered preview
- * only changes when a template does.
- */
+/** Deterministic on purpose (no clock, no randomness), so a rendered preview only changes when a template does. */
 import type { AppRef, EmailMessage, Theme } from "./layout.ts";
 import { alert, deployFailed, emailChanged, invite, passwordChangeCode, passwordReset, previewNotice, securityNotice, testEmail, updateNotice, verifyEmail } from "./templates.ts";
 
@@ -39,14 +35,12 @@ export const VARIANT_LABELS: Record<SampleVariant, string> = {
 const AT = new Date("2026-10-30T14:05:00Z");
 const URL_BASE = "https://dockify.example.com";
 
-/** The sample place: a project with its own uploaded icon (the sample avatar) and a frontend on its kind tile. */
 const horseai = (origin: string): AppRef => ({
   projectName: "horseai", projectSlug: "horseai", env: "production", appName: "web", appKind: "frontend", projectIcon: `${origin}/dk-sample-avatar.png`, appIcon: null,
 });
 
 const PREVIEW_SAMPLE = { repo: "horseai/web", prNumber: 42, title: "Fix the header on mobile", branch: "fix/header", commit: "4f2a9c1", author: "lena", fromFork: false, isolatedDb: true, isolation: "base" as const, baseEnvironment: "production", recipient: "author" } as const;
 
-/** Renders one template, or one variant, with sample data, for the given instance name and origin. */
 export function renderSample(name: TemplateName | SampleVariant, theme: Theme, instanceName = "Acme Cloud", origin = URL_BASE): EmailMessage {
   const brand = { instanceName, origin };
   switch (name) {

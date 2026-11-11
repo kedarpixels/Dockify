@@ -17,13 +17,7 @@ import { useHydrated } from "@/lib/hooks";
 import type { DomainTargets } from "@/lib/domain-targets";
 import type { DomainRow as DomainData, TlsStatus } from "@/lib/pages/resources-domains";
 
-/* Pieces the Resources and Domains pages share with the project and app pages: a timed value, and
-   the one domain row and DNS record table every domain list draws. */
-
-/**
- * A reading tied to a moment (an uptime, a countdown) with that moment in its tip. Local time
- * differs between the server and the browser, so the tip reads UTC until hydrated, as `When` does.
- */
+/** The tip reads UTC until hydrated, as `When` does. */
 export function Stamp({ iso, tip, className, children }: { iso: string; tip?: string; className?: string; children: React.ReactNode }) {
   const time = useTimeFormat();
   const hydrated = useHydrated();
@@ -35,23 +29,17 @@ export function Stamp({ iso, tip, className, children }: { iso: string; tip?: st
   );
 }
 
-/* -------------- Domains -------------- */
-
 /** A certificate this close to expiry is flagged, even though renewal normally runs on its own. */
 const EXPIRY_WARN_DAYS = 14;
 
 const DAY = 86_400_000;
 
-/**
- * What one domain row needs. The domains page and an app's tab send the whole row; the project
- * page knows no DNS state and leaves out the project, which would only repeat the page.
- */
+/** The project page knows no DNS state and leaves out the project, which would only repeat the page. */
 export interface DomainView {
   id: string;
   hostname: string;
   appId: string;
   appName: string;
-  /** The app's display name, when it has one: what the row reads. */
   appDisplayName?: string;
   projectSlug?: string;
   environment: string;
@@ -74,21 +62,14 @@ export function recordFor(hostname: string) {
   return { apex, name: labels.length > 2 ? labels.slice(0, -2).join(".") : "@", isApex: labels.length <= 2 };
 }
 
-/**
- * The records a domain needs to point here: in direct mode an A record to this server, and an AAAA
- * when the server has an IPv6 address; in tunnel mode a proxied CNAME to the tunnel. Empty when the
- * target is not known.
- */
+/** Direct mode: an A record, and an AAAA when the server has IPv6. Tunnel mode: a proxied CNAME. Empty when the target is not known. */
 export function recordsFor(hostname: string, t: DomainTargets): DnsRecord[] {
   const { name } = recordFor(hostname);
   if (t.ingress === "cloudflare_tunnel") return t.tunnelTarget ? [{ type: "CNAME", name, value: t.tunnelTarget }] : [];
   return [...(t.ipv4 ? [{ type: "A", name, value: t.ipv4 }] : []), ...(t.ipv6 ? [{ type: "AAAA", name, value: t.ipv6 }] : [])];
 }
 
-/**
- * The certificate countdown: "62 days left", then "18h left" inside the last two days and "42m
- * left" inside the last hour, so it visibly ticks as expiry nears. Past expiry: "Expired 3d ago".
- */
+/** Switches to hours inside the last two days and minutes inside the last hour, so it visibly ticks as expiry nears. */
 function expiresIn(iso: string, now: number) {
   const ms = Date.parse(iso) - now;
   if (Number.isNaN(ms)) return "Unknown";
@@ -98,11 +79,7 @@ function expiresIn(iso: string, now: number) {
   return `${Math.max(1, Math.floor(ms / 60_000))}m left`;
 }
 
-/**
- * The TLS chip: Waiting for DNS, Pending, Failed, Expired, a warning in the last two weeks, else
- * Active. A certificate is only asked for once the domain points here, so until then (given the
- * domain's DNS state) a pending one is waiting for DNS.
- */
+/** A certificate is only asked for once the domain points here, so until then a pending one reads Waiting for DNS. */
 export function tlsState(tls: DomainView["tls"], now: number, dns?: DomainData["dns"]["status"]): { label: string; tone: Tone } {
   if (tls.status === "pending") return dns && dns !== "ok" ? { label: "Waiting for DNS", tone: "pending" } : { label: "Pending", tone: "pending" };
   if (tls.status === "failed") return { label: "Failed", tone: "bad" };
@@ -117,7 +94,6 @@ export function tlsState(tls: DomainView["tls"], now: number, dns?: DomainData["
   return { label: "Active", tone: "ok" };
 }
 
-/** The DNS words every page uses: Points here, Points elsewhere, No record, Not checked. */
 const DNS_STATE: Record<DomainData["dns"]["status"], { label: string; tone: Tone }> = {
   ok: { label: "Points here", tone: "ok" },
   mismatch: { label: "Points elsewhere", tone: "bad" },
@@ -133,10 +109,7 @@ export interface DnsRecord {
   alt?: boolean;
 }
 
-/**
- * The records to create at the DNS provider: one small table with a copy key on each name and
- * value. A record marked `alt`, or with `or` every row after the first, is an alternative.
- */
+/** A record marked `alt`, or with `or` every row after the first, is an alternative. */
 export function DnsRecords({ records, or = false, label = "DNS records to create" }: { records: DnsRecord[]; or?: boolean; label?: string }) {
   return (
     <div className="dm-recs" role="table" aria-label={label}>
@@ -165,12 +138,7 @@ export function DnsRecords({ records, or = false, label = "DNS records to create
   );
 }
 
-/**
- * Waiting for DNS, in full, under the row of a domain that does not point here: why (the last
- * check's own words when the API sends them), the records to set, and for records that name a
- * proxy, what asking the domain itself found. The worker checks a waiting domain again on its own,
- * soon after it is added and less often as it ages; the row's Recheck key asks at once.
- */
+/** The worker checks a waiting domain again on its own, less often as it ages; the row's Recheck key asks at once. */
 function DnsFix({ d, dns, probe, records, tunnel }: { d: DomainView; dns: DomainData["dns"]; probe?: DomainData["probe"]; records: DnsRecord[]; tunnel: boolean }) {
   const rec = recordFor(d.hostname);
   const found = dns.resolved.filter((r) => !r.startsWith("cname:")).join(", ");
@@ -210,11 +178,8 @@ function DnsFix({ d, dns, probe, records, tunnel }: { d: DomainView; dns: Domain
   );
 }
 
-/**
- * An app with no port gets no route, whatever the domain's DNS says. Never folded away: this is why the
- * domain answers nothing. Dockify takes the port from the running image when it says one, within moments
- * of the domain being added, so this only stays for an image that does not.
- */
+// An app with no port gets no route, whatever the DNS says. Never folded away: this is why the
+// domain answers nothing. Dockify takes the port from the running image when it says one.
 function NoPortNote({ d }: { d: DomainView }) {
   return (
     <div className="dm-fix" role="status">
@@ -225,7 +190,6 @@ function NoPortNote({ d }: { d: DomainView }) {
   );
 }
 
-/** A test domain with no certificate yet: nothing to set, and whose service it depends on. */
 function TestDomainNote() {
   return (
     <div className="dm-fix">
@@ -234,7 +198,6 @@ function TestDomainNote() {
   );
 }
 
-/** The column heads over a list of DomainRows, matching what the rows show. */
 export function DomainHead({ target = false, dns = true }: { target?: boolean; dns?: boolean }) {
   return (
     <div className="dm-head" aria-hidden="true">
@@ -247,12 +210,7 @@ export function DomainHead({ target = false, dns = true }: { target?: boolean; d
   );
 }
 
-/**
- * One domain, the same on every page: the hostname (with its app under it when `showTarget`),
- * the TLS chip, the certificate countdown, the last DNS lookup when the page has one, and the
- * row's keys. Given where records should point (`target`), a domain that does not point here
- * reads Waiting for DNS and gets a chevron that unfolds why and the records it needs.
- */
+/** Given `target`, a domain that does not point here reads Waiting for DNS and unfolds why and the records it needs. */
 export function DomainRow({
   d,
   now,
@@ -271,7 +229,6 @@ export function DomainRow({
   target?: DomainTargets;
   checking?: boolean;
   showTarget?: boolean;
-  /** Keys at the end of the row, such as Recheck and Remove. */
   actions?: React.ReactNode;
   delay?: number;
   /** A line under the DNS chip, such as how Cloudflare carries the name. */
@@ -288,7 +245,6 @@ export function DomainRow({
   // A test domain has no DNS to wait for on the owner's side: its certificate is simply pending.
   const tls = tlsState(d.tls, now, d.test ? undefined : dns?.status);
   const fix = dns && dns.status !== "ok" && target ? { dns, records: recordsDone || d.test ? [] : recordsFor(d.hostname, target), tunnel: target.ingress === "cloudflare_tunnel" } : null;
-  // The record to create stays folded away until asked for, so the list reads clean.
   const [open, setOpen] = useState(false);
   // A recheck that fixes the record drops the fold, so a later break starts folded again.
   if (open && !fix && !extra && !(d.test && d.tls.status !== "active")) setOpen(false);

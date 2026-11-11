@@ -1,13 +1,6 @@
 /**
- * The preview_dns job for one preview domain (instance-wide or a project's override):
- *
- *   wanted     some project with previews on uses it: with Cloudflare connected, Dockify creates
- *              ONE wildcard record *.<domain> (and the tunnel rule in tunnel mode), recorded by id
- *   unwanted   nobody uses it any more: only what Dockify recorded is deleted
- *   check      then *.<domain> is resolved through public DNS (a fixed label under the wildcard)
- *              and judged like a custom domain; previews refuse to start until it says ok
- *
- * Nothing here calls any Dockify-run service: Cloudflare (when connected) and public resolvers only.
+ * The preview_dns job: one wildcard record *.<domain> per wanted preview domain, recorded by id; only
+ * what Dockify recorded is ever deleted. Previews refuse to start until it resolves through public DNS.
  */
 import { projects as P } from "@dockify/contracts";
 import type { Db, SecretVault } from "@dockify/db";
@@ -30,7 +23,6 @@ export interface PreviewDnsDeps {
 
 const DOMAIN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
-/** Every preview domain some project with previews on uses right now. */
 export async function wantedPreviewDomains(db: Db): Promise<Set<string>> {
   const inst = await db.instance.findUnique({ where: { id: 1 }, select: { previewDomain: true, publicUrl: true } });
   const projects = await db.project.findMany({ where: { previewEnabled: true, archivedAt: null }, select: { previewDomain: true } });
@@ -83,7 +75,6 @@ export async function runPreviewDns(deps: PreviewDnsDeps, payload: unknown): Pro
   });
 }
 
-/** Domains the reconcile should look at again: wanted ones not checked lately, and unwanted ones Dockify still holds a record for. */
 export async function staleDnsDomains(db: Db, now = Date.now(), everyMs = 30 * 60_000): Promise<string[]> {
   const wanted = await wantedPreviewDomains(db);
   const rows = await db.previewDomain.findMany({ select: { domain: true, checkedAt: true, dnsStatus: true, cfState: true } });

@@ -3,10 +3,7 @@ import { apiRequest, apiStream, plainError, UNREADABLE } from "@/lib/api";
 import { json, upstreamStatus, type RouteAnswer } from "@/lib/http";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/*
- * A Vercel deployment's logs, through this dashboard's routes. The API reads them from Vercel with the
- * stored token and redacts them; the token never comes this far (packages/contracts/src/endpoints.ts).
- */
+// The API reads a Vercel deployment's logs with the stored token and redacts them; the token never comes this far.
 
 export interface VercelRuntimeLine {
   id: string;

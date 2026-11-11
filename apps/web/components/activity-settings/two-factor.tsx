@@ -28,7 +28,6 @@ function QrArea({ setup, preview }: { setup: TotpSetup; preview: boolean }) {
   );
 }
 
-/** The scan step's shape while the secret is fetched: the QR square, three lines and the code field. */
 function SetupSkeleton() {
   return (
     <div className="as-tfa" role="status" aria-label="Loading" aria-busy="true">
@@ -43,7 +42,6 @@ function SetupSkeleton() {
   );
 }
 
-/** The authenticator code, as every code field reads: six boxes, the standard label and hint. */
 function CodeField({ code, setCode, error, onComplete, disabled }: { code: string; setCode: (c: string) => void; error: string | null; onComplete?: (c: string) => void; disabled?: boolean }) {
   return (
     <Field label="Authenticator code" hint="The 6-digit code from your authenticator app." error={error}>
@@ -66,11 +64,7 @@ function CodeField({ code, setCode, error, onComplete, disabled }: { code: strin
 
 type Step = "loading" | "scan" | "error";
 
-/**
- * Turning two-factor on. Mounted only while open, so every opening (and every Try again, which
- * mounts it afresh) starts from a new secret; it only becomes active after a verified code, so
- * cancelling midway leaves two-factor off. Closing drops the secret from memory.
- */
+/** Mounted only while open, so every opening starts from a new secret. It is active only after a verified code. */
 function TwoFactorSetup({ onClose, onRetry, onEnabled, preview, elevate }: { onClose: () => void; onRetry: () => void; onEnabled: () => void; preview: boolean; elevate: Elevate }) {
   const [step, setStep] = useState<Step>("loading");
   const [setup, setSetup] = useState<TotpSetup | null>(null);
@@ -233,7 +227,6 @@ function TwoFactorOff({ onClose, onDisabled }: { onClose: () => void; onDisabled
   );
 }
 
-/** Two-factor on or off, with its setup and turn-off dialogs. */
 export function TwoFactorGroup({ data, update, preview, elevate }: Pick<SectionProps, "data" | "update" | "preview" | "elevate">) {
   const on = data.me.twoFactor.enabled;
   const [dialog, setDialog] = useState<"setup" | "off" | null>(null);
@@ -256,8 +249,7 @@ export function TwoFactorGroup({ data, update, preview, elevate }: Pick<SectionP
             Turn off
           </button>
         ) : (
-          // "Confirm it is you" comes first and alone; the setup opens only once it is answered, so
-          // the two never show stacked.
+          // "Confirm it is you" is answered first, so it and the setup never show stacked.
           <button
             type="button"
             className="btn btn-sm btn-primary"

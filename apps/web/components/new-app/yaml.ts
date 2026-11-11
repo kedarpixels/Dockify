@@ -1,10 +1,5 @@
-/*
- * A small YAML subset parser, enough for docker-compose files: block mappings and sequences
- * (including a sequence at its key's indent), "- key: value" items, plain, single and double
- * quoted scalars, flow [lists] and {maps}, | and > block scalars, and comments. Anchors, aliases,
- * merge keys, tags and multi-document files are refused with a clear message instead of being
- * guessed at. Values stay strings unless they read as a number, a boolean or null.
- */
+// A YAML subset, enough for docker-compose files. Anchors, aliases, merge keys, tags and
+// multi-document files are refused with a clear message instead of being guessed at.
 
 export type Yaml = string | number | boolean | null | Yaml[] | { [key: string]: Yaml };
 
@@ -226,7 +221,7 @@ class Parser {
   }
 }
 
-/** Parses the subset. Throws YamlError with a line number on anything it does not support. */
+/** Throws YamlError with a line number on anything it does not support. */
 export function parseYaml(src: string): Yaml {
   // Blank and comment-only lines carry nothing, so the parser never sees them.
   const lines = toLines(src).filter((l) => l.text !== "");

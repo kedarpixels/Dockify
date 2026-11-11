@@ -1,7 +1,6 @@
 /**
- * The proxy's route files on a disk. Traefik watches exactly <dir>/conf; a file is written in
- * <dir>/.staging, on the same volume and outside the watched folder, then renamed in, so Traefik never
- * reads half a file. Nothing above this module knows there is a folder.
+ * Traefik watches exactly <dir>/conf. A file is written in <dir>/.staging, on the same volume and outside the
+ * watched folder, then renamed in, so Traefik never reads half a file.
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";

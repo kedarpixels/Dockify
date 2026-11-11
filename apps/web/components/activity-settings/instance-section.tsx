@@ -11,8 +11,6 @@ import { instanceDraft, instancePatch, type InstanceDraft } from "./settings-pat
 import type { SectionProps } from "./settings-view";
 import { BRANCH_NAME, displayNameProblem } from "@/lib/validation";
 
-/* Settings, Instance: the defaults every project on this server shares. The reset lives in Danger zone. */
-
 const PREVIEW_HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 export function InstanceSection(props: SectionProps) {
@@ -29,7 +27,6 @@ export function InstanceSection(props: SectionProps) {
   };
   const valid = Object.values(errors).every((e) => !e);
   const set = (patch: Partial<InstanceDraft>) => setDraft({ ...draft, ...patch });
-  // A Viewer reads the defaults; the fields stay put.
   const readOnly = !manage;
 
   return (
@@ -46,8 +43,7 @@ export function InstanceSection(props: SectionProps) {
             <SettingRow label="Default branch" desc="New projects deploy from it." error={errors.defaultBranch}>
               {(ids) => <TextInput ids={ids} spellCheck={false} value={draft.defaultBranch} readOnly={readOnly} onChange={(e) => set({ defaultBranch: e.target.value })} />}
             </SettingRow>
-            {/* No Build concurrency row: deploys run one at a time on the worker's deploy lane, which also
-                keeps route syncs from overlapping a swap, so a higher number would change nothing. */}
+            {/* No Build concurrency row: the worker deploys one at a time, so a higher number would change nothing. */}
             <SettingRow label="Preview domain" desc="Previews answer on pr-<n>-<app> under it. Leave empty for the default." error={errors.previewDomain}>
               {(ids) => (
                 <TextInput

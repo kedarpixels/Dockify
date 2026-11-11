@@ -12,28 +12,15 @@ import { webhookRefOf } from "@/lib/webhooks";
 import { previewWebhooks } from "./integrations";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/*
- * Alerts loader. The routes are in packages/contracts/src/endpoints.ts (every call forwards the session cookie,
- * every answer is JSON, nothing is cached, every failure answers `{ error }` with a 4xx or 5xx).
- *
- * Evaluation (worker): a rule fires once its condition has held for `durationMin` minutes and
- * resolves once it has been false for one full sample. Crash loop reads `threshold` restarts
- * within `durationMin` minutes. Firing and resolving each notify the rule's channels once, with
- * a deep link to `href`. "bell" means the console's notification panel; "email" mails every
- * admin through the email integration, so it needs email set up in Settings, Integrations.
- */
+// Alerts loader. A rule fires once its condition has held for `durationMin` minutes and resolves
+// after one full false sample; crash loop reads `threshold` restarts within `durationMin` minutes.
 
 export * from "./alerts-shared";
-
-// -------------- Validation --------------
 
 /** Ids are opaque, but always short and URL safe; anything else is refused before the API. */
 export const isAlertId = (v: string) => /^[\w.-]{1,128}$/.test(v);
 
-/**
- * Checks a full rule body (create) or a partial one (`partial`, edit). Returns the clean input or
- * the reason it was refused. Unknown keys are dropped, never forwarded.
- */
+/** `partial` checks an edit instead of a create. Unknown keys are dropped, never forwarded. */
 export function parseRule(body: Record<string, unknown>, partial: boolean): { ok: true; input: Partial<RuleInput> } | { ok: false; error: string } {
   const out: Partial<RuleInput> = {};
   const has = (k: keyof RuleInput) => k in body;
@@ -78,7 +65,6 @@ export function parseRule(body: Record<string, unknown>, partial: boolean): { ok
     out.enabled = body.enabled;
   }
 
-  // Cross-field rules, checked whenever the metric is known.
   if (out.metric) {
     const server = SERVER_METRICS.includes(out.metric);
     if (server && out.appId) return { ok: false, error: "Server rules do not take an app" };
@@ -97,8 +83,6 @@ export function parseRule(body: Record<string, unknown>, partial: boolean): { ok
   }
   return { ok: true, input: out };
 }
-
-// -------------- API --------------
 
 type ApiAnswer<T> = { ok: true; body: T } | { ok: false; status: number; error: string; code?: string };
 
@@ -190,13 +174,7 @@ export function unmuteApp(appId: string): Promise<RouteAnswer<{ ok: true }>> {
   return write(`/api/v1/alerts/mutes/${encodeURIComponent(appId)}`, "DELETE", undefined, () => ({ ok: true as const }));
 }
 
-// -------------- Preview fixture --------------
-
-/**
- * Rules and events that agree with lib/preview-fixture.ts: brightlane / postgres is degraded (its
- * memory rule fires), inkwell / chat-bot is stopped after a failed deploy (its crash loop
- * resolved into a down alert that still fires, under an 8 hour mute). Everything else is quiet.
- */
+/** Agrees with lib/preview-fixture.ts: brightlane / postgres is degraded (its memory rule fires) and inkwell / chat-bot is stopped under an 8 hour mute. */
 function buildPreviewAlerts(at: Date): AlertsPayload {
   const now = Math.floor(at.getTime() / 60_000) * 60_000;
   const ago = (min: number) => new Date(now - min * 60_000).toISOString();

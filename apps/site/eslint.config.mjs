@@ -1,6 +1,4 @@
-// ESLint for apps/site (flat config), the same rules as apps/web. Run: npm run lint.
-// React hooks (with the React Compiler rules of eslint-plugin-react-hooks 7) and typescript-eslint,
-// with the type-aware promise and assertion checks that catch real bugs in event handlers and loaders.
+// Flat config, the same rules as apps/web.
 import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 

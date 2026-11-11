@@ -10,23 +10,8 @@ import { Field, TextInput } from "./field";
 import { IconTile } from "./icon-tile";
 import { PendingButton } from "./pending";
 
-/*
- * The one modal dialog, in the popover material: radius 12, popover fill, a 1px strong ring and a
- * soft shadow over a dim scrim. Below 760px it is a bottom sheet with a grab bar.
- *
- *   <Dialog open={open} onClose={() => setOpen(false)} title="Add domain" sub="horseai / web" icon="globe"
- *     busy={saving} onSubmit={save} footer={<><button type="button" className="btn" onClick={close}>Cancel</button>
- *     <button type="submit" className="btn btn-primary"><PendingLabel pending={saving} icon="plus">Add domain</PendingLabel></button></>}>
- *     <Field label="Domain">{(ids) => <TextInput ids={ids} data-autofocus />}</Field>
- *   </Dialog>
- *
- * Tab stays inside. Focus starts on `initialFocus`, `[data-autofocus]`, the first body control or
- * the panel, and returns to the opener on close. When the opener is gone (the row it sat in was just
- * removed), focus goes to `returnFocus()` (the next row's control, or the list's heading), else to
- * the page's title, so it never falls back to the top of the page. Esc, the scrim and the X close it
- * unless `busy`, so a running write always has a place to answer. Nested dialogs stack; only the
- * top one hears keys.
- */
+// Focus starts on `initialFocus`, `[data-autofocus]`, the first body control or the panel, and
+// returns to the opener on close. Nothing closes it while `busy`, so a running write has a place to answer.
 
 const FOCUSABLE = [
   "a[href]",
@@ -48,11 +33,7 @@ function landing(fallback?: () => HTMLElement | null) {
   target.focus({ preventScroll: true });
 }
 
-/**
- * Puts the focus back after a dialog closes. On the opener while it is in the page; a list that
- * drops the opener's row a moment later (its refresh landing after the close) is caught for a few
- * seconds, so the focus still lands somewhere near instead of on the document.
- */
+/** A list that drops the opener's row a moment after the close is caught for a few seconds, so the focus still lands near. */
 function giveFocusBack(opener: HTMLElement | null, fallback?: () => HTMLElement | null) {
   if (!opener?.isConnected) {
     landing(fallback);
@@ -78,12 +59,8 @@ export interface DialogProps {
   onClose: () => void;
   title: string;
   sub?: React.ReactNode;
-  /** Glyph in a 32px tile before the title, as in card heads. */
   icon?: IconName;
-  /**
-   * "bad" tones the head for an alert the operator must not miss (a security release): a soft red
-   * wash under the title and the glyph on the soft red tile. Calm, never a solid red head.
-   */
+  /** "bad" tones the head for an alert the operator must not miss: a soft red wash, never a solid red head. */
   tone?: "bad";
   /** "sm" 440, "md" 560 (default), "lg" 640. */
   size?: "sm" | "md" | "lg";
@@ -94,10 +71,7 @@ export interface DialogProps {
   onSubmit?: () => void;
   /** Footer keys, right aligned, 36px. Put a `.dlg-note` first for a muted note on the left. */
   footer?: React.ReactNode;
-  /**
-   * Where focus goes on close when the opener no longer exists (a removed row): the next row's
-   * main control, or the list heading when the list is now empty. Defaults to the page's title.
-   */
+  /** Where focus goes on close when the opener no longer exists (a removed row). Defaults to the page's title. */
   returnFocus?: () => HTMLElement | null;
   className?: string;
   children?: React.ReactNode;
@@ -125,7 +99,6 @@ function DialogPanel({ onClose, title, sub, icon, tone, size = "md", busy = fals
     live.current = { onClose, busy, returnFocus };
   });
 
-  // Runs once per open: its inputs (the id, the first focus, the opener) are fixed for the dialog's life.
   useEffect(() => {
     const el = panel.current!;
     const release = openLayer(id, el);
@@ -263,16 +236,8 @@ function DialogPanel({ onClose, title, sub, icon, tone, size = "md", busy = fals
   );
 }
 
-/**
- * A yes or no question in a small dialog. `onConfirm` may return a promise: the confirm key shows
- * a spinner and nothing closes while it runs; it closes when the promise resolves and stays open
- * when it throws (toast the error in `onConfirm`). `confirmText` asks the operator to type a name
- * before a destructive action unlocks.
- *
- *   <ConfirmDialog open={open} onClose={close} tone="danger" title="Delete project"
- *     body="This removes horseai, its 6 apps and their volumes." confirmLabel="Delete project"
- *     confirmIcon="trash" confirmText="horseai" onConfirm={() => remove("horseai")} />
- */
+// `onConfirm` may return a promise: nothing closes while it runs, and the dialog stays open when it
+// throws (toast the error in `onConfirm`). `confirmText` must be typed before the key unlocks.
 export function ConfirmDialog({
   open,
   onClose,
@@ -299,7 +264,6 @@ export function ConfirmDialog({
   cancelLabel?: string;
   /** "danger" makes the confirm key solid red. */
   tone?: "default" | "danger";
-  /** The exact text to type before the confirm key unlocks, usually the object's name. */
   confirmText?: string;
   /** Controlled pending state; otherwise it follows the promise `onConfirm` returns. */
   busy?: boolean;
@@ -311,7 +275,6 @@ export function ConfirmDialog({
   const [wasOpen, setWasOpen] = useState(open);
   const cancel = useRef<HTMLButtonElement>(null);
 
-  // A fresh question every time it opens.
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) setTyped("");

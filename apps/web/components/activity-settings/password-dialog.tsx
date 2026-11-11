@@ -15,15 +15,8 @@ import { requestPasswordReset } from "@/lib/pages/auth";
 import { MIN_PASSWORD, PASSWORD_MISMATCH, SHORT_PASSWORD } from "@/lib/password";
 import { settle } from "./form";
 
-/*
- * Change password, as a popup from the Security section, mounted only while open so every opening
- * starts clean. Without email it is one step: the three fields, then the change. With email on it
- * is two: the fields first ("Continue" checks the current password and mails a 6-digit code), then
- * "Check your email", where the code goes in and the passwords and code are sent together. The API
- * checks the code before it changes anything. With email on, "Forgot your current password?" turns
- * the popup into the emailed reset; without email it points at /recover, the SSH reset. Nothing
- * closes the popup while a request runs.
- */
+// Mounted only while open, so every opening starts clean. With email on, the change needs an
+// emailed code; the API checks it before it changes anything.
 
 const RESEND_SECONDS = 30;
 
@@ -42,7 +35,6 @@ export function PasswordDialog({
   onChanged: () => void;
   emailEnabled: boolean;
   preview: boolean;
-  /** The signed-in account's address, where a reset link goes. */
   email: string;
 }) {
   const [step, setStep] = useState<Step>({ at: "fields" });
@@ -52,7 +44,6 @@ export function PasswordDialog({
   const [code, setCode] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [codeError, setCodeError] = useState<string | null>(null);
-  // What is running: the code request, the change itself or the reset link, so each key shows its own spinner.
   const [pending, setPending] = useState<"send" | "change" | "reset" | null>(null);
   const busy = pending !== null;
   const [resendIn, startResend] = useCooldown();
@@ -62,7 +53,6 @@ export function PasswordDialog({
     set(e.target.value);
     if (errors[key]) setErrors((x) => ({ ...x, [key]: undefined }));
   };
-  // The mismatch shows as soon as the confirm field disagrees, not only on submit.
   const mismatch = confirm && confirm !== next ? PASSWORD_MISMATCH : undefined;
 
   const validate = () => {

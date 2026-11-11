@@ -1,7 +1,6 @@
 /**
- * Pure parsing for runtime logs: Docker's multiplexed log stream into frames, a timestamped line
- * into (ts, text), and a best-effort level guess. Containers run without a TTY, so the stream is
- * always multiplexed: an 8 byte header (stream id, three zero bytes, big-endian length) per frame.
+ * Containers run without a TTY, so Docker's log stream is always multiplexed: an 8 byte header
+ * (stream id, three zero bytes, big-endian length) per frame.
  */
 export type LogStream = "stdout" | "stderr";
 export type LogLevel = "error" | "warn" | "info" | "debug";
@@ -13,7 +12,6 @@ export interface Frame {
   payload: Buffer;
 }
 
-/** Incremental demuxer: feed chunks, get whole frames; a partial frame waits for the next chunk. */
 export class Demuxer {
   private buf: Buffer = Buffer.alloc(0);
 
@@ -34,7 +32,6 @@ export class Demuxer {
   }
 }
 
-/** Splits frame payloads into lines per stream, keeping a partial last line until it completes. */
 export class LineSplitter {
   private partial: Record<LogStream, string> = { stdout: "", stderr: "" };
 
@@ -64,7 +61,6 @@ export const clean = (s: string): string =>
 
 const PINO: Record<number, LogLevel> = { 10: "debug", 20: "debug", 30: "info", 40: "warn", 50: "error", 60: "error" };
 
-/** Reads a JSON level field (pino, bunyan, winston, zap) or a level word near the start. */
 export function guessLevel(text: string): LogLevel | null {
   const t = text.trimStart();
   if (t.startsWith("{")) {

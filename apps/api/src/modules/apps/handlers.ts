@@ -1,11 +1,5 @@
-/**
- * The app routes besides Deploy: read, settings, delete, start, stop, restart and the config tab.
- * The route policy table already decided who may call each one (viewers read; patch, delete, stop,
- * restart and config writes are elevated; start also takes a deploy token). These handlers add the
- * checks that need the row: the token's project limit, the deploy target, an in-flight deploy, and
- * the typed confirmation of a delete. Every write leaves an audit row; start, stop and restart are
- * worker jobs (app_power), like every other change to a container.
- */
+// The route policy table already decided who may call each route. These handlers add the checks
+// that need the row. The api never touches a container: start, stop and restart are worker jobs.
 import { actorFields, meta } from "../../actor.ts";
 import { requireActor } from "../../actor.ts";
 import os from "node:os";
@@ -48,7 +42,6 @@ const ROW = {
 
 type Row = Prisma.AppGetPayload<{ select: typeof ROW }>;
 
-/** "shop/web", or "shop/staging/web" in a project with several environments (P.placeLabel). */
 const label = (a: Row) => P.placeLabel(a.environment.project.slug, a.environment.name, a.environment.project._count?.environments, a.name);
 const notFound = () => new HttpError(404, "App not found", "NOT_FOUND");
 const refused = (r: Refusal[]) => new HttpError(400, r[0]?.reason ?? "Refused", "REFUSED", { field: r[0]?.field, refusals: r });
@@ -60,15 +53,11 @@ async function loadRow(ctx: Ctx, actor: Actor, id: string): Promise<Row> {
   return app;
 }
 
-/** How Vercel's project list is fetched. */
 let vercelHttp: HttpClient | undefined;
 
-// ------------------------------------------------------------------ views
-
 /**
- * The overview card's usage series: the last day hourly, or, while the worker has not yet rolled up
- * two whole hours (a fresh app), the five-minute rows, then the raw samples of the last hour. Hourly
- * only showed "No metrics yet" for a new app while its Metrics tab already had points.
+ * The last day hourly. A fresh app has no hourly rollups yet, so it falls back to five-minute rows,
+ * then to the raw samples of the last hour, instead of showing an empty chart.
  */
 async function usageSeries(ctx: Ctx, appId: string, now: number) {
   const select = { at: true, cpuPct: true, memoryBytes: true } as const;
@@ -81,7 +70,6 @@ async function usageSeries(ctx: Ctx, appId: string, now: number) {
   return raw.length >= 2 ? raw.reverse() : hourly;
 }
 
-/** Where it runs, as the contract says it. A link's mode only exists on a Vercel link. */
 const targetOf = (a: Pick<Row, "deployTarget" | "vercelProjectId" | "vercelFollowOnly">) => ({
   kind: a.deployTarget,
   vercelProjectId: a.vercelProjectId,
@@ -162,9 +150,8 @@ function syncView(s: SyncState | undefined): SyncView {
 }
 
 /**
- * The Vercel half of the config tab, frontends only. A Vercel outage leaves the project list empty,
- * never the tab broken. The whole account's project list is for those who can choose from it: any
- * other reader, a viewer or a read token, gets the linked project alone.
+ * A Vercel outage leaves the project list empty, never the tab broken. Only an admin session sees
+ * the whole account's project list; a viewer or a token gets the linked project alone.
  */
 async function vercelOf(ctx: Ctx, a: Row, viewer: Actor) {
   if (a.kind !== "frontend") return null;
@@ -178,7 +165,6 @@ async function vercelOf(ctx: Ctx, a: Row, viewer: Actor) {
       .then((api) => api.projects())
       .then((list) => list.filter((p) => viewer.role === "admin" && viewer.kind === "session" || p.id === a.vercelProjectId).map((p) => ({ id: p.id, name: p.name, framework: p.framework ?? null })))
       .catch((e: unknown) => {
-        // The picker says why it is empty: a dead token and a rate limit each need something else done.
         projectsError = e instanceof HttpError && e.code === "VERCEL_TOKEN" ? TOKEN_DEAD : e instanceof HttpError && e.status < 500 ? e.message : "Vercel did not answer, so its projects could not be listed. Try again shortly.";
         return [];
       });
@@ -198,8 +184,6 @@ async function appConfig(ctx: Ctx, a: Row, viewer: Actor) {
     vercel: await vercelOf(ctx, a, viewer),
   };
 }
-
-// ------------------------------------------------------------------ power
 
 const VERB: Record<PowerOp, string> = { start: "started", stop: "stopped", restart: "restarted" };
 
@@ -228,8 +212,6 @@ async function power(ctx: Ctx, actor: Actor, id: string, op: PowerOp, req: Fasti
   });
   return undefined;
 }
-
-// ------------------------------------------------------------------ handlers
 
 const changesJson = (c: Change[]) => c as unknown as Prisma.InputJsonValue;
 
@@ -261,11 +243,7 @@ export const appLifecycleHandlers: Handlers = {
     return appDetail(ctx, await loadRow(ctx, a, params.id), a);
   },
 
-  /**
-   * Changes the name people read, nothing else: `name` stays, so no container, volume, network alias,
-   * preview host, link, route or CLI call notices. Refused when another app of the environment
-   * already shows or answers to it, ignoring case.
-   */
+  // Changes only the name people read. `name` stays, so no container, volume, alias, route or link notices.
   "apps.rename": async ({ params, body, actor, ctx, req }) => {
     const a = requireActor(actor);
     const app = await loadRow(ctx, a, params.id);
@@ -302,7 +280,7 @@ export const appLifecycleHandlers: Handlers = {
       await assertVersionChangeAllowsDelete(tx, app.id);
       await moveLinksBeforeDelete(tx, ctx.ring, app.id, a);
       await assertNoDeployInFlight(tx, [app.id]);
-      // The teardown job carries everything it needs, so it is queued before the rows go.
+      // Queued before the rows go: the teardown job's payload is read from them.
       await enqueueRemovals(tx, [app.id], app.environment.projectId);
       const secretIds = await secretIdsFor(tx, { environmentIds: [], appIds: [app.id] });
       await tx.app.delete({ where: { id: app.id } });

@@ -4,7 +4,6 @@ import { useId } from "react";
 
 const SIZES = { sm: 20, md: 28, lg: 40 } as const;
 
-/** A two-tone folder: a deeper back panel with its tab, and a lighter front with a lit edge. */
 export function ProjectTile({ size = "sm" }: { size?: keyof typeof SIZES }) {
   const id = useId();
   const px = SIZES[size];

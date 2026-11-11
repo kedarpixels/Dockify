@@ -1,18 +1,6 @@
 /**
- * Backup, restore and restore test. Each runs as a job on the data lane, so a long dump never
- * blocks a deploy.
- *
- *   backup        dump (pg_dump, redis-cli --rdb, or tar through a read-only helper) -> gzip ->
- *                 encrypt -> scratch file (ciphertext only) -> upload -> row ready with size,
- *                 sha256 and the key fingerprint.
- *   restore       download -> verify (sha256, every chunk decrypts, tar entries safe) -> then
- *                 replay. Replace in place takes a pre-restore dump, quiesces the environment's apps
- *                 (recorded on the job row first, so a crash is undone by recovery), and replays the
- *                 dump inside an explicit BEGIN/COMMIT. New creates a fresh service and replays into it.
- *   restore test  the same replay into a throwaway Postgres on a named, labelled scratch volume, then
- *                 counts tables and rows. That volume holds a decrypted copy, so it goes when the test
- *                 ends, however it ends (data/leftovers.ts sweeps what a crash leaves). Redis and
- *                 volume backups get the full decrypt and format checks.
+ * Backup, restore and restore test, each a job on the data lane so a long dump never blocks a deploy. Only
+ * ciphertext touches scratch files, and a restore verifies the whole download before anything is replayed.
  */
 import { readAll } from "./context.ts";
 import { createHash } from "node:crypto";
@@ -76,8 +64,6 @@ export function checkExit(what: string, r: { exitCode: number; stderr: string })
 }
 
 
-// ------------------------------------------------------------------------------- containers
-
 interface ServiceTarget {
   app: ServiceApp;
   containerId: string;
@@ -101,7 +87,6 @@ async function serviceApp(deps: DataDeps, appId: string): Promise<ServiceApp> {
   };
 }
 
-/** The running container that is this app's, checked by label against what the daemon reports. */
 async function locate(deps: DataDeps, app: ServiceApp): Promise<string> {
   const s = await deps.docker.inspect(containerNameFor(app.id));
   if (!s) throw new DataError(`${app.name} has no container. Start it first.`, true);
@@ -126,8 +111,6 @@ const execQuiet = async (deps: DataDeps, id: string, c: Command, stdin = false) 
   return h;
 };
 
-// ---------------------------------------------------------------------------------- backup
-
 interface DumpSource {
   handle: ExecHandle;
   cleanup: () => Promise<void>;
@@ -141,7 +124,6 @@ async function openDump(deps: DataDeps, backup: Backup, t: ServiceTarget): Promi
   throw new DataError(`backups of kind ${backup.kind} are taken by the control plane updater`, true);
 }
 
-/** The row's last word: failed with the reason, or the reason kept on a row a retry will run again. */
 const failureData = (e: unknown, final: boolean) =>
   final || isPermanentError(e) ? { status: "failed" as const, error: message(e), finishedAt: new Date() } : { error: message(e) };
 
@@ -172,7 +154,6 @@ class Fan extends Writable {
   }
 }
 
-/** One copy of a dump: its row, and the ciphertext sealed to that row's id on its way to scratch. */
 interface Copy {
   row: Backup;
   tmp: string;
@@ -180,12 +161,8 @@ interface Copy {
 }
 
 /**
- * Runs one backup to completion: one dump, gzipped once, then encrypted and stored once per copy
- * (`copyIds`: the other tiers one run serves, each its own row and its own destination). Each copy
- * succeeds or fails on its own: a bucket that is down never fails the local copy. `final` is whether
- * this is the job's last attempt: then, or when the error is permanent, a row is marked failed with
- * the reason at once; otherwise it keeps running with the reason recorded, and the retry dumps again
- * for the copies still running only.
+ * One dump, gzipped once, then encrypted and stored once per copy: a bucket that is down never fails the local
+ * copy. `final` (the last attempt) or a permanent error fails a row at once; otherwise the retry dumps again.
  */
 export async function runBackup(deps: DataDeps, backupId: string, final = true, copyIds: readonly string[] = []): Promise<void> {
   const { db } = deps;
@@ -271,7 +248,6 @@ export async function runBackup(deps: DataDeps, backupId: string, final = true, 
   } catch (e) {
     await source?.handle.kill().catch(() => {});
     fan?.destroy();
-    // Every copy not settled above carries the reason the run stopped.
     for (const c of copies) if (!settled.has(c.row.id)) await db.backup.update({ where: { id: c.row.id }, data: failureData(e, final) });
     throw e;
   } finally {
@@ -280,11 +256,7 @@ export async function runBackup(deps: DataDeps, backupId: string, final = true, 
   }
 }
 
-/**
- * The offsite copy of a pre-update control-plane dump. The updater took the dump (it holds no
- * vault) and recorded its sha256; here it is checked against that hash while it is gzipped and
- * encrypted like every backup, then uploaded to the default destination.
- */
+/** The updater (which holds no vault) recorded the dump's sha256; it is checked while the dump is gzipped and encrypted. */
 async function copyControlPlaneDump(deps: DataDeps, backup: Backup, final: boolean): Promise<void> {
   const { db } = deps;
   const expected = (backup.appSnapshot as { dumpSha256?: unknown } | null)?.dumpSha256;
@@ -317,8 +289,6 @@ async function copyControlPlaneDump(deps: DataDeps, backup: Backup, final: boole
   }
 }
 
-// ---------------------------------------------------------------------------- fetch, verify
-
 function restorable(b: Backup | null): asserts b is Backup & { objectKey: string } {
   if (!b) throw new DataError("That backup does not exist", true);
   if (b.status !== "ready" || !b.objectKey) throw new DataError("Only a finished backup can be restored", true);
@@ -328,9 +298,8 @@ function restorable(b: Backup | null): asserts b is Backup & { objectKey: string
 }
 
 /**
- * Downloads the ciphertext and proves it whole before anything is touched: the sha256 matches the
- * row, every chunk authenticates through to the final one, the gzip ends cleanly, and a volume
- * archive passes the tar guard. Returns the scratch path (still ciphertext).
+ * Downloads the ciphertext and proves it whole before anything is touched: sha256, every chunk through the
+ * final one, a clean gzip end, the tar guard. Returns the scratch path (still ciphertext).
  */
 export async function fetchVerified(deps: DataDeps, backup: Backup & { objectKey: string }): Promise<string> {
   await mkdir(deps.tmpDir, { recursive: true, mode: 0o700 });
@@ -359,8 +328,6 @@ async function plain(deps: DataDeps, tmp: string, backupId: string): Promise<Rea
   pipeline(createReadStream(tmp), new DecryptStream(keys.all, backupId), createGunzip(), out).catch((e: unknown) => out.destroy(e as Error));
   return out;
 }
-
-// --------------------------------------------------------------------------------- replay
 
 /**
  * Feeds the verified dump into psql inside one explicit transaction. If the source fails, the
@@ -400,8 +367,6 @@ async function replayRedis(deps: DataDeps, tmp: string, backupId: string, t: Ser
   }
 }
 
-// ------------------------------------------------------------------------------- quiesce
-
 export async function quiesce(deps: DataDeps, jobId: string, payload: Pick<RestorePayload, "quiesced" | "resumedAt">, environmentId: string): Promise<string[]> {
   const siblings = await deps.db.app.findMany({
     where: { environmentId, kind: { in: [...SERVICE_KINDS_SIBLINGS] }, desiredState: "running" },
@@ -435,8 +400,6 @@ export async function resume(deps: DataDeps, jobId: string, payload: Pick<Restor
   return failed;
 }
 
-// -------------------------------------------------------------------------------- restore
-
 async function activity(deps: DataDeps, action: string, verb: string, targetId: string, label: string, failed = false, suffix?: string): Promise<void> {
   await deps.db.activityLog
     .create({ data: { category: "system", action, verb, actorType: "system", targetType: "app", targetId, targetLabel: label, failed, suffix: suffix?.slice(0, 300) ?? null } })
@@ -455,7 +418,6 @@ export async function runRestore(deps: DataDeps, jobId: string, payload: Restore
   let quiesced: string[] = [];
   try {
     if (payload.mode === "new") {
-      // The new service starts the way every service does: the managed deploy (data/managed.ts).
       const out = await deployManagedService({ db, vault: deps.vault, docker: deps.docker, log: () => {} }, app.id, { fromRestore: true });
       await db.app.update({ where: { id: app.id }, data: { status: "running", desiredState: "running", containerId: out.containerId } });
     } else {
@@ -490,8 +452,6 @@ export async function runRestore(deps: DataDeps, jobId: string, payload: Restore
     await rm(tmp, { force: true });
   }
 }
-
-// --------------------------------------------------------------------------- restore test
 
 const REDIS_MAGIC = Buffer.from("REDIS", "latin1");
 

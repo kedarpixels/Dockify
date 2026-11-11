@@ -5,11 +5,7 @@ import { Icon, type IconName } from "@/components/icon";
 import { IconTile } from "@/components/ui/icon-tile";
 import { cx } from "@/components/ui/cx";
 
-/*
- * Large option cards. `ActionCards` are plain buttons that move the flow on (the source picker);
- * `ChoiceCards` are one radio group with a roving tab stop, where the arrows move and pick, the
- * way Segmented does. Neither moves on hover: hover is the soft fill, picked is the soft blue tint.
- */
+/* `ActionCards` are buttons that move the flow on; `ChoiceCards` are one radio group with a roving tab stop. */
 
 export interface CardOption<T extends string> {
   value: T;
@@ -19,7 +15,6 @@ export interface CardOption<T extends string> {
   disabled?: boolean;
 }
 
-/** Moves focus through a list of cards with the arrow keys, Home and End. Returns the new index. */
 function arrowTo(e: React.KeyboardEvent, count: number, from: number, usable: (i: number) => boolean): number | null {
   const by = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
   let i: number;

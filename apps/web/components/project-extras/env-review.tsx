@@ -14,9 +14,7 @@ import type { AppSummary, EnvChange, EnvState } from "@/lib/pages/project-detail
 import { affectedApps, refViewOf, scopeId, summarize, TARGET_LABEL, varsOf } from "./env-model";
 import { fieldLabel } from "./env-refs";
 
-/* Review before apply: every staged change as a coloured diff line, grouped by where it lives,
-   then the apps it reaches and whether each rebuilds or only restarts. Values are masked; the
-   "Show values" switch reveals plain ones, and a secret only ever reads "new value". */
+/* Values are masked; "Show values" reveals plain ones, and a secret only ever reads "new value". */
 
 function Line({ sign, k, value, secret, plain, extra }: { sign: "+" | "-"; k: string; value: string | null | undefined; secret: boolean; plain: boolean; extra?: string }) {
   return (

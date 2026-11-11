@@ -1,8 +1,6 @@
 /**
- * What every JSON document the agent passes on goes through first. The rule behind it: the next parser
- * must read the bytes this module wrote, never the caller's. JSON.parse keeps the last of two equal keys
- * where Go's decoder merges them, and Go matches a struct field's name whatever its case, so what a check
- * saw in the caller's bytes need not be what Docker or Traefik reads from them.
+ * Every JSON document the agent passes on is parsed and written again, so the next parser never reads the
+ * caller's bytes: JSON.parse keeps the last of two equal keys where Go merges them, and Go folds key case.
  */
 
 export const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);

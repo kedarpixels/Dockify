@@ -8,27 +8,23 @@ export interface ApiConfig {
   /** The one browser-facing origin. Cookie Secure flag and the CSRF check both derive from it. */
   publicUrl: URL;
   ingress: IngressMode;
-  /**
-   * Peers allowed to tell us the client address: the web container (and Traefik in direct mode).
-   * Anything else connecting is the client itself. CIDRs or single addresses.
-   */
+  /** Peers allowed to report the client address (CIDRs or single addresses); any other peer is the client itself. */
   trustedProxies: string[];
   logLevel: string;
   /** Optional one-time token the installer prints; when set, first-owner setup must present it. */
   setupToken: string | undefined;
   /** The server's public IPv4 for the "point your A record at" hint; null when not set. */
   serverIpv4: string | null;
-  /** The server's public IPv6 for the AAAA record hint, when it has one (DOCKIFY_SERVER_IPV6). */
   serverIpv6?: string | null;
   /** Extra hostnames no tenant may claim, besides the dashboard host. */
   reservedHosts: string[];
   /** CNAME target for tunnel mode (`<tunnel id>.cfargotunnel.com`); null when unknown. */
   tunnelTarget: string | null;
-  /** Bare tunnel id the installer created for this box; stored on the Cloudflare row so edge jobs can route. */
+  /** Stored on the Cloudflare row so edge jobs can route. */
   cfTunnelId: string | null;
-  /** Socket peers allowed on the internal routes (the worker's control-network address). Empty: any peer with the token. */
+  /** Socket peers allowed on the internal routes; empty means any peer with the token. */
   internalPeers: string[];
-  /** The host port the web container publishes on 127.0.0.1 (DOCKIFY_PORT), the SSH tunnel's address. 3000 when unset. */
+  /** The host port the web container publishes on 127.0.0.1, the SSH tunnel's address. 3000 when unset. */
   webPort?: number;
 }
 

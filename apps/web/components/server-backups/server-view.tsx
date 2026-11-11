@@ -22,10 +22,7 @@ import { Metrics } from "./server-metrics";
 import { UpdatesCard } from "./server-updates";
 import { send, usePoll } from "./use-poll";
 
-/**
- * A failed read keeps the last good snapshot. During a self-update the api is stopped and every read
- * fails, and swapping the page for its no-source state would unmount the card following the update.
- */
+/** During a self-update every read fails, and swapping the page for its no-source state would unmount the card following the update. */
 const hasServer = (r: ServerResult) => r.data !== null;
 
 export function ServerView({ overview, initial, temporaryAddress = false }: { overview: OverviewResult; initial: ServerResult; temporaryAddress?: boolean }) {
@@ -63,7 +60,6 @@ export function ServerView({ overview, initial, temporaryAddress = false }: { ov
       };
     });
 
-  // Confirming closes the dialog; the toast follows the prune and names the freed size.
   const prune = async (targets: DiskSlice[]) => {
     setConfirming(null);
     if (!s || pruneLock.current || !targets.length) return;
@@ -91,7 +87,6 @@ export function ServerView({ overview, initial, temporaryAddress = false }: { ov
 
   const setUpdates = useCallback((updates: UpdateStatus) => setResult((prev) => ({ ...prev, updates })), [setResult]);
 
-  // The lead names the host and says how it is doing; cores and memory sit on the cards below.
   // An empty name or region is left out rather than leaving a stray "in" or comma.
   const where = s ? [s.host.name, s.host.region ? `in ${s.host.region}` : ""].filter(Boolean).join(" ") : "";
   const running = s ? s.containers.filter((c) => c.state === "running").length : 0;

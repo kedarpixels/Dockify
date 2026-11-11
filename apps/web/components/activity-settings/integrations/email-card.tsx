@@ -13,12 +13,7 @@ import { sendTestEmail, useEmailForm } from "./email-form";
 import { useStepUp } from "@/components/step-up/step-up";
 import { clause } from "@/lib/format";
 
-/*
- * Email over your own mail server: optional, one per install. With it, invites can be emailed, Forgot
- * password works on the sign-in page, email changes are confirmed by code and alerts can email.
- * Without it Dockify keeps copy links and the host CLI reset (over SSH). The password is write-only:
- * nothing of it comes back.
- */
+/* Optional, one per install. The password is write-only: nothing of it comes back. */
 
 function EmailForm({ editing, onDone, onCancel, preview }: { editing: EmailIntegration | null; onDone: (v: EmailIntegration) => void; onCancel: () => void; preview: boolean }) {
   const { fields, submit, busy } = useEmailForm({ editing, onDone, preview });

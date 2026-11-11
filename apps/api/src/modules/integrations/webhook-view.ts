@@ -1,8 +1,4 @@
-/**
- * How a notification webhook reads in an answer. Shared by the integrations module (the full list)
- * and the alerts module (names and icons for the rule picker). Only hints of the stored secrets
- * ever leave: never a URL, a token or a signing secret.
- */
+/** Shared with the alerts module. Only hints of the stored secrets ever leave: never a URL, a token or a signing secret. */
 import type { integrations } from "@dockify/contracts";
 import { ICON_IMAGE, iconVersion, LIVE_ALERT_METRIC, shownWebhookIcon, type IconImageRow, type Prisma } from "@dockify/db";
 

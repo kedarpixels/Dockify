@@ -1,10 +1,4 @@
-/**
- * Registry credentials for private images. The worker opens one when it pulls an app whose
- * registryId points here (apps/worker/src/integrations/registry-auth.ts).
- *
- * Rows: integrations kind registry, name = the row id's first 8 characters plus the host (unique),
- * config { kind, host, username }, secretId the token (integration_token).
- */
+/** Registry credentials for private images. The worker opens one at pull time (apps/worker/src/integrations/registry-auth.ts). */
 import type { Integration, Tx } from "@dockify/db";
 import type { Handlers } from "../../app.ts";
 import { audit } from "../../audit.ts";
@@ -23,7 +17,7 @@ interface RegistryConfig {
 }
 
 export const DEFAULT_HOST: Record<Exclude<RegistryKind, "custom">, string> = { ghcr: "ghcr.io", dockerhub: "docker.io" };
-/** The host the registry API answers on; Docker Hub's differs from its image prefix. */
+/** Docker Hub's registry API host differs from its image prefix. */
 export const apiHost = (host: string) => (host === "docker.io" ? "registry-1.docker.io" : host);
 
 export function resolveHost(kind: RegistryKind, host: string | undefined): string {
@@ -44,7 +38,7 @@ export function parseChallenge(header: string | string[] | undefined): { realm: 
 
 export type CheckResult = { ok: true } | { ok: false; reason: "auth" | "unreachable"; message: string };
 
-/** The registry v2 handshake with these credentials: /v2/, then the token realm when it asks. */
+/** The registry v2 handshake: /v2/, then the token realm when it asks. */
 export async function checkRegistry(http: HttpClient, host: string, username: string, token: string): Promise<CheckResult> {
   const basic = `Basic ${Buffer.from(`${username}:${token}`).toString("base64")}`;
   try {
@@ -120,8 +114,8 @@ export function registryHandlers(deps: IntegrationDeps): Handlers {
       const token = body.token ? body.token : null;
       let status = row.status;
       let error = row.error;
-      // A stored token only goes to the host and username it was saved for: re-pointing the row would
-      // otherwise hand it to any host, here on the check and later on every pull.
+      // A stored token only goes to the host and username it was saved for. Re-pointing the row would otherwise
+      // hand it to any host, on this check and on every later pull.
       if (!token && (host !== c.host || username !== c.username)) {
         throw new HttpError(400, "Enter the token again: a stored token only goes to the registry and username it was saved for.", "INVALID_REQUEST", { field: "token" });
       }

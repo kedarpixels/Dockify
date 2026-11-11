@@ -24,17 +24,12 @@ import type { RecentDeployment } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
 import { StatusIcon } from "./status-icon";
 
-/** Seconds a deployment has run, or ran when it is finished. */
 export function elapsed(d: RecentDeployment, now: number) {
   const end = d.finishedAt ? Date.parse(d.finishedAt) : now;
   return (end - Date.parse(d.createdAt)) / 1000;
 }
 
-/**
- * The row's Redeploy key. It asks first, with the same question as the deployment page, then one
- * toast runs from "Starting redeploy" to the answer, with a View action to the new deployment. The
- * preview sends nothing: a short beat, then the answer saying so.
- */
+/** Asks first, with the same question as the deployment page. The preview sends nothing. */
 function RedeployKey({ d }: { d: RecentDeployment }) {
   const preview = usePreview();
   const router = useRouter();
@@ -70,21 +65,9 @@ function RedeployKey({ d }: { d: RecentDeployment }) {
   );
 }
 
-/**
- * One deployment as a 44px soft row: status, project / app,
- * the commit's author and its message, or for a deployment with no commit who started it and what
- * ran, branch, and hash (it copies), left empty with no commit, duration, the time, then the Redeploy
- * key, always in view. The row itself, message included, opens the deployment and its log, so it
- * carries no Logs key of its own. Shared by every
- * deployment list so they all read the same. A Viewer gets no Redeploy key.
- *
- * `scope` says what the page around the row already names: "all" (the default) prints project and
- * app; "project" (a project page) prints the app only; "app" (an app page) prints what started the
- * deployment instead, since the app is the page itself. `time="clock"` (a past day in the heatmap
- * panel) prints the UTC clock time instead of the relative one.
- */
+// DeployRow's `scope` says what the page around the row already names, so the row does not repeat it.
+// `time="clock"` (a past day in the heatmap panel) prints the UTC clock time instead of the relative one.
 const VERCEL_TARGET = { production: "Production", preview: "Preview" } as const;
-/** "Production on Vercel", "Preview on Vercel", or just where it ran when Vercel named no target. */
 const vercelTip = (d: RecentDeployment) => (d.external?.target ? `${VERCEL_TARGET[d.external.target]} on Vercel` : "On Vercel");
 
 export function DeployRow({ d, now, time = "ago", scope = "all" }: { d: RecentDeployment; now: number; time?: "ago" | "clock"; scope?: "all" | "project" | "app" }) {

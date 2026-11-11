@@ -1,13 +1,5 @@
-/*
- * The request headers every call from this server to the Dockify API carries on the visitor's
- * behalf. Pure, so it tests without Next.
- *
- * The API rate limits, audits and labels sessions by the client address. It trusts the web
- * container to report that address, and refuses a signed-in call that arrives without one, since
- * every visitor would otherwise share this container's address and one bucket. Next always sets
- * x-forwarded-for on the incoming request (from the socket when no proxy did), so it is always
- * there to pass on; cf-connecting-ip is what the API prefers in Cloudflare Tunnel mode.
- */
+// The API rate limits, audits and labels sessions by client address, and refuses a signed-in call
+// without one. Next always sets x-forwarded-for; the API prefers cf-connecting-ip in Tunnel mode.
 
 // origin and sec-fetch-site carry the visitor's real browser context so the API's checkCsrf can
 // fire; without them it is blind and CSRF rests on the web's per-handler guards alone.

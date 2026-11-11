@@ -1,7 +1,5 @@
-/* "Today" for the deploy trend. The API counts the trend's days in one zone (the viewer's saved
-   zone, else UTC) and names it in `trendZone`; the Deployments list groups by that same saved
-   zone. Reading today as the UTC day instead put "Deployments today" and the heatmap's today cell
-   on the wrong row for part of every day. */
+// The API counts the trend's days in one zone and names it in `trendZone`. Reading today as the
+// UTC day would put "Deployments today" on the wrong row for part of every day.
 
 const formats = new Map<string, Intl.DateTimeFormat | null>();
 
@@ -16,7 +14,7 @@ function formatOf(zone: string) {
   return formats.get(zone) ?? null;
 }
 
-/** The calendar day `now` falls on in `zone` (an IANA name) as YYYY-MM-DD; the UTC day when the zone is missing or unknown. */
+/** YYYY-MM-DD; the UTC day when the zone is missing or unknown. */
 export function dayIn(now: number, zone?: string | null): string {
   const f = zone && zone !== "UTC" ? formatOf(zone) : null;
   if (!f) return new Date(now).toISOString().slice(0, 10);

@@ -9,12 +9,6 @@ import { PortField, START_COMMAND_HINT } from "./build-fields";
 import type { ContextState } from "./client";
 import type { Errors, ImageDraft } from "./draft";
 
-/*
- * Step 2 for a Docker image: the reference, the registry credentials to pull it with (picked
- * from Settings, Integrations, and matched to the image’s host until the operator picks one),
- * and an optional command and port.
- */
-
 const PUBLIC = "__public";
 
 /** The registry host an image reference names: ghcr.io/a/b is ghcr.io, nginx is docker.io. */

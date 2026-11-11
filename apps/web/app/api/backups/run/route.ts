@@ -1,10 +1,7 @@
 import { guardWrite, json, readJsonObject, refuse } from "@/lib/http";
 import { runBackup } from "@/lib/pages/server-backups";
 
-/**
- * POST { resourceId?, tier? }: back up one database now, or every enabled one. Without a tier, each
- * database writes one dump to every tier that is on; "local", "offsite" or "both" pick.
- */
+/** POST { resourceId?, tier? }: one database, or every enabled one. Without a tier, each writes to every tier that is on. */
 export async function POST(req: Request) {
   const refused = guardWrite(req);
   if (refused) return refused;

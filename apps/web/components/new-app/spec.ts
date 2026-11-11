@@ -2,28 +2,21 @@ import type { AppKind, OverviewSource } from "@/lib/types";
 import { BRANCH_MESSAGE, BRANCH_NAME, ENV_NAME, PROJECT_SLUG, hasReservedPrefix, isRecord, RESERVED_NAME_MESSAGE } from "@/lib/validation";
 import { SERVICE_VERSIONS } from "./service-versions";
 
-/*
- * The "Host any application" request: what the browser sends, and the strict checks both the
- * dialog and the proxy route run on it. Pure, so the client and the server share one copy. The
- * API contract lives in lib/pages/new-app.ts; the project slug rule is lib/validation's.
- */
-
-// -------------- Types --------------
+/* Pure, so the dialog and the proxy route share one copy of the checks. The API contract lives in lib/pages/new-app.ts. */
 
 export type SourceType = "git" | "image" | "service" | "compose" | "template";
-/** The managed services New app offers. Storage is not one: MinIO no longer publishes an image. */
+/** Storage is not offered: MinIO no longer publishes an image. */
 export type ServiceKind = "postgres" | "redis";
 export type Builder = "auto" | "dockerfile" | "railpack";
 /** Where a frontend runs: this server (default), or a linked Vercel project. */
 export type DeployTarget = "server" | "vercel";
-/** The kinds an app built from a repository or an image can be. Services have their own. */
 export type RunKind = Extract<AppKind, "frontend" | "backend" | "bot">;
 
 export interface BuildSettings {
   builder: Builder;
   /** What the API detected, such as "Next.js". Informational. */
   framework: string | null;
-  /** The folder inside the repository the app builds from, "" for the root. */
+  /** "" for the root. */
   rootDir: string;
   /** Empty lets Railpack decide. */
   installCommand?: string;
@@ -62,11 +55,7 @@ export interface AppSpec {
   target: DeployTarget;
 }
 
-/**
- * The apps a new Postgres or Redis is linked to as it is created: each gets DATABASE_URL or
- * REDIS_URL as a reference the API resolves at deploy time. `replace` names the apps whose variable
- * of that name the operator agreed to replace.
- */
+/** Each app gets a reference the API resolves at deploy time. `replace` names the apps whose variable the operator agreed to replace. */
 export interface ServiceLink {
   apps: string[];
   replace?: string[];
@@ -85,10 +74,7 @@ export interface CreateAppsResult {
   ids: string[];
 }
 
-/**
- * The API's LINK_CONFLICT answer: picked apps that already have the variable, as their own
- * (`shared: false`) or from their environment's shared variables. Nothing was created.
- */
+/** The picked apps that already have the variable, as their own (`shared: false`) or from shared variables. Nothing was created. */
 export interface LinkConflict {
   key: string;
   apps: Array<{ id: string; name: string; shared: boolean }>;
@@ -109,7 +95,6 @@ export interface DetectResult extends BuildSettings {
   hasDockerfile: boolean;
   /** Railpack serves it as static files. */
   staticSite: boolean;
-  /** Why nothing was recognised, in a sentence. */
   reason: string | null;
   installCommand: string;
 }
@@ -123,11 +108,10 @@ export interface RegistryOption {
 
 export interface NewAppContext {
   registries: RegistryOption[];
-  /** The connected Vercel account, or null when Vercel is not connected. */
+  /** Null when Vercel is not connected. */
   vercel: { account: string; team: string | null } | null;
 }
 
-/** What every route under app/api/new-app answers. */
 export interface NewAppAnswer<T> {
   source: OverviewSource;
   data: T | null;
@@ -135,8 +119,6 @@ export interface NewAppAnswer<T> {
   /** With the LINK_CONFLICT code: the apps that already have the variable. */
   conflict?: LinkConflict;
 }
-
-// -------------- Constants --------------
 
 /** Newest first, exactly the versions the API accepts; kept in step by an API test (service-versions.ts). */
 export { SERVICE_VERSIONS };
@@ -148,7 +130,6 @@ export const SERVICE_LABEL: Record<ServiceKind, string> = { postgres: "Postgres"
 /** The variable a link gives each app, named as the API names it (packages/contracts REF_FIELDS, the url field). */
 export const LINK_KEY: Record<ServiceKind, string> = { postgres: "DATABASE_URL", redis: "REDIS_URL" };
 
-/** The kinds a new service can be linked to: the apps that run code. */
 export const LINKABLE_KINDS: ReadonlySet<AppKind> = new Set<AppKind>(["frontend", "backend", "bot"]);
 
 /** The API's code for a link that would replace a variable the operator has not agreed to replace. */
@@ -167,14 +148,11 @@ export const FRONTEND_FRAMEWORKS = new Set(["Next.js", "Vite", "Astro", "Remix",
 
 export const MAX_APPS = 20;
 
-// -------------- Validation --------------
-
 /** An app name: lowercase letters, digits and inner hyphens, 1 to 32 characters. */
 export const APP_NAME = /^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/;
 export const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 export const VOLUME_NAME = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
 const ID = /^[\w-]{1,64}$/;
-/** A branch name as git and the contracts take it: no leading, trailing or doubled slash, no "..", 200 characters at most. */
 /** registry[:port]/path[:tag][@sha256:digest], lowercase, as Docker reads it. */
 export const IMAGE_REF =
   /^(?:[a-z0-9]+(?:[.-][a-z0-9]+)*(?::\d{1,5})?\/)?[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:\/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*(?::[\w][\w.-]{0,127})?(?:@sha256:[a-f0-9]{64})?$/;
@@ -324,7 +302,7 @@ function readLink(v: unknown, apps: AppSpec[]): ServiceLink | undefined | string
   return { apps: ids, ...(replace.length ? { replace } : {}) };
 }
 
-/** The create body, checked field by field. A string is the reason it was refused. */
+/** A string is the reason it was refused. */
 export function readCreate(body: unknown): CreateAppsInput | string {
   if (!isRecord(body)) return "That request is not valid";
   if (!isStr(body.project, 40) || !PROJECT_SLUG.test(body.project)) return "Unknown project";

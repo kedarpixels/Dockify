@@ -2,12 +2,8 @@
 
 import { createContext, useCallback, useContext, useMemo } from "react";
 
-/*
- * Which projects name their environments in rows that list apps from several projects (Resources,
- * Domains, Logs, Backups, the server's containers): the ones whose apps sit in more than one
- * environment (lib/environments.ts). The console frame provides it from the overview it loads; a
- * page that knows its own project decides from that project instead.
- */
+// The projects whose rows name their environment: those with apps in more than one (lib/environments.ts).
+// The console frame provides it from the overview; a page that knows its own project decides from that.
 const EnvScope = createContext<ReadonlySet<string> | null>(null);
 
 export function EnvScopeProvider({ projects, children }: { projects: readonly string[]; children: React.ReactNode }) {
@@ -17,7 +13,7 @@ export function EnvScopeProvider({ projects, children }: { projects: readonly st
   return <EnvScope.Provider value={value}>{children}</EnvScope.Provider>;
 }
 
-/** Whether a row of `project` names its environment. Without a provider every project does. */
+/** Without a provider every project does. */
 export function useShowsEnv(): (project: string) => boolean {
   const scope = useContext(EnvScope);
   return useCallback((project: string) => scope === null || scope.has(project), [scope]);

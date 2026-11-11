@@ -7,17 +7,12 @@ import { githubRepo, repoHref } from "@/lib/git-links";
 import type { GitInstallation, GitRepo } from "@/lib/pages/git";
 import { isSshRepoUrl, parseRepo, type ParsedRepo } from "./parse";
 
-/* The smaller pieces of the New app repository source: the picked repository and the URL import. */
-
 /** What a new app builds from: a repository the GitHub App can read, or a public URL. */
 export type Picked = { kind: "git"; installation: GitInstallation; repo: GitRepo } | { kind: "url"; parsed: ParsedRepo };
 
 export const fullName = (p: Picked) => (p.kind === "git" ? p.repo.fullName : `${p.parsed.owner}/${p.parsed.repo}`);
 
-/**
- * The picked repository, in a soft container, with a way back to the list. Its name links to the
- * repository on GitHub (the tile says GitHub, so the link needs no tip); any other host shows it as text.
- */
+/** The name links to the repository on GitHub; any other host shows it as text. */
 export function PickedRepo({ picked, onChange, disabled }: { picked: Picked; onChange: () => void; disabled?: boolean }) {
   const name = fullName(picked);
   const locked = picked.kind === "git" && picked.repo.private;
@@ -50,11 +45,7 @@ export function PickedRepo({ picked, onChange, disabled }: { picked: Picked; onC
 
 const SSH_MESSAGE = "Dockify clones over HTTPS. Use a URL like https://github.com/owner/repo";
 
-/**
- * A public repository by its URL, for hosts or repositories the App does not cover. The flow owns
- * the URL and its Continue, which sits in the footer with the other step keys; Enter here is the
- * same Continue. The way back to the picker is a quiet link, as the way here is.
- */
+/** The flow owns the URL and its Continue, which sits in the footer; Enter here is the same Continue. */
 export function UrlImport({
   value: url,
   tried,
@@ -73,7 +64,6 @@ export function UrlImport({
   const ssh = isSshRepoUrl(url);
   const error = !tried ? null : !url.trim() ? "Enter the repository URL" : ssh ? SSH_MESSAGE : !parsed ? "Use a URL like https://github.com/owner/repo" : null;
 
-  // Inline validity while typing: the parsed name once the URL reads, a calm nudge before that.
   const hint = !url.trim() ? (
     "An HTTPS URL. Private repositories need the Dockify GitHub App."
   ) : parsed ? (

@@ -3,13 +3,8 @@ import { Icon, type IconName } from "@/components/icon";
 import { Corners, Node } from "@/components/ui/rule";
 import { cx } from "@/components/ui/cx";
 
-/*
- * Shared blocks for the compare, install, changelog, security and open-source pages. Each block is a
- * direct child of main.page, so it sits between the rails. Every block that draws inner lines ends
- * on a Spacer, which is what makes the nodes below land on real joins.
- */
+/* Every block that draws inner lines ends on a Spacer, which is what makes the nodes below land on real joins. */
 
-/** A page section: a pixel title and a lead, then the body. */
 export function Section({
   id,
   title,
@@ -47,12 +42,8 @@ export function Section({
    with exactly three cells stays three-up at 1100. */
 const STEPS: Record<2 | 3 | 4, number[]> = { 2: [2, 1], 3: [3, 2, 1], 4: [4, 2, 1] };
 
-/**
- * Ruled grid. Cells are split by 1px gaps over the line colour and the grid opens on a top rule,
- * so every cell corner is a join (rail, rule, divider or the Spacer below): each cell carries four
- * nodes. `cols` is the widest count; CSS steps it down at 1100 and 760. The cell count must fill
- * every row at every step, so no grid cell is left empty; outside production a wrong count warns.
- */
+/** `cols` is the widest count; CSS steps it down at 1100 and 760. The cell count must fill every row at
+ *  every step; outside production a wrong count warns. */
 export function Grid({ cols, children, className }: { cols: 1 | 2 | 3 | 4; children: ReactNode; className?: string }) {
   if (process.env.NODE_ENV !== "production" && cols > 1) {
     const n = Children.toArray(children).length;
@@ -92,10 +83,6 @@ export function Cell({
   );
 }
 
-/**
- * Numbered ruled rows: a number column, a hairline, then the body. Nodes sit where each row rule
- * meets the rails and the divider, and where the divider meets the Spacer under the last row.
- */
 export function Steps({ items }: { items: { title: string; body?: ReactNode; changes?: string[] }[] }) {
   return (
     <ol className="pg-steps">
@@ -130,10 +117,7 @@ export function Steps({ items }: { items: { title: string; body?: ReactNode; cha
   );
 }
 
-/**
- * A flag term ("--control-image REF --web-image REF") as pieces that each stay on one line: a flag
- * with its argument never breaks at a hyphen, and two flags wrap between them.
- */
+/** Splits a flag term so a flag never breaks at a hyphen or from its argument, and two flags wrap between them. */
 function flagPieces(term: string): ReactNode {
   const pieces: string[] = [];
   for (const word of term.split(" ")) {
@@ -148,10 +132,7 @@ function flagPieces(term: string): ReactNode {
   ));
 }
 
-/**
- * Two-column ruled rows: a term and its meaning. Nodes as in Steps. The term column is in the code
- * face when `mono` is set (flags, paths), and a flag term never breaks inside a flag.
- */
+/** `mono` sets the term column in the code face (flags, paths). */
 export function Rows({ items, mono }: { items: { term: ReactNode; key: string; desc: ReactNode }[]; mono?: boolean }) {
   return (
     <dl className="pg-rows" data-mono={mono || undefined}>
@@ -171,12 +152,10 @@ export function Rows({ items, mono }: { items: { term: ReactNode; key: string; d
   );
 }
 
-/** Plain body copy inside the rails, for a lead paragraph or a short note under a block. */
 export function Body({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cx("pg-body", className)}>{children}</div>;
 }
 
-/** An outbound source link: small, muted, with the arrow glyph. */
 export function Src({ href, label = "Source" }: { href: string; label?: string }) {
   return (
     <a className="pg-src" href={href} target="_blank" rel="noreferrer noopener">
@@ -192,10 +171,7 @@ export type Tone = "yes" | "part" | "no" | "soon";
 export const TONE_WORD: Record<Tone, string> = { yes: "Yes", part: "Partly", no: "No", soon: "Soon" };
 const TONE_ICON: Partial<Record<Tone, IconName>> = { yes: "check", part: "minus", no: "close" };
 
-/**
- * The one yes, partly or no mark (here, on /compare and on the landing table), or the Soon chip.
- * Before a sentence it reads "Yes: ..."; `alone` when the mark is the whole cell.
- */
+/** Before a sentence it reads "Yes: ..."; `alone` when the mark is the whole cell. */
 export function ToneDot({ tone, alone }: { tone: Tone; alone?: boolean }) {
   const icon = TONE_ICON[tone];
   return (

@@ -1,13 +1,4 @@
-/**
- * The rules of a scheduled job, shared by the api (saving a job, Run now) and the worker's clock.
- *
- * Missed runs, decided: nothing queues up while the server is down. A due job's next time is always
- * worked out from the present, so however long the downtime it is due once, not once per missed
- * time. If that one time is within JOB_LATE_MINUTES it runs; older, it is written to the history as
- * missed and does not run. A 3am report at 9am is rarely what anyone wanted, and a cleanup will come
- * round again. After a restart the runs that are due start spread over JITTER_MS, a fixed offset per
- * job, and never more than JOB_MAX_CONCURRENT_RUNS at once.
- */
+/** Missed runs never queue up: a due job runs once if within JOB_LATE_MINUTES, else is recorded as missed. */
 import { createHash } from "node:crypto";
 import { jobs as J } from "@dockify/contracts";
 import type { Prisma } from "@dockify/db";
@@ -16,10 +7,8 @@ import { CronError, nextRun, parseCron } from "../data/cron.ts";
 
 export const ACTIVE_RUN = ["queued", "running"] as const;
 const JITTER_MS = 30_000;
-/** Enough occurrences to see any sub-hour or within-a-day pattern. */
 const GAP_SAMPLES = 96;
 
-/** Why this schedule cannot be saved, in words for the form, or null. */
 export function scheduleProblem(schedule: string, timezone: string, from = new Date()): string | null {
   if (!isTimeZone(timezone)) return `The time zone ${timezone} is not known`;
   try {
@@ -51,7 +40,6 @@ export type DueDecision =
   | { action: "replace" }
   | { action: "record"; status: "skipped" | "missed"; reason: string };
 
-/** What a due time turns into. Pure. */
 export function decideDue(o: {
   scheduledFor: Date;
   now: Date;
@@ -76,7 +64,6 @@ const NO_JOBS = new Set(["postgres", "redis", "s3"]);
 /** A managed database runs its own image, and nothing of a Vercel app runs on this server. */
 export const jobsAllowed = (a: { kind: string; deployTarget: string }): boolean => !NO_JOBS.has(a.kind) && a.deployTarget === "server";
 
-/** One queued run and the job that will run it, in the caller's transaction. */
 export async function queueRun(tx: Prisma.TransactionClient, jobId: string, serverId: string, o: { trigger: "schedule" | "manual"; scheduledFor: Date | null; delayMs: number }): Promise<string> {
   const run = await tx.scheduledJobRun.create({
     data: { jobId, trigger: o.trigger, status: "queued", scheduledFor: o.scheduledFor },
@@ -89,7 +76,6 @@ export async function queueRun(tx: Prisma.TransactionClient, jobId: string, serv
   return run.id;
 }
 
-/** Stops whatever of this job is active: a queued run never starts, a running one is told to stop. */
 export async function replaceActive(tx: Prisma.TransactionClient, jobId: string): Promise<void> {
   const now = new Date();
   await tx.scheduledJobRun.updateMany({ where: { jobId, status: "queued" }, data: { status: "cancelled", reason: "A newer run replaced it", finishedAt: now } });
@@ -99,7 +85,6 @@ export async function replaceActive(tx: Prisma.TransactionClient, jobId: string)
 /** Holds off a second decision about this job until the transaction ends. */
 export const lockJob = (tx: Prisma.TransactionClient, jobId: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`scheduled-job:${jobId}`}))`;
 
-/** Keeps a log to its newest bytes, at a line start, with a note that the top went. */
 export class TailLog {
   private lines: string[] = [];
   private size = 0;

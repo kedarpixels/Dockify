@@ -1,19 +1,7 @@
 /**
- * The Vercel deployment mirror. Every app linked to a Vercel project (deployTarget "vercel") shows
- * that project's deployments as ordinary deployment rows with provider "vercel", whoever started
- * them: this dashboard, a push through Vercel's Git integration, or the Vercel CLI. It only reads
- * Vercel and only writes these rows and the linked apps' status. Runs as vercel_mirror jobs:
- *
- *   { projectId }                 one Vercel project, queued by a verified webhook delivery
- *   { projectId, deploymentId }   the same, after Vercel said that deployment was deleted
- *   {}                            every linked project, queued by the timer below as the backstop, or by Sync now
- *
- * A Vercel project can be linked by several apps (one per environment) while a deployment has one
- * row, so each deployment goes to one app: see pickApp.
- *
- * A deployment deleted on Vercel goes from the list too. Nothing is removed on a webhook's word or on
- * absence alone: a row is removed only once Vercel answers 404 (or DELETED) for it by id, and only a
- * row the mirror itself copied in. A deploy Dockify started there keeps its row.
+ * Mirrors every linked Vercel project's deployments into deployment rows with provider "vercel". It
+ * only reads Vercel and only writes these rows and the linked apps' status. A row is removed only once
+ * Vercel answers 404 (or DELETED) for it by id, and only a row the mirror itself copied in.
  */
 import { enqueue, enqueueTx, readSecretValue, type AppStatus, type Db, type DeploymentStatus, type Prisma, type SecretVault } from "@dockify/db";
 import { jsonOf, type HttpClient } from "@dockify/net-guard";
@@ -28,14 +16,10 @@ const WITHOUT_WEBHOOK_MS = 2 * 60_000;
 const IN_FLIGHT_MS = 30_000;
 /** A deploy Dockify started that Vercel never accepted, with no job left to say so. */
 const NEVER_ACCEPTED_MS = 40 * 60_000;
-/**
- * How long after it ended a failure nobody saw in flight is still news. A new link's backfill is
- * older than this, so it stays quiet. Longer than the slowest pass, so a pass never misses one.
- */
+/** How long a failure nobody saw in flight stays news; a new link's backfill is older, so it stays quiet. */
 const FAILURE_NEWS_MS = 15 * 60_000;
 /** The most failures one pass announces; a burst drains over the next passes. */
 const NOTICES_PER_PASS = 10;
-/** The most deployments one pass asks Vercel about by id because the list no longer shows them. */
 const GONE_LOOKUPS_PER_PASS = 20;
 /** Who started a row Dockify itself sent to Vercel; every other Vercel row was copied in by the mirror. */
 const STARTED_HERE = ["user", "token"] as const;
@@ -51,7 +35,6 @@ export class VercelMirrorError extends Error {
   }
 }
 
-/** One deployment as GET /v7/deployments and GET /v13/deployments/:id send it. */
 export interface VercelDeployment {
   uid?: string;
   id?: string;
@@ -86,7 +69,6 @@ export function mapDeploymentState(s: string | undefined): DeploymentStatus {
 
 const TERMINAL: ReadonlySet<DeploymentStatus> = new Set(["ready", "failed", "cancelled"]);
 
-/** Text from a third party, for one line of the page: no control characters, bounded. */
 const plainText = (v: unknown, max = 500): string | null => {
   if (typeof v !== "string") return null;
   const t = v.replace(/[\p{Cc}\p{Cf}]+/gu, " ").trim();
@@ -102,7 +84,6 @@ function gitMeta(meta: Record<string, unknown> | null | undefined, suffix: strin
   return null;
 }
 
-/** A commit message's subject: its first line, cleaned afterwards so the newline is still there to find. */
 function firstLine(meta: Record<string, unknown> | null | undefined): string | null {
   for (const p of META_PREFIXES) {
     const v = meta?.[`${p}CommitMessage`];
@@ -111,14 +92,12 @@ function firstLine(meta: Record<string, unknown> | null | undefined): string | n
   return null;
 }
 
-/** Vercel names the source; Dockify's own trigger set says what kind of start it was. */
 function triggerOf(source: string | null): "push" | "redeploy" | "api" {
   if (source === "git" || source === "git-deploy-hook") return "push";
   if (source === "redeploy") return "redeploy";
   return "api";
 }
 
-/** Everything a row takes from Vercel's record. `seen` is what the row already held, when it exists. */
 export function rowFieldsOf(d: VercelDeployment, seen: { finishedAt: Date | null } | null, now: Date) {
   const status = mapDeploymentState(d.readyState ?? d.state);
   const created = new Date(d.created ?? d.createdAt ?? now.getTime());
@@ -144,7 +123,6 @@ export function rowFieldsOf(d: VercelDeployment, seen: { finishedAt: Date | null
     actorType: login ? ("webhook" as const) : ("system" as const),
     actorName: creator,
     gitAuthor: login,
-    // A commit whose author has no login of its own still names them.
     gitAuthorName: login ? null : gitMeta(d.meta, "CommitAuthorName"),
     createdAt: created,
   };
@@ -152,19 +130,13 @@ export function rowFieldsOf(d: VercelDeployment, seen: { finishedAt: Date | null
 
 export interface LinkedApp {
   id: string;
-  /** For the Activity line when deployments deleted on Vercel leave this app's list. */
   name?: string;
   environment: string;
-  /** The branch this app follows: its own, or its environment's. */
   branch: string | null;
   serverId: string;
 }
 
-/**
- * The one app a deployment of a shared Vercel project belongs to. Production goes to the app in a
- * production environment. A preview goes to the app that follows its branch, then to a non-production
- * app, then to whatever is linked, so an app linked alone shows both.
- */
+/** A preview goes to the app that follows its branch, then a non-production app, then whatever is linked. */
 export function pickApp(links: readonly LinkedApp[], d: { target: "production" | "preview"; branch: string | null }): LinkedApp | null {
   const prod = links.filter((a) => vercelTargetFor(a.environment) === "production");
   const rest = links.filter((a) => vercelTargetFor(a.environment) !== "production");
@@ -173,7 +145,6 @@ export function pickApp(links: readonly LinkedApp[], d: { target: "production" |
   return byBranch ?? rest[0] ?? prod[0] ?? null;
 }
 
-/** What a linked app reads as, from its own deployments and the one Vercel is serving. */
 export function statusFor(rows: ReadonlyArray<{ status: DeploymentStatus; externalTarget: "production" | "preview" | null }>, production: boolean, serving: boolean): AppStatus | null {
   // Rows are newest first. In a production app a preview building says nothing about the site.
   const relevant = production ? rows.filter((r) => r.externalTarget !== "preview") : rows;
@@ -232,10 +203,7 @@ async function setMirrorState(db: Db, id: string, patch: { triedAt: string; sync
   });
 }
 
-/**
- * Queues the failure notice of one deployment, once ever. A job row of any age counts, and the check
- * and the insert share the key's lock, so overlapping passes, a retry or a restart cannot queue a second.
- */
+/** Once ever: the check and the insert share the key's lock, so overlapping passes cannot queue a second. */
 async function noticeOnce(db: Db, deploymentId: string): Promise<boolean> {
   const dedupeKey = `deploy_notify:${deploymentId}`;
   return db.$transaction(async (tx) => {
@@ -246,11 +214,6 @@ async function noticeOnce(db: Db, deploymentId: string): Promise<boolean> {
   });
 }
 
-/**
- * Every Vercel deployment that failed lately becomes one notice. This reads the rows rather than
- * adding a call to each writer: the mirror, the deploy target's job and the sweep for a deploy Vercel
- * never accepted all write them, and a crash after a write is caught on the next pass.
- */
 async function announceFailures(db: Db, now: Date): Promise<void> {
   const rows = await db.deployment.findMany({
     where: { provider: "vercel", status: "failed", finishedAt: { gt: new Date(now.getTime() - FAILURE_NEWS_MS) } },
@@ -267,10 +230,7 @@ async function announceFailures(db: Db, now: Date): Promise<void> {
 
 const isDeleted = (d: VercelDeployment) => (d.readyState ?? d.state) === "DELETED";
 
-/**
- * Removes the rows of deployments Vercel says are gone, but only rows the mirror copied in: never a
- * deploy Dockify started, never a preview of this server. One Activity line per app says so.
- */
+/** Only rows the mirror copied in: never a deploy Dockify started, never a preview of this server. */
 async function removeGone(db: Db, links: LinkedApp[], gone: string[], now: Date): Promise<void> {
   if (!gone.length) return;
   const rows = await db.deployment.findMany({
@@ -316,7 +276,6 @@ async function mirrorProject(deps: VercelMirrorDeps, api: Reader, projectId: str
     else gone.push(externalId);
   };
 
-  // A row in flight that fell out of the page (or was deleted on Vercel) is asked about by itself.
   const open = await db.deployment.findMany({
     where: { provider: "vercel", appId: { in: appIds }, status: { notIn: [...TERMINAL] }, externalId: { not: null } },
     select: { externalId: true },
@@ -325,9 +284,8 @@ async function mirrorProject(deps: VercelMirrorDeps, api: Reader, projectId: str
     if (externalId && !asked.has(externalId)) await ask(externalId);
   }
 
-  // A finished row the list should show and does not was most likely deleted on Vercel. The page
-  // covers every deployment since the retention cut when it is not full, else back to its oldest
-  // entry; a row inside that span is asked about by id, and so is one a deletion webhook named.
+  // A finished row missing from the list was most likely deleted on Vercel. The page reaches back to the
+  // retention cut when not full, else to its oldest entry; a row inside that span is asked about by id.
   const oldest = Math.min(...page.map((d) => d.created ?? d.createdAt ?? Number.POSITIVE_INFINITY));
   const span = page.length < MIRROR_LIST_LIMIT ? { gte: new Date(since) } : Number.isFinite(oldest) ? { gt: new Date(oldest) } : null;
   const mirrored = { provider: "vercel" as const, appId: { in: appIds }, previewId: null, externalId: { not: null }, actorType: { notIn: [...STARTED_HERE] } };
@@ -458,11 +416,7 @@ export async function runVercelMirror(deps: VercelMirrorDeps, payload: unknown):
   if (problem && !problem.permanent) throw problem;
 }
 
-/**
- * The periodic backstop, ticking every 30 s. A pass is due when a mirrored deployment is in flight,
- * or when the last pass is older than the webhook state allows. Costs two small reads when nothing
- * is linked, and never calls Vercel itself.
- */
+/** Never calls Vercel itself; costs two small reads when nothing is linked. */
 export async function queueVercelMirrorIfDue(db: Db, now = Date.now()): Promise<boolean> {
   const row = await db.integration.findUnique({ where: { kind_name: { kind: "vercel", name: "default" } }, select: { secretId: true, status: true, config: true } });
   if (!row?.secretId || row.status === "disconnected") return false;

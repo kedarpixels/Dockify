@@ -2,11 +2,9 @@ import { BlockList, isIP } from "node:net";
 import type { IngressMode } from "./config.ts";
 
 /**
- * The client address, decided once. Headers are believed only when the TCP peer is a trusted proxy
- * (the web container, or Traefik in direct mode); otherwise the peer IS the client and every header
- * it sends is ignored. X-Forwarded-For is walked right to left, skipping trusted hops, so entries a
- * client prepended never win. CF-Connecting-IP is read only in Cloudflare Tunnel mode, where the
- * origin has no public port and Cloudflare overwrites that header at the edge.
+ * Headers are believed only when the TCP peer is a trusted proxy; otherwise the peer is the client.
+ * X-Forwarded-For is walked right to left, skipping trusted hops, so entries a client prepended never win.
+ * CF-Connecting-IP is read only in tunnel mode, where Cloudflare overwrites it and the origin has no public port.
  */
 export type ClientIpResolver = (peer: string | undefined, headers: Record<string, string | string[] | undefined>) => string;
 
@@ -36,9 +34,8 @@ export function buildTrustList(entries: string[]): BlockList {
 }
 
 /**
- * The resolved client. `known` is false only when a trusted proxy connected but reported no usable
- * client address: then `ip` is that proxy's own address, which every caller behind it would share,
- * so it must never key a rate limit (one client could drain the bucket for everyone).
+ * `known` is false when a trusted proxy reported no usable client address: `ip` is then the proxy's own,
+ * shared by every caller behind it, so it must never key a rate limit.
  */
 export interface ResolvedClient {
   ip: string;
@@ -72,8 +69,7 @@ export function createClientResolver(trustedProxies: string[], ingress: IngressM
         if (!isIP(hop)) return { ip: peer, known: false };
         if (!isTrusted(hop)) return { ip: hop, known: true };
       }
-      // Every hop is trusted (a browser on the proxy's own host, in development): the first hop
-      // is the client, reported by a chain of trusted proxies.
+      // Every hop is trusted (a browser on the proxy's own host, in development): the first hop is the client.
       if (hops[0]) return { ip: hops[0], known: true };
     }
     return { ip: peer, known: false };

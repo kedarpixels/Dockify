@@ -2,11 +2,8 @@ import { createHmac, randomBytes } from "node:crypto";
 import { safeEqual } from "@dockify/crypto";
 
 /**
- * TOTP (RFC 6238), hand-rolled on node:crypto: no dependency for a hundred lines of HMAC and
- * base32. SHA-1, 6 digits, a 30-second step: the parameters every authenticator app (Google
- * Authenticator, 1Password, Authy) assumes, so a bare otpauth:// URI just works. Pure and
- * side-effect-free apart from the secret generator, so the algorithm is unit-testable against the
- * RFC's published vectors.
+ * TOTP (RFC 6238) on node:crypto. SHA-1, 6 digits, a 30-second step: the parameters every
+ * authenticator app assumes, so a bare otpauth:// URI just works.
  */
 
 const DIGITS = 6;
@@ -15,7 +12,7 @@ const SECRET_BYTES = 20; // 160 bits, the RFC 6238 SHA-1 recommendation
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-/** RFC 4648 base32, no padding. Used for the shared secret. */
+/** RFC 4648 base32, no padding. */
 export function base32Encode(bytes: Uint8Array): string {
   let bits = 0;
   let value = 0;
@@ -32,8 +29,7 @@ export function base32Encode(bytes: Uint8Array): string {
   return out;
 }
 
-/** Decode base32, tolerant of lowercase, spaces and padding (what a human retypes). Throws on a
- * character outside the alphabet, so a mistyped secret fails loudly rather than decoding to garbage. */
+/** Tolerates lowercase, spaces and padding (what a human retypes). Throws on a character outside the alphabet. */
 export function base32Decode(input: string): Buffer {
   const clean = input.toUpperCase().replace(/[\s=]/g, "");
   let bits = 0;
@@ -52,16 +48,14 @@ export function base32Decode(input: string): Buffer {
   return Buffer.from(out);
 }
 
-/** A fresh, base32-encoded TOTP secret to hand to an authenticator app. */
 export function generateTotpSecret(): string {
   return base32Encode(randomBytes(SECRET_BYTES));
 }
 
-/** HOTP (RFC 4226): the counter-based one-time password TOTP is built on. */
+/** HOTP (RFC 4226). */
 function hotp(secret: Buffer, counter: number): string {
   const buf = Buffer.alloc(8);
-  // Counter as a 64-bit big-endian value. It never exceeds 2^53 in practice (seconds / 30), so the
-  // high word is written from the float and the low word from the 32-bit remainder.
+  // A 64-bit big-endian counter. Bit operators are 32-bit, so the high word comes from a division.
   buf.writeUInt32BE(Math.floor(counter / 0x1_0000_0000), 0);
   buf.writeUInt32BE(counter >>> 0, 4);
 
@@ -75,17 +69,15 @@ function hotp(secret: Buffer, counter: number): string {
   return (binary % 10 ** DIGITS).toString().padStart(DIGITS, "0");
 }
 
-/** The TOTP code for a base32 secret at a given unix-millis time. */
+/** `atMs` is unix milliseconds. */
 export function totpAt(secretBase32: string, atMs: number): string {
   return hotp(base32Decode(secretBase32), Math.floor(atMs / 1000 / PERIOD_SECONDS));
 }
 
 /**
- * The time-step counter `code` matches for `secretBase32` around `atMs`, or null if none - checking one
- * step either side so a code entered near a boundary or on a slightly-skewed clock still passes.
- * Constant-time per candidate, and it never short-circuits on the first match, so a timing side channel
- * cannot reveal which step hit. The matched counter is returned (not just a boolean) so a caller can
- * enforce single-use: RFC 6238 requires rejecting a code once accepted, which needs the counter.
+ * The time step `code` matches, or null; `window` steps either side cover a skewed clock.
+ * Never short-circuits on a match, so timing cannot reveal which step hit. The counter is returned
+ * so a caller can enforce single use, which RFC 6238 requires.
  */
 export function totpMatchedCounter(secretBase32: string, code: string, atMs: number, window = 1): number | null {
   const trimmed = code.trim();
@@ -99,17 +91,11 @@ export function totpMatchedCounter(secretBase32: string, code: string, atMs: num
   return matched;
 }
 
-/** Whether `code` is valid for `secretBase32` around `atMs`. Thin wrapper over totpMatchedCounter for
- * callers that do not need the counter (e.g. the RFC-vector tests). */
 export function verifyTotp(secretBase32: string, code: string, atMs: number, window = 1): boolean {
   return totpMatchedCounter(secretBase32, code, atMs, window) !== null;
 }
 
-/**
- * The otpauth:// URI an authenticator scans. algorithm/digits/period are stated explicitly rather
- * than left to the app's defaults, so a non-default reader still lands on our parameters. The label
- * and issuer are percent-encoded because an email or an issuer with a space would break the URI.
- */
+/** algorithm, digits and period are stated explicitly, so an app with other defaults still lands on these parameters. */
 export function otpauthUri(secretBase32: string, account: string, issuer: string): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   const params = new URLSearchParams({

@@ -6,10 +6,7 @@ import { getSetupStatus } from "@/lib/pages/auth-loaders";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-/*
- * /login. A fresh server with no users goes to /setup first. `?reason=` explains how the visitor
- * got here: "expired" when the console bounced an ended session, "signed-out" after Sign out.
- */
+/* `?reason=` says how the visitor got here: "expired" after an ended session, "signed-out" after Sign out. */
 export default async function LoginPage({
   searchParams,
 }: {

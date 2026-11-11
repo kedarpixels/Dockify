@@ -1,7 +1,6 @@
 /**
- * The agent: one per server. It keeps its own key, dials the control plane, and answers narrow calls
- * through the gate (docker-gate.ts). It holds no database password, master key or internal token, and
- * runs read-only with no capability and no socket: Docker only through the socket proxy.
+ * The agent, one per server: it dials the control plane and answers narrow calls through docker-gate.ts. It
+ * holds no database password, master key or internal token, and reaches Docker only through the socket proxy.
  */
 import { createDialer, DockerClient, fileRouteStore, parseDockerHost } from "@dockify/engine";
 import { execFile } from "node:child_process";
@@ -50,7 +49,7 @@ async function ensureKey(dir: string): Promise<{ key: Buffer; cert: Buffer }> {
   return { key: await readFile(keyPath), cert: await readFile(certPath) };
 }
 
-/** Anything tenant it was on when it last stopped: the networks it joined for a dial. */
+/** Leaves the tenant networks it joined for a dial before it last stopped. */
 async function leaveLeftovers(docker: DockerClient): Promise<void> {
   const self = await docker.inspectContainer(SELF).catch(() => null);
   for (const network of Object.keys(self?.NetworkSettings.Networks ?? {})) {

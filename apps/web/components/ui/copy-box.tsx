@@ -1,14 +1,7 @@
 import { CopyButton } from "./copy-button";
 import { cx } from "./cx";
 
-/**
- * A read-only value with its copy key: a setup key, an invite link, a new token, a command to run.
- * The value wraps (never an ellipsis) and selects whole on a click; the key stays top right. `code`
- * spaces the characters a little for values typed by hand.
- *
- *   <CopyBox value={link} what="invite link" />
- *   <CopyBox value={secret} what="setup key" code />
- */
+/** The value wraps (never an ellipsis) and selects whole on a click. `code` spaces the characters for values typed by hand. */
 export function CopyBox({
   value,
   what,

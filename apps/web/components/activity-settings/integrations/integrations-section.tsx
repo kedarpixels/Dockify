@@ -18,13 +18,8 @@ import type { ImportTarget } from "./vercel-import";
 import { WebhooksCard } from "./webhooks-card";
 import { clause } from "@/lib/format";
 
-/*
- * Settings, Integrations: one ruled row per outside service. Each card component owns its slice of
- * the summary the page loaded and keeps it current after its own writes, so nothing refetches the
- * whole set.
- */
+/* Each card owns its slice of the loaded summary and keeps it current after its own writes, so nothing refetches the set. */
 
-/** Every project and its environments, from the overview, for the Vercel import. */
 function importTargets(overview: Overview | null): ImportTarget[] {
   const map = new Map<string, Set<string>>();
   // A project with no apps yet starts on production.
@@ -39,7 +34,7 @@ function importTargets(overview: Overview | null): ImportTarget[] {
     .sort((a, b) => a.slug.localeCompare(b.slug));
 }
 
-/** A Viewer's list: what is connected, from the API's small answer. Details are an admin's. */
+/** A Viewer's list, from the API's small answer. Details are an admin's. */
 function ConnectedList({ connected }: { connected: IntegrationsConnected }) {
   const rows: Array<{ id: string; icon: IconName; name: string; purpose: string; on: boolean }> = [
     { id: "int-github", icon: "github", name: "GitHub", purpose: "Import repositories and deploy on every push.", on: connected.github },

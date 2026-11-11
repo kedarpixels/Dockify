@@ -1,9 +1,7 @@
 import type { EnvVar } from "@/lib/pages/project-detail";
 
-/* .env text in. The parser follows the dotenv rules operators expect: `export ` prefixes, `#`
-   comments (a whole line, or after whitespace on an unquoted value), single quotes literal, double
-   quotes with \n, \r, \t, \" and \\ escapes and values that span lines, CRLF or CR line ends, and
-   a byte order mark. */
+// Follows the dotenv rules operators expect: `export ` prefixes, # comments, literal single quotes,
+// escapes and multi-line values in double quotes, CRLF or CR line ends, and a byte order mark.
 
 /** A variable name, as the API's: a letter or underscore, then letters, digits and underscores, 128 at most. */
 export const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
@@ -23,7 +21,7 @@ function closing(s: string, q: string) {
   return -1;
 }
 
-/** Parses KEY=VALUE text. Later lines win over earlier ones with the same key. */
+/** Later lines win over earlier ones with the same key. */
 export function parseDotenv(text: string): { vars: EnvDraft[]; skipped: number } {
   const lines = text.replace(/^\uFEFF/, "").split(/\r\n|\r|\n/);
   const vars = new Map<string, EnvDraft>();

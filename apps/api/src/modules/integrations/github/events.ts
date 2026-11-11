@@ -1,11 +1,7 @@
-/**
- * Pure rules for GitHub deliveries: which pushes deploy what, and what a pull request event does to
- * its preview. The route owns transport (raw body, signature, replay) and hands parsed shapes here.
- * Ported from the old api's webhooks.ts; the preview rules are new.
- */
+/** Pure rules for GitHub deliveries. The route owns transport (raw body, signature, replay) and passes parsed shapes. */
 import { githubAvatarUrl } from "@dockify/contracts";
 
-/** `host/owner/repo`, lowercased, `.git` and trailing slashes gone. Both sides of a match use it. */
+/** `host/owner/repo`, lowercased, without `.git` or trailing slashes. Both sides of a match must use it. */
 export function repoIdentity(url: string): string | null {
   let host: string;
   let path: string;
@@ -51,7 +47,6 @@ const fullNameOf = (repo: RepoPayload | null | undefined): string | null =>
 const repoIdOf = (repo: RepoPayload | null | undefined): string | null =>
   typeof repo?.id === "number" || typeof repo?.id === "string" ? String(repo.id) : null;
 
-// ------------------------------------------------------------------ push
 
 export interface PushEvent {
   identity: string;
@@ -62,9 +57,9 @@ export interface PushEvent {
   message: string | null;
   /** Lowercased GitHub login of the head commit's author, else of whoever pushed. */
   author: string | null;
-  /** The pusher's GitHub avatar, kept only when the pusher is that author. The worker asks GitHub for the rest. */
+  /** Kept only when the pusher is that author. The worker asks GitHub for the rest. */
   authorAvatarUrl: string | null;
-  /** The head commit's git name, when that commit has no GitHub account behind it. */
+  /** The head commit's git name, set when that commit has no GitHub account behind it. */
   authorName: string | null;
   installationId: string | null;
 }
@@ -74,7 +69,7 @@ const loginOf = (v: unknown): string | null => (typeof v === "string" && GITHUB_
 
 export const avatarOf = githubAvatarUrl;
 
-/** A git name as a label: one line of printable text, or null. Anyone can commit under any name. */
+/** One line of printable text, or null. Untrusted: anyone can commit under any name. */
 export const gitNameOf = (v: unknown): string | null => (typeof v === "string" ? v.replace(/[\p{C}]+/gu, " ").trim().slice(0, 100) || null : null);
 
 export function parsePushEvent(payload: unknown): PushEvent | null {
@@ -113,9 +108,9 @@ export interface PushCandidate {
   id: string;
   gitRepository: string | null;
   gitBranch: string | null;
-  /** The app's GitHub repository id, when it was picked through the App. */
+  /** Set when the repository was picked through the App. */
   repoId?: string | null;
-  /** The environment's branch, the fallback when the app sets none. */
+  /** Fallback when the app sets no branch. */
   envBranch?: string | null;
 }
 
@@ -129,7 +124,6 @@ export function matchPushTargets<T extends PushCandidate>(push: PushEvent, candi
   });
 }
 
-// ------------------------------------------------------------------ pull request
 
 export type PrStep = "open" | "update" | "close";
 
@@ -188,7 +182,6 @@ export function parsePullRequestEvent(payload: unknown): PullRequestEvent | null
   };
 }
 
-// ------------------------------------------------------------------ installation
 
 export interface InstallationEvent {
   action: "created" | "deleted" | "suspend" | "unsuspend" | "new_permissions_accepted" | "repositories";

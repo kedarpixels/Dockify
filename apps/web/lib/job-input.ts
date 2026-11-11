@@ -1,9 +1,6 @@
 import type { JobInput } from "@/components/app-detail/jobs-shared";
 
-/**
- * A job body from the browser, keeping only known fields of the right type, so nothing else is ever
- * forwarded. The api validates the values. `partial`: a patch, where each field is optional.
- */
+/** Keeps only known fields of the right type, so nothing else is forwarded. `partial`: a patch, every field optional. */
 export function readJobInput(v: unknown, partial: boolean): Partial<JobInput> | string {
   if (!v || typeof v !== "object" || Array.isArray(v)) return "That request is not valid";
   const b = v as Record<string, unknown>;

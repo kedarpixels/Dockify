@@ -1,9 +1,5 @@
-/* Shell layer: skip link, sidebar, top bar, command menu, notifications, account menu, phone menu,
-   not found. Geometry: every leading glyph sits in a 24px slot 24px from the sidebar edge (centre
-   x = 36), in both widths (264 open, 72 collapsed). Collapsing clips and fades labels; nothing moves.
-   The sidebar brand cell and the top bar are both 56px, so their bottom rules are one line.
-   Order: base rules, then the tablet-up block and the phone blocks (on the foundation.css scale).
-   Reduced motion is foundation.css's one global block. */
+/* Geometry: every leading glyph sits in a 24px slot 24px from the sidebar edge (centre x = 36) in
+   both widths (264 open, 72 collapsed). Collapsing clips and fades labels; nothing moves. */
 
 .shell {
   display: grid;
@@ -30,10 +26,8 @@
   width: 20px;
 }
 
-/* -------------- Focus: skip link, main region, scroll padding -------------- */
+/* Focus: skip link, main region, scroll padding */
 
-/* Skip link: the first Tab stop on every console page, out of sight until the keyboard reaches it.
-   Then it is a key over the brand cell, centred on the 56px bar, above the sidebar and the bar. */
 .skip-link:not(:focus) {
   position: absolute;
   width: 1px;
@@ -52,18 +46,17 @@
   left: 12px;
 }
 
-/* The page's main region takes focus from the skip link and after a navigation, by script only
-   (tabindex -1). It is a landing spot, not a control, so it draws no ring. */
+/* Focused by script only (tabindex -1): a landing spot, not a control, so it draws no ring. */
 .shell-main > main:focus {
   outline: 0;
 }
 
-/* The sticky top bar never covers what focus or an anchor scrolls to: the bar plus a 16px gap. */
+/* Keeps what focus or an anchor scrolls to clear of the sticky top bar. */
 html:has(.shell) {
   scroll-padding-top: calc(var(--top-h) + 16px);
 }
 
-/* -------------- Sidebar -------------- */
+/* Sidebar */
 
 .side {
   background: var(--bg);
@@ -81,9 +74,8 @@ html:has(.shell) {
   overflow: visible;
 }
 
-/* Brand cell: 56px, the logo in the 24px slot, then the name. The rule under it is an inset
-   shadow, not a border, so the content box keeps all 56px and the 24px logo sits on whole pixels
-   (a border leaves 55px and centres it at 15.5). */
+/* The rule under it is an inset shadow, not a border, so the content box keeps all 56px and the
+   24px logo sits on whole pixels (a border leaves 55px and centres it at 15.5). */
 .side-brand,
 :root[data-sidebar="collapsed"] .shell .side-brand {
   position: relative;
@@ -119,7 +111,6 @@ html:has(.shell) {
   color: var(--ink-3);
 }
 
-/* Collapsed, the logo is the expand key: hovered, it shows the sidebar glyph instead. */
 .side-mark-expand {
   position: absolute;
   inset: 0;
@@ -141,8 +132,7 @@ button.side-mark:hover .side-mark-expand {
   color: var(--ink);
 }
 
-/* Brand word in the pixel face, 18px, exactly as the site's header and the sign-in pages set it
-   (owner: one wordmark everywhere). The pixel face has one weight, so no bold is asked of it. */
+/* The pixel face has one weight, so no bold is asked of it. */
 .side-name {
   flex: 1;
   min-width: 0;
@@ -157,17 +147,14 @@ button.side-mark:hover .side-mark-expand {
   color: var(--ink);
 }
 
-/* Collapse key: 32px icon key pinned right, so the open width never has to fit it when collapsed.
-   Its centre is x = 228, 36 from the right edge: the right-hand twin of the glyph line at x = 36,
-   shared with the add key, the project dots and the more key. */
+/* Pinned right, so the open width never has to fit it when collapsed. Its centre is x = 228, the
+   right-hand twin of the glyph line at x = 36. */
 .side-toggle {
   position: absolute;
   top: 12px;
   right: 20px;
 }
 
-/* Its tip: the [data-tip] bubble to the right of the key, plus the Ctrl B chips, like the theme
-   switch's "Toggle theme  D". Shows whole after 150ms and hides at once, as every tip does. */
 .side-key-tip {
   position: absolute;
   z-index: var(--z-tip);
@@ -198,15 +185,12 @@ button.side-mark:hover .side-mark-expand {
   transition: opacity 0s 150ms, translate 0s 150ms;
 }
 
-/* Its key chips are the shared .tip-kbd (foundation.css), as in the theme switch's tip. */
 .side-key-tip-keys {
   display: inline-flex;
   gap: 4px;
 }
 
-/* Search cell: a 36px key on the surface-key material, no rule under it. It spans the nav pills'
-   own 12px insets (48px wide when collapsed, like them); the 16px left padding keeps the glyph
-   centred on x = 36, and the right padding ends the K chip on the right-hand line at x = 240. */
+/* The 16px left padding keeps the glyph centred on x = 36; the right padding ends the K chip at x = 240. */
 .side-search-cell {
   position: relative;
   flex: none;
@@ -261,7 +245,6 @@ button.side-mark:hover .side-mark-expand {
   flex-direction: column;
 }
 
-/* The global thin scrollbar, a little slimmer where WebKit lets it be. */
 .side-scroll::-webkit-scrollbar,
 .cmd-list::-webkit-scrollbar {
   width: 6px;
@@ -292,7 +275,6 @@ button.side-mark:hover .side-mark-expand {
   list-style: none;
 }
 
-/* Section label: a quiet 28px header. */
 .side-label {
   height: 28px;
   flex: none;
@@ -307,13 +289,11 @@ button.side-mark:hover .side-mark-expand {
   font-weight: 400;
   color: var(--ink-muted);
   white-space: nowrap;
-  /* Clip sideways only, with room for the 2px focus ring (offset 2px) on the add key: a label never
-     spills past the folding rail, and the add key's tip can still rise above it. */
+  /* Clip sideways only, with room for the add key's 2px focus ring; its tip can still rise above. */
   overflow-x: clip;
   overflow-clip-margin: 4px;
 }
 
-/* The add key's 24px tile ends on the right-hand line at x = 240, its centre on x = 228. */
 .side-sec-projects .side-label {
   padding-right: 12px;
 }
@@ -324,9 +304,7 @@ button.side-mark:hover .side-mark-expand {
   border-radius: 8px;
 }
 
-/* Nav row: 36px with an 8px radius. Hover takes the page's row fill (--hover); the current page a
-   firmer one (--active), so the two never read the same, and it also sets the weight and turns its
-   glyph blue. min-width 0: collapsed, the hidden label must not widen the row past the 72px rail. */
+/* min-width 0: collapsed, the hidden label must not widen the row past the 72px rail. */
 .snav {
   display: flex;
   align-items: center;
@@ -344,7 +322,6 @@ button.side-mark:hover .side-mark-expand {
   transition: color 150ms;
 }
 
-/* Project rows: soft rows with the folder in the same slot. */
 .side-project {
   min-width: 0;
   height: 36px;
@@ -384,7 +361,6 @@ button.side-mark:hover .side-mark-expand {
   outline-offset: -2px;
 }
 
-/* The 24px glyph slot. Nav glyphs draw at 18px. */
 .side-slot {
   position: relative;
   width: 24px;
@@ -399,7 +375,6 @@ button.side-mark:hover .side-mark-expand {
   height: 18px;
 }
 
-/* In-flight marker on the Deployments glyph, shown when collapsed (the row's dot says it when open). */
 .snav-flag {
   position: absolute;
   top: 0;
@@ -428,8 +403,7 @@ button.side-mark:hover .side-mark-expand {
   justify-content: center;
 }
 
-/* Project tree: a rail drops from the Projects label and branches into each row, like a file tree.
-   Rows end on the nav pills' right edge (x = 252), which puts each state dot on x = 228. The one
+/* Rows end on the nav pills' right edge (x = 252), which puts each state dot on x = 228. The one
    flexible column keeps a row to the 48px pill width when the sidebar is collapsed. */
 .side-projects {
   grid-template-columns: minmax(0, 1fr);
@@ -440,7 +414,6 @@ button.side-mark:hover .side-mark-expand {
   position: relative;
 }
 
-/* Rail: runs the full row plus the 2px gap; the last row stops at its elbow. */
 .side-projects > li::before {
   content: "";
   position: absolute;
@@ -464,7 +437,6 @@ button.side-mark:hover .side-mark-expand {
   height: 16px;
 }
 
-/* Branch: a short tick into the row centre; the last row curves. */
 .side-projects > li::after {
   content: "";
   position: absolute;
@@ -484,7 +456,6 @@ button.side-mark:hover .side-mark-expand {
   border-bottom-left-radius: 6px;
 }
 
-/* Footer cell: the account row, on the nav pills' 12px insets so its hover pill lines up with theirs. */
 .side-foot,
 :root[data-sidebar="collapsed"] .shell .side-foot {
   position: relative;
@@ -496,11 +467,8 @@ button.side-mark:hover .side-mark-expand {
   border-top: 1px solid var(--line);
 }
 
-/* Account row: round avatar (a default person mark until a picture is set), name and role, then
-   the more key. The 8px inset puts the 32px avatar's centre on x = 36, the axis of every glyph,
-   and the more key's on x = 228, the right-hand line. Nothing clips the row, so the key's tip can
-   show: the name and role cut off on their own, and the key sits in the row's right padding, so
-   it fades in place inside the 72px rail instead of sliding past it while the sidebar folds. */
+/* The 8px inset puts the avatar's centre on x = 36 and the more key's on x = 228. Nothing clips
+   the row, so the key's tip can show; the key sits in the right padding and fades in place on fold. */
 .side-user {
   position: relative;
   display: flex;
@@ -515,7 +483,6 @@ button.side-mark:hover .side-mark-expand {
   transition: background-color 150ms;
 }
 
-/* Open, the whole row opens the menu, so it takes the nav rows' hover fill. */
 :root:not([data-sidebar="collapsed"]) .side-user {
   cursor: pointer;
 }
@@ -562,7 +529,6 @@ button.side-mark:hover .side-mark-expand {
   color: var(--ink);
 }
 
-/* Collapsed (Ctrl B): labels fade in place; geometry stays. */
 .side-name,
 .side-toggle,
 .side-search-label,
@@ -588,8 +554,7 @@ button.side-mark:hover .side-mark-expand {
   display: none;
 }
 
-/* Collapsed sidebar tooltip: the [data-tip] material, fixed beside the 72px rail so the
-   scrolling nav cannot clip it. */
+/* Fixed beside the 72px rail so the scrolling nav cannot clip it. */
 .side-tip {
   position: fixed;
   z-index: var(--z-tip);
@@ -622,7 +587,6 @@ button.side-mark:hover .side-mark-expand {
   rotate: 45deg;
 }
 
-/* A key's tip also names its shortcut in chips, as the theme switch's does. */
 .side-tip[data-keys] {
   display: flex;
   align-items: center;
@@ -636,8 +600,7 @@ button.side-mark:hover .side-mark-expand {
   }
 }
 
-/* -------------- Account menu -------------- */
-/* The avatar is the trigger when the sidebar is collapsed; open, it is the more key. */
+/* Account menu */
 .acct-avatar {
   display: grid;
   flex: none;
@@ -657,8 +620,6 @@ button.side-mark:hover .side-mark-expand {
   box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
-/* The shell popover material, shared with notifications and the command menu: popover fill, 12px
-   radius, the menu shadow (the line-strong ring and one soft drop). */
 .acct-pop {
   position: absolute;
   z-index: var(--z-popover);
@@ -672,15 +633,13 @@ button.side-mark:hover .side-mark-expand {
   animation: drop-in 140ms var(--ease) both;
 }
 
-/* Open sidebar: anchored at the row's left, 8px above it, and a little wider than the rail so a
-   full email fits on one line (it overhangs to the right, like the account menu in Vercel). */
+/* A little wider than the rail so a full email fits on one line; it overhangs to the right. */
 .acct-pop[data-side="top"] {
   left: 8px;
   width: 272px;
   bottom: calc(100% - 4px);
 }
 
-/* Collapsed: beside the rail, bottom edge level with the account row. */
 .acct-pop[data-side="right"] {
   left: calc(100% + 8px);
   bottom: 16px;
@@ -791,10 +750,10 @@ button.acct-row:hover,
   min-width: 0;
 }
 
-/* -------------- Top bar -------------- */
+/* Top bar */
 
-/* The bottom rule is an inset shadow, not a border, so the cells keep all 56px and the title,
-   theme switch and bell centre on whole pixels, as in the sidebar's brand cell. */
+/* The bottom rule is an inset shadow, not a border, so the cells keep all 56px and their content
+   centres on whole pixels. */
 .top {
   position: sticky;
   top: 0;
@@ -808,15 +767,13 @@ button.acct-row:hover,
   box-shadow: inset 0 -1px var(--line);
 }
 
-/* The top bar holds an open notifications panel above page content and the sidebar. */
+/* Lifts an open notifications panel above page content and the sidebar. */
 .top:has(.ntf-panel) {
   z-index: var(--z-top-open);
 }
 
-/* The title and keys ride on the page's rail, so on wide screens (or with the sidebar collapsed)
-   they line up with the content edges below instead of the bar's own ends. Same geometry as
-   `main.page > *` in foundation.css: whole-pixel left offset, and 4px clear of the clip edge when
-   the column is narrower than the rail. */
+/* Rides the page's rail so the title and keys line up with the content edges below. Same geometry
+   as `main.page > *` in foundation.css. */
 .top-rail {
   flex: 1;
   min-width: 0;
@@ -832,13 +789,12 @@ button.acct-row:hover,
   align-items: center;
 }
 
-/* A cell's nodes sit on the bar's inset bottom rule, 1px higher than on a border of their own. */
+/* Nodes sit on the bar's inset bottom rule, 1px higher than on a border of their own. */
 .top-cell > .node[data-pos] {
   bottom: -2px;
 }
 
-/* The title cell hugs its text and is the one part of the bar that gives way: on a narrow phone
-   (320px, or 400% zoom) the title ends in an ellipsis so the keys, the burger last, always fit. */
+/* The one part of the bar that gives way: at 320px or 400% zoom the title truncates so the keys always fit. */
 .top-title-cell {
   flex: 0 1 auto;
   min-width: 0;
@@ -864,7 +820,6 @@ button.acct-row:hover,
   border-left: 1px solid var(--line);
 }
 
-/* The phone bar's logo, burger and menu only exist below 761px. */
 .top-brand,
 .menu-key,
 .mnav,
@@ -872,10 +827,9 @@ button.acct-row:hover,
   display: none;
 }
 
-/* -------------- Command menu -------------- */
+/* Command menu */
 
-/* Above every shell layer, the top bar holding an open notifications panel included, and under
-   dialogs. */
+/* Above every shell layer, including the top bar with notifications open, and under dialogs. */
 .cmd-scrim {
   position: fixed;
   inset: 0;
@@ -889,7 +843,6 @@ button.acct-row:hover,
   animation: shell-fade 150ms ease both;
 }
 
-/* The shell popover material (see .acct-pop). */
 .cmd {
   width: min(640px, 100%);
   overflow: hidden;
@@ -925,7 +878,6 @@ button.acct-row:hover,
   color: var(--ink-muted);
 }
 
-/* The close key: the Esc chip itself on a keyboard; on a phone (below) the dialogs' 12px cross. */
 .cmd-close {
   display: grid;
   flex: none;
@@ -1086,8 +1038,7 @@ button.acct-row:hover,
   from { opacity: 0; translate: 0 4px; }
 }
 
-/* -------------- Notifications -------------- */
-/* The bell opens a flat panel under the top bar: problems first, then the day's deploy results. */
+/* Notifications */
 .ntf {
   position: relative;
 }
@@ -1107,7 +1058,6 @@ button.acct-row:hover,
   background: var(--bad);
 }
 
-/* The dim layer behind the phone sheet; tablet up has none. */
 .ntf-scrim {
   display: none;
 }
@@ -1147,7 +1097,6 @@ button.acct-row:hover,
   color: var(--ink);
 }
 
-/* "Mark all as read": plain text in the head, muted, ink on hover; nothing to mark leaves it greyed. */
 .ntf-markall {
   padding: 0;
   border: 0;
@@ -1175,8 +1124,7 @@ button.acct-row:hover,
   cursor: default;
 }
 
-/* Unread count beside the title, hidden at zero: white on the solid red, which white text reads
-   on at 12px (--bad is for dots and rings only). */
+/* White on solid red reads at 12px; --bad is for dots and rings only. */
 .ntf-count {
   min-width: 20px;
   height: 20px;
@@ -1199,7 +1147,6 @@ button.acct-row:hover,
   scrollbar-color: transparent transparent;
 }
 
-/* Quiet scrollbar: only the thumb, and only while the list is hovered. */
 .ntf-body:hover {
   scrollbar-color: var(--line-strong) transparent;
 }
@@ -1221,7 +1168,7 @@ button.acct-row:hover,
 .ntf-row {
   position: relative;
   display: grid;
-  /* The last 6px column holds the unread dot, kept on every row so the times never shift. */
+  /* The last 6px column holds the unread dot on every row, so the times never shift. */
   grid-template-columns: 24px minmax(0, 1fr) auto 6px;
   align-items: center;
   gap: 12px;
@@ -1239,7 +1186,6 @@ button.acct-row:hover,
   background: var(--fill-popover);
 }
 
-/* Unread: a 6px blue dot at the right edge, after the time, as in most dashboard inboxes. */
 .ntf-row[data-unread="true"]::after {
   content: "";
   grid-column: 4;
@@ -1300,8 +1246,7 @@ button.acct-row:hover,
   background: var(--fill-popover);
 }
 
-/* The footer spans the panel, whose clip would cut a ring drawn outside it, so the ring is inside,
-   its outer edge on the panel's rounded bottom. */
+/* The panel's clip would cut an outside ring, so the ring is inside. */
 .ntf-ft:focus-visible {
   outline-offset: -2px;
   border-radius: 0 0 12px 12px;
@@ -1315,11 +1260,9 @@ button.acct-row:hover,
   translate: 2px 0;
 }
 
-/* -------------- Tablet and up -------------- */
-/* One rail between the sidebar and the page. The sidebar draws no border of its own: the top bar
-   and the page each draw the line at the page's left edge, so where the page column fills the
-   rail the two never sit side by side as a 2px line. The page clips sideways at the shell, not at
-   its own edge, so band nodes on that rail keep their full 5px. */
+/* Tablet and up */
+/* The sidebar draws no border: the top bar and the page each draw the line at the page's left
+   edge, so the two never double into 2px. The page clips at the shell so rail nodes keep their 5px. */
 @media (min-width: 761px) {
   .shell {
     overflow-x: clip;
@@ -1335,13 +1278,12 @@ button.acct-row:hover,
     z-index: var(--z-side);
   }
 
-  /* The rail line is an inset shadow too, so the bar's content box is the page's full width and
-     the title rail centres exactly as the page column does, never half a pixel off. */
+  /* An inset shadow, so the bar's content box is the page's full width and the title rail is never
+     half a pixel off the page column. */
   .shell-main > .top {
     box-shadow: inset 1px 0 var(--line), inset 0 -1px var(--line);
   }
 
-  /* The page column's 1px rails, mirrored, so the cells' 32px insets land on the content's edges. */
   .top-rail {
     padding-inline: 1px;
   }
@@ -1351,7 +1293,6 @@ button.acct-row:hover,
     box-shadow: inset 1px 0 var(--line);
   }
 
-  /* Collapsed: the labels fade out, the in-flight marker on the Deployments glyph shows. */
   :root[data-sidebar="collapsed"] .shell
     :is(.side-name, .side-toggle, .side-search-label, .side-search-keys, .side-label > *, .snav-label, .snav-extra, .side-user-text) {
     opacity: 0;
@@ -1363,10 +1304,7 @@ button.acct-row:hover,
   }
 }
 
-/* -------------- Phone -------------- */
-/* Phones swap the sidebar for one sticky top bar: logo, page title, theme, bell, burger.
-   The burger drops a ruled menu over the page with a dim layer behind it; the bell opens a
-   bottom sheet. */
+/* Phone */
 @media (max-width: 760px) {
   .shell,
   :root[data-sidebar="collapsed"] .shell {
@@ -1377,13 +1315,11 @@ button.acct-row:hover,
     display: none;
   }
 
-  /* Phone stacking: the page, the menu's dim layer, the menu, then the top bar over both, at the
-     level it takes with its notifications open (the sheet then covers the menu). */
+  /* Phone stacking: the page, the menu's dim layer, the menu, then the top bar over both. */
   .top {
     z-index: var(--z-top-open);
   }
 
-  /* The phone bar has no rail below it, so its cell borders end in plain T joins, no nodes. */
   .top .node {
     display: none;
   }
@@ -1407,8 +1343,7 @@ button.acct-row:hover,
     padding: 0 0 0 12px;
   }
 
-  /* A square of the bar's height. Its rule is an inset shadow, so the burger centres in the full
-     width on whole pixels. */
+  /* Its rule is an inset shadow, so the burger centres in the full width on whole pixels. */
   .menu-key {
     display: grid;
     place-items: center;
@@ -1428,7 +1363,6 @@ button.acct-row:hover,
     outline-offset: -4px;
   }
 
-  /* Two bars that cross into an X when open. */
   .burger {
     position: relative;
     display: block;
@@ -1464,7 +1398,7 @@ button.acct-row:hover,
     rotate: -45deg;
   }
 
-  /* The menu panel: grid rows animate 0fr to 1fr, so it unrolls to its natural height. */
+  /* Grid rows animate 0fr to 1fr, so the panel unrolls to its natural height. */
   .mnav {
     position: fixed;
     z-index: var(--z-side);
@@ -1520,7 +1454,6 @@ button.acct-row:hover,
     color: var(--ink-3);
   }
 
-  /* Lists are ruled top and bottom, so each group reads as one framed block. */
   .mnav-list {
     margin: 0;
     padding: 0;
@@ -1549,7 +1482,7 @@ button.acct-row:hover,
     background: var(--hover);
   }
 
-  /* Rows run edge to edge inside a sideways clip, so the ring is drawn inside them. */
+  /* Rows sit inside a sideways clip, so the ring is drawn inside them. */
   .mnav-row:focus-visible {
     outline-offset: -2px;
     border-radius: 0;
@@ -1584,8 +1517,6 @@ button.acct-row:hover,
     white-space: nowrap;
   }
 
-  /* The account block: the signed-in user, then the account rows the menu does not already list,
-     sized for touch. The list above it already closes with a rule, so it draws none of its own. */
   .mnav-account {
     margin-top: 16px;
     padding: 8px 0 16px;
@@ -1623,9 +1554,7 @@ button.acct-row:hover,
     pointer-events: auto;
   }
 
-  /* Notifications become a bottom sheet: full width, a grab bar, a dim layer behind, and larger
-     type with roomier rows. The top bar is solid with no filter, so the fixed sheet is never
-     trapped inside it. */
+  /* The top bar is solid with no filter, so the fixed sheet is never trapped inside it. */
 
   .ntf-scrim {
     position: fixed;
@@ -1645,7 +1574,6 @@ button.acct-row:hover,
     max-width: none;
     max-height: min(80dvh, 640px);
     max-height: round(down, min(80dvh, 640px), 1px);
-    /* The dialog sheet's shape and motion (foundation.css), so every phone sheet matches. */
     padding-top: 8px;
     border-radius: 12px 12px 0 0;
     animation: sheet-up 240ms var(--ease-sheet) both;
@@ -1682,7 +1610,6 @@ button.acct-row:hover,
     padding: 12px 8px;
   }
 
-  /* The 32px tile (IconTile md) on the roomier phone rows. */
   .ntf-row > .icon-tile {
     width: 32px;
     height: 32px;
@@ -1717,19 +1644,15 @@ button.acct-row:hover,
     height: calc(48px + env(safe-area-inset-bottom));
   }
 
-  /* The sheet's bottom corners are square. */
   .ntf-ft:focus-visible {
     border-radius: 0;
   }
 
-  /* Phones have no keyboard shortcut to offer. */
   .cmd-foot,
   .cmd-input .kbd {
     display: none;
   }
 
-  /* ...so the command menu's close key is the cross, drawn as every popup's X: a 24px key with the
-     .btn fill and ring (the popover key fill, foundation.css Materials) and a 12px cross. */
   .cmd-close {
     width: 24px;
     border-radius: 8px;
@@ -1747,7 +1670,7 @@ button.acct-row:hover,
   }
 }
 
-/* Touch screens have no hover, so the collapse key's tip is desktop only, like every [data-tip]. */
+/* Touch screens have no hover, so the tip is desktop only. */
 @media (hover: none) {
   .side-key-tip {
     display: none;

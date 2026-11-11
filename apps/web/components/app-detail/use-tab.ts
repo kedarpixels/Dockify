@@ -7,15 +7,9 @@ import type { AppTabKey, TabResult } from "@/lib/pages/project-detail";
 import type { OverviewSource } from "@/lib/types";
 import { useKeyedLoad } from "@/lib/use-keyed-load";
 
-/*
- * Reads one app tab through the same-origin route (app/api/project-detail/apps/:id/:tab) when the
- * tab opens. A new range or table shows its loading state, never the last one's values, and a
- * reload dims what is there (lib/use-keyed-load.ts). Table rows are tenant
- * data the API guards with a step-up, so that read asks "Confirm it is you" when it must
- * (components/step-up), and a lapsed session ends the page's session (lib/client-api.ts).
- */
+// A new range or table shows its loading state, never the last one's values. Table rows are tenant
+// data, so that read asks for a step-up when it must.
 
-/** What a guarded read needs the check for, as "Confirm it is you" says it. */
 const WHAT: Partial<Record<AppTabKey, string>> = { rows: "Reading table rows" };
 
 export function useAppTab<T>(id: string, tab: AppTabKey, query?: Record<string, string>) {

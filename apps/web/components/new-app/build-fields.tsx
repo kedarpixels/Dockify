@@ -6,14 +6,8 @@ import { Segmented } from "@/components/ui/segmented";
 import { Skel } from "@/components/ui/skeleton";
 import type { BuildDraft, Detect, Errors } from "./draft";
 
-/*
- * How a repository app builds. What was read from the repository comes first; a repository with a
- * Dockerfile keeps using it, with the choice to build with Railpack instead. Every command is
- * optional: a blank field means whatever is detected at each deploy, so the fields show what was
- * detected as a placeholder and never freeze it.
- */
+/* A blank command means whatever is detected at each deploy, so fields show the detection as a placeholder and never freeze it. */
 
-/** What a start command does, the same words on the New app form and in the app's settings. */
 export const START_COMMAND_HINT = "Runs in place of the image’s entrypoint; flags go to it instead. Quotes, variables or && need a shell in the image. Blank runs the image as built.";
 
 function Detected({ detect, onRetry }: { detect: Detect; onRetry: () => void }) {
@@ -105,7 +99,6 @@ function CommandInput({ ids, placeholder, value, onChange }: { ids: Parameters<t
   return <TextInput ids={ids} className="mono" autoComplete="off" spellCheck={false} placeholder={placeholder} title={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />;
 }
 
-/** The port the app listens on inside its container. */
 export function PortField({ value, onChange, error, hint = "Where the app listens. Blank with a domain uses what the image exposes." }: { value: string; onChange: (v: string) => void; error?: string; hint?: string }) {
   return (
     <Field label={<Optional>Port</Optional>} error={error} hint={hint}>

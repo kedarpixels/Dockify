@@ -1,7 +1,7 @@
 import { guardWrite, refuse } from "@/lib/http";
 import { forward, isId } from "@/lib/pages/resources-domains";
 
-/** DELETE /api/domains/:id: detaches the domain and drops its certificate. Elevated on the API. */
+/** Detaches the domain and drops its certificate. Elevated on the API. */
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const refused = guardWrite(request, { json: false });
   if (refused) return refused;

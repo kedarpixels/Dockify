@@ -1,7 +1,3 @@
-/**
- * Pure math for the sampler: container gauges from the daemon's stats JSON, and the host's CPU,
- * memory and network readings from /proc text. Kept free of I/O so it is unit tested directly.
- */
 import type { DockerStats } from "./docker.ts";
 import type { CpuTimes } from "@dockify/engine";
 

@@ -11,11 +11,8 @@ import type { Notice } from "@/lib/derive";
 import { useOutsidePress } from "@/lib/hooks";
 import { keepSeen } from "@/lib/notices";
 
-/*
- * Read state lives in this browser's storage and is shared by every tab: the stored JSON is the
- * snapshot, so the set is only rebuilt when it changes, and a read in one tab clears the dot in the
- * others. With storage blocked it lasts for this page's life.
- */
+// Read state lives in this browser's storage and is shared by every tab, so a read in one tab
+// clears the dot in the others. With storage blocked it lasts for this page's life.
 const SEEN_KEY = "dockify:seen-notices";
 const SEEN_EVENT = "dockify-seen-notices";
 let seenFallback = "[]";
@@ -61,22 +58,14 @@ function subscribeSeen(onChange: () => void) {
 
 const TONE_ICON = { bad: "closeCircle", warn: "alert", ok: "checkCircle", live: "refresh", pending: "clock", idle: "info" } as const;
 
-/**
- * The last list a page passed in. A 404, an error or a loading page has no overview of its own, so
- * the bell keeps what the previous page knew instead of losing its dot until the next real page.
- */
+/** A 404, error or loading page has no overview, so the bell keeps what the previous page knew. */
 let lastKnown: Notice[] | null = null;
 
 /** The ids of the last list this page showed, kept across pages like `lastKnown`. See keepSeen. */
 let listedBefore: Set<string> | null = null;
 
-/**
- * The bell. Problems (degraded, stopped, failed in the last day) stay listed until they clear, and
- * finished deploys stay for a day. Every entry is unread until it is opened or marked read.
- * `notices` is null while the page has no overview yet, which is "unknown", not "nothing to show".
- * The panel closes when focus leaves it, on Escape, on a click outside and after a pick; focus goes
- * back to the bell, so it never falls to the page while a pick navigates.
- */
+// `notices` is null while the page has no overview yet, which is "unknown", not "nothing to show".
+// On close, focus goes back to the bell, so it never falls to the page while a pick navigates.
 export function Notifications({ notices: given, now }: { notices: Notice[] | null; now: number }) {
   const notices = given ?? lastKnown;
   useEffect(() => {
@@ -101,10 +90,8 @@ export function Notifications({ notices: given, now }: { notices: Notice[] | nul
   // Merge with what another tab may have written since, so two tabs never undo each other's reads.
   const mark = (ids: string[]) => writeSeen(new Set([...parseSeen(seenRaw()), ...ids]));
 
-  // Forget the read ids of notices that left this page's list, so a problem that cleared and comes
-  // back is new. Only ids this page watched go: another tab can hold a newer list (a hidden tab does
-  // not poll), and forgetting what it just read would turn its notices unread again.
-  // Only on real data: a page still loading its overview passes null and keeps the read state.
+  // Read ids of notices that left this page's list are forgotten, so a problem that comes back is
+  // new. Only ids this page watched go: another tab can hold a newer list. Never on null data.
   useEffect(() => {
     if (!notices || !seen) return;
     const live = new Set(notices.map((n) => n.id));

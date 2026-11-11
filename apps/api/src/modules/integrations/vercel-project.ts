@@ -1,13 +1,6 @@
 /**
- * What an app linked to a Vercel project shows of that project, read live from Vercel: its settings,
- * what production serves, its domains (apps.vercel.project), and its environment variables
- * (apps.vercel.env). Only GET calls: nothing here ever writes to Vercel, and no variable is ever
- * decrypted. A plain variable's value comes back as Vercel sends it in the list, and only an admin's
- * browser session sees it; everyone else gets the keys.
- *
- * Each read is cached for a minute per token and project, and concurrent tabs share one call, so
- * switching tabs is instant and Vercel is not asked twice. A 429 is remembered for as long as Vercel
- * asked, so a reload during it answers at once with when to try again.
+ * Live, read-only view of the Vercel project an app links to. GET calls only, and no variable is ever decrypted:
+ * a plain value comes back as Vercel lists it and only an admin's browser session sees it.
  */
 import type { Keyring } from "@dockify/crypto";
 import type { Db } from "@dockify/db";
@@ -19,13 +12,12 @@ import { requireActor, type IntegrationDeps } from "./deps.ts";
 import { configOf, findIntegration, openSecret } from "./store.ts";
 import { normaliseTargets, TOKEN_DEAD, VercelApi } from "./vercel.ts";
 
-/** How long one read of a project serves every tab. */
+/** Reads are cached per token and project, and concurrent callers share one call. */
 export const VERCEL_READ_TTL_MS = 60_000;
 const CACHE_MAX = 500;
 
-/* ------------------------------------------------------------------ Vercel's shapes */
 
-/** One deployment as GET /v9/projects/:id carries it under targets and latestDeployments. */
+/** As GET /v9/projects/:id carries it under targets and latestDeployments. */
 export interface RawDeployment {
   id?: string;
   uid?: string;
@@ -79,9 +71,8 @@ export interface RawEnv {
   decrypted?: boolean;
 }
 
-/* ------------------------------------------------------------------ cleaning */
 
-/** Text from a third party, for one line of the page: no control characters, bounded. */
+/** Third-party text for one line of the page: no control characters, bounded. */
 const plain = (v: unknown, max = 200): string | null => {
   if (typeof v !== "string") return null;
   const t = v.replace(/[\p{Cc}\p{Cf}]+/gu, " ").trim();
@@ -97,10 +88,10 @@ const host = (v: unknown): string | null => {
 
 const iso = (ms: unknown): string | null => (typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : null);
 
-/** A path segment of a vercel.com address: Vercel's slugs and project names are of this form. */
+/** A safe path segment for a vercel.com address. */
 const SEGMENT = /^[a-z0-9][a-z0-9._-]{0,99}$/i;
 
-/** Vercel's inspector page, https on vercel.com only. */
+/** Accepts https on vercel.com only. */
 function inspector(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   try {
@@ -112,7 +103,7 @@ function inspector(raw: unknown): string | null {
   }
 }
 
-/** The project's pages on vercel.com: the team's slug, else the account's username, then the project name. */
+/** Scope is the team's slug, else the account's username. Falls back to the dashboard when either part is unsafe. */
 export function projectLinks(scope: string | null, name: string) {
   const base = scope && SEGMENT.test(scope) && SEGMENT.test(name) ? `https://vercel.com/${scope}/${name}` : "https://vercel.com/dashboard";
   const page = (p: string) => (base.endsWith("/dashboard") ? base : `${base}${p}`);
@@ -142,7 +133,6 @@ const meta = (m: Record<string, unknown> | null | undefined, suffix: string, max
 
 type Repo = { provider: "github" | "gitlab" | "bitbucket"; slug: string; url: string | null; productionBranch: string | null };
 
-/** The Git repository Vercel builds from, as its project link names it. */
 export function repoOf(link: Record<string, unknown> | null | undefined): Repo | null {
   if (!link) return null;
   const part = (k: string) => {
@@ -174,7 +164,7 @@ function commitUrl(repo: Repo | null, sha: string | null): string | null {
   return repo.provider === "gitlab" ? `${repo.url}/-/commit/${sha}` : repo.provider === "bitbucket" ? `${repo.url}/commits/${sha}` : `${repo.url}/commit/${sha}`;
 }
 
-/** One deployment for the page. The inspector address is built from the project's when Vercel leaves it out. */
+/** The inspector address is built from the project's when Vercel leaves it out. */
 export function deploymentView(d: RawDeployment, repo: Repo | null, projectUrl: string, deploymentId: string | null) {
   const id = plain(d.uid ?? d.id, 64) ?? "";
   const created = d.createdAt ?? d.created;
@@ -223,7 +213,7 @@ export function domainView(d: RawDomain) {
   };
 }
 
-/** One variable for a caller. Values only for a plain variable, never decrypted, and only when `values`. */
+/** A value is returned only for a plain variable and only when `values`; nothing is decrypted. */
 export function envView(e: RawEnv, values: boolean) {
   const type = plain(e.type, 32) ?? "encrypted";
   return {
@@ -238,7 +228,6 @@ export function envView(e: RawEnv, values: boolean) {
   };
 }
 
-/* ------------------------------------------------------------------ cache */
 
 interface Entry {
   until: number;
@@ -251,10 +240,7 @@ export function clearVercelReadCache(): void {
   cache.clear();
 }
 
-/**
- * One read shared by every caller for its time to live. A failure is forgotten at once, except
- * Vercel's 429, which holds for as long as Vercel asked, so a reload cannot add to it.
- */
+/** A failure is forgotten at once, except Vercel's 429, which is held for as long as Vercel asked so a reload cannot add to it. */
 export async function cachedRead<T>(key: string, load: () => Promise<T>, now = Date.now): Promise<T> {
   const hit = cache.get(key);
   if (hit && hit.until > now()) return hit.promise as Promise<T>;
@@ -263,7 +249,7 @@ export async function cachedRead<T>(key: string, load: () => Promise<T>, now = D
     while (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!);
   }
   const promise = load();
-  // In flight it already serves the next caller; it settles to a minute, or Vercel's wait, or nothing.
+  // While in flight it already serves the next caller.
   const entry: Entry = { until: Number.POSITIVE_INFINITY, promise };
   cache.set(key, entry);
   promise.then(
@@ -279,7 +265,6 @@ export async function cachedRead<T>(key: string, load: () => Promise<T>, now = D
   return promise;
 }
 
-/* ------------------------------------------------------------------ reads */
 
 interface Linked {
   app: { id: string; vercelProjectId: string };
@@ -288,7 +273,7 @@ interface Linked {
   scope: string | null;
 }
 
-/** The app, its project scope checked, and a reader for the Vercel project it links to. */
+/** Checks the actor's project scope before returning a reader for the linked Vercel project. */
 async function linked(db: Db, ring: Keyring, http: HttpClient, actor: Actor, appId: string): Promise<Linked> {
   const app = await db.app.findUnique({ where: { id: appId }, select: { id: true, deployTarget: true, vercelProjectId: true, environment: { select: { projectId: true } } } });
   if (!app) throw new HttpError(404, "App not found", "NOT_FOUND");
@@ -309,7 +294,6 @@ async function linked(db: Db, ring: Keyring, http: HttpClient, actor: Actor, app
   };
 }
 
-/** Vercel's refusals, said for this page. */
 function said(e: unknown): never {
   if (e instanceof HttpError && e.code === "VERCEL_TOKEN") throw new HttpError(409, TOKEN_DEAD, "VERCEL_TOKEN");
   if (e instanceof HttpError && e.code === "NOT_FOUND") {

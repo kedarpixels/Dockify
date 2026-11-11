@@ -9,12 +9,8 @@ import { getSecurityAlert } from "@/lib/pages/security-release";
 import { TimePrefsProvider } from "@/lib/time-prefs";
 import { ViewerProvider } from "@/lib/viewer";
 
-/* The overview and the icon map are read here once per load and again on router.refresh; between
-   the two the shell follows the overview the page polls (lib/live-overview.ts).
-   `modal` is the parallel slot that intercepted routes (the new project popup) render into. The
-   viewer (who is signed in, and so which keys a Viewer may not use) reaches every console view. The
-   security release provider sits inside it: every member gets the banner under the top bar, Admins
-   the popup (components/shell/security-release.tsx). */
+/* The overview and the icon map are read once per load and on router.refresh; between the two the shell follows
+   the overview the page polls (lib/live-overview.ts). `modal` is the slot intercepted routes render into. */
 export default async function ConsoleLayout({ children, modal }: { children: React.ReactNode; modal?: React.ReactNode }) {
   const [{ data, source, fetchedAt }, icons, security] = await Promise.all([getOverview(), getIcons(), getSecurityAlert()]);
   const shell: ShellData = { ...buildShell(data), preview: source === "preview" };

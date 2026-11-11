@@ -2,32 +2,8 @@
 
 import { useEffect } from "react";
 
-/*
- * Keeps every [data-tip] bubble on screen. Tips are pure CSS (foundation.css, "Hover tooltip"), so
- * on their own they cannot see the viewport: a tip on a key near the phone's edge, a time in the
- * first row of a scroll list or a key just under the sticky top bar would open half hidden. Mounted
- * once in the root layout, this listens for hover and keyboard focus and, before the 150ms show
- * delay ends, measures the bubble where the CSS put it:
- *
- *   - sideways, it slides the bubble (never the tail) back inside the page's rails (the block of
- *     main.page it sits in), the viewport and any clipping ancestor, 8px clear of the edge, through
- *     --tip-dx; so no bubble ever crosses a rail, where the rule and band nodes paint on top;
- *   - upward, when the bubble would run under the top bar or out of a clipping ancestor and there
- *     is room below, it opens below instead (data-tip-flip="bottom").
- *
- * Esc hides the tip that is showing (data-tip-hidden) until the pointer or the focus leaves its
- * control, so a tip never has to be moved away from to read what it covers. The Esc still does its
- * usual job too (a dialog closes, a search clears).
- *
- * Markup stays the same: authors still set data-tip-side and data-tip-align by hand, and this only
- * corrects what the layout could not know. Side "right" tips are left alone.
- *
- * It also keeps the browser's own `title` tip to its one job here, the full text behind an
- * ellipsis or a line clamp: while the pointer is over such text that is not cut, its title steps
- * aside (data-title), so a name that fits never shows itself again in a tip; and an `.ellipsis`
- * that is cut and has no tip of its own gets its full text as its title for that hover. Both are
- * undone as the pointer leaves.
- */
+// Tips are pure CSS, so they cannot see the viewport. Mounted once in the root layout, this slides a
+// bubble back inside the rails (--tip-dx) or flips it below, and keeps native `title` tips to cut text.
 
 const EDGE = 8;
 

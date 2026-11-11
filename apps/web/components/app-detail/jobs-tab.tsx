@@ -21,9 +21,7 @@ import { useCan } from "@/lib/viewer";
 import { hasOutput, isActiveRun, jobErrors, RUN_LABEL, type AppJobs, type JobDraft, type JobErrors, type JobInput, type JobLimits, type JobRunDetail, type JobRunRow, type JobRunStatus, type ScheduledJobRow } from "./jobs-shared";
 import { TabCard, TabFailed } from "./states";
 
-/* Jobs: one row per scheduled job, the runs of the one picked below it, and a run's output in a
-   dialog. Every run is a short-lived container from the app's current image. A Viewer sees all of it
-   and changes none of it; the api decides, and the keys simply are not offered. */
+/* Every run is a short-lived container from the app's current image. */
 
 const TONE: Record<JobRunStatus, ChipTone> = {
   queued: "pending",
@@ -63,8 +61,6 @@ const durationOf = (r: JobRunRow): string => {
   const s = Math.max(0, Math.round((Date.parse(r.finishedAt) - Date.parse(r.startedAt)) / 1000));
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 };
-
-/* -------------- Form -------------- */
 
 function JobDialog({ app, job, limits, onClose, onSaved }: { app: string; job: ScheduledJobRow | null; limits: JobLimits; onClose: () => void; onSaved: (j: ScheduledJobRow) => void }) {
   const [draft, setDraft] = useState<JobDraft>(() => (job ? toDraft(job) : blank()));
@@ -149,8 +145,6 @@ function JobDialog({ app, job, limits, onClose, onSaved }: { app: string; job: S
   );
 }
 
-/* -------------- A run's output -------------- */
-
 function RunDialog({ app, job, run, onClose }: { app: string; job: ScheduledJobRow; run: JobRunRow; onClose: () => void }) {
   const [state, setState] = useState<{ run: JobRunDetail } | { error: string } | null>(null);
   const url = `${base(app)}/${encodeURIComponent(job.id)}/runs/${encodeURIComponent(run.id)}`;
@@ -206,8 +200,6 @@ function RunDialog({ app, job, run, onClose }: { app: string; job: ScheduledJobR
     </Dialog>
   );
 }
-
-/* -------------- History -------------- */
 
 function Runs({ app, job, refreshKey }: { app: string; job: ScheduledJobRow; refreshKey: number }) {
   const [state, setState] = useState<{ for: string; runs: JobRunRow[] } | { for: string; error: string } | null>(null);
@@ -272,8 +264,6 @@ function Runs({ app, job, refreshKey }: { app: string; job: ScheduledJobRow; ref
     </TabCard>
   );
 }
-
-/* -------------- The tab -------------- */
 
 export function JobsTab({ appId }: { appId: string }) {
   const { manage } = useCan();

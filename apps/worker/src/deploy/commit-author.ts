@@ -1,13 +1,8 @@
-/**
- * Who wrote the commit a deployment ships, as GitHub knows them, so every deployment row names the
- * commit's author however it started. Best effort from end to end: a deploy never waits long for
- * this and never fails over it. Nothing here logs, so neither a token nor an answer reaches a log.
- */
+/** Who wrote a deployment's commit, as GitHub knows them. Best effort: never fails a deploy, and nothing here logs. */
 import { githubAvatarUrl } from "@dockify/contracts";
 import type { Db, SecretVault } from "@dockify/db";
 import { installationCredential } from "./github.ts";
 
-/** The most the deploy waits, the installation token included. */
 const LOOKUP_TIMEOUT_MS = 5_000;
 
 const GITHUB_REPO = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i;
@@ -17,7 +12,6 @@ const GITHUB_LOGIN = /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i;
 /** A login means an account: `avatarUrl` is its picture. Without one, `name` is the commit's git name. */
 export type CommitAuthor = { login: string; avatarUrl: string | null; name: null } | { login: null; avatarUrl: null; name: string };
 
-/** The author in an answer of GET /repos/:owner/:repo/commits?sha=:sha, or null when it names nobody. */
 export function parseCommitAuthor(body: unknown, sha: string): CommitAuthor | null {
   const c = (Array.isArray(body) ? body[0] : null) as { sha?: unknown; author?: { login?: unknown; avatar_url?: unknown } | null; commit?: { author?: { name?: unknown } | null } | null } | null;
   // The list starts at the commit asked for; anything else is not an answer about it.
@@ -38,11 +32,7 @@ export interface CommitAuthorDeps {
   timeoutMs?: number;
 }
 
-/**
- * Asks GitHub through the project's App installation, or anonymously for a public repository when
- * there is none or its token cannot be had. The list form, since the single commit's answer carries
- * every changed file. Null for anything but a clear answer.
- */
+/** The list form, since the single commit's answer carries every changed file. Anonymous for a public repository. */
 async function lookup(deps: CommitAuthorDeps, repoUrl: string, sha: string, installationId: bigint | null, timeoutMs: number): Promise<CommitAuthor | null> {
   const m = GITHUB_REPO.exec(repoUrl);
   if (!m || !SHA.test(sha)) return null;
@@ -60,11 +50,7 @@ async function lookup(deps: CommitAuthorDeps, repoUrl: string, sha: string, inst
   return res.ok ? parseCommitAuthor(await res.json(), sha) : null;
 }
 
-/**
- * Records a deployment's commit author, unless it already has a full one (a push by its own author
- * carried everything). On a git name the login stays: on a push it is the pusher, who still hears
- * about a failure. Never throws, and gives up after a few seconds whatever it is waiting on.
- */
+/** Never throws. On a git name the login stays: on a push it is the pusher, who still hears about a failure. */
 export async function recordCommitAuthor(
   deps: CommitAuthorDeps,
   dep: { id: string; gitAuthor: string | null; gitAuthorAvatarUrl: string | null; gitAuthorName: string | null },

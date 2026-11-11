@@ -18,7 +18,6 @@ const useMobileNav = () => useContext(MobileNavContext);
 
 const burger = () => document.querySelector<HTMLElement>('[aria-controls="mobile-nav"]');
 
-/* The burger key for the top bar. Only shown on phones. */
 export function MenuKey() {
   const { open, toggle } = useMobileNav();
   return (
@@ -28,13 +27,8 @@ export function MenuKey() {
   );
 }
 
-/**
- * Phone menu: drops down under the top bar and overlays the page, never pushes it. Rows are 48px
- * ruled cells; the current one carries a blue dot. Open, it takes focus onto its first row and
- * takes the page behind it out of the keyboard and the accessibility tree, so the top bar and the
- * menu are all there is. It closes on Escape, a row, a tap outside, navigation, and the viewport
- * growing past phone width; focus that was inside goes back to the burger.
- */
+// Open, it takes the page behind it out of the keyboard and the accessibility tree. Focus that was
+// inside goes back to the burger on close.
 export function MobileNav({
   data,
   open,
@@ -62,8 +56,6 @@ export function MobileNav({
   useEffect(() => {
     const el = panel.current;
     if (!open || !el) return;
-    // Everything in the page column but the top bar and the menu leaves the keyboard and the
-    // accessibility tree while it is open.
     const behind = [...(el.parentElement?.children ?? [])].filter(
       (c): c is HTMLElement => c instanceof HTMLElement && c !== el && !c.matches(".top, .mnav-scrim") && !c.inert,
     );

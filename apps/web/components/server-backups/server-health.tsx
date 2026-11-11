@@ -8,8 +8,6 @@ import { When } from "@/components/ui/when";
 import type { ServerSnapshot, ServiceHealth } from "@/lib/pages/server-backups";
 import { v } from "./util";
 
-/* The control plane's own services and the facts of the host, side by side on /server. */
-
 const SERVICE_NAME: Record<ServiceHealth["id"], string> = {
   api: "API",
   worker: "Worker",
@@ -41,10 +39,7 @@ const SERVICE_ICON: Record<ServiceHealth["id"], IconName> = {
 const SERVICE_TONE = { ok: "ok", degraded: "warn", down: "bad" } as const;
 const SERVICE_LABEL = { ok: "Healthy", degraded: "Degraded", down: "Down" } as const;
 
-/**
- * The probe's own words, unless they only restate the latency the next column already shows
- * ("answered in 32 ms"); then the row says what was checked. Postgres is probed with a query.
- */
+/** The probe's own words, unless they only restate the latency the next column shows; then the row says what was checked. */
 function checked(s: ServiceHealth): string {
   // Padded with spaces, so a 2 ms latency never matches the "32 ms" inside a detail.
   const restates = s.latencyMs !== null && ` ${s.detail} `.includes(` ${s.latencyMs} ms `);
@@ -92,8 +87,6 @@ export function ServicesCard({ services, checkedAt, now }: { services: ServiceHe
     </section>
   );
 }
-
-// -------------- System --------------
 
 export function SystemCard({ s }: { s: ServerSnapshot }) {
   const facts: Array<{ label: string; value: string; copy?: boolean }> = [

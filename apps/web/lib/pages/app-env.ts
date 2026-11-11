@@ -1,9 +1,5 @@
-/* The app page's env, read server-side without ever carrying a secret.
- *
- * The server loader's result is serialized into the page data (RSC payload and HTML), so the app page
- * reads the secret-free GET /env/state route, never the raw /env one, and this module drops any secret
- * value that still arrives. A secret's plaintext reaches the browser only through the audited per-key
- * POST /env/reveal. Kept free of Next and React imports so it can be tested on its own. */
+// The loader's result is serialized into the page data, so this reads the secret-free env/state route
+// and drops any secret value that still arrives. Free of Next and React imports so it can be tested alone.
 
 /** A linked variable's target, as EnvRefView in project-detail.ts. Carries no credential. */
 interface RefLike {
@@ -32,7 +28,6 @@ interface StateEntry {
   ref?: RefLike;
 }
 
-/** The secret-free env route for a project. */
 export const appEnvPath = (slug: string): string => `/api/v1/projects/${encodeURIComponent(slug)}/env/state`;
 
 /** Shared variables per environment, with every secret value blanked whatever the API sent. */

@@ -1,8 +1,4 @@
-/**
- * The clock of scheduled jobs, on a worker timer. Every due job moves to its next time in the same
- * statement that claims it, so two passes never decide one due time twice. schedule.ts says what
- * happens to a time that has passed.
- */
+/** A due job moves to its next time in the statement that claims it, so no due time is decided twice. */
 import { jobs as J } from "@dockify/contracts";
 import type { Db } from "@dockify/db";
 import { CronError, nextRun } from "../data/cron.ts";
@@ -59,11 +55,7 @@ export async function jobsTick(db: Db, now = new Date()): Promise<number> {
   return decided;
 }
 
-/**
- * Runs whose queue job is gone (the worker died with the attempt spent, or the row went). Nothing
- * will ever settle them, and an active run blocks the job's next one under the skip policy. Their
- * container goes with them: it was never meant to outlive the worker watching it.
- */
+/** Orphan runs never settle and block the job's next run under the skip policy; their container goes too. */
 export async function settleOrphanRuns(db: Db, docker: Pick<DockerApi, "removeContainer">, serverId: string, now = Date.now()): Promise<number> {
   const cutoff = new Date(now - ORPHAN_MIN_AGE_MS);
   const rows = await db.$queryRaw<{ id: string }[]>`
@@ -95,7 +87,6 @@ export async function settleOrphanRuns(db: Db, docker: Pick<DockerApi, "removeCo
   return settled;
 }
 
-/** History stays bounded: the newest runs per job, for so many days, and New app's reads for minutes. */
 export async function pruneJobHistory(db: Db, now = Date.now()): Promise<void> {
   const oldest = new Date(now - J.JOB_KEEP_DAYS * 86_400_000);
   await db.scheduledJobRun.deleteMany({ where: { createdAt: { lt: oldest }, status: { notIn: [...ACTIVE_RUN] } } });

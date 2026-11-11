@@ -1,10 +1,6 @@
-/* The signed-out pages: their narrow frame, the split card with the whale art, and the auth-only
-   controls (password eye, one-time code boxes, step bars), on foundation's tokens and primitives. */
-
-/* -------------- Frame -------------- */
-/* The console frame narrowed to one column: --rail drives the rails, the rule nodes and the
-   band crossings, so every primitive lines up on the 440px column (16px outside on phones).
-   From 880px it widens to 800px and the card row splits in two. */
+/* Frame */
+/* --rail drives the rails, rule nodes and band crossings, so every primitive lines up on the
+   440px column. From 880px it widens to 800px and the card row splits in two. */
 main.page.auth-page {
   --rail: min(440px, calc(100% - 32px));
   min-height: 100vh;
@@ -17,17 +13,13 @@ main.page.auth-page {
   }
 }
 
-/* -------------- Split -------------- */
-/* The card row: the form cell, then the art cell behind one hairline. The form cell keeps its own
-   --rail, so a rule inside it puts its nodes on the frame rail and on the divider. */
+/* Split */
+/* The form cell keeps its own --rail, so a rule inside it puts its nodes on the frame rail and on the divider. */
 .auth-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* The form sits on the row's centre line when the art is the taller of the two. A rule inside it
-   reaches over the cell edges by a pixel (foundation's nested rule), so its nodes centre on the
-   rail and on the divider. */
 .auth-main {
   --rail: 100%;
   display: flex;
@@ -45,7 +37,6 @@ main.page.auth-page {
     grid-template-columns: 400px minmax(0, 1fr);
   }
 
-  /* Nodes where the divider meets the band above and the band below: 5px, centred on each line. */
   .auth-split::before,
   .auth-split::after {
     content: "";
@@ -66,8 +57,6 @@ main.page.auth-page {
     bottom: -3px;
   }
 
-  /* Full bleed from the divider to the rail and from band to band, on a surface a half step off the
-     card in either theme, so the two halves read as one card. */
   .auth-art {
     position: relative;
     display: block;
@@ -78,9 +67,8 @@ main.page.auth-page {
   }
 }
 
-/* The whale alone (only lit cells, no empty grid), a little above the centre to leave the foot to the
-   line. --art-w and --art-h come from the component; offsets round to whole pixels so every cell
-   edge lands on the pixel grid. */
+/* --art-w and --art-h come from the component; offsets round to whole pixels so every cell edge
+   lands on the pixel grid. */
 .auth-art-grid {
   position: absolute;
   display: block;
@@ -91,7 +79,6 @@ main.page.auth-page {
   top: round(down, calc(50% - var(--art-h) / 2 - 36px), 1px);
 }
 
-/* The heat blues of the Overview grid in the current theme; each cell pops in on load. */
 .auth-art-grid rect {
   fill: var(--heat-4);
   transform-box: fill-box;
@@ -102,7 +89,6 @@ main.page.auth-page {
 .auth-art-grid rect[data-l="2"] { fill: var(--heat-2); }
 .auth-art-grid rect[data-l="3"] { fill: var(--heat-3); }
 
-/* The line hangs from the whale's left edge, so the art and the words share one vertical. */
 .auth-art-line {
   position: absolute;
   left: calc(50% - var(--art-w) / 2);
@@ -156,7 +142,6 @@ main.page.auth-page {
   height: 24px;
 }
 
-/* The wordmark as the sidebar and the site's header set it: pixel face, 18px, one weight. */
 .auth-brand-name {
   font-family: var(--font-pixel);
   font-feature-settings: "ss09";
@@ -167,7 +152,6 @@ main.page.auth-page {
   color: var(--ink);
 }
 
-/* The foot line mirrors the head: same height, same gutter, one muted sentence. */
 .auth-bottom {
   gap: 8px;
   height: 56px;
@@ -181,9 +165,8 @@ main.page.auth-page {
   color: var(--ink-4);
 }
 
-/* The open stretches above and below the card share the spare height, so the card sits centred.
-   With none to spare (a tall card) they close up completely, and the rule and the band beside
-   each one overlap by a pixel so they share a single hairline instead of drawing two. */
+/* The fills share the spare height so the card sits centred. With none to spare they close up,
+   and the rule and band overlap by a pixel to share one hairline. */
 main.page > .auth-fill {
   flex: 1 1 0;
   min-height: 0;
@@ -197,7 +180,7 @@ main.page > .sep:has(+ .auth-fill) {
   margin-bottom: -1px;
 }
 
-/* -------------- Card blocks -------------- */
+/* Card blocks */
 .auth-block {
   padding: 32px var(--gutter);
 }
@@ -221,7 +204,6 @@ main.page > .sep:has(+ .auth-fill) {
   margin: 0;
 }
 
-/* One row: the 40px key tile and the 40px-line pixel title beside it on the same centre line. */
 .auth-head-top {
   display: flex;
   align-items: center;
@@ -234,7 +216,6 @@ main.page > .sep:has(+ .auth-fill) {
   min-width: 0;
 }
 
-/* Multi-step flows (setup, invite): the bars and "Step 1 of 3" on their own line above the head. */
 .auth-steps {
   display: flex;
   align-items: center;
@@ -300,7 +281,7 @@ main.page > .sep:has(+ .auth-fill) {
   color: var(--ink-2);
 }
 
-/* -------------- Form -------------- */
+/* Form */
 .auth-form {
   display: grid;
   gap: 16px;
@@ -311,7 +292,6 @@ main.page > .sep:has(+ .auth-fill) {
   margin-top: 0;
 }
 
-/* A label with a link at its right end: the setup key's "Open in app". */
 .auth-label-row {
   display: flex;
   align-items: baseline;
@@ -319,13 +299,12 @@ main.page > .sep:has(+ .auth-fill) {
   gap: 12px;
 }
 
-/* Edge draws its own reveal eye and clear cross; the password field has its own key. */
+/* Hides Edge's own reveal eye and clear cross; the password field has its own key. */
 .auth-pw .field::-ms-reveal,
 .auth-pw .field::-ms-clear {
   display: none;
 }
 
-/* A fixed invite email reads as set, not editable. */
 .auth-form .field[readonly] {
   color: var(--ink-3);
   cursor: default;
@@ -335,14 +314,12 @@ main.page > .sep:has(+ .auth-fill) {
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
-/* Browser autofill keeps the field's own colours. */
 .auth-form .field:-webkit-autofill {
   -webkit-text-fill-color: var(--ink);
   -webkit-box-shadow: inset 0 0 0 1px var(--line), inset 0 0 0 40px var(--mass);
   caret-color: var(--ink);
 }
 
-/* Password: the Caps Lock chip and the show and hide key sit inside the field's right end. */
 .auth-pw {
   position: relative;
 }
@@ -365,9 +342,7 @@ main.page > .sep:has(+ .auth-fill) {
   gap: 4px;
 }
 
-/* The show and hide key: the bare eye, no box and no tooltip (its aria-label names it). It spans the
-   field's height and its last 40px, so the 16px icon sits on the centre line, 12px in from the edge,
-   mirroring the field's 12px start padding. */
+/* No tooltip: its aria-label names it. */
 .auth-pw-eye {
   display: grid;
   place-items: center;
@@ -419,13 +394,12 @@ main.page > .sep:has(+ .auth-fill) {
   color: var(--ok-ink);
 }
 
-/* -------------- Buttons -------------- */
+/* Buttons */
 .auth-submit {
   width: 100%;
   margin-top: 8px;
 }
 
-/* While a request runs the CTA stays at full strength: its loader says it is busy. */
 .auth-submit[data-pending] {
   opacity: 1;
 }
@@ -434,7 +408,6 @@ main.page > .sep:has(+ .auth-fill) {
   margin-top: 24px;
 }
 
-/* Two equal buttons: a way out on the left, the CTA on the right. */
 .auth-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -446,8 +419,7 @@ main.page > .sep:has(+ .auth-fill) {
   margin-top: 0;
 }
 
-/* Setup's email step. The form column is too narrow for the shared form's paired fields: an address
-   would clip. Below it, what setting it up later costs, and the from domain once connected. */
+/* The form column is too narrow for the shared form's paired fields: an address would clip. */
 .auth-form .int-form-grid {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -462,7 +434,6 @@ main.page > .sep:has(+ .auth-fill) {
   color: var(--ink-2);
 }
 
-/* Text links: muted, underlined, colour only on hover. */
 .auth-link {
   font-size: 13px;
   line-height: 18px;
@@ -507,12 +478,11 @@ main.page > .sep:has(+ .auth-fill) {
   margin-top: 24px;
 }
 
-/* A lone link in the row (Back to sign in) sits centred under the form. */
 .auth-alt > :only-child {
   margin-inline: auto;
 }
 
-/* -------------- Strength meter -------------- */
+/* Strength meter */
 .auth-meter {
   display: flex;
   align-items: center;
@@ -544,9 +514,8 @@ main.page > .sep:has(+ .auth-fill) {
   color: var(--ink-3);
 }
 
-/* -------------- Code boxes -------------- */
-/* Six equal 48px boxes drawn from one real input laid over them (see otp-input.tsx). The input
-   is invisible but takes every click, key, paste and autofill. */
+/* Code boxes */
+/* One real, invisible input lies over the six boxes and takes every click, key, paste and autofill (otp-input.tsx). */
 .auth-otp {
   position: relative;
   display: grid;
@@ -599,7 +568,6 @@ main.page > .sep:has(+ .auth-fill) {
   box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
-/* The box taking the next digit wears the shared field focus: page fill, blue ring, soft halo. */
 .auth-otp-box[data-active] {
   background: var(--bg);
   box-shadow: var(--ring-focus);
@@ -617,7 +585,7 @@ main.page > .sep:has(+ .auth-fill) {
   opacity: var(--disabled-opacity);
 }
 
-/* High contrast drops box-shadows: each box keeps a real edge, the next one a Highlight ring. */
+/* Forced colours drops box-shadows, so each box gets a real edge. */
 @media (forced-colors: active) {
   .auth-otp-box {
     border: 1px solid CanvasText;
@@ -632,7 +600,6 @@ main.page > .sep:has(+ .auth-fill) {
   cursor: default;
 }
 
-/* The drawn caret: a 2px blue bar that blinks like the native one. */
 .auth-otp-caret {
   width: 2px;
   height: 20px;
@@ -647,7 +614,7 @@ main.page > .sep:has(+ .auth-fill) {
   }
 }
 
-/* -------------- Authenticator enrolment -------------- */
+/* Authenticator enrolment */
 .auth-enroll {
   display: grid;
   gap: 24px;
@@ -660,7 +627,6 @@ main.page > .sep:has(+ .auth-fill) {
   gap: 24px;
 }
 
-/* Stand-in QR: 25 by 25 modules of 4px on the page colour with a 12px quiet zone, framed like a field. */
 .auth-qr {
   --mod: 4px;
   flex: none;
@@ -696,7 +662,6 @@ main.page > .sep:has(+ .auth-fill) {
   box-shadow: 0 0 0 1px var(--line-strong);
 }
 
-/* Three short numbered steps beside the code. */
 .auth-how {
   display: grid;
   gap: 12px;
@@ -726,7 +691,6 @@ main.page > .sep:has(+ .auth-fill) {
   min-width: 0;
 }
 
-/* The key in a soft box: eight groups of four on a 4 column grid, copy key at the right. */
 .auth-key-box {
   display: flex;
   align-items: center;
@@ -763,8 +727,7 @@ main.page > .sep:has(+ .auth-fill) {
   color: var(--ink-3);
 }
 
-/* -------------- Invite summary -------------- */
-/* Server, role and expiry in one soft container above the form: label left, value right. */
+/* Invite summary */
 .auth-invite {
   display: grid;
   margin: 24px 0 0;
@@ -812,8 +775,7 @@ main.page > .sep:has(+ .auth-fill) {
   color: var(--ink-3);
 }
 
-/* -------------- CLI command -------------- */
-/* /recover: one block per command, the two-factor reset first. */
+/* CLI command */
 .auth-cmds {
   display: grid;
   gap: 24px;
@@ -848,14 +810,12 @@ main.page > .sep:has(+ .auth-fill) {
   user-select: none;
 }
 
-/* The part to fill in (<email>) reads as a placeholder. */
 .auth-cmd-arg {
   color: var(--ink-3);
 }
 
-/* -------------- Forgot password, reset and email codes -------------- */
+/* Forgot password, reset and email codes */
 
-/* A text link that is a button (Try another address): the link look, no button chrome. */
 button.auth-link {
   padding: 0;
   border: 0;
@@ -866,7 +826,6 @@ button.auth-link {
   cursor: pointer;
 }
 
-/* Long addresses wrap instead of pushing the card wider. */
 .auth-wrap {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -878,13 +837,13 @@ button.auth-link:is(:disabled, [aria-disabled="true"]) {
   cursor: default;
 }
 
-/* -------------- Responsive -------------- */
+/* Responsive */
 @media (max-width: 760px) {
   .auth-block {
     padding: 24px var(--gutter);
   }
 
-  /* 16px keeps phones from zooming into a focused field. */
+  /* 16px keeps iOS from zooming into a focused field. */
   .auth-form .field {
     font-size: 16px;
   }

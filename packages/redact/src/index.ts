@@ -1,10 +1,6 @@
 /**
- * The one redaction module for deploy logs and runtime logs alike.
- *
- * The literal pass hides the exact secret values a build or a container was given; the pattern
- * pass is the backstop for credentials that name themselves (connection strings, bearer headers,
- * AWS and GitHub key shapes, KEY=value lines, PEM bodies). Best effort by design, and the UI says
- * so: a secret split across lines or encoded differently can get through.
+ * Redacts deploy and runtime logs: exact secret values first, then patterns for credentials that
+ * name themselves. Best effort: a secret split across lines or encoded differently gets through.
  */
 export const MARK = "[REDACTED]";
 
@@ -12,16 +8,11 @@ export const MARK = "[REDACTED]";
 export const MIN_SECRET_LENGTH = 6;
 const MAX_PEM_LINES = 100;
 
-// Every pattern runs in time linear in the line, because one hostile line must not wedge the
-// single worker event loop. A match can only start at a fixed anchor (a word boundary, a "://", or
-// the first character of a run of key characters), so a long run is never rescanned from each of
-// its positions. That is also why the secret itself needs no length cap: a long password, token or
-// value is hidden whole instead of leaving its tail in the log. A pattern with a guard is skipped
-// on lines the guard rules out.
+// Every pattern must run in linear time: one hostile line must not wedge the single worker event loop.
+// Matches start only at a fixed anchor, so a secret needs no length cap and is hidden whole.
 const KEYWORDS = /password|passwd|secret|token|api_?key|private_?key|credential|authorization|cookie|dsn|connection_?string/i;
 const PATTERNS: Array<[RegExp, string, ((s: string) => boolean)?]> = [
-  // user:password@ in a URL. The match starts at "://" and a lookbehind checks the scheme before
-  // it, so a long run of letters is not tried as a scheme at every position.
+  // user:password@ in a URL. The lookbehind checks the scheme, so letters are not retried as one at each position.
   [/:\/\/(?<=[A-Za-z][A-Za-z0-9+.-]{0,31}:\/\/)[^\s/@]+@/g, `://${MARK}@`, (s) => s.includes("://")],
   [/\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${MARK}`],
   [/\b(?:A3T[A-Z0-9]|ABIA|ACCA|AGPA|AIDA|AIPA|AKIA|ANPA|ANVA|APKA|AROA|ASIA)[A-Z0-9]{12,20}\b/g, MARK],
@@ -29,11 +20,8 @@ const PATTERNS: Array<[RegExp, string, ((s: string) => boolean)?]> = [
   [/\bgh[pousr]_[A-Za-z0-9]{20,255}\b/g, MARK],
   // A SQL statement quoted in an error: Postgres's CONTEXT line for ALTER ROLE ... PASSWORD '...'.
   [/\bPASSWORD\s+'[^']*'/gi, `PASSWORD '${MARK}'`],
-  // key=value and key: value where the key names a secret. The key is a whole run of key
-  // characters: the lookbehind starts it only where a run starts, and the lookahead checks the run
-  // for a keyword without consuming it. A key with no keyword consumes nothing, so the value after
-  // it is still checked as a key in turn ("options: password=x"). The end of a path before a colon
-  // is not a key: "ls: /run/secrets: No such file" names a folder and holds no value.
+  // key=value and key: value where the key names a secret. A key without a keyword consumes nothing, so
+  // the value after it is still tried as a key ("options: password=x"). A path before a colon is not a key.
   [
     /(?<![A-Za-z0-9_.-])(?!(?<=\/)[A-Za-z0-9_.-]+\s*:)(?=[A-Za-z0-9_.-]*?(?:password|passwd|secret|token|api_?key|private_?key|credential|authorization|cookie|dsn|connection_?string))([A-Za-z0-9_.-]+)\s*[=:]\s*("[^"]*"|'[^']*'|\S+)/gi,
     `$1=${MARK}`,

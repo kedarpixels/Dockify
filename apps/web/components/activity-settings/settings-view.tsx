@@ -26,36 +26,24 @@ import { TeamSection } from "./team-section";
 import { TokensSection } from "./tokens-section";
 import { UpdatesSection } from "./updates-section";
 
-/** What every section receives: its slice of the data, a way to store what the API sent back. */
 export interface SectionProps {
   data: SettingsData;
   update: (patch: Partial<SettingsData>) => void;
   onDirty: (dirty: boolean) => void;
   now: number;
   preview: boolean;
-  /** Moves to another section, for links between them. */
   go: (id: SectionId) => void;
-  /** The open segment of a section split by SectionTabs (sections.ts); empty for the others. */
   tab: string;
   onTab: (next: string) => void;
   /** An email integration is connected: invites can be emailed, email changes need a code. */
   emailEnabled: boolean;
-  /** Runs an elevated write, asking "Confirm it is you" when the API wants a fresh step-up (components/step-up). */
+  /** Runs a write, asking "Confirm it is you" when the API wants a fresh step-up. */
   elevate: Elevate;
-  /** This instance's project names, for pickers (a token's projects); empty when the list did not load. */
+  /** Empty when the list did not load. */
   projects: string[];
 }
 
-/**
- * Account and instance settings. The head spans the page like every other page; under its rule
- * one ruled block of fixed height holds the grouped sub-nav, which sets that height, and a content
- * column that runs to the frame edge. Each view is meant to fit that block: a section too long for
- * it splits into segments (SectionTabs), and only a genuinely long list scrolls, under a head that
- * stays. Narrow pages (phones, tablets with the sidebar open) get the section dropdown instead. The
- * section lives in ?section= and its segment in ?tab=. Every section and segment stays mounted (only
- * one shows), so unsaved edits survive a visit to another, and the nav marks sections with unsaved
- * changes. Integrations has its own loader, so it works even when the account settings cannot load.
- */
+/** Every section and segment stays mounted (only one shows), so unsaved edits survive a visit to another. */
 export function SettingsView({
   overview,
   initial,
@@ -68,9 +56,9 @@ export function SettingsView({
   initial: SettingsResult;
   integrations: IntegrationsResult;
   section: SectionId;
-  /** The ?tab= the page was opened with; an unknown one opens the section's first segment. */
+  /** An unknown ?tab= opens the section's first segment. */
   tab?: string;
-  /** The running Dockify release, for the sub-nav footer; null when the build does not say. */
+  /** Null when the build does not say. */
   version?: string | null;
 }) {
   const { result } = useOverview(overview);
@@ -92,12 +80,11 @@ export function SettingsView({
 
   const openTab = tabs[active];
 
-  // Every section and segment opens at its top.
   useEffect(() => {
     col.current?.querySelectorAll(".set-pane, .set-tabpanel, .set-body").forEach((el) => el.scrollTo(0, 0));
   }, [active, openTab]);
 
-  /** A new entry for the view, keeping any other query (github=installed); the first segment is the bare URL. */
+  /** Keeps any other query (github=installed); the first segment is the bare URL. */
   const pushView = (id: SectionId, t: string | undefined) => {
     const url = new URL(window.location.href);
     url.searchParams.set("section", id);
@@ -110,9 +97,7 @@ export function SettingsView({
     if (id === active) return;
     setActive(id);
     pushView(id, tabs[id]);
-    // The new section replaced the old one in place. The focus moves into it, so the switch is heard
-    // and Tab goes on into the section, not on down the nav: to the open segment's tab when it has
-    // a strip, else to its first heading.
+    // The focus moves into the new section, so the switch is heard and Tab goes on into it, not down the nav.
     requestAnimationFrame(() => {
       const pane = `[data-pane="${id}"]`;
       const key = document.querySelector<HTMLElement>(`${pane} [role="tab"][aria-selected="true"]`);
@@ -130,7 +115,6 @@ export function SettingsView({
     pushView(id, next);
   };
 
-  // Back and forward walk the sections and segments; a #set-2fa style link opens its segment.
   useEffect(() => {
     const onPop = () => {
       const q = new URL(window.location.href).searchParams;
@@ -155,8 +139,7 @@ export function SettingsView({
     };
   }, []);
 
-  // Unsaved edits anywhere ask before the tab closes or reloads, and before leaving the page (a
-  // link, a command). Every section stays mounted, so switching sections (?section=) never asks.
+  // Every section stays mounted, so switching sections never asks; only leaving the page does.
   const anyDirty = Object.values(dirty).some(Boolean);
   const leaveGuard = useLeaveGuard(anyDirty, { ignoreQuery: true });
 

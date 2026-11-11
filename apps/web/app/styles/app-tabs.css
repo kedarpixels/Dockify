@@ -1,9 +1,6 @@
-/* app-tabs: the app page's Metrics, Domains, Data, Backups, Terminal and Settings tabs
-   (components/app-detail). Every tab is one or more TabCards, and each TabCard is the `at-tab`
-   container, so a tab's grids follow the card's own width with the sidebar open or collapsed.
-   The tab strip lives with TabStrip in project-detail.css, shared with the project page. */
+/* Each TabCard is the `at-tab` container, so a tab's grids follow the card's own width whatever the sidebar does. */
 
-/* -------------- Shared bits -------------- */
+/* Shared bits */
 .at-tab {
   container: at-tab / inline-size;
 }
@@ -15,21 +12,18 @@
   min-width: 0;
 }
 
-/* A reload dims what is on screen instead of blanking it. */
 :is(.at-mgrid, .at-rows, .at-keys)[data-loading] {
   opacity: 0.6;
   transition: opacity 150ms var(--ease);
 }
 
-/* -------------- Metrics -------------- */
-/* The metric cards are KpiCells (foundation's KPI cell): head, figure and lead, then the chart at
-   the cell's full width and its averages under it. */
+/* Metrics */
 .kpi-cell .at-mchart {
   position: relative;
   height: 72px;
 }
 
-/* Over the KPI cell's own 112px sparkline: this one spans the cell. */
+/* Overrides the KPI cell's own 112px sparkline: this one spans the cell. */
 .kpi-cell .at-mchart > .sparkarea {
   width: 100%;
   height: 100%;
@@ -45,7 +39,6 @@
   color: var(--ink-3);
 }
 
-/* Each cell carries a chart, so a narrow card stacks them, one per row. */
 @container kpi (max-width: 520px) {
   .kpi .kpi-grid.at-mgrid {
     --kpi-cols: 1;
@@ -53,7 +46,6 @@
   }
 }
 
-/* Limit usage rows. */
 .at-lim {
   padding: 8px calc(var(--gutter) - 8px) 16px;
 }
@@ -67,7 +59,7 @@
   padding: 8px;
 }
 
-/* The labels take one fixed column, so every bar starts at the same edge and fills the rest. */
+/* The labels take one fixed column, so every bar starts at the same edge. */
 .at-lim-row > .two {
   flex: 0 0 200px;
   min-width: 0;
@@ -89,7 +81,7 @@
   text-align: right;
 }
 
-/* -------------- Data -------------- */
+/* Data */
 .at-browser {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
@@ -148,7 +140,7 @@
   color: var(--ink-3);
 }
 
-/* The global focus ring (foundation) draws outside the 10px corners. */
+/* The global focus ring draws outside the 10px corners. */
 .at-grid-wrap {
   max-height: 520px;
   overflow: auto;
@@ -221,7 +213,7 @@
   font-style: italic;
 }
 
-/* The terminal: its own colours, whole-pixel padding, and a fixed height so nothing jumps as it fills. */
+/* A fixed height so nothing jumps as the terminal fills. */
 .at-term-card {
   --term-bg: var(--panel-2);
   --term-fg: var(--ink);
@@ -319,7 +311,6 @@
   padding-bottom: 24px;
 }
 
-/* A failed query: the shared bad Callout, under the box. */
 .at-q-out {
   padding: 0 var(--gutter) 24px;
 }
@@ -334,7 +325,6 @@
   line-height: 20px;
 }
 
-/* Redis keys: one grid shared by the head and every row. */
 .at-keys {
   padding: 4px calc(var(--gutter) - 8px) 16px;
 }
@@ -379,7 +369,7 @@ li.at-key:hover {
   text-align: right;
 }
 
-/* -------------- Backups summary -------------- */
+/* Backups summary */
 .at-facts {
   display: grid;
   grid-template-columns: repeat(3, round(down, calc((100% - 3px) / 4), 1px)) minmax(0, 1fr);
@@ -412,7 +402,7 @@ li.at-key:hover {
   text-underline-offset: 3px;
 }
 
-/* -------------- Settings -------------- */
+/* Settings */
 .at-trio {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -430,7 +420,6 @@ li.at-key:hover {
   margin: 0;
 }
 
-/* A state chip, then when it was. */
 .at-sync-state {
   display: flex;
   flex-wrap: wrap;
@@ -438,9 +427,8 @@ li.at-key:hover {
   gap: 8px;
 }
 
-/* -------------- Narrow cards -------------- */
-/* Measured on the tab's own card (at-tab), on the 520 and 760 steps of the breakpoint scale
-   (foundation.css header); the four backup facts need about 240px each, so they pair up sooner. */
+/* Narrow cards */
+/* Measured on the tab's own card. The four backup facts need about 240px each, so they pair up sooner. */
 @container at-tab (max-width: 960px) {
   .at-facts {
     grid-template-columns: round(down, calc((100% - 1px) / 2), 1px) minmax(0, 1fr);
@@ -497,8 +485,7 @@ li.at-key:hover {
 }
 
 
-/* Jobs: one row per job, the picked job's runs, and a run's output in a dialog. Columns are fixed so
-   every row lines up with the one above it; the middle text cuts with an ellipsis and its title holds the rest. */
+/* Jobs. Columns are fixed so every row lines up with the one above it. */
 .jb-stack {
   display: grid;
   gap: 16px;
@@ -689,14 +676,11 @@ button.jb-run {
   }
 }
 
-/* -------------- An app on Vercel -------------- */
-/* components/app-detail/vercel-tabs.tsx: the Overview, Domains and Variables of an app Vercel builds
-   and serves, read live from the linked project. Facts reuse the overview's pd-kv rows. */
+/* An app on Vercel (components/app-detail/vercel-tabs.tsx) */
 .vx-note-wrap {
   padding: 16px var(--gutter);
 }
 
-/* A value of several lines in a fact row: right aligned, each line its own. */
 .vx-stack {
   display: inline-flex;
   flex-direction: column;
@@ -726,7 +710,6 @@ a.vx-msg:hover {
   padding: 8px var(--gutter) 16px;
 }
 
-/* Domains on Vercel: name, status, what it serves. */
 .vx-list {
   padding: 8px calc(var(--gutter) - 8px) 8px;
 }
@@ -798,7 +781,6 @@ li.vx-dom:hover {
   padding-top: 12px;
 }
 
-/* Variables on Vercel: key, value, environments, updated. No keys of their own: changes are on Vercel. */
 .ev-var.vx-env {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 256px 96px;
   padding-top: 6px;

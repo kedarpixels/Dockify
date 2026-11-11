@@ -9,12 +9,8 @@ import { getSetupStatus } from "@/lib/pages/auth-loaders";
 
 export const metadata: Metadata = { title: "Set up" };
 
-/**
- * /setup: first run only. Once an admin exists it hands over to /login, except for the browser that
- * just made that admin: creating it sets the session cookie, which re-renders this page mid-flow, and
- * the rest of the steps live in SetupView's state (the same shape as InviteView). A later visit with a
- * session goes on to the dashboard from there.
- */
+/** Once an admin exists this hands over to /login, except for the browser that just made it: creating the
+ *  admin sets the session cookie, which re-renders this page mid-flow. */
 export default async function SetupPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const status = await getSetupStatus();
   const jar = await cookies();

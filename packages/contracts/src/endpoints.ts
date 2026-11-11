@@ -1,7 +1,6 @@
 /**
- * The endpoint catalog: every route the web speaks, with its request schemas and response shape.
- * The api registers routes from this table only, so a route cannot exist without a contract, and
- * its policy table is typed `Record<EndpointId, Policy>`, so a contract cannot exist without a policy.
+ * Every route the web speaks. The api registers routes from this table only, so no route exists without a
+ * contract, and its policy table is typed `Record<EndpointId, Policy>`, so no contract exists without a policy.
  */
 import { z } from "zod";
 import * as A from "./auth.ts";
@@ -42,7 +41,6 @@ const ExtParams = z.strictObject({ id: ExternalId });
 const list = <T extends z.ZodType>(t: T) => z.array(t);
 
 export const endpoints = {
-  // ---------------------------------------------------------------- auth
   "auth.setupStatus": ep({ method: "GET", path: `${V1}/auth/setup-status`, response: A.SetupStatus }),
   "auth.setup": ep({ method: "POST", path: `${V1}/auth/setup`, body: A.SetupBody, response: A.OkEmpty }),
   "auth.login": ep({ method: "POST", path: `${V1}/auth/login`, body: A.LoginBody, response: A.LoginResponse }),
@@ -55,7 +53,6 @@ export const endpoints = {
   "auth.reset.get": ep({ method: "GET", path: `${V1}/auth/reset/:token`, params: A.ResetParams, response: A.ResetPreview }),
   "auth.reset": ep({ method: "POST", path: `${V1}/auth/reset/:token`, params: A.ResetParams, body: A.PasswordResetBody, response: A.OkEmpty }),
 
-  // ---------------------------------------------------------------- account
   "me.get": ep({ method: "GET", path: `${V1}/me`, response: A.Me }),
   "me.patch": ep({ method: "PATCH", path: `${V1}/me`, body: A.PatchMeBody, response: A.Me }),
   "me.preferences": ep({ method: "PATCH", path: `${V1}/me/preferences`, body: A.PreferencesBody, response: A.Me }),
@@ -71,7 +68,6 @@ export const endpoints = {
   "me.sessions.revoke": ep({ method: "DELETE", path: `${V1}/me/sessions/:id`, params: IdParams, kind: "none" }),
   "me.sessions.revokeOthers": ep({ method: "DELETE", path: `${V1}/me/sessions`, kind: "none" }),
 
-  // ---------------------------------------------------------------- team, settings, tokens
   "team.get": ep({ method: "GET", path: `${V1}/team`, response: A.Team }),
   "team.change": ep({ method: "POST", path: `${V1}/team`, body: A.TeamChangesBody, response: A.Team }),
   "team.invites.create": ep({ method: "POST", path: `${V1}/team/invites`, body: A.CreateInviteBody, response: A.CreateInviteResponse }),
@@ -89,15 +85,12 @@ export const endpoints = {
   "tokens.create": ep({ method: "POST", path: `${V1}/tokens`, body: A.CreateTokenBody, response: A.CreateTokenResponse }),
   "tokens.delete": ep({ method: "DELETE", path: `${V1}/tokens/:id`, params: IdParams, kind: "none" }),
 
-  // ---------------------------------------------------------------- activity, overview
   "activity.list": ep({ method: "GET", path: `${V1}/activity`, query: Act.ActivityQuery, response: Act.ActivityPage }),
   "overview.get": ep({ method: "GET", path: `${V1}/overview`, response: Act.Overview }),
-  /** Every app and project icon that is not the plain default, read once by the console layout. */
   "icons.list": ep({ method: "GET", path: `${V1}/icons`, response: Ic.IconMap }),
   /** One app's or project's icon for a signed, unguessable token, so an email can show it without a session. */
   "icons.mail.get": ep({ method: "GET", path: `${V1}/icons/mail/:token`, params: Ic.MailIconParams, kind: "file" }),
 
-  // ---------------------------------------------------------------- projects
   "projects.list": ep({ method: "GET", path: `${V1}/projects`, response: list(P.ProjectListItem) }),
   "projects.create": ep({ method: "POST", path: `${V1}/projects`, body: P.NewProjectBody, response: P.NewProjectResponse, status: 201 }),
   "projects.get": ep({ method: "GET", path: `${V1}/projects/:slug`, params: P.SlugParams, response: P.ProjectDetail }),
@@ -132,7 +125,6 @@ export const endpoints = {
   "projects.icon.get": ep({ method: "GET", path: `${V1}/projects/:slug/icon`, params: Ic.ProjectIconParams, query: Ic.IconQuery, kind: "file" }),
   "projects.icon.put": ep({ method: "PUT", path: `${V1}/projects/:slug/icon`, params: Ic.ProjectIconParams, body: Ic.SetProjectIconBody, response: Ic.IconState }),
 
-  // ---------------------------------------------------------------- apps
   "apps.detect": ep({ method: "POST", path: `${V1}/apps/detect`, body: P.DetectBody, response: P.DetectResult }),
   "apps.jobs.list": ep({ method: "GET", path: `${V1}/apps/:id/jobs`, params: Ap.AppParams, response: J.AppJobs }),
   "apps.jobs.create": ep({ method: "POST", path: `${V1}/apps/:id/jobs`, params: Ap.AppParams, body: J.CreateJobBody, response: J.ScheduledJob, status: 201 }),
@@ -147,7 +139,6 @@ export const endpoints = {
   "apps.delete": ep({ method: "DELETE", path: `${V1}/apps/:id`, params: Ap.AppParams, body: P.ConfirmBody, kind: "none" }),
   "apps.logs": ep({ method: "GET", path: `${V1}/apps/:id/logs`, params: Ap.AppParams, query: Ap.AppLogsQuery, response: Ap.AppLogs }),
   "apps.vercel.sync": ep({ method: "POST", path: `${V1}/apps/:id/vercel/sync`, params: Ap.AppParams, body: EmptyBody, kind: "none", status: 202 }),
-  /** The Vercel project an app links to, read live from Vercel (cached briefly): settings, production, domains. */
   "apps.vercel.project": ep({ method: "GET", path: `${V1}/apps/:id/vercel/project`, params: Ap.AppParams, response: I.VercelProjectView }),
   /** The linked Vercel project's environment variables. Never decrypted; plain values for admins only. */
   "apps.vercel.env": ep({ method: "GET", path: `${V1}/apps/:id/vercel/env`, params: Ap.AppParams, response: I.VercelEnvList }),
@@ -178,7 +169,6 @@ export const endpoints = {
   /** The upgrade itself: the ticket is the socket's first message, never part of a URL (api modules/terminal). */
   "apps.terminal": ep({ method: "GET", path: `${V1}/apps/:id/terminal`, params: Ap.AppParams, kind: "websocket" }),
 
-  // ---------------------------------------------------------------- deployments
   "deployments.list": ep({ method: "GET", path: `${V1}/deployments`, query: Act.DeploymentsQuery, response: Act.DeploymentPage }),
   "deployments.get": ep({ method: "GET", path: `${V1}/deployments/:id`, params: IdParams, response: Act.DeploymentDetail }),
   "deployments.logs": ep({ method: "GET", path: `${V1}/deployments/:id/logs`, params: IdParams, query: Act.DeploymentLogsQuery, response: Act.DeploymentLogs }),
@@ -188,7 +178,6 @@ export const endpoints = {
   "deployments.rollback": ep({ method: "POST", path: `${V1}/deployments/:id/rollback`, params: IdParams, body: EmptyBody, response: Act.DeploymentActionResponse }),
   "deployments.cancel": ep({ method: "POST", path: `${V1}/deployments/:id/cancel`, params: IdParams, body: EmptyBody, response: Act.DeploymentActionResponse }),
 
-  // ---------------------------------------------------------------- git
   "git.installations": ep({ method: "GET", path: `${V1}/git/installations`, response: list(I.GitInstallation) }),
   "git.installUrl": ep({ method: "GET", path: `${V1}/git/install-url`, response: I.GitInstallUrl }),
   "git.setup": ep({ method: "GET", path: `${V1}/git/setup`, query: I.GitSetupQuery, kind: "none", status: 302 }),
@@ -200,7 +189,6 @@ export const endpoints = {
   "git.branches": ep({ method: "GET", path: `${V1}/git/repos/:id/branches`, params: ExtParams, response: list(I.GitBranch) }),
   "git.installations.delete": ep({ method: "DELETE", path: `${V1}/git/installations/:id`, params: ExtParams, response: z.object({ ok: z.literal(true) }) }),
 
-  // ---------------------------------------------------------------- integrations
   "integrations.summary": ep({ method: "GET", path: `${V1}/integrations`, response: z.union([I.IntegrationsSummary, I.IntegrationsConnected]) }),
   "integrations.vercel.connect": ep({ method: "POST", path: `${V1}/integrations/vercel`, body: I.VercelConnectBody, response: z.union([I.VercelCheck, I.VercelIntegration]) }),
   "integrations.vercel.delete": ep({ method: "DELETE", path: `${V1}/integrations/vercel`, kind: "none" }),
@@ -227,20 +215,17 @@ export const endpoints = {
   "integrations.storage.patch": ep({ method: "PATCH", path: `${V1}/integrations/storage/:id`, params: IdParams, body: I.StoragePatchBody, response: I.StorageDestination }),
   "integrations.storage.delete": ep({ method: "DELETE", path: `${V1}/integrations/storage/:id`, params: IdParams, kind: "none" }),
   "integrations.storage.test": ep({ method: "POST", path: `${V1}/integrations/storage/:id/test`, params: IdParams, body: EmptyBody, response: I.StorageTestResult }),
-  /** Deprecated, kept for one version: the first Discord and generic webhook. Use integrations.webhooks.*. */
   "integrations.webhooks.list": ep({ method: "GET", path: `${V1}/integrations/webhooks`, response: list(I.Webhook) }),
   "integrations.webhooks.create": ep({ method: "POST", path: `${V1}/integrations/webhooks`, body: I.WebhookCreateBody, response: I.WebhookSaved, status: 201 }),
   "integrations.webhooks.patch": ep({ method: "PATCH", path: `${V1}/integrations/webhooks/:id`, params: IdParams, body: I.WebhookPatchBody, response: I.WebhookSaved }),
   "integrations.webhooks.delete": ep({ method: "DELETE", path: `${V1}/integrations/webhooks/:id`, params: IdParams, kind: "none" }),
   /** One test message, to a saved webhook ({ id }) or to one the add form has not saved yet. A refusal is 502 WEBHOOK_FAILED. */
   "integrations.webhooks.test": ep({ method: "POST", path: `${V1}/integrations/webhooks/test`, body: I.WebhookTestBody, response: I.WebhookTestResult }),
-  /** A generic webhook's logo or favicon, versioned like app icons. */
   "integrations.webhooks.icon": ep({ method: "GET", path: `${V1}/integrations/webhooks/:id/icon`, params: IdParams, query: Ic.IconQuery, kind: "file" }),
   "integrations.email.connect": ep({ method: "PUT", path: `${V1}/integrations/email`, body: I.EmailConnectBody, response: I.EmailIntegration }),
   "integrations.email.delete": ep({ method: "DELETE", path: `${V1}/integrations/email`, kind: "none" }),
   "integrations.email.test": ep({ method: "POST", path: `${V1}/integrations/email/test`, body: I.EmailTestBody, response: I.EmailTestResult }),
 
-  // ---------------------------------------------------------------- resources, domains
   "resources.list": ep({ method: "GET", path: `${V1}/resources`, response: list(R.ResourceRow) }),
   "resources.create": ep({ method: "POST", path: `${V1}/resources`, body: R.CreateResourceBody, response: R.ResourceRow, status: 201 }),
   "domains.list": ep({ method: "GET", path: `${V1}/domains`, response: R.DomainsPayload }),
@@ -250,7 +235,6 @@ export const endpoints = {
   "domains.check": ep({ method: "POST", path: `${V1}/domains/:id/check`, params: IdParams, body: EmptyBody, response: R.DomainRow }),
   "domains.delete": ep({ method: "DELETE", path: `${V1}/domains/:id`, params: IdParams, query: R.DeleteDomainQuery, kind: "none" }),
 
-  // ---------------------------------------------------------------- server, updates
   "server.get": ep({ method: "GET", path: `${V1}/server`, response: S.ServerSnapshot }),
   "server.metrics": ep({ method: "GET", path: `${V1}/server/metrics`, query: S.MetricsQuery, response: S.ServerMetrics }),
   "server.prune": ep({ method: "POST", path: `${V1}/server/prune`, body: S.PruneBody, response: S.PruneResult }),
@@ -261,12 +245,10 @@ export const endpoints = {
   "server.updates.skip": ep({ method: "POST", path: `${V1}/server/updates/skip`, body: S.SkipUpdateBody, response: S.UpdateStatus }),
   "server.updates.pause": ep({ method: "POST", path: `${V1}/server/updates/pause`, body: S.PauseUpdatesBody, response: S.UpdateStatus }),
   "server.updates.policy": ep({ method: "PUT", path: `${V1}/server/updates/policy`, body: S.UpdatePolicyBody, response: S.UpdateStatus }),
-  /** The pending security release for the console's banner and popup, with this member's reminder. */
   "server.updates.security": ep({ method: "GET", path: `${V1}/server/updates/security`, response: Sec.SecurityAlert }),
   /** "Remind me in" 1, 3 or 7 days for this member, capped by the release's level. */
   "server.updates.security.snooze": ep({ method: "POST", path: `${V1}/server/updates/security/snooze`, body: Sec.SecuritySnoozeBody, response: Sec.SecurityAlert }),
 
-  // ---------------------------------------------------------------- backups
   "backups.list": ep({ method: "GET", path: `${V1}/backups`, response: list(B.BackupRun) }),
   "backups.schedules": ep({ method: "GET", path: `${V1}/backups/schedules`, response: list(B.BackupSchedule) }),
   "backups.config": ep({ method: "GET", path: `${V1}/backups/config`, response: B.BackupConfig }),
@@ -278,7 +260,6 @@ export const endpoints = {
   "backups.orphans.delete": ep({ method: "DELETE", path: `${V1}/backups/orphans/:resourceId`, params: B.OrphanParams, body: EmptyBody, response: B.OrphanDeleteResult }),
   "backups.download": ep({ method: "GET", path: `${V1}/backups/:id/download`, params: IdParams, kind: "file" }),
 
-  // ---------------------------------------------------------------- alerts
   "alerts.get": ep({ method: "GET", path: `${V1}/alerts`, response: S.AlertsPayload }),
   "alerts.rules.create": ep({ method: "POST", path: `${V1}/alerts/rules`, body: S.RuleBody, response: S.AlertRule }),
   "alerts.rules.patch": ep({ method: "PATCH", path: `${V1}/alerts/rules/:id`, params: IdParams, body: S.RulePatchBody, response: S.AlertRule }),
@@ -286,11 +267,9 @@ export const endpoints = {
   "alerts.mutes.put": ep({ method: "PUT", path: `${V1}/alerts/mutes/:appId`, params: S.MuteParams, body: S.MuteBody, response: S.AlertMute }),
   "alerts.mutes.delete": ep({ method: "DELETE", path: `${V1}/alerts/mutes/:appId`, params: S.MuteParams, kind: "none" }),
 
-  // ---------------------------------------------------------------- runtime logs
   "logs.query": ep({ method: "GET", path: `${V1}/logs`, query: S.LogsQuery, response: S.LogPage }),
   "logs.stream": ep({ method: "GET", path: `${V1}/logs/stream`, query: S.LogStreamQuery, kind: "stream" }),
 
-  // ---------------------------------------------------------------- public and inbound
   "public.status": ep({ method: "GET", path: `${V1}/public/status/:slug`, params: S.PublicStatusParams, response: S.PublicStatus }),
   "webhooks.github": ep({ method: "POST", path: `${V1}/webhooks/github`, body: z.unknown(), kind: "none", status: 202 }),
   /** Vercel's deployment events, signed with x-vercel-signature. Only ever triggers a mirror sync. */
@@ -302,9 +281,8 @@ export type EndpointId = keyof Endpoints;
 export const endpointIds = Object.keys(endpoints) as EndpointId[];
 
 /**
- * Endpoints taken out on purpose, kept here so a test stops anyone from adding them back unreviewed.
- * resources.connection read a service's credentials in the clear; apps now get them through env
- * references (env-refs.ts), resolved at deploy time, and a person sees one only through env.reveal.
+ * Taken out on purpose, kept so a test stops anyone from adding them back unreviewed. resources.connection
+ * read a service's credentials in the clear; apps get them through env references (env-refs.ts).
  */
 export const removedEndpoints = [
   { id: "resources.connection", method: "GET", path: `${V1}/resources/:id/connection` },
@@ -314,7 +292,6 @@ export const removedEndpoints = [
 
 type Infer<T> = T extends z.ZodType ? z.infer<T> : never;
 type InferIn<T> = T extends z.ZodType ? z.input<T> : never;
-/** Request and response types per endpoint, for typed clients and handlers. */
 export type BodyOf<K extends EndpointId> = Endpoints[K] extends { body: infer B } ? Infer<B> : undefined;
 export type BodyInputOf<K extends EndpointId> = Endpoints[K] extends { body: infer B } ? InferIn<B> : undefined;
 export type QueryOf<K extends EndpointId> = Endpoints[K] extends { query: infer Q } ? Infer<Q> : undefined;

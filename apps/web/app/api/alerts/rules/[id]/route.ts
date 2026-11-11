@@ -1,10 +1,7 @@
 import { guardWrite, json, readJsonObject, refuse } from "@/lib/http";
 import { deleteRule, isAlertId, parseRule, patchRule } from "@/lib/pages/alerts";
 
-/**
- * PATCH /api/alerts/rules/:id. The switch sends `{ enabled }` alone; the editor sends the whole
- * rule, which is checked in full so a half-valid edit never reaches the API.
- */
+/** The switch sends `{ enabled }` alone; the editor sends the whole rule, checked in full before it is forwarded. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const refused = guardWrite(req);
   if (refused) return refused;
@@ -18,7 +15,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   return json(out, status);
 }
 
-/** DELETE /api/alerts/rules/:id. */
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const refused = guardWrite(req, { json: false });
   if (refused) return refused;

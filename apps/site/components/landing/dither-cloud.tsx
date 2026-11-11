@@ -2,9 +2,8 @@
 
 import { useEffect, useRef } from "react";
 
-/* A dithered pixel cloud growing from one corner, its edge drifting slowly. Ordered (Bayer)
-   dithering over smooth value noise; two tones from the theme (--cloud, --cloud-core). Redraws at
-   a low rate, pauses off screen and holds still under reduced motion. */
+/* Ordered (Bayer) dithering over smooth value noise, in two theme tones (--cloud, --cloud-core). Redraws at a
+   low rate, pauses off screen and holds still under reduced motion. */
 
 const BAYER = [
   [0, 32, 8, 40, 2, 34, 10, 42],

@@ -1,10 +1,4 @@
-/**
- * App and project icons: the map the console reads once, the image routes, and the one write per
- * owner. An app's is automatic (a frontend's own favicon, else its kind's default) or an upload. A
- * project's is the folder (the default), the favicon of one of its frontends the owner chose, or an
- * upload (db icons.ts). Uploads are checked by magic bytes and header size before they are stored,
- * and every image is served only with the type that check found.
- */
+// App and project icons. Uploads are checked by magic bytes and header size before they are stored, and every image is served only with the type that check found.
 import { actorFields, meta } from "../../actor.ts";
 import { requireActor } from "../../actor.ts";
 import { createHash } from "node:crypto";
@@ -30,7 +24,6 @@ const APP_ICON = {
   environment: { select: { name: true, projectId: true, project: { select: { slug: true, _count: { select: { environments: true } } } } } },
 } as const satisfies Prisma.AppSelect;
 
-/** A project's own upload, the app it shows the favicon of, and its frontends' favicons to choose from. */
 const PROJECT_ICON = { ...SHOWN_PROJECT_ICON, slug: true } as const satisfies Prisma.ProjectSelect;
 
 type ImageRow = IconImageRow;
@@ -54,7 +47,6 @@ export function appStateOf(a: Pick<AppRow, "kind" | "iconChoice" | "icons" | "fa
   };
 }
 
-/** The host a frontend's favicon came from, else the app's primary domain. */
 function hostOf(a: FaviconCandidate): string | null {
   try {
     if (a.favicon.origin) return new URL(a.favicon.origin).hostname;
@@ -64,11 +56,9 @@ function hostOf(a: FaviconCandidate): string | null {
   return a.primaryDomain?.hostname ?? null;
 }
 
-/** What a project's icon is, from its stored choice and app. */
 export const projectModeOf = (p: Pick<ProjectRow, "iconChoice" | "iconAppId">): ProjectIconMode =>
   p.iconChoice === "upload" ? "upload" : p.iconAppId ? "app" : "folder";
 
-/** A project's mode, the app chosen, the one its favicon shows from, and the frontends to choose from. */
 function borrowOf(p: ProjectRow): ProjectFavicon {
   const ranked = rankFaviconApps(p);
   return {
@@ -115,7 +105,6 @@ export function decodeUpload(image: string) {
   return { bytes, ...check.image, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
-/** Answers with the stored bytes, or a 304 when the browser holds the same ones. */
 async function sendRow(row: { mime: string; data: Uint8Array; sha256: string }, cacheControl: string, req: FastifyRequest, reply: FastifyReply) {
   const etag = `"${row.sha256}"`;
   reply.header("Cache-Control", cacheControl);
@@ -132,10 +121,8 @@ async function sendRow(row: { mime: string; data: Uint8Array; sha256: string }, 
 }
 
 /**
- * Sends the shown image, or 404 so the web falls back to the tile, folder or mark. Only with the
- * type the upload check found, inline, sandboxed, never sniffed (the api sets nosniff on every
- * answer), and cached for good only under the version the bytes have now. An SVG, a frontend's
- * favicon or a webhook's logo, goes out this way too, as the document sanitizeSvg rebuilt.
+ * A 404 lets the web fall back to the tile, folder or mark. The image goes out only with the type the upload check found, inline and
+ * sandboxed, and is cached for good only under its current version. An SVG is sent as the document sanitizeSvg rebuilt.
  */
 export async function sendImage(ctx: Ctx, shown: ImageRow | null, v: string | undefined, req: FastifyRequest, reply: FastifyReply) {
   const row = shown ? await ctx.db.iconImage.findUnique({ where: { id: shown.id }, select: { mime: true, data: true, sha256: true } }) : null;
@@ -146,13 +133,8 @@ export async function sendImage(ctx: Ctx, shown: ImageRow | null, v: string | un
 const gone = () => new HttpError(404, "Not found", "NOT_FOUND");
 
 /**
- * The image behind a signed mail icon link (the worker mints them for the emails it sends, see
- * crypto's signMailIcon). Anything but a token this instance signed is a plain 404, never a hint;
- * a good token serves the owner's shown image only while it is still the one the token names, so
- * a link dies the moment the icon changes. Public caching is right here: the URL is unguessable
- * and versioned, so a mail provider's image proxy may keep it for good. An SVG is never served
- * here: the worker mints no link to one (mail clients do not draw SVG), and this is the one icon
- * route a stranger's mail client opens, so it keeps to rasters.
+ * The image behind a signed mail icon link. A bad token is a plain 404, and a good one works only while the icon it names is still shown.
+ * The URL is unguessable and versioned, so public caching is safe. Rasters only: this is the one icon route a stranger's mail client opens.
  */
 async function sendMailIcon(ctx: Ctx, token: string, req: FastifyRequest, reply: FastifyReply) {
   const ref = verifyMailIcon(mailIconKey(internalChannelToken(ctx.ring)), token);
@@ -166,10 +148,7 @@ async function sendMailIcon(ctx: Ctx, token: string, req: FastifyRequest, reply:
   return sendRow(row, "public, max-age=31536000, immutable", req, reply);
 }
 
-/**
- * Writes the choice for one owner. Anything but an upload drops the stored upload. A project keeps
- * the app chosen only on "app": the folder and an upload clear it.
- */
+/** Anything but an upload drops the stored upload. A project keeps its chosen app only on "app". */
 async function writeChoice(ctx: Ctx, body: SetIconBody | SetProjectIconBody, owner: { appId: string } | { projectId: string }) {
   const key = "appId" in owner ? { appId: owner.appId } : { projectId: owner.projectId };
   const upload = body.choice === "upload" ? decodeUpload(body.image) : null;
@@ -191,7 +170,6 @@ async function writeChoice(ctx: Ctx, body: SetIconBody | SetProjectIconBody, own
 const changesOf = (upload: ReturnType<typeof decodeUpload> | null) =>
   upload ? { choice: "upload", mime: upload.mime, bytes: upload.bytes.length, width: upload.width, height: upload.height, sha256: upload.sha256 } : { choice: "auto" };
 
-/** A project's icon change for the activity log: what it was and what it is now, the folder, an app or the upload. */
 function projectChangesOf(upload: ReturnType<typeof decodeUpload> | null, before: ProjectRow, picked: FaviconCandidate | null) {
   const label = (a: FaviconCandidate | null | undefined) => (a ? `${a.environment}/${a.name ?? a.id}` : "folder");
   const mode = projectModeOf(before);

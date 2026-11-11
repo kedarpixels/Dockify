@@ -1,13 +1,4 @@
-/**
- * Security releases in the console: the pending security block (release.ts pendingSecurity, read
- * from the stored verified feed only) with this member's "Remind me in", for the banner every
- * member sees and the popup Admins see.
- *
- * Reminder rules: 1, 3 or 7 days, never past the level's cap (critical 3, important 7). A reminder
- * holds only for the alert it was taken for, keyed <version>:<level>, so a newer security release,
- * or the same one raised to critical, opens the popup again at once. The popup's close key counts
- * as one day.
- */
+/** The pending security release with each member's "Remind me in", read from the stored verified feed only. */
 import type { Db, User } from "@dockify/db";
 import { bare, chooseRelease, MAX_SNOOZE_DAYS, pendingSecurity, securityInfo, type PendingSecurity, type SecurityLevel } from "./release.ts";
 import { storedFeed, type UpdateEnv } from "./state.ts";
@@ -18,14 +9,13 @@ const DAY_MS = 86_400_000;
 /** Clock skew a stored reminder may run past its cap before it is no longer trusted. */
 const SKEW_MS = 60_000;
 
-/** The "Remind me in" choices, in days. */
 export const SNOOZE_DAYS = [1, 3, 7] as const;
 export type SnoozeDays = (typeof SNOOZE_DAYS)[number];
 
-/** The alert a reminder belongs to. */
+/** A reminder holds only for this key, so a newer release or a raised level opens the popup again at once. */
 export const remindKey = (s: Pick<PendingSecurity, "version" | "level">) => `${bare(s.version)}:${s.level}`;
 
-/** When the popup opens again after "Remind me in `days`": never later than the level allows. */
+/** Clamped to the level's cap in MAX_SNOOZE_DAYS. */
 export function remindAt(level: SecurityLevel, days: number, now: Date): Date {
   const d = Math.max(1, Math.min(Math.floor(days) || 1, MAX_SNOOZE_DAYS[level]));
   return new Date(now.getTime() + d * DAY_MS);
@@ -34,9 +24,8 @@ export function remindAt(level: SecurityLevel, days: number, now: Date): Date {
 type Reminder = Pick<User, "securityRemindKey" | "securityRemindAt">;
 
 /**
- * Until when the popup stays closed for this member, or null when it is due: no reminder, one for
- * another alert (a newer release, a raised level), one that has passed, or one longer than the
- * level allows (taken before the level was raised, or written by hand).
+ * Until when the popup stays closed, or null when it is due. A reminder for another alert, or one
+ * longer than the level allows (written by hand, say), does not count.
  */
 export function activeReminder(alert: PendingSecurity | null, r: Reminder | null | undefined, now: Date): Date | null {
   if (!alert || !r?.securityRemindKey || !r.securityRemindAt) return null;
@@ -46,7 +35,7 @@ export function activeReminder(alert: PendingSecurity | null, r: Reminder | null
   return r.securityRemindAt;
 }
 
-/** The pending security release, from the stored verified feed of the channel in use, or null. */
+/** A stored feed for another channel than the one in use yields nothing. */
 export function pendingFrom(inst: { latestRelease: unknown; updateChannel: string } | null, current: string): { security: PendingSecurity | null; target: string | null } {
   const feed = storedFeed(inst?.latestRelease);
   if (!feed || feed.channel !== inst?.updateChannel) return { security: null, target: null };
@@ -61,7 +50,6 @@ export interface SecurityAlert {
   updating: { kind: "update" | "rollback"; version: string } | null;
 }
 
-/** GET server.updates.security: the pending security release and this member's reminder. */
 export async function securityAlert(db: Db, env: UpdateEnv, userId: string, now = new Date()): Promise<SecurityAlert> {
   const [inst, user, live] = await Promise.all([
     db.instance.findUnique({ where: { id: 1 }, select: { releaseVersion: true, latestRelease: true, updateChannel: true } }),
@@ -81,9 +69,8 @@ export async function securityAlert(db: Db, env: UpdateEnv, userId: string, now 
 }
 
 /**
- * POST server.updates.security.snooze. Puts the popup off for the release the member saw. When
- * that is no longer the pending alert (a newer security release came in meanwhile), nothing is
- * stored and the fresh alert comes back, so the popup shows the newer release instead.
+ * Snoozes only the release the member saw. If a newer security release arrived meanwhile, nothing
+ * is stored and the fresh alert is returned, so the popup shows the newer one.
  */
 export async function snoozeSecurity(db: Db, env: UpdateEnv, userId: string, body: { version: string; days: number }, now = new Date()): Promise<{ alert: SecurityAlert; stored: Date | null }> {
   const alert = await securityAlert(db, env, userId, now);

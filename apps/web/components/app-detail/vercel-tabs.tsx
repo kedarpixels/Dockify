@@ -19,16 +19,10 @@ import { TabCard, TabFailed } from "./states";
 import { useAppTab } from "./use-tab";
 import { frameworkLabel, valueNote, visitHosts } from "./vercel-view";
 
-/*
- * An app on Vercel, seen from here: Vercel builds and serves it and Dockify shows it. The Overview,
- * Domains and Variables tabs read the linked project live through the API (cached there for a
- * minute), and every change goes to Vercel through a "Manage on Vercel" key, never a dead button.
- * Nothing here writes to Vercel.
- */
+/* Read-only: every change goes to Vercel through a "Manage on Vercel" key. Nothing here writes to Vercel. */
 
 const TARGET_LABEL: Record<VercelTargetName, string> = { production: "Production", preview: "Preview", development: "Development" };
 
-/** Where to change something on Vercel: the plain secondary key every Vercel card ends with. */
 function OnVercel({ href, children = "Manage on Vercel" }: { href: string; children?: React.ReactNode }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" className="btn btn-sm">
@@ -43,8 +37,6 @@ const hostLink = (h: string) => (
     {h}
   </ExternalLink>
 );
-
-/* -------------- Overview -------------- */
 
 function Facts({ rows }: { rows: Array<[string, React.ReactNode]> }) {
   return (
@@ -229,8 +221,6 @@ export function VercelOverview({ app, now, onTab }: { app: AppDetail; now: numbe
   );
 }
 
-/* -------------- Domains -------------- */
-
 function servesText(d: VercelProjectView["domains"][number]): React.ReactNode {
   if (d.redirect) return <>Redirects to {d.redirect}{d.redirectStatusCode ? <span className="num"> ({d.redirectStatusCode})</span> : null}</>;
   if (d.gitBranch) return <>Branch <span className="pd-mono">{d.gitBranch}</span></>;
@@ -285,8 +275,6 @@ export function VercelDomainsTab({ app }: { app: AppDetail }) {
     </TabCard>
   );
 }
-
-/* -------------- Variables -------------- */
 
 function EnvRow({ e, values, now }: { e: VercelEnvVar; values: boolean; now: number }) {
   const shown = e.value !== null && e.value !== "";

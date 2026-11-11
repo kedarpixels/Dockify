@@ -1,8 +1,4 @@
-/**
- * The one place the api reaches into the worker's data module, for logic both sides must run
- * identically (queueing, cron, retention, stores, encryption). A service's credentials
- * are already shared that way: @dockify/db service-credentials.
- */
+// The one place the api reaches into the worker's data module, for logic both sides must run identically.
 export { nextRun, parseCron, CronError } from "../../../../worker/src/data/cron.ts";
 export { isRetentionDecrease } from "../../../../worker/src/data/retention.ts";
 export {

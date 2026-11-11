@@ -2,13 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-/**
- * Says how many rows a search or filter left, to screen readers only, once the typing settles
- * (500ms): "4 projects", "No projects match lig". Render it once under each search; the list itself
- * changes silently otherwise.
- *
- *   <ResultCount count={shown.length} one="project" many="projects" query={query} />
- */
+/** For screen readers only, once the typing settles (500ms): the list itself changes silently otherwise. */
 export function ResultCount({
   count,
   one,

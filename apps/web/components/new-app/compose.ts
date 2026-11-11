@@ -3,18 +3,12 @@ import { unreservedServiceName } from "@/lib/validation";
 import { appSlug, ENV_KEY, imageName, IMAGE_REF, MAX_APPS, SERVICE_KIND, SERVICE_LABEL, SERVICE_VERSIONS, VOLUME_NAME, type AppSpec, type EnvPair, type ServiceKind, type VolumeMount } from "./spec";
 import { parseYaml, YamlError, type Yaml } from "./yaml";
 
-/*
- * Compose import: maps each service of a docker-compose.yml onto a proposed Dockify app. Dockify
- * never runs raw Compose, so anything that reaches past the container (host ports, privileged
- * mode, added capabilities, the host network, bind mounts, devices) is listed as a warning and
- * left out. A service that builds from source is skipped: it needs a repository app instead.
- */
+// Dockify never runs raw Compose: anything that reaches past the container is listed as a warning
+// and left out. A service that builds from source is skipped; it needs a repository app.
 
 export interface ProposedApp {
-  /** The service's key in the file. */
   service: string;
   spec: AppSpec;
-  /** One muted line: what it runs and what it keeps. */
   summary: string;
 }
 
@@ -68,10 +62,8 @@ const QUIET = new Set(["image", "build", "command", "environment", "ports", "exp
 /** The repository an image names, without registry defaults: "docker.io/library/redis:7" is "redis". */
 const repoOf = (image: string) => image.split("@")[0]!.split(/:(?=[^/]*$)/)[0]!.replace(/^docker\.io\//, "").replace(/^library\//, "");
 
-/** Why a MinIO service is left out: Storage is not offered, the image is no longer published. */
 const STORAGE_SKIPPED = "MinIO no longer publishes an image Dockify can run, so Storage is not offered. Use S3-compatible storage from your provider.";
 
-/** Which managed service an image is, when it is one Dockify offers at a version it has. */
 function managed(image: string): { service: ServiceKind; version: string } | null {
   const tag = image.split("@")[0]!.split(/:(?=[^/]*$)/)[1] ?? "";
   const repo = repoOf(image);
@@ -91,7 +83,6 @@ function containerPort(v: Yaml): number | null {
   return Number.isInteger(n) && n > 0 && n < 65536 ? n : null;
 }
 
-/** "a b" from ["a", "b"], quoting the items that hold spaces. */
 function commandOf(v: Yaml | undefined): string {
   if (Array.isArray(v)) return v.map((x) => (/[\s"']/.test(text(x)) ? JSON.stringify(text(x)) : text(x))).join(" ");
   return text(v).replace(/\s*\n\s*/g, " ").trim();
@@ -152,7 +143,6 @@ function volumesOf(service: string, v: Yaml | undefined, refuse: (t: string) => 
   return out;
 }
 
-/** Parses the file and proposes one app per service it can import. */
 export function planCompose(src: string): ComposeResult {
   let doc: Yaml;
   try {
@@ -193,7 +183,6 @@ export function planCompose(src: string): ComposeResult {
     }
     if (def.build !== undefined) warn(`build is ignored, the app runs ${image}`);
 
-    // The name: the service key made safe, kept unique across the file.
     let name = appSlug(service) || imageName(image) || "app";
     for (let i = 2; taken.has(name); i++) name = `${appSlug(service).slice(0, 29)}-${i}`;
     taken.add(name);
@@ -237,7 +226,6 @@ export function planCompose(src: string): ComposeResult {
   return { ok: true, plan };
 }
 
-/** A short example, for the empty editor. */
 export const COMPOSE_EXAMPLE = `services:
   web:
     image: ghcr.io/acme/web:1.4

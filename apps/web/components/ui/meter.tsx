@@ -1,13 +1,7 @@
 import { usagePct } from "@/lib/format";
 import { cx } from "./cx";
 
-/*
- * A small horizontal usage bar with its reading beside it: CPU, memory, disk in a table cell.
- * Chart blue, warn above 70%, bad above 85% (or pass `tone`). A value above 0 always shows a sliver.
- *
- *   <Meter label="Memory" pct={62} text="1.2 GB" />
- *   <Meter label="Disk" pct={91} text="91%" width={64} />
- */
+/* Warn above 70%, bad above 85% (or pass `tone`). */
 export function Meter({
   label,
   pct,

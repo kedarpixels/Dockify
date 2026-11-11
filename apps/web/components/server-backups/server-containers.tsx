@@ -23,12 +23,10 @@ import type { HostSnapshot } from "@/lib/types";
 import { useSecond } from "./live";
 import { upLive } from "./util";
 
-/* Every container on the host, grouped by project, searchable, filterable and sortable. */
-
 type SortKey = "name" | "state" | "app" | "cpu" | "memory" | "restarts" | "uptime";
 type CtrFilter = "all" | "running" | "issues";
 
-/** Every column, its cell class, and whether it sorts as a number (largest first). */
+/** Numeric columns sort largest first. */
 const COLUMNS: Array<{ key: SortKey; label: string; cls: string; numeric?: boolean }> = [
   { key: "name", label: "Container", cls: "sb-c-name" },
   { key: "state", label: "Status", cls: "sb-c-state" },
@@ -39,7 +37,6 @@ const COLUMNS: Array<{ key: SortKey; label: string; cls: string; numeric?: boole
   { key: "uptime", label: "Uptime", cls: "sb-c-up", numeric: true },
 ];
 
-/** Container states as a status chip, the way Services and Resources show a running state. */
 const STATE_TONE: Record<ContainerState, "ok" | "warn" | "bad" | "idle"> = {
   running: "ok",
   restarting: "warn",
@@ -153,7 +150,6 @@ export function ContainersCard({ containers, now, host }: { containers: Containe
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "cpu", dir: "desc" });
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<CtrFilter>("all");
-  // Uptime cells count every second on the shared clock.
   const tick = useSecond(now);
 
   const counts = useMemo(
@@ -165,7 +161,6 @@ export function ContainersCard({ containers, now, host }: { containers: Containe
     [containers],
   );
 
-  // Dockify's own containers first, then each project in the order the API lists them.
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     const keep = containers.filter(

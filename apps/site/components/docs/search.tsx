@@ -8,10 +8,7 @@ import { cx } from "@/components/ui/cx";
 import { ownsKeys, singleKeyShortcutsOn } from "@/components/ui/shortcuts";
 import type { SearchEntry } from "./search-index";
 
-/* Docs search: an index of titles and headings (/search.json, written at build time), opened with
-   Ctrl K (Cmd K on a Mac), the trigger in the sidebar, or "/". Arrow keys move, Enter opens, Escape,
-   the X or a click outside closes. The dialog is portalled to <body>, so it sits above the sticky
-   header and nothing on the page paints through it. */
+/* The dialog is portalled to <body>, so it sits above the sticky header and nothing on the page paints through it. */
 
 const norm = (s: string) =>
   s

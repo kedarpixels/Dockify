@@ -9,8 +9,6 @@ import { useCan } from "@/lib/viewer";
 import type { DiskSlice, DiskSliceId } from "@/lib/pages/server-backups";
 import type { HostSnapshot } from "@/lib/types";
 
-/* The disk breakdown card on /server and the prune it confirms. */
-
 export const SLICE: Record<DiskSliceId, { label: string; unit: string; spare: string; prune?: { title: string; body: string } }> = {
   images: {
     label: "Images",
@@ -39,13 +37,8 @@ const prunable = (disk: DiskSlice[]) => pruneTargets(disk).reduce((n, d) => n + 
 
 const unitPlural = (n: number, unit: string) => (unit === "entry" ? plural(n, "entry", "entries") : plural(n, unit));
 
-/**
- * Full width: the whole disk as one stacked bar with a sized legend, then one ruled cell per
- * slice. Each slice bar is drawn in that slice's own colour, its reclaimable part a soft tint of
- * the same colour, so the cells read straight off the legend. Whatever Docker does not account
- * for (the OS, other files) is its own grey slice, so a full disk never draws as an empty bar.
- * The used share itself is the Disk metric above, so it is not repeated here.
- */
+// Whatever Docker does not account for (the OS, other files) is its own grey slice, so a full disk
+// never draws as an empty bar. The used share is the Disk metric above, so it is not repeated here.
 export function DiskCard({ host, disk, onPrune, pruning }: { host: HostSnapshot; disk: DiskSlice[]; onPrune: () => void; pruning: boolean }) {
   const { manage } = useCan();
   const used = disk.reduce((n, d) => n + d.bytes, 0);
@@ -155,10 +148,7 @@ export function DiskCard({ host, disk, onPrune, pruning }: { host: HostSnapshot;
   );
 }
 
-/**
- * Confirms what a prune removes. Confirming closes the dialog at once; the toast then tracks the
- * prune (it can take a minute) and reports the freed size when it lands.
- */
+/** Confirming closes the dialog at once; a toast tracks the prune, which can take a minute. */
 export function PruneDialog({
   open,
   onClose,

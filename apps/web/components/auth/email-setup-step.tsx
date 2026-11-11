@@ -11,10 +11,7 @@ import { Command } from "./recover-view";
 
 const RESET_PASSWORD = "sudo dockify admin reset-password <email>";
 
-/**
- * Setup, when the installer did not set email up: the same form as Settings, Integrations. Once
- * connected the step offers a test, before the code goes out. Set up later says first what that costs. Each view remounts its head, so the title takes the focus.
- */
+/** Each view remounts its head, so the title takes the focus. */
 export function EmailSetupStep({
   step,
   connected,

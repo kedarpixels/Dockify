@@ -8,14 +8,14 @@ import { createHttpClient, type HttpClient } from "@dockify/net-guard";
 /** Everything the handlers reach outside the database, so tests can swap each piece. */
 export interface IntegrationDeps {
   http: HttpClient;
-  /** The SMTP sender: the check and the test send. Everything else is queued for the worker. */
+  /** Used for the check and the test send only. Every other email is queued for the worker. */
   mail: Mailer;
   github: GitHubClient;
   states: StateStore;
   deploys: DeployRequester;
-  /** Send test from this process instead of through the worker: only for tests with no worker running. */
+  /** Sends the test from this process, not through the worker. Only for tests with no worker running. */
   inlineWebhookTests?: boolean;
-  /** How long a Send test waits for the worker before it says the worker is busy. */
+  /** How long a Send test waits for the worker before reporting it busy. */
   webhookTestWait?: { waitMs: number; pollMs: number };
 }
 
@@ -34,7 +34,6 @@ export function defaultDeps(over: Partial<IntegrationDeps> = {}): IntegrationDep
 
 export { requireActor, requireSession } from "../../actor.ts";
 
-/** Audit fields every mutation shares. */
 export const who = (actor: Actor | null, req: FastifyRequest) => ({
   actorType: actor?.kind === "token" ? ("token" as const) : ("user" as const),
   actorId: actor ? (actor.kind === "token" ? actor.tokenId : actor.userId) : null,

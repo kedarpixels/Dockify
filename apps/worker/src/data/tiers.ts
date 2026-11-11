@@ -1,8 +1,6 @@
 /**
- * A database's two backup tiers: `local` (this server's disk) and `offsite` (an S3 destination), each
- * with its own cron, switch and count to keep. A backup counts in the tier its destination's type
- * names, so nothing on a backup row says which tier took it and nothing can disagree with where the
- * file is. Shared by the api (schedules, Back up now) and the worker (scheduler, retention).
+ * Two tiers per database: `local` (this server's disk) and `offsite` (S3). A backup counts in the tier its
+ * destination's type names, so nothing on a backup row can disagree with where the file is.
  */
 import type { BackupTier, Tx } from "@dockify/db";
 import { nextRun } from "./cron.ts";
@@ -11,10 +9,8 @@ import { RequestError } from "./requests.ts";
 export type Tier = BackupTier;
 export const TIERS: readonly Tier[] = ["local", "offsite"];
 
-/** What a tier with no row keeps, and the cron a tier turned on without one gets. */
 export const DEFAULT_KEEP = 7;
 export const DEFAULT_CRON = "0 3 * * *";
-/** The one local destination every local tier writes to. */
 export const LOCAL_DESTINATION_NAME = "This server";
 
 export interface TierRow {
@@ -32,7 +28,6 @@ export const tierOfType = (type: string | null | undefined): Tier => (type === "
 
 export const tierDefaults = (tier: Tier): TierRow => ({ tier, enabled: false, cron: null, timezone: "UTC", keep: DEFAULT_KEEP, keepDays: null, destinationId: null, lastRunAt: null });
 
-/** Both tiers of one database, a missing row read as its defaults. */
 export function bothTiers(rows: readonly TierRow[]): Record<Tier, TierRow> {
   return {
     local: rows.find((r) => r.tier === "local") ?? tierDefaults("local"),
@@ -52,7 +47,6 @@ export function primaryTier(t: Record<Tier, TierRow>, defaultType: "s3" | "local
   return defaultType === "s3" ? "offsite" : "local";
 }
 
-/** The tiers that are on, which is what Back up now does when no tier is named. */
 export const enabledTiers = (t: Record<Tier, TierRow>): Tier[] => TIERS.filter((k) => t[k].enabled);
 
 /** When a tier next fires, from its last run, or from just before now for a tier that never ran. */

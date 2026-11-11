@@ -1,11 +1,6 @@
-/**
- * The env var model as pure functions: a project's variables are one set of entries, each at
- * environment scope or at app scope (a per-app override). Apply, diff, rollback and "which apps
- * does this change reach" are all computed here, so the database layer only loads and stores.
- *
- * Precedence is the old single resolver's rule: app beats environment. The phase filter applies
- * last, so a runtime-only override still hides the environment value from the build as well.
- */
+// The env var model as pure functions; the database layer only loads and stores.
+// App scope beats environment scope, and the phase filter applies last: a runtime-only override
+// still hides the environment value from the build.
 import { z } from "zod";
 import { projects as P } from "@dockify/contracts";
 
@@ -16,7 +11,6 @@ export type Phase = "build" | "runtime" | "all";
 
 export interface Entry {
   scope: Scope;
-  /** The environment id or the app id. */
   scopeId: string;
   key: string;
   /** Null only when a stored value would not unseal; apply refuses to work on one. */
@@ -36,11 +30,9 @@ export function toSet(entries: Iterable<Entry>): EnvSet {
   return m;
 }
 
-/** A change after the handler resolved environment names and app ids to scope ids. */
 export interface ResolvedChange {
   scope: Scope;
   scopeId: string;
-  /** For records: the environment name, and the app when the change is an override. */
   environment: string;
   appId?: string;
   appName?: string;
@@ -78,12 +70,12 @@ export interface Plan {
   records: ChangeRecord[];
   /**
    * True when the plan writes, removes, unmasks or shadows a secret. The caller then needs a fresh
-   * step-up: an override that replaces a secret is the same power as reading it (audit 02-api H).
+   * step-up: an override that replaces a secret is the same power as reading it.
    */
   touchesSecret: boolean;
 }
 
-/** Applies staged changes to the current set. Throws EnvPlanError on anything inconsistent. */
+/** Throws EnvPlanError on anything inconsistent, including a set of changes that changes nothing. */
 export function plan(current: EnvSet, changes: ResolvedChange[], envOfApp: Map<string, string> = new Map()): Plan {
   const next: EnvSet = new Map(current);
   const records: ChangeRecord[] = [];
@@ -156,7 +148,6 @@ function shadowsSecret(current: EnvSet, changes: ResolvedChange[], envOfApp: Map
   return false;
 }
 
-/** The changes that turn `from` into `to`, used by rollback and by environment copy. */
 export function diff(from: EnvSet, to: EnvSet, label: (e: Entry) => { environment: string; appId?: string; appName?: string }): ResolvedChange[] {
   const out: ResolvedChange[] = [];
   for (const [id, b] of to) {
@@ -177,7 +168,6 @@ export function diff(from: EnvSet, to: EnvSet, label: (e: Entry) => { environmen
 
 const inPhase = (t: Target, phase: Phase): boolean => phase === "all" || t === "both" || t === phase;
 
-/** The variables one app receives in a phase: environment entries, overridden by app entries. */
 export function resolveFor(set: EnvSet, app: { id: string; environmentId: string }, phase: Phase): Map<string, Entry> {
   const winner = new Map<string, Entry>();
   for (const e of set.values()) if (e.scope === "environment" && e.scopeId === app.environmentId) winner.set(e.key, e);
@@ -202,7 +192,6 @@ export interface Reach {
   rebuild: boolean;
 }
 
-/** The apps whose effective variables differ between two sets, and whether each needs a rebuild. */
 export function affectedApps(before: EnvSet, after: EnvSet, apps: Array<{ id: string; environmentId: string }>): Reach[] {
   const out: Reach[] = [];
   for (const app of apps) {
@@ -212,8 +201,6 @@ export function affectedApps(before: EnvSet, after: EnvSet, apps: Array<{ id: st
   }
   return out;
 }
-
-// ------------------------------------------------------------------ snapshots
 
 const SnapshotEntry = z.strictObject({
   scope: z.enum(["environment", "app"]),
@@ -225,7 +212,6 @@ const SnapshotEntry = z.strictObject({
 });
 const Snapshot = z.strictObject({ v: z.literal(1), entries: z.array(SnapshotEntry) });
 
-/** The full state after a version, sealed as one env_version secret. */
 export function serializeSnapshot(set: EnvSet): string {
   const entries = [...set.values()]
     .filter((e) => e.value !== null)
@@ -239,7 +225,7 @@ export function parseSnapshot(raw: string): EnvSet {
   return toSet(parsed.entries);
 }
 
-/** Keeps only entries whose environment or app still exists. Rollback skips what was deleted since. */
+/** Drops entries whose environment or app no longer exists, so a rollback skips what was deleted since. */
 export function restrictTo(set: EnvSet, environmentIds: Set<string>, appIds: Set<string>): EnvSet {
   const out: EnvSet = new Map();
   for (const [id, e] of set) {
@@ -249,42 +235,33 @@ export function restrictTo(set: EnvSet, environmentIds: Set<string>, appIds: Set
 }
 
 /**
- * Listing routes (env.get, env.put, env.state) unseal plain values only. A secret is never read for a
- * listing, step-up or not: the audited per-key env.reveal route is the one path to its plaintext.
+ * A secret is never unsealed for a listing, step-up or not: the audited per-key env.reveal route
+ * is the one path to its plaintext.
  */
 export const unsealForListing = (secret: boolean): boolean => !secret;
 
-/** The value a listing route may send: null for a secret and for a reference, whatever the session's elevation. */
+/** Null for a secret and for a reference, whatever the session's elevation. */
 export const listedValue = (e: Pick<Entry, "secret" | "value">): string | null => (e.secret || P.isEnvRefValue(e.value) ? null : e.value);
 
-// ------------------------------------------------------------------ references
-
-/** A managed service of the project, as references see it. */
 export interface RefService {
   id: string;
-  /** The service's name: the host its connection details use. */
+  /** Also the host its connection details use. */
   name: string;
-  /** What people read as its name, when it has one. */
   displayName?: string | null;
   kind: NonNullable<P.EnvRefView["kind"]>;
   environmentId: string;
-  /** Set after a version change switched this service's links to another one. */
   redirectTo?: string | null;
 }
 
 const STATEFUL: ReadonlySet<string> = new Set(["postgres", "redis", "s3"]);
 
-/** The project's services, from its apps. Only these can be linked. */
 export const servicesOf = (apps: Array<{ id: string; name: string; displayName?: string | null; kind: string; environmentId: string; serviceRedirectId?: string | null }>): RefService[] =>
   apps.filter((a) => STATEFUL.has(a.kind)).map((a) => ({ id: a.id, name: a.name, ...(a.displayName ? { displayName: a.displayName } : {}), kind: a.kind as RefService["kind"], environmentId: a.environmentId, redirectTo: a.serviceRedirectId ?? null }));
 
-/** Where a link to this service leads now: the new service after a version change, one step only. */
+/** Follows a version-change redirect one step only. */
 const followRedirect = (svc: RefService, services: RefService[]): RefService => (svc.redirectTo ? (services.find((s) => s.id === svc.redirectTo) ?? svc) : svc);
 
-/**
- * The service a reference points at, refusing one outside the project (or not a service at all)
- * and a field that kind does not offer. `services` is the variable's own project, nothing wider.
- */
+/** Refuses a service outside the project. `services` must be the variable's own project, nothing wider. */
 export function refService(ref: P.EnvRef, services: RefService[]): RefService {
   const svc = services.find((s) => s.id === ref.resourceId);
   if (!svc) throw new EnvPlanError("REF_OUTSIDE_PROJECT", "A variable can only link a database, cache or bucket in its own project");
@@ -292,28 +269,24 @@ export function refService(ref: P.EnvRef, services: RefService[]): RefService {
   return svc;
 }
 
-/** The stored form of a link, after checking it stays inside the project. */
 export const refValueFor = (ref: P.EnvRef, services: RefService[]): string => {
   refService(ref, services);
   return P.encodeEnvRef(ref);
 };
 
-/** The listing view of a stored reference; `missing` when its service was deleted since. */
 export function refView(value: string | null, services: RefService[], envName: (id: string) => string): P.EnvRefView | undefined {
   const ref = P.decodeEnvRef(value);
   if (!ref) return undefined;
   const svc = services.find((s) => s.id === ref.resourceId);
   if (!svc) return { resourceId: ref.resourceId, resourceName: "Deleted service", kind: null, environment: "", field: ref.field, missing: true };
   const now = followRedirect(svc, services);
-  // A renamed service reads by its display name, with the name its connection details use beside it.
   const resourceName = now.displayName ? `${now.displayName} (${now.name})` : now.name;
   return { resourceId: svc.id, resourceName, kind: now.kind, environment: envName(now.environmentId), field: ref.field };
 }
 
 /**
- * Resolves one value: plain values pass through, a reference becomes its service's current
- * credential. The service must be in `services` (the app's own project), so a reference that
- * names another project's service, however it was stored, never resolves.
+ * A reference becomes its service's current credential. The service must be in `services` (the
+ * app's own project), so a reference to another project's service, however stored, never resolves.
  */
 export async function resolveValue(value: string, services: RefService[], open: (svc: RefService) => Promise<P.RefTarget>): Promise<string> {
   if (!P.isEnvRefValue(value)) return value;

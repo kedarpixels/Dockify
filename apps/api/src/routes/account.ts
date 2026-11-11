@@ -1,8 +1,6 @@
 /**
- * The signed-in user's own account: profile, password, two-factor off, and the session list. Each
- * handler re-proves what it needs inside (the current password, or a fresh TOTP code), so a
- * borrowed session cookie alone can neither lock the owner out nor keep itself alive once the
- * owner revokes it.
+ * The signed-in user's own account. Each handler re-proves what it needs inside (the current password or
+ * a fresh TOTP code), so a borrowed session cookie alone can neither lock the owner out nor keep itself alive.
  */
 import { passwordMatches } from "../passwords.ts";
 import { meta, requireSession } from "../actor.ts";
@@ -40,8 +38,8 @@ export async function meView(db: Db, userId: string, role: SessionActor["role"])
 }
 
 /**
- * The schema only checks the data URL's prefix. The bytes must really be the image it names, so a
- * picture every member's dashboard renders can never be markup or a decoder's surprise.
+ * The schema only checks the data URL's prefix. The bytes must really be the image it names,
+ * so a picture every member's dashboard renders can never be markup.
  */
 export function checkAvatar(dataUrl: string): void {
   const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(dataUrl);
@@ -50,7 +48,6 @@ export function checkAvatar(dataUrl: string): void {
   if (!m || !sniffed || sniffed.mime !== m[1]) throw new HttpError(400, "Use a PNG, JPEG or WebP image", "INVALID_IMAGE", { field: "avatar" });
 }
 
-/** A short device label and form factor from a user agent, for the session list. */
 export function describeDevice(ua: string | null): { device: string; kind: "desktop" | "mobile" | "tablet" | "unknown" } {
   const s = ua ?? "";
   const browser = /Edg\//.test(s) ? "Edge" : /OPR\//.test(s) ? "Opera" : /Firefox\//.test(s) ? "Firefox"
@@ -58,8 +55,8 @@ export function describeDevice(ua: string | null): { device: string; kind: "desk
   const os = /Windows/.test(s) ? "Windows" : /iPhone|iPad/.test(s) ? "iOS" : /Mac OS X/.test(s) ? "macOS"
     : /Android/.test(s) ? "Android" : /Linux/.test(s) ? "Linux" : null;
   const device = browser && os ? `${browser} on ${os}` : browser ?? os ?? "Unknown device";
-  // The shape of the device, for its icon. An iPad, or an Android browser without "Mobile" in its
-  // agent string, is a tablet. Nothing recognised (a script, an empty agent) is unknown, not a desktop.
+  // An iPad, or an Android browser without "Mobile" in its agent string, is a tablet.
+  // Nothing recognised (a script, an empty agent) is unknown, not a desktop.
   const tablet = /iPad|Tablet/i.test(s) || (/Android/i.test(s) && !/Mobile/i.test(s));
   const kind = tablet ? "tablet" : /Mobi|iPhone|iPod|Android/i.test(s) ? "mobile" : browser || os ? "desktop" : "unknown";
   return { device, kind };
@@ -71,10 +68,8 @@ const span = (seconds: number) => {
 };
 
 /**
- * Checks an authenticator code under the one per-user lockout every code check shares (mfa.ts).
- * False for a wrong code. Throws while the user is locked out, and on the guess that locks: that
- * one ends every open sign in, leaves a row the activity log flags, and mails the owner when it is
- * the first lockout in a row.
+ * Checks a code under the one per-user lockout every code check shares (mfa.ts). False for a wrong code.
+ * Throws while the user is locked out, and on the guess that locks, which also ends every open sign in.
  */
 export async function proveTotp(ctx: Ctx, user: TotpUser & { name: string }, code: string, req: FastifyRequest, reply: Parameters<typeof rateLimited>[0]): Promise<boolean> {
   const { db } = ctx;
@@ -89,7 +84,7 @@ export async function proveTotp(ctx: Ctx, user: TotpUser & { name: string }, cod
   throw new HttpError(429, `Too many incorrect codes. Try again in ${span(r.wait)}.`, "MFA_LOCKED", { field: "code", retryAfter: r.wait });
 }
 
-/** A fresh code from a user with MFA on: the proof asked for before two-factor is turned off. */
+/** The proof asked for before two-factor is turned off. */
 async function requireTotp(ctx: Ctx, userId: string, code: string, req: FastifyRequest, reply: Parameters<typeof rateLimited>[0]) {
   const user = await ctx.db.user.findUniqueOrThrow({ where: { id: userId } });
   if (!user.totpConfirmedAt) throw new HttpError(409, "Two-factor sign in is not on", "MFA_DISABLED");
@@ -171,10 +166,9 @@ export const accountHandlers: Handlers = {
   },
 
   /**
-   * Links the caller's own GitHub login. Nothing proves the login is theirs, so only an admin's link
-   * is verified on the spot; a viewer's waits for an admin to approve it in team.change. A verified
-   * login is never taken over. An unverified one gives way to an admin who links it, so a viewer
-   * cannot squat the admin's login to collect their pushes or keep them from linking it.
+   * Nothing proves the login is the caller's, so only an admin's link is verified on the spot; a viewer's waits
+   * for an admin (team.change). A verified login is never taken over, and an unverified one gives way to an
+   * admin who links it, so a viewer cannot squat an admin's login to collect their pushes.
    */
   "me.github": async ({ body, actor, req, ctx }) => {
     const a = requireSession(actor);
@@ -221,8 +215,8 @@ export const accountHandlers: Handlers = {
     const a = requireSession(actor);
     const { db, limits } = ctx;
     const user = await proveCurrentPassword(ctx, a, body.current, req, reply);
-    // While email is on, the change also needs the code me.password.code mailed. It is checked
-    // here, before anything changes, and spent in the transaction that writes the new hash.
+    // While email is on, the mailed code is checked here, before anything changes,
+    // and spent in the transaction that writes the new hash.
     const spendCode = (await emailEnabled(db)) ? await checkPasswordCode(ctx, a, body.code, req, reply) : null;
     const passwordHash = await argonHash(body.next);
     await db.$transaction(async (tx) => {

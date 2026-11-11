@@ -56,12 +56,8 @@ function advance(job: UpdateJob): UpdateJob {
   return { ...job, steps, state: "done", finishedAt: now, durationMs: Date.now() - Date.parse(job.startedAt) };
 }
 
-/**
- * The control plane's version, its channel and policy, and the newest signed release with its
- * notes. Update now confirms, then the server's steps render live and a progress toast follows the
- * job across the restart. Any failure rolls back to the previous digests (and the dump when
- * migrations ran). The last good version stays one click away for 7 days.
- */
+// A progress toast follows the job across the control plane's restart. Any failure rolls back to
+// the previous digests (and the dump when migrations ran).
 export function UpdatesCard({
   status,
   now,
@@ -119,7 +115,6 @@ export function UpdatesCard({
     if (job) updateChanged(job);
   }, [job]);
 
-  // Settles the toast and the card once a job ends.
   const finish = useCallback(
     (j: UpdateJob, next: UpdateStatus | null) => {
       const id = toastId.current ?? undefined;
@@ -155,8 +150,7 @@ export function UpdatesCard({
     [onStatus, preview],
   );
 
-  // Follows a running job: the preview steps through on a timer, the API is polled and its
-  // restart is ridden out until FOLLOW_MS.
+  // The API's restart is ridden out until FOLLOW_MS; the preview steps through on a timer.
   useEffect(() => {
     if (!inFlight(job)) return;
     const title = job.kind === "rollback" ? `Rolling back to ${v(job.version)}` : `Updating to ${v(job.version)}`;
@@ -222,7 +216,6 @@ export function UpdatesCard({
     }
   };
 
-  /** Starts an update or a rollback; `send` asks "Confirm it is you" when the API wants a step-up, then sends again. */
   const start = async (kind: "update" | "rollback") => {
     const s = statusRef.current;
     if (!s || running || starting) return;
@@ -541,10 +534,7 @@ export function UpdatesCard({
   );
 }
 
-/**
- * The pending security release from the signed feed, over the release it ships in: its level, what
- * it fixes, the CVE ids and the advisory. The same release the console's popup and banner announce.
- */
+/** The same release the console's popup and banner announce. */
 function SecurityNote({ security }: { security: SecurityRelease }) {
   const advisory = security.advisory ? safeHref(security.advisory) : null;
   return (

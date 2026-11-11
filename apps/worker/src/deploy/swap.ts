@@ -1,13 +1,6 @@
 /**
- * The swap. Zero downtime for stateless apps: park the old container under a new name (it keeps
- * serving), start the new one, gate on readiness, flip the route atomically, then remove the old
- * one. Stop-then-start for apps with single-writer state (see strategy.ts), always explained in the
- * log. On any failure up to and including the flip the new container is scrapped and the old one
- * restored with its name and route, so a failed deploy leaves what was running still running.
- *
- * A worker that dies mid-swap leaves the old container parked. The next swap of the app takes it back
- * as the previous container, and removes any older ones once it succeeds; until then the janitor
- * reports them (janitor.ts).
+ * Zero downtime: park the old container (it keeps serving), start the new one, gate on readiness, flip the route.
+ * Any failure up to and including the flip scraps the new container and restores the old one's name and route.
  */
 import { setTimeout as sleep } from "node:timers/promises";
 import { appContainerInput, canonicalName, envNetwork, imageArguments, LABEL, parkedName, parkedNames, routeAlias, routeAliasOf, type RunnableApp } from "./containers.ts";
@@ -34,10 +27,8 @@ export interface SwapApp extends RunnableApp {
 }
 
 /**
- * Where a container's route can point while it serves: its own route alias, or, for a container
- * made before route aliases existed, its current address. Its old route names dk-<app id>, which
- * the new container takes over during the swap, so the route is pinned to the address instead
- * until the flip moves it to the new container's alias.
+ * Where a route can point while its container serves: the route alias, or the current address of a container
+ * made before aliases existed, whose old route names dk-<app id>, which the new container takes over.
  */
 function pinTarget(info: ContainerInfo, network: string): string | null {
   if (!info.State.Running) return null;
@@ -62,16 +53,13 @@ export interface SwapResult {
   mode: "zero_downtime" | "stop_then_start";
 }
 
-/** A readiness failure; the previous container kept (or got back) the traffic. */
 export class RolledBackError extends PermanentDeployError {
   readonly rolledBack = true;
 }
 
 interface Previous {
   id: string;
-  /** The canonical name it held, and gets back on a rollback. */
   name: string;
-  /** The name it waits under while the new container starts. */
   parked: string;
   stopped: boolean;
 }
@@ -188,7 +176,6 @@ export async function swap(app: SwapApp, deploymentId: string, imageId: string, 
     await docker.removeContainer(id, { volumes: true }).catch(() => {});
   };
 
-  /** Starts the new container and gates on readiness. A refused start is a permanent failure, after the rollback. */
   const startAndProbe = async (): Promise<Readiness> => {
     try {
       await docker.startContainer(id);
@@ -292,7 +279,6 @@ export async function swap(app: SwapApp, deploymentId: string, imageId: string, 
   return { containerId: id, address: ready.address, mode: strategy.mode };
 }
 
-/** Whether the image declares its own ENTRYPOINT, for a command that may be arguments to it. */
 export async function hasEntrypoint(docker: DockerApi, imageId: string): Promise<boolean> {
   const info = await docker.inspectImage(imageId).catch(() => null);
   return !!info?.Config?.Entrypoint?.length;
@@ -312,7 +298,6 @@ async function clearStray(docker: DockerApi, name: string, appId: string, log: D
   }
 }
 
-/** Streams the new container's output into the deploy log while readiness runs. */
 function captureLogs(docker: DockerApi, id: string, log: DeployLog): { stop(): void } {
   let stream: { destroy(): void } | null = null;
   let stopped = false;
@@ -328,7 +313,6 @@ function captureLogs(docker: DockerApi, id: string, log: DeployLog): { stop(): v
       out.end();
       err.end();
     } catch {
-      // diagnostics only
     }
   })();
   return {

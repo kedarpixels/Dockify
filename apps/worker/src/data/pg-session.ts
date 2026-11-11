@@ -1,9 +1,6 @@
 /**
- * The data browser's PgSession over node-postgres. Rows come back as arrays (rowMode "array") and
- * every value as its text form, so the browser formats cells itself and never trusts a driver
- * parser with tenant data. A query without values goes over the simple protocol, which is what
- * the multi-statement role setup needs; one with values (an empty list too) goes over the extended
- * protocol, where the server itself refuses a second statement.
+ * Every value comes back as text, so no driver parser is trusted with tenant data. A query with values (even
+ * none) uses the extended protocol, where the server refuses a second statement; without, the simple one.
  */
 import type { Duplex } from "node:stream";
 import pg from "pg";
@@ -27,7 +24,6 @@ export interface PgTarget {
   database: string;
 }
 
-/** Every type parses to its text form (or null). */
 export const textTypes = { getTypeParser: () => (v: string) => v } as unknown as pg.CustomTypesConfig;
 
 /** node-postgres answers text with several statements (ENSURE_ROLE_SQL) with one result per statement. The last one speaks for the text. */
@@ -37,9 +33,8 @@ export function pgResult(raw: PgRaw | PgRaw[]): PgResult {
 }
 
 /**
- * What node-postgres wants of a stream it was handed, around one that is already connected: it calls
- * setNoDelay and connect on it and then waits for its connect event. Those three are answered here;
- * everything else is the real stream, so a write, an end or a destroy reaches it as itself.
+ * node-postgres calls setNoDelay and connect on a stream it is handed, then waits for its connect event.
+ * Those are answered here for a stream that is already connected; everything else is the real stream.
  */
 export function connectedStream(stream: Duplex): Duplex {
   const adapter: Duplex = new Proxy(stream, {

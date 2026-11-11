@@ -1,12 +1,7 @@
 /**
- * The web terminal's numbers and wire formats, shared by the api and the worker.
- *
- *   browser <- WebSocket -> api <- frames over an upgraded control-network socket -> worker <- hijacked exec -> container
- *
- * Between the browser and the api: binary messages are terminal bytes, in both directions, and are
- * never parsed, logged or stored. Text messages are the small JSON control messages below.
- * Between the api and the worker: the frames below, because a resize has to share one socket with
- * the bytes and a byte stream has no room for it.
+ * browser <- WebSocket -> api <- frames over a control-network socket -> worker <- hijacked exec -> container.
+ * Binary browser messages are terminal bytes and are never parsed, logged or stored; text messages are JSON
+ * control. The api to worker hop uses frames because a resize must share the socket with the bytes.
  */
 import { z } from "zod";
 
@@ -17,7 +12,6 @@ export const TERMINAL = {
   authTimeoutMs: 5_000,
   /** No keystroke for this long closes the session. Output does not count: a log tail is not a person. */
   idleMs: 15 * 60_000,
-  /** The longest one session lives, whatever it does. */
   totalMs: 60 * 60_000,
   /** How often an open session re-checks the session, the role, the app and the off switch. */
   recheckMs: 10_000,
@@ -76,11 +70,8 @@ export const TERMINAL_CLOSE = {
 } as const;
 export type TerminalCloseName = keyof typeof TERMINAL_CLOSE;
 
-/** What the worker tells the api when a session cannot open or has ended. */
 export const TerminalEnd = z.object({ reason: z.enum(["exited", "not_running", "no_shell", "refused", "failed"]), exitCode: z.number().int().nullable() });
 export type TerminalEnd = z.infer<typeof TerminalEnd>;
-
-// ------------------------------------------------------------------ api to worker frames
 
 export const FRAME = { data: 0, resize: 1, end: 2 } as const;
 export type FrameType = (typeof FRAME)[keyof typeof FRAME];

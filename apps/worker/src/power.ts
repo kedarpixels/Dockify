@@ -1,10 +1,6 @@
 /**
- * Start, stop and restart of one app's live container (app_power, queued by the apps module in the
- * same transaction that records the new desired state). The job converges on the row: a stop that
- * runs after a newer start, or the reverse, does nothing, so two quick clicks can never leave the
- * container in the state the owner asked for first. The route file follows through edge_route_sync,
- * which drops the route of an app that should not run and rewrites it with the new address after a
- * start.
+ * Start, stop and restart of one app's live container. The job converges on the row's desired state, so a
+ * stop that runs after a newer start (or the reverse) does nothing. The route follows through edge_route_sync.
  */
 import type { Db } from "@dockify/db";
 import { enqueue } from "@dockify/db";
@@ -49,7 +45,6 @@ async function activity(db: Db, app: { id: string; name: string }, action: strin
     .catch(() => {});
 }
 
-/** Writes the app's observed status from one inspect of `name` (null: it has no container). */
 async function observe(deps: PowerDeps, appId: string, name: string | null): Promise<void> {
   const info = name
     ? await deps.docker.inspectContainer(name).catch((e: unknown) => {

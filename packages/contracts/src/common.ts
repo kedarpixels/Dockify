@@ -1,10 +1,10 @@
 import { z } from "zod";
 
-/** The one page Traefik sends a sleeping preview's hosts to (worker edge/routes.ts, api modules/previews/asleep-route.ts). */
+/** The one page Traefik sends a sleeping preview's hosts to. */
 export const PREVIEW_ASLEEP_PATH = "/.well-known/dockify-preview-asleep";
 /**
- * The password form's address on a protected preview's host. Traefik sends exactly this path to the
- * api, with the preview's id added by the route file so a visitor cannot pick another preview's.
+ * The password form on a protected preview's host. The route file adds the preview's id, so a visitor
+ * cannot pick another preview's.
  */
 export const PREVIEW_GATE_PATH = "/.well-known/dockify-preview-gate";
 /** What Traefik's forwardAuth asks on every request to a preview. Not under the api's public prefix. */
@@ -13,8 +13,6 @@ export const PREVIEW_GATE_CHECK_PATH = "/internal/preview-gate";
 /** A name a frontend bundler reads at build time for the browser: public by nature, and it must reach the build as an ARG. */
 export const isPublicBuildKey = (key: string): boolean => /^(?:NEXT_PUBLIC_|NUXT_PUBLIC_|VITE_|REACT_APP_|PUBLIC_|GATSBY_|EXPO_PUBLIC_)/.test(key);
 
-/** ISO 8601 timestamp as the API sends it. */
-/** A zone this runtime knows (Intl accepts it), such as Europe/Berlin or UTC. */
 export function isTimeZone(tz: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
@@ -24,7 +22,6 @@ export function isTimeZone(tz: string): boolean {
   }
 }
 
-/** A date as the API answers it; null stays null. */
 export function iso(d: Date): string;
 export function iso(d: Date | null | undefined): string | null;
 export function iso(d: Date | null | undefined): string | null {
@@ -33,23 +30,16 @@ export function iso(d: Date | null | undefined): string | null {
 
 export const Iso = z.string().max(40);
 export const Uuid = z.uuid();
-/** Opaque pagination cursor. */
 export const Cursor = z.string().min(1).max(512).regex(/^[\w.:~=-]+$/);
-/** An outside id (GitHub, Cloudflare, Vercel): short and URL safe. */
 export const ExternalId = z.string().regex(/^[\w-]{1,64}$/);
 
 export const Slug = z.string().regex(/^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/, "Use lowercase letters, digits and dashes");
-/**
- * Project slugs no project may take. "new" is the web's New project address (/projects/new), which
- * always wins over /projects/:slug, so a project called "new" could never be opened there. The web
- * mirrors this list in apps/web/lib/validation.ts.
- */
+/** "new" is the web's /projects/new, which always wins over /projects/:slug. Mirrored in apps/web/lib/validation.ts. */
 export const RESERVED_SLUGS: readonly string[] = ["new"];
 export const isReservedSlug = (slug: string): boolean => RESERVED_SLUGS.includes(slug.trim().toLowerCase());
 /**
- * Dockify's own container names and DNS aliases start with this: dk-<app id>, and dk-route-<id>, the
- * alias each app container's route points at. A managed service's app name is its DNS alias on
- * networks the proxy joins, so no app may take a name with this prefix and answer for one of those.
+ * Dockify's own container names and DNS aliases start with this (dk-<app id>, dk-route-<id>), so no app
+ * may take a name with this prefix and answer for one of them.
  */
 export const RESERVED_NAME_PREFIX = "dk-";
 export const AppName = z
@@ -57,14 +47,8 @@ export const AppName = z
   .regex(/^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/, "Use lowercase letters, digits and dashes")
   .refine((v) => !v.startsWith(RESERVED_NAME_PREFIX), `Names starting with ${RESERVED_NAME_PREFIX} are reserved for Dockify`);
 /**
- * Names no managed service may take. A service answers to its app name on its environment network,
- * which Docker's DNS searches before the control plane's internal networks while the worker or the
- * proxy has joined it. Nothing of Dockify's dials these names any more (the database and the socket
- * proxy have fixed addresses, the proxy's alias is dk-proxy), so this is the second layer: a tenant
- * can never answer for one even on an install whose compose file is older than that. An ordinary app
- * answers to its name too, "web" and "api" included (worker deploy/containers.ts appAliases): that
- * rests on the first layer, which apps/worker/src/app-name-alias.test.ts pins. A service that already
- * has one of these names keeps it, and its alias: no existing data or connection string changes.
+ * Names no managed service may take: a service answers to its app name on its environment network, which
+ * Docker's DNS searches before the control plane's networks. A service that already has one keeps it.
  */
 export const RESERVED_SERVICE_NAMES: readonly string[] = [
   "api", "buildkit", "cloudflared", "dockify-proxy", "dockify-worker", "migrate", "postgres", "proxy", "proxy-direct", "socket-proxy", "updater", "web", "worker",
@@ -73,12 +57,10 @@ export const isReservedServiceName = (name: string): boolean => RESERVED_SERVICE
 export const RESERVED_SERVICE_MESSAGE = "Dockify's own services use this name. Try another, such as main-db";
 /** A name for a service that is not one of those: a compose file's "postgres" becomes "postgres-db". */
 export const unreservedServiceName = (name: string): string => (isReservedServiceName(name) ? `${name}-db` : name);
-/** A managed service's app name: AppName, and none of the names above. */
 export const ServiceName = AppName.refine((v) => !isReservedServiceName(v), RESERVED_SERVICE_MESSAGE);
 /**
- * The CPU limit of a container whose app sets none: every core but one, so one app alone can never
- * take the whole server from the control plane and the other apps, and at least one core. Worker and
- * api call it with the host's core count, which both can read. A number, never "no limit".
+ * CPU limit of a container whose app sets none: every core but one (at least one), so one app can never
+ * take the whole server from the control plane. A number, never "no limit".
  */
 export const defaultCpuCores = (hostCores: number): number => Math.min(64, Math.max(1, Math.floor(hostCores) - 1));
 export const EnvName = z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/, "Use lowercase letters, digits and dashes");
@@ -94,11 +76,8 @@ export const EnvValue = z
   .refine((v) => !v.startsWith(ENV_REF_MARK), "A value cannot start with the reference marker");
 export const VolumeName = z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,63}$/);
 /**
- * Characters no name or label may hold. C0 and C1 controls: Postgres refuses a NUL (a name with
- * one was a 500), and the rest are invisible or break the line. Direction marks, embeddings,
- * overrides and isolates: they make a name read in another order than it is stored. Zero-width
- * spaces and joiners, and the line and paragraph separators: they make two different names look
- * alike. The web checks the same set in apps/web/lib/validation.ts.
+ * Characters no name or label may hold: controls (Postgres refuses a NUL), direction marks that reorder a
+ * name, zero-width and separator characters that make two names look alike. The web checks the same set.
  */
 export const UNSAFE_TEXT_RANGES: ReadonlyArray<readonly [number, number]> = [
   [0x00, 0x1f], [0x7f, 0x9f], [0x61c, 0x61c], [0x180e, 0x180e], [0x200b, 0x200f], [0x2028, 0x202e], [0x2060, 0x2064], [0x2066, 0x206f], [0xfeff, 0xfeff],
@@ -111,18 +90,16 @@ export const isSafeText = (v: string): boolean => {
   return true;
 };
 export const UNSAFE_TEXT_MESSAGE = "Remove control characters, direction marks and invisible characters";
-/** A name: one line of visible text. Every display name (people, projects, tokens, the instance) uses it. */
+/** One line of visible text. Every display name (people, projects, tokens, the instance) uses it. */
 export const DisplayName = z.string().trim().min(1).max(100).refine(isSafeText, UNSAFE_TEXT_MESSAGE);
 /** A short label shown to people, a public status page included: the DisplayName rule with its own length. */
 export const SafeLabel = (max: number, min = 0) => z.string().trim().min(min).max(max).refine(isSafeText, UNSAFE_TEXT_MESSAGE);
 /**
- * What people read as an app's name: one line of visible text, 1 to 60 characters, any case. The
- * app's `name` (AppName) stays its identity for containers, volumes, links, preview hosts and the
- * CLI, so this one is free to change. The database holds the same length (apps_display_name_length).
+ * What people read as an app's name. `name` (AppName) stays the identity for containers, volumes, links and
+ * the CLI, so this one is free to change. The database holds the same length (apps_display_name_length).
  */
 export const APP_DISPLAY_NAME_MAX = 60;
 export const AppDisplayName = SafeLabel(APP_DISPLAY_NAME_MAX, 1);
-/** The name to show for an app: its display name, else its name. */
 export const appLabel = (a: { name: string; displayName?: string | null }): string => a.displayName || a.name;
 export const Email = z.email().max(254);
 /** Policy: at least 12 characters (the web checks the same in apps/web/lib/password.ts). */
@@ -161,10 +138,7 @@ export const HttpsUrl = z.url({ protocol: /^https$/ }).max(2048);
 export const ConfirmText = z.string().min(1).max(200);
 
 export const Empty = z.strictObject({});
-/**
- * Mutations with no body: the web sends "{}". A missing body is accepted too, in both forms the
- * server can see it: Fastify hands over null for a POST with no content.
- */
+/** The web sends "{}" for mutations with no body; Fastify hands over null for a POST with no content. */
 export const EmptyBody = z.strictObject({}).nullish();
 
 export const ApiError = z.object({
@@ -194,10 +168,8 @@ export type TokenGrant = z.infer<typeof TokenGrant>;
 export const AppKind = z.enum(["frontend", "backend", "bot", "postgres", "redis", "s3"]);
 export type AppKind = z.infer<typeof AppKind>;
 /**
- * What the app is doing, as the daemon reports it (the worker's observe pass writes it). degraded:
- * running but failing its health check. restarting: Docker is restarting it or it is crash looping.
- * exited: its container stopped on its own. missing: it should run and has no container. failed: its
- * first deploy failed, so nothing ever ran. unknown: never deployed, or not observed yet.
+ * As the worker's observe pass reports it. degraded: running but failing its health check. exited: stopped
+ * on its own. missing: should run, has no container. failed: first deploy failed. unknown: not observed yet.
  */
 export const AppStatus = z.enum(["running", "stopped", "deploying", "degraded", "unknown", "restarting", "exited", "missing", "failed"]);
 export type AppStatus = z.infer<typeof AppStatus>;
@@ -208,13 +180,10 @@ export type MetricRange = z.infer<typeof MetricRange>;
 export const TlsStatus = z.enum(["active", "pending", "failed"]);
 export const StatefulKind = z.enum(["postgres", "redis", "s3"]);
 
-/** Query-string flag: "1" or "0". */
 export const QueryFlag = z.enum(["0", "1"]);
 
-// ------------------------------------------------------------- container privilege allowlist
-//
-// The single allowlist for capabilities and sysctls. The api validates input against it and the
-// worker's containerSpec() checks it again, so neither side can drift from the other.
+// The single allowlist for capabilities and sysctls: the api validates input against it and the worker's
+// containerSpec() checks it again, so neither side can drift.
 
 export const CAPABILITY_ALLOWLIST = ["NET_ADMIN", "NET_RAW"] as const;
 export const Capability = z.enum(CAPABILITY_ALLOWLIST);
@@ -226,16 +195,12 @@ export const Sysctls = z
   .record(z.string(), z.string().max(64).regex(/^[\w.:-]*$/))
   .refine((m) => Object.keys(m).length <= 16 && Object.keys(m).every(isAllowedSysctl), "Only net.ipv4.* and net.ipv6.conf.* sysctls are allowed");
 
-/**
- * What kind of caller acted: a person, an API token, Dockify itself (schedules, webhooks), or a
- * GitHub push author who is not a verified member.
- */
+/** system is Dockify itself (schedules, webhooks); github is a push author who is not a verified member. */
 export const ActorKind = z.enum(["user", "token", "system", "github"]);
 export type ActorKind = z.infer<typeof ActorKind>;
 /**
- * Who started or changed something. For a member, `avatarUrl` is set only when a signed-in session
- * asks: a token caller cannot read the team, so it never sees their pictures. A `github` actor is
- * named by its public `login`, with its GitHub avatar.
+ * A member's `avatarUrl` is set only for a signed-in session: a token caller cannot read the team.
+ * A `github` actor is named by its public `login`.
  */
 export const ActorRef = z.object({ name: z.string(), avatarUrl: z.string().nullable(), kind: ActorKind, login: z.string().optional() });
 export type ActorRef = z.infer<typeof ActorRef>;
@@ -252,30 +217,23 @@ export function githubAvatarUrl(v: unknown): string | null {
 }
 
 /**
- * Who wrote the commit a deployment shipped, whoever started the deployment. `login` is null when
- * the author has no GitHub account: `name` is then their git name, with no picture. `isActor` says
- * the deployment's `actor` is this same person.
+ * Who wrote the commit a deployment shipped. `login` is null when the author has no GitHub account;
+ * `isActor` says the deployment's `actor` is this same person.
  */
 export const GitAuthor = z.object({ name: z.string(), login: z.string().nullable(), avatarUrl: z.string().nullable(), isActor: z.boolean() });
 export type GitAuthor = z.infer<typeof GitAuthor>;
 
-/**
- * A deployment that ran on another platform. Dockify mirrors it from there: state, commit, times and
- * links come from the provider, and its build log is read from the provider when it is asked for.
- */
+/** A deployment that ran on another platform, mirrored here. Its build log is read from the provider on demand. */
 export const ExternalDeployment = z.object({
   provider: z.literal("vercel"),
   /** The provider's id (Vercel's dpl_...); null until Vercel has accepted a deploy Dockify started. */
   id: z.string().nullable(),
-  /** The deployment's own https address on the provider; null while the provider has none. */
   url: z.string().nullable(),
-  /** The provider's page for this deployment (Vercel's inspector), https only. */
   inspectorUrl: z.string().nullable(),
   /** The provider's environment: production, or preview for every other deployment. */
   target: z.enum(["production", "preview"]).nullable(),
   /** How the provider says it started: git, cli, redeploy, api-trigger-git-deploy, and so on. */
   source: z.string().nullable(),
-  /** The provider account that started it. */
   creator: z.string().nullable(),
 });
 export type ExternalDeployment = z.infer<typeof ExternalDeployment>;
@@ -298,7 +256,6 @@ export const RecentDeployment = z.object({
   repo: z.string().nullable(),
   /** Who started it; null for a deployment Dockify queued itself. */
   actor: ActorRef.nullable().optional(),
-  /** Who wrote its commit; null when nobody is known yet, as on a row from before this was recorded. */
   author: GitAuthor.nullable().optional(),
   /** What a deployment with no commit ran: a managed service's or an image app's reference. Null from Git. */
   image: z.string().nullable().optional(),
@@ -309,9 +266,7 @@ export type RecentDeployment = z.infer<typeof RecentDeployment>;
 
 export const Resource = z.object({
   id: z.string(),
-  /** The app's identity: containers, links, preview hosts and the CLI use it. */
   name: z.string(),
-  /** What people read as its name; absent or null shows `name`. */
   displayName: z.string().nullable().optional(),
   kind: AppKind,
   status: AppStatus,

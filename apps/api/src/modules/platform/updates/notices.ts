@@ -1,8 +1,6 @@
 /**
- * The bell's control-plane notices, read from what the updater already records: the verified
- * feed (an update is available, a security release is pending) and the last update run (updated,
- * failed, rolled back). Nothing is stored for the bell itself; each notice id is stable so the bell
- * can remember it was read.
+ * The bell's control-plane notices, derived from the verified feed and the last update run.
+ * Nothing is stored for the bell itself; each notice id is stable so the bell can remember it was read.
  */
 import type { Db } from "@dockify/db";
 import { bare, chooseRelease, compareVersions, pendingSecurity } from "./release.ts";
@@ -24,10 +22,8 @@ export interface SystemNotice {
 const v = (s: string) => `v${bare(s)}`;
 
 /**
- * `imageVersion` is the version this api's own image carries. The recorded version is written by
- * the updater and the installer; an install brought forward any other way (images swapped by hand,
- * or an installer that could not write the row) leaves it behind, and the bell would keep offering
- * the release that already runs. So the newer of the two is what runs.
+ * `imageVersion` is what this api's own image carries. The recorded version lags when images are
+ * swapped by hand, and the bell would keep offering the release that already runs, so the newer wins.
  */
 export async function updateNotices(db: Db, imageVersion: string, now = Date.now()): Promise<SystemNotice[]> {
   const [inst, last] = await Promise.all([
@@ -40,8 +36,7 @@ export async function updateNotices(db: Db, imageVersion: string, now = Date.now
   const feed = storedFeed(inst?.latestRelease);
   const usable = feed && feed.channel === inst?.updateChannel ? feed : null;
   const target = usable ? chooseRelease(usable, current) : null;
-  // A pending security release stays in the bell until it is installed; skipping a version only
-  // holds back automatic installs, never the alert.
+  // Skipping a version only holds back automatic installs, never the security alert.
   const sec = usable ? pendingSecurity(usable, current) : null;
   if (sec) {
     out.push({

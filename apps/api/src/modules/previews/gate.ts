@@ -1,20 +1,7 @@
-/**
- * The password gate in front of a preview's URL. Traefik asks here about every request to a preview
- * (forwardAuth, worker edge/routes.ts), so the project's setting applies within seconds, no route file
- * has to change for it, and a preview cannot be served without this being asked. When the api is down
- * previews do not serve: a gate that cannot answer stays shut.
- *
- * Two routes, neither under the public api prefix:
- *   GET  /internal/preview-gate/<id>                 forwardAuth. 200 lets the request through; anything
- *                                                    else, the password page here, goes to the visitor.
- *   POST /.well-known/dockify-preview-gate/<id>      the form. Traefik sets the id with replacePath.
- *
- * The password is generated with about 99 bits, so guessing is not the realistic attack, and the limits
- * below are there anyway. It is stored as an argon2id hash and shown once. A good answer sets a cookie
- * that is an HMAC under a subkey of the master key over the preview, its expiry and the current hash, so:
- * a rotation ends every cookie, a database reader cannot mint one, and a cookie opens one host only.
- * The cookie is taken back out of the request before the app sees it (authResponseHeaders: Cookie).
- */
+// The password gate in front of a preview's URL. Traefik asks here about every preview request
+// (forwardAuth), so a preview is never served without it: when the api is down the gate stays shut.
+// The cookie is an HMAC under a master-key subkey over the preview, its expiry and the current hash:
+// a rotation ends every cookie, a database reader cannot mint one, and a cookie opens one preview only.
 import { randomInt, timingSafeEqual } from "node:crypto";
 import { hash as argonHash } from "@node-rs/argon2";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -59,7 +46,6 @@ interface GateRow {
   at: number;
 }
 
-/** The gate's token for one preview. Pure apart from the key, so a forged or stale one is testable. */
 export function gateToken(sign: (value: string) => string, id: string, hash: string, expires: number): string {
   return `${expires}.${sign(`${id}|${expires}|${hash}`)}`;
 }
@@ -74,7 +60,7 @@ export function gateTokenValid(sign: (value: string) => string, id: string, hash
   return want.length === got.length && timingSafeEqual(want, got);
 }
 
-/** The Cookie header with the gate's own cookie removed, so a preview's code never holds it. */
+/** Strips the gate's own cookie, so a preview's code never holds it. */
 export function withoutGateCookie(header: string | undefined): string | null {
   if (!header) return null;
   const kept = header.split(";").map((p) => p.trim()).filter((p) => p && p.slice(0, p.indexOf("=") >>> 0) !== COOKIE);
@@ -97,7 +83,7 @@ export function safeNext(raw: unknown): string {
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-/** Answers anyone with the link or a crawler, so it names no project, pull request or person. */
+/** Shown to anyone with the link, crawlers included, so it names no project, pull request or person. */
 export function gatePage(o: { next: string; note?: string; form?: boolean }): string {
   const form = o.form ?? true;
   return `<!doctype html>
@@ -138,17 +124,14 @@ ${form ? `<form method="post" action="${PREVIEW_GATE_PATH}">
 }
 
 const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
-/**
- * Not the api's default no-referrer: under that a browser sends "Origin: null" on the page's own form
- * post. The page links nowhere, so this still tells no other site anything.
- */
+/** Not the api's default no-referrer: under that a browser sends "Origin: null" on the page's own form post. */
 const PAGE_REFERRER = "same-origin";
 
 export function registerPreviewGate(app: FastifyInstance, ctx: Pick<Ctx, "db" | "ring" | "config">): void {
   const { db, ring, config } = ctx;
   const sign = (value: string) => keyedHash(ring, "preview-gate", value);
   const cache = new Map<string, GateRow>();
-  /** Per preview and client network; then a ceiling per preview, against guessing from many networks. */
+  // Per preview and client network, then a ceiling per preview against guessing from many networks.
   const perClient = new Limiter({ perMinute: 6, burst: 10 });
   const perPreview = new Limiter({ perMinute: 30, burst: 60 });
 
@@ -170,7 +153,7 @@ export function registerPreviewGate(app: FastifyInstance, ctx: Pick<Ctx, "db" | 
   const page = (reply: import("fastify").FastifyReply, status: number, html: string) =>
     reply.code(status).header("content-security-policy", PAGE_CSP).header("referrer-policy", PAGE_REFERRER).header("cache-control", "no-store").header("x-robots-tag", "noindex, nofollow").type("text/html; charset=utf-8").send(html);
 
-  // No body and no cookie of its own: the answer is only yes or the page. Reached from the edge network only.
+  // forwardAuth: 200 lets the request through, anything else goes to the visitor. Edge network only.
   app.get(GATE_ROUTES.check, { config: { policy: INFRA_POLICIES["GET /internal/preview-gate/:id"] } }, async (req, reply) => {
     const id = (req.params as { id?: unknown }).id;
     const next = safeNext(req.headers["x-forwarded-uri"]);
@@ -179,7 +162,7 @@ export function registerPreviewGate(app: FastifyInstance, ctx: Pick<Ctx, "db" | 
     if (!row) return page(reply, 404, gatePage({ next, form: false }));
     const cookieHeader = typeof req.headers.cookie === "string" ? req.headers.cookie : undefined;
     if (row.access === "public" || (row.hash && gateTokenValid(sign, id, row.hash, readGateCookie(cookieHeader) ?? "", Date.now()))) {
-      // Traefik replaces the request's Cookie with this answer's, and removes it when there is none.
+      // Traefik replaces the request's Cookie with this answer's (authResponseHeaders), and removes it when there is none.
       const rest = withoutGateCookie(cookieHeader);
       if (rest) void reply.header("cookie", rest);
       return reply.code(200).send();
@@ -187,7 +170,7 @@ export function registerPreviewGate(app: FastifyInstance, ctx: Pick<Ctx, "db" | 
     return page(reply, 401, gatePage({ next, form: !!row.hash }));
   });
 
-  // Its own scope: the only route on the api that reads a form body.
+  // Its own scope, so the form body parser applies to this route alone. Traefik sets the id with replacePath.
   void app.register(async (scope) => {
     scope.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string", bodyLimit: FORM_BYTES }, (_req, body, done) => done(null, body));
     scope.post(GATE_ROUTES.form, { config: { policy: INFRA_POLICIES["POST /.well-known/dockify-preview-gate/:id"] }, bodyLimit: FORM_BYTES }, async (req, reply) => {
@@ -195,7 +178,7 @@ export function registerPreviewGate(app: FastifyInstance, ctx: Pick<Ctx, "db" | 
       const form = new URLSearchParams(typeof req.body === "string" ? req.body : "");
       const next = safeNext(form.get("next"));
       if (typeof id !== "string" || !UUID.test(id)) return page(reply, 404, gatePage({ next, form: false }));
-      // Same page only: a form on another site must not be able to sign a visitor in, or spend their guesses.
+      // A form on another site must not be able to sign a visitor in, or spend their guesses.
       if (!gateFormAllowed(req.headers)) return page(reply, 403, gatePage({ next, note: "That request came from another site." }));
       const key = `${id}|${networkKey(gateClient(req, config.ingress))}`;
       const wait = perClient.take(key) ?? perPreview.take(id);
@@ -219,10 +202,9 @@ export function registerPreviewGate(app: FastifyInstance, ctx: Pick<Ctx, "db" | 
 }
 
 /**
- * Whether the form post came from the gate page itself. Sec-Fetch-Site decides when a browser sends it.
- * "Origin: null" alone also means a sandboxed frame on any site, so it passes only when the browser
- * itself says same-origin (a privacy setting can force no-referrer whatever the page asks for). No
- * browser posts a form with neither header, so that caller has no visitor's session to abuse.
+ * Whether the form post came from the gate page itself. "Origin: null" can also be a sandboxed frame
+ * on any site, so it passes only when Sec-Fetch-Site says same-origin. A caller with neither header
+ * is not a browser, so it has no visitor's session to abuse.
  */
 export function gateFormAllowed(headers: { "sec-fetch-site"?: string | string[] | undefined; origin?: string | string[] | undefined; host?: string | undefined }): boolean {
   const site = headers["sec-fetch-site"];
@@ -238,10 +220,9 @@ export function gateFormAllowed(headers: { "sec-fetch-site"?: string | string[] 
 }
 
 /**
- * The address to count guesses against. In direct mode the hook's answer is right: Traefik is a trusted
- * hop. In tunnel mode Traefik's address is not trusted, on purpose, since tenants reach it, so the
- * hook sees Traefik; here Cloudflare's header says who it was. A tenant could forge that to get fresh
- * buckets, which the per-preview ceiling still holds, and this value decides nothing else.
+ * The address to count guesses against. In tunnel mode clientIp is Traefik's, so Cloudflare's header
+ * is used. A tenant can forge it to get fresh buckets; the per-preview ceiling still holds, and
+ * this value must never decide anything else.
  */
 function gateClient(req: FastifyRequest, ingress: string): string {
   const cf = req.headers["cf-connecting-ip"];

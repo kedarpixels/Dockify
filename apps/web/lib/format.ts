@@ -1,9 +1,6 @@
 import type { TimePrefs } from "./types";
 
-/**
- * The name people read for an app: its display name, else its name. The name itself stays the app's
- * identity (containers, links, preview hosts, the CLI), so it shows beside the label where it is typed.
- */
+/** What people read as an app's name. `name` stays its identity (containers, links, the CLI). */
 export const appTitle = (a: { name: string; displayName?: string | null }): string => a.displayName || a.name;
 
 export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -59,10 +56,7 @@ function utcDay(date: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/**
- * "Fri 16 Oct". Takes a calendar day ("2026-10-16") or a full ISO moment, which is read as its UTC
- * day so the server and the browser print the same label.
- */
+/** "Fri 16 Oct". A full ISO moment reads as its UTC day, so server and browser print the same label. */
 export function dayLabel(date: string): string {
   const d = date.length > 10 ? new Date(date) : utcDay(date);
   if (!d || Number.isNaN(d.getTime())) return date;
@@ -71,12 +65,8 @@ export function dayLabel(date: string): string {
 
 const DAYS_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-/**
- * Group heading for a list split by day: "Today", "Yesterday", "Thursday 12 Oct", plus the year
- * when it is not the current one, with no comma. Pass the reader's time prefs once hydrated, so
- * "Yesterday" means yesterday where they are, the same day the row's own time shows; without them
- * (the server render) it is the UTC day, so server and first client render agree.
- */
+/** "Today", "Yesterday", "Thursday 12 Oct", plus the year when it is not this one. Without prefs
+ * (the server render) days are UTC, so server and first client render agree. */
 export function dayHeading(iso: string, now: number, prefs?: TimePrefs): string {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return iso;
@@ -95,10 +85,7 @@ export function dayHeading(iso: string, now: number, prefs?: TimePrefs): string 
   return `${DAYS_LONG[weekday]} ${d} ${MONTHS[m]}${y === ny ? "" : ` ${y}`}`;
 }
 
-/**
- * A reason or an error as the start of a sentence: trimmed, with its own closing full stop
- * dropped, so `${clause(error)}. Try again in a moment.` ends on one stop whatever the text was.
- */
+/** Trims and drops the closing full stop, so `${clause(error)}. Try again.` ends on one stop. */
 export function clause(s: string): string {
   return s.trim().replace(/[.\s]+$/, "");
 }
@@ -108,8 +95,6 @@ export function usagePct(v: number): string {
   if (!Number.isFinite(v) || v <= 0) return "0%";
   return v < 10 ? `${v.toFixed(1)}%` : `${Math.round(v)}%`;
 }
-
-/* ============== Absolute times ============== */
 
 export const DEFAULT_TIME: TimePrefs = { timeZone: null, hour12: false };
 
@@ -157,16 +142,8 @@ function inZone(d: Date, zone: string): TimeParts | null {
   return { year: Number(p.year), month: Number(p.month) - 1, day: Number(p.day), weekday: WEEKDAYS[p.weekday ?? ""] ?? 0, hour: Number(p.hour) % 24, minute: Number(p.minute), second: Number(p.second) };
 }
 
-/**
- * The calendar and clock fields of a moment. Which zone where:
- * - UTC (`utc`): anything the server schedules or groups by UTC day. Cron schedules, backup runs
- *   and their next run, the deploy heatmap and its day panel.
- * - Local: moments an operator lived through. Deployments, logs, activity, sessions, tokens,
- *   certificates, notifications. Local is the zone picked in Settings, Profile, else the browser's.
- *
- * Browser-local output differs between the server and the browser, so render it through `When`
- * (or only after mount, see `useHydrated`), never straight into server HTML.
- */
+/** UTC for what the server schedules or groups by UTC day; local for moments an operator lived through.
+ * Local output differs between server and browser: render it through `When` or after `useHydrated`. */
 export function timeParts(at: string | number | Date, { utc = false, prefs = browserPrefs }: TimeOptions = {}): TimeParts | null {
   const d = at instanceof Date ? at : new Date(at);
   if (Number.isNaN(d.getTime())) return null;
@@ -177,7 +154,6 @@ export function timeParts(at: string | number | Date, { utc = false, prefs = bro
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
-/** "14:05" or "2:05 PM", with seconds when asked. */
 function clockOf(p: TimeParts, hour12: boolean, seconds: boolean): string {
   const tail = seconds ? `:${pad2(p.second)}` : "";
   if (!hour12) return `${pad2(p.hour)}:${pad2(p.minute)}${tail}`;
@@ -212,7 +188,6 @@ export function monthShort(date: string): string {
 
 const SIZE_UNITS = ["B", "KB", "MB", "GB", "TB", "PB"];
 
-/** A size as its figure and unit, rounded the one way every size in the app is: see `bytes()`. */
 function sizeParts(n: number): [figure: string, unit: string] {
   const v = Number.isFinite(n) ? Math.max(0, n) : 0;
   let i = 0;
@@ -226,19 +201,13 @@ function sizeParts(n: number): [figure: string, unit: string] {
   return [x < 9.95 ? x.toFixed(1).replace(/\.0$/, "") : Math.round(x).toLocaleString("en-US"), SIZE_UNITS[i]!];
 }
 
-/**
- * The one size format: binary units, one decimal under 10 and whole numbers above: "512 B",
- * "4.2 KB", "340 MB", "1.2 GB", "18 GB", "1.5 TB". Negative, NaN and Infinity read as "0 B".
- */
+/** Binary units, one decimal under 10, whole above: "4.2 KB", "340 MB". Negative, NaN and Infinity read as "0 B". */
 export function bytes(n: number): string {
   const [figure, unit] = sizeParts(n);
   return `${figure} ${unit}`;
 }
 
-/**
- * Used of total, rounded as `bytes()` rounds, with the unit printed once when both share it:
- * "11 of 32 GB", "439 MB of 1 GB", "0 B of 20 GB".
- */
+/** Used of total, the unit printed once when both share it: "11 of 32 GB", "439 MB of 1 GB". */
 export function sizePair(used: number, total: number): string {
   const [a, ua] = sizeParts(used);
   const [b, ub] = sizeParts(total);
@@ -251,15 +220,10 @@ export function firstNames(list: string[]) {
   return `${list.slice(0, 2).join(", ")} and ${list.length - 2} more`;
 }
 
-/**
- * A count and its noun: "1 app", "3 apps", "2 replicas"; pass the plural when it is not the noun
- * plus "s": plural(n, "entry", "entries"). The one plural helper; never hand-roll `n === 1`.
- */
+/** "1 app", "3 apps"; pass the plural when it is not the noun plus "s". Never hand-roll `n === 1`. */
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 }
-
-/* ============== datetime-local inputs ============== */
 
 /** A moment as a datetime-local value ("2026-10-30T14:05") in the user's zone. */
 export function zonedInputValue(ms: number, prefs: TimePrefs = browserPrefs): string {

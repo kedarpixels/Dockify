@@ -1,23 +1,6 @@
-/**
- * The template format. A template is a small reviewed file in this repository, shipped with the
- * release; nothing is fetched at run time. Its `compose` text goes through the same parser and the
- * same refusals as a pasted file (projects/compose.ts), and each app spec it yields goes through
- * createApps and checkSpec like any other, so a template has no way around a check: privileged
- * mode, capabilities, host paths and the socket have no field to be written in.
- *
- * The one thing a template adds is tokens in environment VALUES, resolved after the compose check:
- *
- *   {{secret.NAME}}     a value generated for this install from `secrets`, sealed in the secret store
- *   {{input.KEY}}       what the owner typed in the matching `inputs` field, checked by its type
- *   {{url}}             https://<the app's domain>
- *   {{hostname}}        <the app's domain>
- *   {{host.service}}    the network name of a sibling container (its plain image app)
- *   {{ref.service.field}}  a managed service's credential, as a linked variable. The whole value,
- *                       never part of one: a link is read at deploy time and follows a rotation.
- *
- * Tokens are never expanded in an image, a command or a volume, and a value is never read back as a
- * template: what an owner types cannot name another token, because it is substituted once, last.
- */
+// A template is a reviewed file shipped with the release. Its compose text goes through the same parser and refusals as a pasted file, so it has
+// no way around a check. Tokens ({{secret.NAME}}, {{input.KEY}}, {{url}}, {{hostname}}, {{host.service}}, {{ref.service.field}}) expand only in
+// environment values, never in an image, command or volume, and once, last: a typed value is never read back as a template.
 import { randomBytes } from "node:crypto";
 import { projects as P, templates as T } from "@dockify/contracts";
 import type { z } from "zod";
@@ -78,7 +61,7 @@ const tokensIn = (value: string): Token[] => [...value.matchAll(TOKEN)].map((m) 
 
 const isManaged = (s: AppSpec): boolean => s.source.type === "service";
 
-/** A secret of the recipe's length, from the system's random source. Letters and digits safe in any URL or shell. */
+/** Letters and digits only, safe in any URL or shell. */
 export function generateSecret(recipe: SecretRecipe): string {
   switch (recipe) {
     case "hex16": return randomBytes(16).toString("hex");
@@ -164,7 +147,6 @@ const rowValue = (t: Template, value: string): { shows: string; secret: boolean 
 
 const MANAGED_LABEL: Record<string, string> = { postgres: "Postgres", redis: "Redis" };
 
-/** What the dashboard shows: exactly what will run, with nothing generated yet. */
 export function describeTemplate(t: Template): z.infer<typeof T.TemplateRow> {
   const { specs } = checkTemplate(t);
   return {
@@ -200,7 +182,6 @@ export interface ResolveInput {
   inputs: Record<string, string>;
   /** Pre-assigned app ids by service key, so a value can name a sibling before it exists. */
   ids: Record<string, string>;
-  /** The address of a sibling, by its id. */
   hostOf: (id: string) => string;
   secret?: (recipe: SecretRecipe) => string;
 }

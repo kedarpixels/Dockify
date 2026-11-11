@@ -1,8 +1,4 @@
-/**
- * A minimal Redis client: RESP2 over one connection, one command at a time, a timeout on each.
- * The data browser needs AUTH, SCAN, TYPE, PTTL, MEMORY USAGE and DBSIZE, which does not justify a
- * driver dependency. Replies are bounded so a hostile or huge value cannot exhaust memory.
- */
+/** RESP2, one command at a time on one connection. Replies are bounded so a hostile or huge value cannot exhaust memory. */
 import type { Duplex } from "node:stream";
 
 export type RespValue = string | number | null | RespValue[] | RespError;
@@ -16,7 +12,6 @@ export class RespError extends Error {
 
 const MAX_REPLY = 8 * 1024 * 1024;
 
-/** Encodes one command as a RESP array of bulk strings. */
 export function encodeCommand(args: readonly string[]): Buffer {
   const parts: Buffer[] = [Buffer.from(`*${args.length}\r\n`)];
   for (const a of args) {

@@ -4,18 +4,9 @@ import { useState } from "react";
 import { Icon, type IconName } from "@/components/icon";
 import { cx } from "./cx";
 
-/*
- * Round avatar: the picture when there is a url, otherwise the default picture, one grey person
- * (public/avatar-default.svg) for everyone who has not uploaded one. A picture that fails to load
- * falls back to `fallback`, then to the default. Other glyphs (a key for a token, the GitHub mark)
- * sit on the soft fill with a hairline ring. An SVG picture sits on a light disc in both themes.
- *
- *   <Avatar url={user.avatarUrl} />
- *   <Avatar url={member.avatarUrl} size={24} name={member.name} />
- *   <Avatar size={64} />
- */
+// A picture that fails to load falls back to `fallback`, then to the default. An SVG picture sits
+// on a light disc in both themes.
 
-/** The one default picture. */
 const DEFAULT_AVATAR = "/avatar-default.svg";
 const GLYPH_PX = { 20: 12, 24: 14, 32: 16, 40: 16, 64: 20 } as const;
 export type AvatarSize = keyof typeof GLYPH_PX;

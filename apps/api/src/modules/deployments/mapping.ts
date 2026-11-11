@@ -1,4 +1,3 @@
-/** Row to contract shapes, and the cursor. Pure, so it is tested without a database. */
 import { gunzipSync } from "node:zlib";
 import type { AppKind } from "@dockify/contracts";
 import type { ActorType, DeploymentStatus as DbStatus } from "@dockify/db";
@@ -13,7 +12,6 @@ export function apiStatus(status: DbStatus, _imageId: string | null): ApiStatus 
   return status;
 }
 
-/** The list filter's statuses, in database terms. */
 export function statusFilter(s: "all" | "building" | "ready" | "failed" | "cancelled" | undefined): DbStatus[] | null {
   if (!s || s === "all") return null;
   if (s === "building") return IN_FLIGHT;
@@ -50,7 +48,7 @@ export interface DeploymentRow {
 
 export type ExternalColumns = Pick<DeploymentRow, "provider" | "externalId" | "externalUrl" | "inspectorUrl" | "externalTarget" | "externalSource" | "externalCreator">;
 
-/** The contract's external block: null for a build on this server, absent on a row that never read it. */
+/** `external` is null for a build on this server, and absent when the row was loaded without the column. */
 export function externalOf(d: ExternalColumns) {
   if (d.provider === undefined) return {};
   if (d.provider !== "vercel") return { external: null };
@@ -67,10 +65,7 @@ export function externalOf(d: ExternalColumns) {
   };
 }
 
-/**
- * Vercel's own life cycle in Dockify's step names: it queues, builds and goes live. Times come from
- * Vercel's record. There is no clone, push or health step here to show as waiting.
- */
+/** Vercel's life cycle in Dockify's step names. It has no clone, push or health step, so none is shown as waiting. */
 export function vercelSteps(d: { status: DbStatus; createdAt: Date; startedAt?: Date | null; finishedAt?: Date | null }) {
   const created = d.createdAt.toISOString();
   const started = d.startedAt?.toISOString() ?? null;
@@ -111,7 +106,7 @@ export function toRecent(d: DeploymentRow, people: People = NO_PEOPLE) {
 const CONTRACT_STEPS = ["queued", "clone", "build", "push", "release", "deploy", "health"] as const;
 type ContractStep = { id: (typeof CONTRACT_STEPS)[number]; status: "pending" | "running" | "done" | "failed" | "cancelled" | "skipped"; startedAt: string | null; finishedAt: string | null };
 
-/** The stored timeline; any missing step reads as pending, except "release", shown only once it ran. */
+/** A missing step reads as pending, except "release", which is shown only once it ran. */
 export function toSteps(raw: unknown): ContractStep[] {
   const stored = new Map<string, ContractStep>();
   if (Array.isArray(raw)) for (const s of raw as ContractStep[]) if (s && typeof s === "object") stored.set(s.id, s);
@@ -146,12 +141,12 @@ export interface LogLine {
 }
 
 /**
- * The most one chunk may inflate to. The worker writes at most 200 lines of at most 16 Ki
- * characters, so an honest chunk stays well under it; anything larger is a decompression bomb.
+ * The worker writes at most 200 lines of at most 16 Ki characters per chunk, so an honest chunk
+ * stays well under this; anything larger is a decompression bomb.
  */
 export const MAX_CHUNK_BYTES = 16 * 1024 * 1024;
 
-/** Same codec as the worker's deploy log: gzipped NDJSON of { ts, stream, text }. */
+/** Must match the worker's deploy log codec: gzipped NDJSON of { ts, stream, text }. */
 export function decodeChunk(firstSeq: number, gz: Uint8Array, lineCount = 1, maxBytes = MAX_CHUNK_BYTES): LogLine[] {
   let raw: Buffer;
   try {
@@ -171,7 +166,7 @@ export function decodeChunk(firstSeq: number, gz: Uint8Array, lineCount = 1, max
   });
 }
 
-/** One SSE frame; the id is the seq, so a reconnect resumes with Last-Event-ID. */
+/** The id is the line's seq, so a reconnect resumes with Last-Event-ID. */
 export function sseFrame(event: string, data: unknown, id?: number): string {
   return `${id !== undefined ? `id: ${id}\n` : ""}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }

@@ -55,15 +55,12 @@ export interface Deps {
   db: Db;
   ring: Keyring;
   config: ApiConfig;
-  /** Overrides the handler table, for tests. */
   handlers?: Handlers;
   /** Mounts the integrations plugin (default true). Tests that override handlers may skip it. */
   integrations?: boolean;
   /** What the integrations plugin reaches outside the database; tests pass a fake http client. */
   integrationDeps?: IntegrationDeps;
-  /** Watches the worker's heartbeat and raises "worker down" from here (default true). */
   workerWatch?: boolean;
-  /** How the terminal reaches the worker, and its limits; tests pass small ones. */
   terminalDial?: WorkerDial;
   terminalLimits?: Partial<TerminalLimits>;
   logger?: boolean;
@@ -138,9 +135,8 @@ export interface RegisteredRoute {
 }
 
 /**
- * Endpoints that run argon2 or check a code: the strict per-IP bucket. auth.stepUp is not here: its
- * password guard is keyed on the session and its code guard on the user (checkTotp), so one user
- * cannot drain a bucket others share.
+ * Endpoints that run argon2 or check a code get the strict per-IP bucket. auth.stepUp is absent on purpose:
+ * its guards are keyed on the session and the user, so one user cannot drain a bucket others share.
  */
 export const AUTH_LIMITED = new Set<string>([
   "auth.setup", "auth.login", "auth.verify", "auth.invite.accept", "auth.forgot", "auth.reset", "me.email.confirm",
@@ -154,9 +150,8 @@ const isZodError = (e: unknown): e is z.ZodError =>
   typeof e === "object" && e !== null && Array.isArray((e as { issues?: unknown }).issues) && (e as Error).name === "ZodError";
 
 /**
- * The request as the log writes it: the route's pattern, or for an unmatched route the path alone.
- * Fastify's default writes the whole URL, and URLs here carry secrets a log must not keep: the GitHub
- * manifest's `code` in a query, reset and invite tokens in a path.
+ * Logs the route pattern (or the bare path), never the whole URL: URLs here carry secrets,
+ * such as the GitHub manifest `code` in a query and reset and invite tokens in a path.
  */
 export function requestLogFields(req: { method: string; url: string; routeOptions?: { url?: string }; ip?: string }) {
   return { method: req.method, url: req.routeOptions?.url ?? req.url.split("?")[0], remoteAddress: req.ip };
@@ -235,9 +230,8 @@ export async function buildApp(deps: Deps): Promise<{ app: FastifyInstance; rout
 
     const authLimited = AUTH_LIMITED.has(cfg.endpoint ?? "");
     const anonymous = policy.access === "anonymous" && !authLimited;
-    // A trusted proxy that reports no client address would put every caller behind it in one
-    // bucket. Refuse instead of keying on the proxy, except for probes and anonymous routes, which
-    // have their own bucket and cannot starve a signed-in user.
+    // A trusted proxy that reports no client address would put every caller behind it in one bucket, so refuse.
+    // Probes and anonymous routes are exempt: their own bucket cannot starve a signed-in user.
     if (!client.known && !anonymous && !PROBES.has(req.routeOptions.url)) {
       const now = Date.now();
       if (now - lastMissingWarn > 60_000) {
@@ -268,8 +262,7 @@ export async function buildApp(deps: Deps): Promise<{ app: FastifyInstance; rout
     if (req.actor?.kind === "token") {
       const now = new Date();
       const writes: Array<Promise<unknown>> = [
-        // Throttle the "last used" write: skip it when the row was touched in the last minute, so a
-        // polling CI token does not write the row on every request.
+        // Skipped when the row was touched in the last minute, so a polling CI token does not write on every request.
         db.apiToken.updateMany({
           where: { id: req.actor.tokenId, OR: [{ lastUsedAt: null }, { lastUsedAt: { lt: new Date(now.getTime() - 60_000) } }] },
           data: { lastUsedAt: now, lastUsedIp: req.clientIp },

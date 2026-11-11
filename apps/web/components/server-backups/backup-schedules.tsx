@@ -17,12 +17,11 @@ import { Countdown } from "./live";
 import { lastOf, lastWord, TIER_LABEL, TIERS, tierWords } from "./tier-schedule";
 import { cronText, dbLabel, dbName } from "./util";
 
-/** Where backup destinations are managed. */
 export const STORAGE_HREF = "/settings?section=integrations";
 
 const PROVIDER: Record<StorageProvider, string> = { r2: "Cloudflare R2", s3: "AWS S3", minio: "MinIO", custom: "S3-compatible" };
 
-/** Whether a database's backups are encrypted, as one chip: Key pending before the instance key exists. */
+/** Reads Key pending before the instance key exists. */
 function SealChip({ s }: { s: BackupSchedule }) {
   const enc = s.encryption;
   const { manage } = useCan();
@@ -38,11 +37,6 @@ function SealChip({ s }: { s: BackupSchedule }) {
   );
 }
 
-/**
- * One tier of one database on one line: its name, the schedule and what it keeps in words with its
- * last result under it, where the copies go, and the next run (relative, the exact UTC time in its
- * tip). A tier that is off reads Off.
- */
 function TierLine({ s, t, runs, now }: { s: BackupSchedule; t: BackupTierSchedule; runs: BackupRun[]; now: number }) {
   const last = lastOf(runs, s.resourceId, t.tier);
   const words = cronText(t.cron);
@@ -83,11 +77,7 @@ function TierLine({ s, t, runs, now }: { s: BackupSchedule; t: BackupTierSchedul
   );
 }
 
-/**
- * One database per row inside a soft ruled box: the database and its encryption, then its two
- * tiers, on this server and offsite, one line each, then Edit. Databases whose copies never leave
- * this server raise a note on top. A Viewer reads the schedules without Edit.
- */
+/** A Viewer reads the schedules without Edit. */
 export function Schedules({
   schedules,
   runs,
@@ -172,11 +162,6 @@ export function Schedules({
   );
 }
 
-/**
- * Where backups go and how they are encrypted: the destinations from Settings, Integrations, Backup
- * storage (plus this server when a schedule keeps backups local), the instance key's fingerprint,
- * and when the next automatic restore test runs.
- */
 export function StorageCard({ config, schedules, now }: { config: BackupConfig; schedules: BackupSchedule[]; now: number }) {
   const utcAt = useUtcAt();
   const { manage } = useCan();

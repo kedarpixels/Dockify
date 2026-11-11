@@ -1,11 +1,7 @@
 /**
- * Cross-site request check for every state-changing request, applied before auth.
- *
- * Browsers attach Sec-Fetch-Site to every request and Origin to every cross-origin POST, so a forged
- * request always carries one of them with a foreign value. `same-site` is refused too: a tenant app
- * on a sibling subdomain is same-site but must never drive the console. When both headers are absent
- * the caller is not a browser (the web server's own fetch, curl), and there is no ambient credential
- * to abuse; SameSite=Strict on the cookie backs this up. Origins compare by exact equality only.
+ * Cross-site check for state-changing requests, applied before auth. A forged browser request always carries
+ * a foreign Sec-Fetch-Site or Origin. `same-site` is refused too: a tenant app on a sibling subdomain must never
+ * drive the console. Both headers absent means a non-browser caller, which holds no ambient credential.
  */
 export type CsrfVerdict = { ok: true } | { ok: false; reason: string };
 

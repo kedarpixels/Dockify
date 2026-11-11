@@ -1,8 +1,4 @@
-/**
- * Runtime log reads from runtime_log_lines (written, already redacted, by the worker). History pages newest to oldest by id; each page is returned oldest first,
- * and nextCursor points further back. The stream is SSE: it polls for ids above the last one sent,
- * with the same filters, re-checks the caller's access every minute, and caps streams per user.
- */
+// Runtime log reads. The worker writes lines already redacted. History pages newest to oldest by id; each page is returned oldest first.
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { Prisma, type Db } from "@dockify/db";
 import { enforce, type Actor } from "../../actor.ts";
@@ -48,7 +44,6 @@ export const MAX_SEARCH_WINDOW_MS = 24 * 3600_000;
 const MAX_SEARCHES_PER_USER = 2;
 const MAX_SEARCHES_TOTAL = 6;
 
-/** The WHERE clause for a filter, parameterized throughout. */
 export function whereSql(f: LogFilter, extra: Prisma.Sql[] = []): Prisma.Sql {
   const parts: Prisma.Sql[] = [...extra];
   if (f.appIds) parts.push(Prisma.sql`"appId" = ANY(${f.appIds}::uuid[])`);
@@ -86,7 +81,6 @@ async function select(db: Db, sql: Prisma.Sql, timeoutMs = QUERY_TIMEOUT_MS): Pr
   }
 }
 
-/** The app ids a caller may read: the requested ones (each checked) or everything in scope. */
 export async function scopeApps(db: Db, actor: Actor | null, requested: string[] | undefined): Promise<string[] | null> {
   const limit = projectLimit(actor);
   if (requested && requested.length > 0) {
@@ -100,10 +94,7 @@ export async function scopeApps(db: Db, actor: Actor | null, requested: string[]
   return rows.map((r) => r.id);
 }
 
-/**
- * A text search with no app named scans the whole table, so it is held to a window of at most
- * 24 h; with no window given it searches the last 24 h. Anything wider is refused, naming the field.
- */
+/** A text search with no app named scans the whole table, so its window is capped; with none given it covers the latest one. */
 export function boundSearch(f: LogFilter, appsNamed: boolean, now = new Date()): LogFilter {
   if (!f.q || appsNamed) return f;
   const to = f.to ?? now;
@@ -155,7 +146,6 @@ export async function tailApp(db: Db, appId: string, tail: number) {
 
 const open = new Map<string, number>();
 
-/** Writes one SSE frame, waiting for the socket to drain when it is backed up. */
 async function send(reply: FastifyReply, frame: string): Promise<boolean> {
   const raw = reply.raw;
   if (raw.destroyed || raw.writableEnded) return false;

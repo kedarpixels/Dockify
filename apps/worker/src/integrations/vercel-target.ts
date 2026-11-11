@@ -1,13 +1,6 @@
 /**
- * The Vercel frontend deploy target: an app with deployTarget "vercel" and a linked Vercel project
- * is not built here. The worker pushes the app's resolved env to the Vercel project, asks Vercel to
- * deploy the branch, and follows the deployment until it settles. Runs as vercel_sync jobs:
- *
- *   { appId, action: "sync_env" }                    push env vars
- *   { appId, action: "deploy", deploymentId? }       sync env, deploy, follow to ready or error
- *   { appId, action: "status", vercelDeploymentId }  refresh one deployment's state
- *
- * Sync state lives under config.apps[appId] of the vercel integration row.
+ * An app with deployTarget "vercel" is not built here: the worker pushes its resolved env to Vercel,
+ * asks it to deploy the branch and follows it. Sync state lives under the vercel integration row.
  */
 import { setTimeout as sleep } from "node:timers/promises";
 import { readSecretValue, type Db, type Prisma, type SecretVault } from "@dockify/db";
@@ -27,7 +20,6 @@ export function mapState(s: string | undefined): "ready" | "building" | "error" 
   return "building";
 }
 
-/** production for the production environment, preview for every other one. */
 export function vercelTargetFor(environmentName: string): "production" | "preview" {
   return environmentName === "production" || environmentName === "prod" ? "production" : "preview";
 }
@@ -45,7 +37,6 @@ export interface VercelTargetDeps {
   db: Db;
   vault: SecretVault;
   http: HttpClient;
-  /** The app's final runtime env (the single env resolver). */
   resolveEnv(appId: string): Promise<Record<string, string>>;
   wait?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
@@ -92,7 +83,7 @@ class Vercel {
   }
 }
 
-/** Env entries as Vercel's bulk upsert wants them. Every value is stored encrypted on Vercel. */
+/** Every value is stored encrypted on Vercel. */
 export function envPayload(env: Record<string, string>, target: "production" | "preview") {
   return Object.entries(env)
     .filter(([k]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k) && !k.startsWith("VERCEL_"))
@@ -110,10 +101,7 @@ async function setSync(db: Db, integrationId: string, appId: string, patch: Reco
   });
 }
 
-/**
- * Ties the deployment row a person started to the id Vercel gave it, so the mirror updates this row
- * instead of adding one. A mirror pass can see the new id first; its row goes, this one stays.
- */
+/** Ties the row a person started to Vercel's id; if a mirror pass saw the id first, its row goes. */
 async function claimExternal(db: Db, deploymentId: string, created: { id: string; url: string; inspectorUrl?: string | null }): Promise<void> {
   await db.$transaction(async (tx) => {
     await tx.deployment.deleteMany({ where: { provider: "vercel", externalId: created.id, id: { not: deploymentId } } });

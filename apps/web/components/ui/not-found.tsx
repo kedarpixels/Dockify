@@ -1,14 +1,5 @@
-/**
- * The one not-found block: the pixel code (the page's one display mark), the title as the page's
- * h1, one line and the ways back. Render it as a block of `main.page`.
- *
- * `frame="console"` (the signed-in 404) centres it in the page and offers the command menu;
- * `frame="public"` (a status page anyone can open) sits between the bands with a smaller code and
- * nothing that needs a session.
- *
- *   <NotFound actions={<Link href="/" className="btn btn-primary">Back to overview</Link>} />
- *   <NotFound frame="public" title="No status page here" body="This project has not published a status page, or the link is wrong." />
- */
+// `frame="console"` (the signed-in 404) offers the command menu; `frame="public"` (a status page
+// anyone can open) offers nothing that needs a session. The title is the page's h1.
 export function NotFound({
   title = "This page does not exist",
   body = "It may have moved. Everything else is where you left it.",

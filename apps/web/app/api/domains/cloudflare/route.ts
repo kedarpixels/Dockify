@@ -3,7 +3,7 @@ import { json, refuse, upstreamStatus } from "@/lib/http";
 import { previewCfDomains } from "@/lib/pages/dashboard-domain";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/** GET /api/domains/cloudflare: what Cloudflare says about every domain. Reads only zones the owner switched on. */
+/** Reads only zones the owner switched on. */
 export async function GET() {
   if (process.env.DOCKIFY_API_URL) {
     // Every domain is a call to Cloudflare, a few at a time: more than a page's usual read.

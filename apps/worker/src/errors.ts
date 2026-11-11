@@ -1,12 +1,8 @@
-/** The worker's own log line format (main.ts), for when no logger was handed in. */
 export const stderrLog = (msg: string, extra?: object): void => {
   process.stderr.write(`${JSON.stringify({ level: "warn", msg, ...extra })}\n`);
 };
 
-/**
- * A failure the job cannot recover from by retrying (health check, release command, bad input).
- * Lives in its own module so job modules can throw it without importing main.ts.
- */
+/** A failure retrying cannot fix: a health check, a release command, bad input. */
 export class PermanentJobError extends Error {
   readonly permanent = true;
   constructor(message: string) {
@@ -15,10 +11,7 @@ export class PermanentJobError extends Error {
   }
 }
 
-/**
- * Not a failure: the job cannot run yet and should be tried again later, without spending an
- * attempt (an alert while the api that opens its secrets is down).
- */
+/** Not a failure: the job cannot run yet and is tried again later without spending an attempt. */
 export class DeferJobError extends Error {
   readonly delayMs: number;
   constructor(message: string, delayMs: number) {
@@ -28,8 +21,5 @@ export class DeferJobError extends Error {
   }
 }
 
-/**
- * The one test for "do not retry": this class, or any error carrying `permanent === true`
- * (DataError, PermanentDeployError), so no module needs to import another's class.
- */
+/** The one test for "do not retry": any error carrying `permanent === true`, so no module imports another's class. */
 export const isPermanentError = (e: unknown): boolean => typeof e === "object" && e !== null && (e as { permanent?: unknown }).permanent === true;

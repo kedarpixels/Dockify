@@ -1,35 +1,25 @@
 import "server-only";
 import { crossSiteRefusal } from "./same-origin";
 
-/*
- * The route handler kit: one no-store header, one JSON answer, one refusal shape, the write guard
- * and the JSON body reader. Every route under app/api uses these, so the same-origin rule and the
- * error envelope cannot drift between routes again.
- */
+// The route handler kit. Every route under app/api uses it, so the same-origin rule and the error
+// envelope cannot drift between routes.
 
 /** Every API route answer is private to the visitor and never cached. */
 export const NO_STORE = { "cache-control": "no-store" } as const;
 
-/**
- * What a loader hands its route handler: the HTTP status and the JSON body, the error envelope on a
- * refusal. The handler answers it as it is (`json(body, status)`).
- */
+/** What a loader hands its route handler, answered as it is: `json(body, status)`. */
 export interface RouteAnswer<T> {
   status: number;
   body: T | { error: string; code?: string };
 }
 
-/** A JSON answer that is never cached. */
 export const json = (body: unknown, status = 200) => Response.json(body, { status, headers: NO_STORE });
 
 /** The one refusal shape: `{ ok: false, error }`, plus `code` and anything else the client reads. */
 export const refuse = (status: number, error: string, extra: Record<string, unknown> = {}) => json({ ok: false, error, ...extra }, status);
 
-/**
- * The guard in front of every write route: same origin only (lib/same-origin.ts), and a JSON
- * content type unless `json` is false (a bodiless DELETE). A cross-site form cannot send JSON, so
- * the content type is a second wall. Returns the refusal to send, or null when the call may pass.
- */
+/** Same origin only, plus a JSON content type unless `json` is false (a bodiless DELETE): a cross-site
+ * form cannot send JSON. Returns the refusal to send, or null when the call may pass. */
 export function guardWrite(req: Request, { json: needsJson = true }: { json?: boolean } = {}): Response | null {
   const reason = crossSiteRefusal(req.headers);
   if (reason) return refuse(403, reason);
@@ -59,9 +49,5 @@ export async function readJsonObject(req: Request, maxBytes = MAX_BODY): Promise
   return r.ok && r.value && typeof r.value === "object" && !Array.isArray(r.value) ? (r.value as Record<string, unknown>) : {};
 }
 
-/**
- * The status a route answers for a failed API call: the API's own 4xx passes through, so the
- * browser sees 401 (session over), 403 (step-up or no access), 404, 409 and 429 as they are;
- * anything else, including no answer at all (status 0), reads as a bad gateway.
- */
+/** The API's own 4xx passes through to the browser; anything else, including no answer (0), reads as 502. */
 export const upstreamStatus = (status: number) => (status >= 400 && status < 500 ? status : 502);

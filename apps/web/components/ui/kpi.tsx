@@ -7,26 +7,8 @@ import { Chip } from "./chip";
 import { IconTile } from "./icon-tile";
 import { Corners } from "./rule";
 
-/*
- * The KPI strip: one to four ruled cells (tile and label, an optional change chip, a big figure, a
- * muted lead, an optional trend). One look on every page: 16px from the head to the figure and a
- * node on every cell corner, so the strip sits in the ruled frame like every other grid.
- *
- *   <KpiStrip cells={kpis} />                                         lib/derive Kpi objects pass straight in
- *   <KpiStrip label="Summary" cells={[{ icon: "folder", label: "Projects", value: 4, lead: "3 environments" }]} />
- *   <KpiStrip cells={[{ icon: "archive", label: "Stored", value: "18.4", unit: "GB", lead: "Across 12 backups" }]} />
- *
- * A metric card with its own keys (a range picker in the head) is a KpiCell with `actions`, inside a
- * `.kpi` > `.kpi-grid` of its own:
- *
- *   <section className="kpi" aria-label="Server metrics">
- *     <div className="kpi-grid" data-cols="2">
- *       <KpiCell cell={cpu} actions={<Segmented label="Range" ... />} />
- *     </div>
- *   </section>
- *
- * Numeric values count up once per page load (keyed by label), then follow the data.
- */
+// A metric card with its own keys is a KpiCell with `actions`, inside a `.kpi` > `.kpi-grid` of its
+// own. Numeric values count up once per page load (keyed by label), then follow the data.
 
 export interface KpiData {
   icon: IconName;
@@ -36,7 +18,6 @@ export interface KpiData {
   /** "int" 1,234 (default), "pct" 99.2%, "ratio" adds "of {total}". */
   format?: "int" | "pct" | "ratio";
   total?: number;
-  /** Small muted unit after the figure: "GB", "ms". */
   unit?: string;
   lead?: React.ReactNode;
   /** Same as `lead`; the name lib/derive's Kpi uses. */
@@ -52,11 +33,7 @@ function Figure({ value, format = "int", label }: { value: number; format?: KpiD
   return <>{format === "pct" ? `${v.toFixed(1)}%` : Math.round(v).toLocaleString("en-US")}</>;
 }
 
-/**
- * One ruled cell. Use it directly only inside a `.kpi` > `.kpi-grid` of your own (a metric card).
- * `actions` sits at the right end of the head, such as a range Segmented; `children` follow the
- * figures, such as a full-width chart.
- */
+/** Use it directly only inside a `.kpi` > `.kpi-grid` of your own (a metric card). */
 export function KpiCell({
   cell,
   delay = 0,
@@ -65,9 +42,7 @@ export function KpiCell({
 }: {
   cell: KpiData;
   delay?: number;
-  /** Keys at the right end of the head. */
   actions?: React.ReactNode;
-  /** Anything under the figures and the trend. */
   children?: React.ReactNode;
 }) {
   const lead = cell.lead ?? cell.sub;

@@ -1,7 +1,6 @@
 /**
- * Scheduled jobs: a cron schedule and a command on an app. Each run is a short-lived container from
- * the app's current image, with its variables, network and limits. The limits here are the only
- * copy: the api enforces them, the worker runs by them, and the web reads them from the job list.
+ * Each run is a short-lived container from the app's current image, with its variables, network and limits.
+ * The limits here are the only copy: the api enforces them and the worker runs by them.
  */
 import { z } from "zod";
 import { Command, Iso, Uuid } from "./common.ts";

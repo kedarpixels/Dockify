@@ -6,7 +6,7 @@ export const HISTORY_DAYS = 30;
 /** Whether a run is in the history's window. The API also sends older rows: files still kept and each database's newest run. */
 export const inHistory = (r: { createdAt: string }, now: number) => now - Date.parse(r.createdAt) < HISTORY_DAYS * DAY;
 
-/** Consecutive rows under one heading each. `heading` names a row's day; the history passes the UTC day. */
+/** `heading` names a row's day; the history passes the UTC day. */
 export function byDay<T extends { createdAt: string }>(rows: T[], heading: (iso: string) => string): Array<{ label: string; rows: T[] }> {
   const groups: Array<{ label: string; rows: T[] }> = [];
   for (const r of rows) {

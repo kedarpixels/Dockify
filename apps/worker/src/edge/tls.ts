@@ -4,10 +4,6 @@ import { checkServerIdentity, connect, type ConnectionOptions, type PeerCertific
 import type { Dialer } from "../server/runtime.ts";
 
 /**
- * The TLS state of a domain, observed rather than assumed: a handshake with the hostname as SNI
- * against an address its DNS returned, reading the certificate the client would get. In tunnel
- * mode that is Cloudflare's edge certificate, in direct mode Traefik's Let's Encrypt one.
- *
  * Only the ClientHello is sent, and only to a public address (or the server's own), so a hostname
  * pointed at an internal address cannot turn the probe into a scanner.
  */
@@ -40,9 +36,8 @@ for (const cidr of INTERNAL_V4) {
 export const isPublicV4 = (ip: string): boolean => isIP(ip) === 4 && !internal.check(ip, "ipv4");
 
 /**
- * Whether Traefik serves this host a certificate a browser accepts, asked of the proxy itself, so the
- * answer does not wait on DNS caches. Node marks the peer authorized only when the chain is trusted and
- * the name matches, which the proxy's default certificate never is.
+ * Asked of the proxy itself, so the answer does not wait on DNS caches. Node marks the peer authorized
+ * only when the chain is trusted and the name matches, which the proxy's default certificate never is.
  */
 export const proxyCertificateReady = (dial: Dialer) => async (hostname: string): Promise<boolean> => {
   const started = Date.now();
@@ -54,7 +49,6 @@ const PROXY_TLS_TIMEOUT_MS = 5_000;
 
 export const nodeTlsProbe: TlsProbe = (address, servername, timeoutMs) => handshake({ host: address, port: 443, servername }, timeoutMs);
 
-/** Only the ClientHello and what answers it: the peer is read, and judged by the caller. */
 const handshake = (to: ConnectionOptions & ({ socket: Duplex } | { host: string; port: number }), timeoutMs: number): Promise<PeerInfo> =>
   new Promise((resolve, reject) => {
     const socket = connect({ ...to, rejectUnauthorized: false, ALPNProtocols: ["http/1.1"] });

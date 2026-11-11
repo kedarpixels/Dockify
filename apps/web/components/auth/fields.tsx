@@ -7,13 +7,6 @@ import { Field, TextInput, type FieldIds } from "@/components/ui/field";
 import { PendingLabel } from "@/components/ui/pending";
 import { MIN_PASSWORD, scorePassword } from "@/lib/password";
 
-/*
- * Auth-only controls on top of the shared fields: the password input with its show key and Caps
- * Lock chip, the checkbox row, the full-width CTA, the strength meter and the rate-limit notices.
- * Labels, hints and inline errors come from the shared Field.
- */
-
-/** The email an account signs in with, focused on arrival: the first field of the sign in and reset forms. */
 export function EmailField({ id, error, inputRef, value, onChange }: { id: string; error?: string; inputRef: React.Ref<HTMLInputElement>; value: string; onChange: (v: string) => void }) {
   return (
     <Field id={id} label="Email" error={error}>
@@ -37,10 +30,7 @@ export function EmailField({ id, error, inputRef, value, onChange }: { id: strin
   );
 }
 
-/**
- * Password input with a show and hide key, and a Caps Lock chip while Caps Lock is on (read from
- * each key event, since the browser offers no event of its own for it).
- */
+/** Caps Lock is read from each key event: the browser offers no event of its own for it. */
 export function PasswordInput({
   autoComplete,
   onKeyDown,
@@ -92,11 +82,7 @@ export function PasswordInput({
   );
 }
 
-/**
- * The full-width primary CTA of an auth card. It leads with the glyph that names the action, which
- * turns into the loader while the request runs; the label never changes, so the key keeps its width.
- * It is aria-disabled rather than disabled, so a focused key keeps focus through the request.
- */
+/** The label never changes, so the key keeps its width. aria-disabled, so a focused key keeps focus through the request. */
 export function SubmitButton({
   icon,
   label,
@@ -123,12 +109,7 @@ export function SubmitButton({
   );
 }
 
-/* -------------- Password strength -------------- */
-
-/**
- * Four bars and a word under a new password, the one strength meter (setup, invite, reset and
- * Settings). The policy and the score are lib/password.ts. A span, since it sits in the Field's hint line.
- */
+/** The policy and the score are lib/password.ts. A span, since it sits in the Field's hint line. */
 export function StrengthMeter({ password }: { password: string }) {
   const { score, label, tone } = scorePassword(password);
   return (
@@ -145,7 +126,6 @@ export function StrengthMeter({ password }: { password: string }) {
   );
 }
 
-/** Under a confirm field once both passwords agree. */
 export function MatchHint() {
   return (
     <span className="auth-match">
@@ -155,13 +135,7 @@ export function MatchHint() {
   );
 }
 
-/* -------------- Notices and cooldowns -------------- */
-
-/**
- * A message for the whole form: rate limits, an unreachable API, a finished reset. It is the shared
- * callout (info is its neutral grey), written out here because an error has to stay an alert and
- * the rest a status, while the Callout component always says note.
- */
+/** Not the Callout component: an error has to stay an alert and the rest a status, while Callout always says note. */
 export function Notice({
   tone = "bad",
   icon,
@@ -184,7 +158,6 @@ export function waitLabel(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-/** Counts a rate-limit wait down to zero, one tick a second. */
 export function useCooldown(): [number, (seconds: number) => void] {
   const [until, setUntil] = useState(0);
   const [left, setLeft] = useState(0);
@@ -205,15 +178,12 @@ export function useCooldown(): [number, (seconds: number) => void] {
   return [left, start];
 }
 
-/** The rate-limit notice, shown while a cooldown runs. */
 export function CooldownNotice({ seconds }: { seconds: number }) {
   return seconds ? <CooldownLive seconds={seconds} /> : null;
 }
 
-/*
- * The notice is an alert, and an alert re-announces whenever its text changes, so the ticking
- * figure is hidden from screen readers and they hear the wait once, as it stood on arrival.
- */
+// An alert re-announces whenever its text changes, so the ticking figure is hidden from screen
+// readers and they hear the wait once.
 function CooldownLive({ seconds }: { seconds: number }) {
   const [first] = useState(seconds);
   return (

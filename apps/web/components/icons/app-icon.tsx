@@ -7,14 +7,7 @@ import { EMPTY_ICONS, iconUrl, KIND_PRESET, type IconMap, type IconPreset, type 
 import type { AppKind } from "@/lib/types";
 import { PresetTile } from "./preset-tile";
 
-/*
- * The one app icon and the one project icon. Both read the console's icon map (read once by the
- * layout), so a change in the Icon control shows everywhere at once. An image that fails to load
- * falls back to the default icon.
- *
- *   <AppIcon id={app.id} kind={app.kind} size="md" />
- *   <ProjectIcon slug="horseai" size="lg" />
- */
+/* Both read the console's icon map (read once by the layout), so a change in the Icon control shows everywhere at once. */
 
 const SIZES = { sm: 20, md: 28, lg: 40 } as const;
 export type IconSize = keyof typeof SIZES;

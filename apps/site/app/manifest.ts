@@ -1,9 +1,7 @@
 import type { MetadataRoute } from "next";
 import { SITE_DESCRIPTION, SITE_NAME } from "@/components/seo/config";
 
-/* Web app manifest: name, colours and the dashboard's own app icons (public/icon-*.png). The
-   maskable icon is the mark on a white canvas, the same treatment as the apple icon, with the whale
-   inside the safe zone. */
+/* The maskable icon is the mark on a white canvas with the whale inside the safe zone, as the apple icon. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: SITE_NAME,

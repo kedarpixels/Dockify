@@ -28,11 +28,7 @@ import {
   type SourceType,
 } from "./spec";
 
-/*
- * The flow's drafts, one per source plus the shared details, and the pure rules that check them
- * and turn them into the AppSpec list the API takes. Fields hold what the operator typed (ports
- * as text), so a half typed value never jumps.
- */
+/* Fields hold what the operator typed (ports as text), so a half typed value never jumps. */
 
 export type Detect = { state: "idle" } | { state: "loading" } | { state: "done"; result: DetectResult } | { state: "error"; error: string };
 
@@ -80,9 +76,8 @@ export interface ServiceDraft {
 
 export interface ComposeDraft {
   text: string;
-  /** Services left out by the operator. Everything the plan proposes starts included. */
+  /** Everything the plan proposes starts included. */
   excluded: string[];
-  /** Kind overrides for image apps, by service key. */
   kinds: Record<string, RunKind>;
 }
 
@@ -93,10 +88,7 @@ export interface DetailsDraft {
   environment: string;
   kind: RunKind | null;
   target: DeployTarget;
-  /**
-   * A service only: the app ids checked under "Link to apps", across environments, so switching
-   * back keeps a check. Only the ones in the chosen environment are sent.
-   */
+  /** Kept across environments so switching back keeps a check; only the chosen environment's are sent. */
   links: string[];
 }
 
@@ -105,10 +97,8 @@ const BLANK_BUILD: BuildDraft = { builder: "auto", framework: null, installComma
 
 export const initialGit = (): GitDraft => ({ byUrl: false, url: "", urlTried: false, account: null, picked: null, branch: "", rootDir: "", build: BLANK_BUILD, edited: false, detect: { state: "idle" } });
 
-/** A new pick: the build, its detection and the folder start over for the new repository. */
 export const repoPicked = (d: GitDraft, picked: Picked, branch: string): GitDraft => ({ ...d, build: BLANK_BUILD, edited: false, detect: { state: "idle" }, rootDir: "", picked, branch });
 
-/** Continue on the URL view: the typed URL becomes the pick once it reads, else its error shows. */
 export function pickUrl(d: GitDraft): GitDraft {
   const parsed = parseRepo(d.url);
   return parsed ? repoPicked({ ...d, urlTried: false }, { kind: "url", parsed }, "main") : { ...d, urlTried: true };
@@ -118,8 +108,6 @@ export const initialService = (): ServiceDraft => ({ service: "postgres", versio
 export const initialCompose = (): ComposeDraft => ({ text: "", excluded: [], kinds: {} });
 
 export const repoUrlOf = (p: Picked) => (p.kind === "git" ? `https://github.com/${p.repo.fullName}` : p.parsed.url);
-
-// -------------- Step 2 checks --------------
 
 export type Errors = Partial<Record<"branch" | "rootDir" | "dockerfilePath" | "installCommand" | "buildCommand" | "startCommand" | "port" | "image" | "compose" | "name" | "target", string>>;
 
@@ -154,12 +142,7 @@ export function composeErrors(d: ComposeDraft, plan: ComposeResult | null): Erro
   return {};
 }
 
-// -------------- Names and kinds --------------
-
-/**
- * What the source proposes as the app's name, before the operator types one: the first one free in
- * the environment, so a second Postgres arrives as "postgres-2" instead of on an error.
- */
+/** The first name free in the environment, so a second Postgres arrives as "postgres-2" instead of on an error. */
 export function proposedName(source: SourceType | null, git: GitDraft, image: ImageDraft, service: ServiceDraft, taken: ReadonlySet<string>): string {
   if (source === "git" && git.picked) return firstFree(appSlug(git.rootDir.split("/").filter(Boolean).pop() ?? "") || appSlug(git.picked.kind === "git" ? git.picked.repo.name : git.picked.parsed.repo), taken);
   if (source === "image") return firstFree(imageName(image.image.trim()), taken);
@@ -178,12 +161,10 @@ function firstFree(base: string, taken: ReadonlySet<string>): string {
   return base;
 }
 
-/** The kind a repository app starts as: a frontend when its framework serves a site. */
 export function proposedKind(source: SourceType | null, git: GitDraft): RunKind {
   return source === "git" && git.build.framework && FRONTEND_FRAMEWORKS.has(git.build.framework) ? "frontend" : "backend";
 }
 
-/** The composed apps the operator kept, with their kind overrides. */
 export function composeSpecs(d: ComposeDraft, plan: ComposeResult | null): AppSpec[] {
   if (!plan?.ok) return [];
   return plan.plan.apps
@@ -201,9 +182,7 @@ export function nameError(name: string, taken: ReadonlySet<string>, environment:
   return undefined;
 }
 
-// -------------- The request --------------
-
-/** The one app a single source creates. Assumes its step 2 checks passed. */
+/** Assumes its step 2 checks passed. */
 export function singleSpec(source: Exclude<SourceType, "compose">, d: DetailsDraft, git: GitDraft, image: ImageDraft, service: ServiceDraft): AppSpec {
   if (source === "service") {
     return { name: d.name, kind: SERVICE_KIND[service.service], source: { type: "service", ...service }, target: "server" };
@@ -239,7 +218,6 @@ export function singleSpec(source: Exclude<SourceType, "compose">, d: DetailsDra
   };
 }
 
-/** One line naming the source, for the summary on step 3 and the toast. */
 export function sourceLine(source: SourceType, git: GitDraft, image: ImageDraft, service: ServiceDraft, count: number): string {
   if (source === "git" && git.picked) return `${fullName(git.picked)}, ${git.branch || "no branch"}${git.rootDir ? `, ${git.rootDir}` : ""}`;
   if (source === "image") return image.image.trim();
@@ -247,16 +225,11 @@ export function sourceLine(source: SourceType, git: GitDraft, image: ImageDraft,
   return `${count.toLocaleString("en-US")} ${count === 1 ? "service" : "services"} from docker-compose.yml`;
 }
 
-// -------------- Linking a new service --------------
-
 /** The apps a new service can be linked to: the ones that run code in its environment. */
 export const linkable = <A extends { kind: AppKind; environment: string }>(apps: readonly A[], environment: string): A[] =>
   apps.filter((a) => a.environment === environment && LINKABLE_KINDS.has(a.kind));
 
-/**
- * What a conflict means and what "Replace and create" does about it, for the callout. An app's own
- * variable is replaced; a shared one stays for the other apps and the picked app gets its own.
- */
+/** An app's own variable is replaced; a shared one stays for the other apps and the picked app gets its own. */
 export function conflictLine(c: LinkConflict, service: string, environment: string | null): string {
   const own = c.apps.filter((a) => !a.shared).map((a) => a.name);
   const shared = c.apps.filter((a) => a.shared).map((a) => a.name);

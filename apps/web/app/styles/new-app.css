@@ -1,7 +1,4 @@
-/* new-app: the New app dialog (components/new-app): large option cards, then each source's
-   settings, then the shared details step, and at the end the GitHub repository picker
-   (components/git) its GitHub source uses. Small text sits on the popover, so it uses --ink-muted.
-   Picked cards are foundation's surface-key-picked, which already mixes into the dialog's fill. */
+/* Small text sits on the popover, so it uses --ink-muted. */
 
 .na-step {
   display: flex;
@@ -31,18 +28,16 @@
   gap: 16px;
 }
 
-/* A lone field fills the row instead of stranding an empty half. */
 .na-pair:has(> :only-child) {
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* A Select inside a Field fills the field's width. */
 .na-sel {
   display: flex;
   width: 100%;
 }
 
-/* -------------- Option cards -------------- */
+/* Option cards */
 .na-cards {
   display: grid;
   gap: 12px;
@@ -82,8 +77,8 @@
   transition: background-color 150ms var(--ease), box-shadow 150ms var(--ease);
 }
 
-/* Picked is the foundation surface-key-picked; only an unpicked card draws its own ring and hover.
-   The hover is the popover fill, which stays visible on the dark dialog surface. */
+/* Only an unpicked card draws its own ring and hover. The hover is the popover fill, which stays
+   visible on the dark dialog surface. */
 .na-card:not(.surface-key-picked) {
   box-shadow: inset 0 0 0 1px var(--line);
 }
@@ -101,9 +96,7 @@
   color: var(--ink-muted);
 }
 
-/* The source cards stack their copy under a 40px tile, so they read as four equal choices. The
-   rows pack at the top, so every title starts on the same line, and the chevron shares the
-   tile's row instead of dropping into a third one. */
+/* Rows pack at the top, so every title starts on the same line and the chevron shares the tile's row. */
 .na-cards[data-layout="grid"] .na-card {
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto auto;
@@ -132,12 +125,10 @@
   color: var(--ink);
 }
 
-/* Radio cards: picked is the soft blue tint, never a dark outline. */
 .na-choice {
   align-items: center;
 }
 
-/* A card that cannot be picked yet reads dimmed, the way every disabled control does. */
 .na-choice[aria-disabled="true"] {
   cursor: default;
 }
@@ -151,13 +142,12 @@
   opacity: var(--disabled-opacity);
 }
 
-/* The card's radio mark is foundation's .radio ring on a span, which cannot be :checked, so the
-   picked card's mark takes the chosen dot here. */
+/* The card's radio mark is a span, which cannot be :checked, so the chosen dot is set here. */
 .na-radio[data-on] {
   box-shadow: inset 0 0 0 5px var(--blue);
 }
 
-/* -------------- Groups -------------- */
+/* Groups */
 .na-group {
   display: flex;
   flex-direction: column;
@@ -205,7 +195,7 @@
   text-decoration-color: currentColor;
 }
 
-/* -------------- Compose review -------------- */
+/* Compose review */
 .na-yaml {
   min-height: 200px;
   font-size: 13px;
@@ -222,7 +212,6 @@
   min-width: 0;
 }
 
-/* A row inside the dialog: its hover is the popover veil, visible on the dark dialog too. */
 .na-svc {
   display: flex;
   align-items: center;
@@ -304,7 +293,7 @@
   color: var(--ink);
 }
 
-/* -------------- Details step -------------- */
+/* Details step */
 .na-summary {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
@@ -352,7 +341,7 @@
   padding-left: 4px;
 }
 
-/* -------------- Narrow -------------- */
+/* Narrow */
 @media (max-width: 760px) {
   .na-pair,
   .na-cards[data-layout="grid"] {
@@ -396,11 +385,8 @@
   }
 }
 
-/* -------------- Repository picker -------------- */
-/* The GitHub repository list, the picked repository and the URL import from components/git,
-   which the GitHub source of the New app flow uses. */
+/* Repository picker (components/git) */
 
-/* The account and the search on one row, the list under them, links at the foot. */
 .git-pick {
   display: flex;
   flex-direction: column;
@@ -437,7 +423,7 @@
   flex: 1 1 240px;
 }
 
-/* Six rows show, the rest scroll inside the list so the dialog around it stays put. */
+/* The rest scroll inside the list so the dialog around it stays put. */
 .git-list {
   display: grid;
   gap: 2px;
@@ -449,7 +435,6 @@
   list-style: none;
 }
 
-/* Rows inside the dialog take the popover hover fill. */
 .git-row {
   --cols: 32px minmax(0, 1fr) 96px 72px;
   gap: 12px;
@@ -503,7 +488,6 @@
   padding-bottom: 16px;
 }
 
-/* Flush with the fields above it; under an empty state the link centres below its key. */
 .git-pick-foot {
   display: flex;
   flex-wrap: wrap;
@@ -517,7 +501,6 @@
   justify-content: center;
 }
 
-/* Quiet text links: Change, Import from a URL instead, the App permissions page. */
 .git-link {
   padding: 0;
   border: 0;
@@ -543,7 +526,6 @@
   cursor: default;
 }
 
-/* The picked repository in a soft container, with its Change link. */
 .git-picked {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) auto;
@@ -572,8 +554,8 @@
   gap: 16px;
 }
 
-/* Narrow: the language chip drops, so the name keeps its room. The skeleton's template rides in an
-   inline --skel-cols that foundation reads at one class, so this rule outweighs it without !important. */
+/* The skeleton's template rides in an inline --skel-cols that foundation reads at one class, so
+   this rule outweighs it without !important. */
 @media (max-width: 760px) {
   .git-row {
     --cols: 32px minmax(0, 1fr) 72px;
@@ -591,14 +573,12 @@
   }
 }
 
-/* The search keeps its own height in the dialog column. */
 .na-tpl-search {
   display: flex;
   flex: none;
   min-width: 0;
 }
 
-/* Templates: what will run, before the press. Rows stay readable at phone width: long values wrap. */
 .na-tpl-apps {
   display: flex;
   flex-direction: column;
@@ -682,7 +662,6 @@
   }
 }
 
-/* What the read of a repository found, on one line above the build fields. */
 .na-detect {
   display: flex;
   flex-wrap: wrap;

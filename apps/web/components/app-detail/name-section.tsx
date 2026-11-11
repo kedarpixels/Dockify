@@ -11,11 +11,8 @@ import { useCan } from "@/lib/viewer";
 import { ReadOnlyNote, SaveRow, useReportDirty, type DirtyReport } from "./settings-sections";
 import { TabCard } from "./states";
 
-/* The app's name as people read it: the dashboard, notifications, emails and pull request comments.
-   It changes nothing else. The app's own name stays its identity for links between apps, the CLI,
-   preview addresses and its containers, so the card says which name that is. An empty field, or the
-   name itself, goes back to showing the name. The API refuses a name another app of the environment
-   already shows or answers to; that refusal reads on the field. */
+// A display name only: the app's own name stays its identity for links between apps, the CLI,
+// preview addresses and containers. An empty field goes back to showing the name.
 
 /** What a save sends: null shows the app's own name again. */
 const stored = (value: string, name: string): string | null => (value === "" || value === name ? null : value);

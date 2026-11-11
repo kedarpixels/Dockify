@@ -13,7 +13,6 @@ const KPIS: KpiData[] = [
   { icon: "alert", label: "Apps needing attention", value: <Skel w={32} h={22} />, lead: <Skel w={160} /> },
 ];
 
-/** Route loading state for Projects: the real head, KPI strip and toolbar, then three cards of bars. */
 export default function Loading() {
   return (
     <>

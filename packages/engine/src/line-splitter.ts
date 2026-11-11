@@ -2,9 +2,8 @@
 export const MAX_LINE = 16 * 1024;
 
 /**
- * Turns a byte stream into lines without unbounded buffering: a partial line is flushed once it
- * reaches MAX_LINE (a carriage-return progress bar cannot grow a string forever). CR resets count
- * as line breaks so spinners become separate lines rather than one huge one.
+ * Bounded buffering: a partial line is flushed once it reaches MAX_LINE. CR counts as a line break, so a
+ * carriage-return progress bar becomes separate lines, not one huge one.
  */
 export class LineSplitter {
   private partial = "";

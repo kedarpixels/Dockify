@@ -1,13 +1,6 @@
 /**
- * Notification webhook providers: which ones Dockify knows, how a pasted URL is recognised, what
- * each one accepts, and the safe hint shown back for a stored URL.
- *
- * No imports on purpose. The api validates with this module, @dockify/notify formats by it, and
- * the web keeps a byte-identical copy for the add form (apps/web is not a workspace member), which
- * a test keeps equal. Only the global URL parser is used, which browsers and Node share.
- *
- * Detection is advice, never authority: every URL still goes through net-guard on the server
- * (public addresses only, checked again at connect time) before anything is sent to it.
+ * No imports on purpose: the web keeps a byte-identical copy for the add form, which a test keeps equal.
+ * Detection is advice, never authority: every URL still goes through net-guard before anything is sent.
  */
 
 export const WEBHOOK_PROVIDERS = ["discord", "slack", "teams", "google_chat", "telegram", "mattermost", "rocket_chat", "ntfy", "generic"] as const;
@@ -16,13 +9,11 @@ export type WebhookProviderId = (typeof WEBHOOK_PROVIDERS)[number];
 export const isWebhookProvider = (v: unknown): v is WebhookProviderId => typeof v === "string" && (WEBHOOK_PROVIDERS as readonly string[]).includes(v);
 
 export interface WebhookProviderInfo {
-  /** The name the dashboard shows. */
   label: string;
-  /** What the add form asks for, in one line. */
   paste: string;
   /**
-   * The provider only ever lives on its own hosts, so its URL is recognised for sure and a URL of
-   * another provider can never take its type. False for self-hosted products and the generic one.
+   * The provider only lives on its own hosts, so its URL is recognised for sure and no other provider's URL
+   * can take its type. False for self-hosted products and the generic one.
    */
   fixedHost: boolean;
 }
@@ -41,8 +32,6 @@ export const WEBHOOK_PROVIDER_INFO: Readonly<Record<WebhookProviderId, WebhookPr
 
 export const WEBHOOK_URL_MAX = 2048;
 
-// ------------------------------------------------------------------ the URL every provider shares
-
 const INTERNAL_SUFFIXES = [".localhost", ".local", ".internal", ".lan", ".home.arpa", ".localdomain", ".intranet", ".corp", ".private"];
 const LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
 
@@ -60,9 +49,8 @@ function isPlainHostname(host: string): boolean {
 export type WebhookUrlCheck = { ok: true; url: URL } | { ok: false; reason: string };
 
 /**
- * The URL as any webhook may have it: https, a public-looking hostname (never an IP address), no
- * user name or password, no fragment, no spaces or backslashes. The parsed URL is what Dockify
- * stores and posts to, so what the owner sees is what is called.
+ * https, a public-looking hostname (never an IP), no userinfo, fragment, spaces or backslashes.
+ * The parsed URL is what Dockify stores and posts to, so what the owner sees is what is called.
  */
 export function checkWebhookUrl(raw: string): WebhookUrlCheck {
   const text = raw.trim();
@@ -83,8 +71,6 @@ export function checkWebhookUrl(raw: string): WebhookUrlCheck {
   if (!isPlainHostname(host)) return { ok: false, reason: "The URL needs a public hostname" };
   return { ok: true, url };
 }
-
-// ------------------------------------------------------------------ recognising a provider
 
 const DISCORD_HOSTS = new Set(["discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com", "ptb.discordapp.com", "canary.discordapp.com"]);
 const DISCORD_PATH = /^\/api(?:\/v\d{1,2})?\/webhooks\/\d{5,30}\/[\w-]{20,200}$/;
@@ -150,9 +136,8 @@ export function detectWebhook(raw: string): WebhookDetection | null {
 }
 
 /**
- * Why a URL cannot be stored for this provider, or null. A provider that lives on its own hosts
- * takes only its own URL, and an exact URL of such a provider keeps its type, so a message is
- * never formatted for a service that will refuse it. The others take any https URL.
+ * Why a URL cannot be stored for this provider, or null. A fixed-host provider takes only its own URL,
+ * so a message is never formatted for a service that will refuse it.
  */
 export function webhookUrlProblem(provider: WebhookProviderId, raw: string): string | null {
   const checked = checkWebhookUrl(raw);
@@ -178,8 +163,6 @@ export function webhookUrlProblem(provider: WebhookProviderId, raw: string): str
   return null;
 }
 
-// ------------------------------------------------------------------ Telegram
-
 export const telegramEndpoint = (token: string): string => `https://api.telegram.org/bot${token}/sendMessage`;
 
 /** The bot token and, when the URL names one, the chat of a pasted Telegram URL; null for anything else. */
@@ -192,14 +175,11 @@ export function telegramFromUrl(raw: string): { token: string; chatId: string | 
   return { token: m[1]!, chatId: chat && TELEGRAM_CHAT.test(chat) ? chat : null };
 }
 
-// ------------------------------------------------------------------ the hint shown back
-
 const tail = (s: string): string => (s.length >= 8 ? s.slice(-4) : "");
 
 /**
- * The last four characters of the part of a stored URL that works as its password (a token, a
- * signature, a topic), or "" when that part is too short to show any of it safely. The host is
- * shown next to it; nothing else of the URL is ever answered back.
+ * The last four characters of the part of a stored URL that works as its password, or "" when that part
+ * is too short to show safely. Nothing else of the URL but the host is ever answered back.
  */
 export function webhookSecretHint(provider: WebhookProviderId, raw: string): string {
   let u: URL;

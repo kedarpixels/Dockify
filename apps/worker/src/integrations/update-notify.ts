@@ -1,12 +1,6 @@
 /**
- * The update_notify job: "Update available", "Updated to v1.2.0", "Update failed, rolled back to
- * v1.1.3" to email (every admin) and to every enabled notification webhook that takes update
- * notices. The updater enqueues it once the stack is back; it holds no vault, so delivery is the
- * worker's. The bell needs no delivery: the api derives it from the update rows.
- *
- * Email goes first: its idempotency key makes a retry a no-op there. Each webhook then gets its
- * own webhook_send job (integrations/webhooks.ts), so one dead webhook never holds up the others
- * or repeats the email.
+ * The update_notify job. Email goes first (its idempotency key makes a retry a no-op); each webhook
+ * then gets its own webhook_send job, so one dead webhook never holds up the others or repeats the email.
  */
 import { enqueue, type Db, type Prisma, type SecretVault } from "@dockify/db";
 import { updateNotice, type Mailer } from "@dockify/email";
@@ -47,7 +41,6 @@ const TITLE: Record<UpdateNotify["event"], (n: UpdateNotify) => string> = {
 };
 const SEVERITY: Record<UpdateNotify["event"], Severity> = { available: "info", updated: "success", failed: "critical", rolled_back: "critical" };
 
-/** One update notice as every webhook gets it, shaped per provider by @dockify/notify. */
 export function updateMessage(n: UpdateNotify, instanceName: string, url: string | null, jobId: string, now = new Date()): NotifyMessage {
   const fields = [{ name: "Version", value: `v${n.version}` }];
   if (n.from) fields.push({ name: "Before", value: `v${n.from}` });

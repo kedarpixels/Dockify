@@ -5,15 +5,8 @@ import { callJson } from "@/lib/client-api";
 import type { LogPage, LogsResult } from "@/lib/pages/logs";
 import { filterKey, isLiveRange, queryOf, querySearch, type LogFilters, type LogQuery, type RuntimeLogLine } from "./model";
 
-/*
- * The explorer's data: one history page for the filters, older pages on demand, then the live
- * tail over server-sent events. Every answer carries the filter key it was asked for, so a page
- * or a streamed batch that lands after the filters changed is dropped instead of mixed in.
- *
- * `base` is the position of lines[0] in a sequence that only grows at the end and the start, so
- * the viewer can key its chunks by position: a prepend or a trim never re-slices the chunks that
- * stay on screen.
- */
+// Every answer carries the filter key it was asked for, so one that lands after a filter change is
+// dropped. `base` is the position of lines[0], so the viewer can key its chunks by position.
 
 /** The view keeps at most this many lines; past it the oldest go, down to TRIM_TO. */
 const MAX_LINES = 20_000;
@@ -97,7 +90,6 @@ function reduce(f: Feed, a: Action): Feed {
   }
 }
 
-/** One history page through this dashboard's route; a failure carries the route's reason. */
 async function fetchPage(q: LogQuery, cursor: string | null, signal?: AbortSignal): Promise<{ page: LogPage } | { error: string; aborted?: boolean }> {
   const r = await callJson<LogsResult>(`/api/logs?${querySearch(q, { from: q.from, to: q.to, cursor })}`, { signal });
   if (!r.ok) return { error: r.error, aborted: r.aborted };
@@ -117,8 +109,7 @@ export function useLogFeed({ filters, initial, enabled }: { filters: LogFilters;
   // The key the server already loaded, skipped once (and again under a strict mode re-run).
   const seeded = useRef<string | null>(initial ? key : null);
 
-  // A filter change (or Try again) loads the first page again. The server rendered the first set,
-  // so the very first run reuses it and only notes the window it covers.
+  // The server rendered the first set, so the very first run reuses it and only notes the window it covers.
   const load = useEffectEvent((signal: AbortSignal | null) => {
     const query = queryOf(filters, Date.now());
     asked.current = { key, query };
@@ -145,9 +136,7 @@ export function useLogFeed({ filters, initial, enabled }: { filters: LogFilters;
     return () => ctrl.abort();
   }, [key, attempt, enabled]);
 
-  // The live tail opens once the history is in, from its newest line, for relative ranges only.
-  // It knows what is already shown, so a reconnect never shows a line twice. The phase belongs to
-  // one stream: until that stream's first event it reads "connecting", and with no tail "off".
+  // Relative ranges only. The tail knows what is already shown, so a reconnect never shows a line twice.
   const ready = feed.phase === "ready" && feed.key === key;
   const tail = enabled && ready && isLiveRange(filters);
   const [streamTry, setStreamTry] = useState(0);

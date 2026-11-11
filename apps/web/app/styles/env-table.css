@@ -1,6 +1,5 @@
-/* -------------- Variables table, shared by the project and app Variables tabs -------------- */
-/* The table stacks by its own width (the named ev-vars container), so it holds up beside the
-   sidebar at any viewport. */
+/* Variables table, shared by the project and app Variables tabs */
+/* The table stacks by its own width (the ev-vars container), so it holds up beside the sidebar. */
 .ev-vars-wrap {
   container: ev-vars / inline-size;
   display: flex;
@@ -16,8 +15,7 @@
   list-style: none;
 }
 
-/* Key, value, updated, then three 28px keys; a "used at" column joins with ev-var-t. The columns
-   are fixed, so read rows, the edit row and the add row all line up. */
+/* The columns are fixed, so read rows, the edit row and the add row all line up. */
 .ev-var {
   display: grid;
   grid-template-columns: minmax(0, 1fr) round(down, calc((100% - 224px) * 0.64), 1px) 96px 92px;
@@ -35,9 +33,8 @@
   grid-template-columns: minmax(0, 1fr) round(down, calc((100% - 324px) * 0.625), 1px) 96px 88px 92px;
 }
 
-/* A table that mixes apps: the app column is carved out of the key track (0.9 of 2.4 of what the
-   324px of fixed tracks and gaps leave), so value, used at, updated and keys line up with ev-var-t.
-   Where that leaves the key under 168px, the key keeps 168px and the value gives way. */
+/* The app column is carved out of the key track (0.9 of 2.4 of what the 324px of fixed tracks and
+   gaps leave), so the other columns line up with ev-var-t. The key never goes under 168px. */
 .ev-var-t.ev-var-a {
   grid-template-columns: 120px max(168px, round(down, calc((100% - 324px) * 0.375 - 132px), 1px)) minmax(0, 1fr) 96px 88px 92px;
 }
@@ -67,8 +64,7 @@
   white-space: nowrap;
 }
 
-/* Each app's run after the first opens on a hairline in the 4px row gap. A 1px line cannot sit on
-   the gap's half pixel, so it takes the gap's second row. */
+/* A 1px line cannot sit on the 4px gap's half pixel, so it takes the gap's second row. */
 .ev-vars > .ev-var-a[data-start] ~ .ev-var-a[data-start]::before {
   content: "";
   position: absolute;
@@ -91,7 +87,6 @@ li.ev-var:hover {
   color: var(--ink-3);
 }
 
-/* Keys and values in the app's mono face; tags after a key stay in the sans face. */
 .ev-var-key {
   display: flex;
   flex-wrap: wrap;
@@ -140,8 +135,7 @@ li.ev-var:hover {
   min-width: 0;
 }
 
-/* Where a variable is read: build is tinted, runtime stays quiet. Text on the blue tint takes the
-   blue ink, which keeps 4.5:1 on it. */
+/* Text on the blue tint takes the blue ink, which keeps 4.5:1 on it. */
 .ev-target {
   display: inline-flex;
   align-items: center;
@@ -179,7 +173,7 @@ li.ev-var:hover {
   height: 28px;
 }
 
-/* Staged rows: a removed one fades and strikes its key; it keeps its place so Undo stays put. */
+/* A removed row keeps its place so Undo stays put. */
 .ev-var[data-state="removed"] .ev-var-keytext {
   text-decoration: line-through;
   text-decoration-color: var(--bad-ink);
@@ -191,8 +185,6 @@ li.ev-var:hover {
   opacity: 0.5;
 }
 
-/* The inline editor: a soft fill marks it. Its inputs are the compact 32px field (data-size="sm")
-   on the page colour, so they stand off the fill. */
 li.ev-var-edit,
 li.ev-var-edit:hover {
   padding-top: 4px;
@@ -224,9 +216,7 @@ li.ev-var-edit:hover {
   color: var(--bad-ink);
 }
 
-/* -------------- Key column sized to its keys (the staged workbench tables) -------------- */
-/* A key never wraps: it stays on one line with its lock and tag right after it, and one too long
-   for its cell cuts with an ellipsis (the workbench shows the whole key on hover). */
+/* Key column sized to its keys (the staged workbench tables) */
 .ev-vars-fit .ev-var-key {
   flex-wrap: nowrap;
 }
@@ -237,12 +227,8 @@ li.ev-var-edit:hover {
   white-space: nowrap;
 }
 
-/* In columns, .ev-vars-fit is the one grid and the head, the list and every row are subgrids of
-   it, so all rows share one key track: as wide as the longest key asks, never under 168px, capped
-   by the key cell's max-width. The value takes the rest and keeps 184px (hidden dots and a tag)
-   before a key may grow; beside an app column that floor eases to 112px as the table nears 760px,
-   the narrowest it fits in columns. A row's 8px side padding sits inside the two edge tracks,
-   hence 128 for the 120px app cell, 176 for a leading key and 100 for the keys. */
+/* .ev-vars-fit is the one grid and the head, list and rows are subgrids of it, so all rows share
+   one key track. A row's 8px side padding sits inside the two edge tracks, hence 128, 176 and 100. */
 @container ev-vars (width >= 760px) {
   .ev-vars-fit {
     display: grid;
@@ -264,13 +250,12 @@ li.ev-var-edit:hover {
   .ev-vars-fit .ev-var-key {
     max-width: min(320px, round(down, 30cqw, 1px));
   }
-  /* The add row's key input fills the track without widening it. */
   .ev-vars-fit .ev-var-edit .ev-var-key > .field {
     flex: 1 1 0;
     width: 0;
   }
-  /* Text widths are fractional, so where the browser can, each key cell rounds its own width up
-     to a whole pixel and the track, and every column after it, lands on the pixel grid. */
+  /* Text widths are fractional, so each key cell rounds its width up to a whole pixel and every
+     column after it lands on the pixel grid. */
   @supports (width: calc-size(max-content, size)) {
     .ev-vars-fit .ev-var-key:not(:has(> .field)) {
       width: calc-size(max-content, min(round(up, size, 1px), 320px, round(down, 30cqw, 1px)));
@@ -279,9 +264,7 @@ li.ev-var-edit:hover {
   }
 }
 
-/* Narrow: rows stack, the keys stay on the right. "Used at" takes the meta line when shown,
-   otherwise the updated time does. 760px is the narrowest an app table fits in columns, so the
-   table stacks below it. */
+/* 760px is the narrowest an app table fits in columns, so the table stacks below it. */
 @container ev-vars (width < 760px) {
   .ev-var-head {
     display: none;
@@ -316,7 +299,6 @@ li.ev-var-edit:hover {
       "when acts";
   }
   .ev-var-edit > .ev-var-when { display: flex; grid-area: when; justify-content: flex-start; }
-  /* With apps, every row names its app; app and key share the full first line. */
   .ev-var-t.ev-var-a {
     grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-areas:
@@ -333,7 +315,6 @@ li.ev-var-edit:hover {
       "meta meta meta"
       "when when acts";
   }
-  /* A long app name gives way before the key beside it does. */
   .ev-vars-fit .ev-var-app {
     max-width: round(down, 40cqw, 1px);
   }

@@ -6,14 +6,7 @@ import { MenuKey } from "./mobile-nav";
 import { Notifications } from "./notifications";
 import { SecurityBanner } from "./security-release";
 
-/**
- * 56px ruled bar: the page title in its own cell, then a cell of keys (theme, notifications). Its bottom
- * rule continues the sidebar's brand rule. The two cells ride on the page's 1200px rail, so they line
- * up with the content below on wide screens, and the rule carries a node wherever a vertical line
- * meets it: the two rails (the title cell's left edge, the keys cell's right edge) and the two cell
- * borders. The title gives way first on a narrow phone, so the keys always fit. While a security
- * release is pending, its slim banner runs right under the bar on every console page.
- */
+/** The title gives way first on a narrow phone, so the keys always fit. */
 export function Topbar({ trail, notices = null, now = 0 }: { trail: string[]; notices?: Notice[] | null; now?: number }) {
   return (
     <>

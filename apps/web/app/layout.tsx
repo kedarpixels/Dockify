@@ -31,11 +31,10 @@ import "./styles/backups-extras.css";
 import "./styles/server-extras.css";
 import "./styles/icons.css";
 
-/* Geist: everything read or clicked. foundation.css maps --font-sans and --font-mono onto it. */
+/* foundation.css maps --font-sans and --font-mono onto --font-geist. */
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
 
-/* Geist Pixel Square (--font-geist-pixel-square): display type, 18px and up. Only this one face
-   is loaded, so the other pixel faces in the geist package are never preloaded. */
+/* Only this one pixel face is loaded, so the others in the geist package are never preloaded. */
 const GeistPixelSquare = localFont({
   src: "./fonts/GeistPixel-Square.woff2",
   variable: "--font-geist-pixel-square",

@@ -29,25 +29,16 @@ import { intFetch, upsert, type Setter } from "./client";
 import { WebhookMark } from "./webhook-mark";
 import { afterTest } from "./webhook-test";
 
-/*
- * Webhooks: where alerts and update notices go. Each webhook has a name, a type that decides the
- * message format (recognised from the pasted URL, or chosen), and is on or off. Which alerts reach
- * it is set per rule in Alerts. A stored URL, bot token, signing secret or access token never comes
- * back: rows show the host and the last four characters, and changing one means pasting a new one.
- * A generic webhook's signing secret is made by Dockify and shown once, when it is made.
- */
+// A stored URL, token or secret never comes back: rows show the host and the last four characters.
+// A generic webhook's signing secret is made by Dockify and shown once.
 
 /** "Discord, Slack": each type once, in the order the webhooks were added. */
 const typesOf = (list: WebhookRef[]) => [...new Set(list.map((w) => providerLabel(w.provider)))].join(", ");
 
-// -------------------------------------------------------------------------------- the form
-
 type LogoMode = "auto" | "url" | "upload";
 interface Upload {
   name: string;
-  /** The bytes as base64, what the API takes. */
   base64: string;
-  /** A data URL of the same bytes, for the preview tile. */
   src: string;
 }
 
@@ -87,7 +78,6 @@ const draftOf = (w: Webhook | null): Draft => ({
   upload: null,
 });
 
-/** What the URL field says under itself: the type it found, or what to paste. */
 function Detected({ provider, how }: { provider: WebhookProviderId; how: "exact" | "likely" | "fallback" | "chosen" }) {
   const label = providerLabel(provider);
   const text =
@@ -106,7 +96,7 @@ function Detected({ provider, how }: { provider: WebhookProviderId; how: "exact"
   );
 }
 
-/** Reads a picked file for upload, refusing what the API would refuse anyway. */
+/** Refuses what the API would refuse anyway. */
 function readLogo(file: File): Promise<Upload | string> {
   if (file.size > LOGO_MAX_BYTES) return Promise.resolve("Use a logo of 128 KB or less");
   if (file.size === 0) return Promise.resolve("The file is empty");
@@ -154,7 +144,7 @@ function WebhookForm({
   const storedUrl = editing !== null && !d.replacing;
   const typeChanged = editing !== null && provider !== editing.provider;
 
-  // ---- checks, shown once a save was tried (the URL also as soon as it is clearly wrong)
+  // Checks show once a save was tried; the URL's also as soon as it is clearly wrong.
   const urlErr = (() => {
     if (storedUrl && !typeChanged) return null;
     if (!url) {
@@ -175,7 +165,6 @@ function WebhookForm({
   const shown = (e: string | null | false) => (tried && e ? e : null);
   const valid = !urlErr && !tokenErr && !chatErr && !nameErr && !tokenAccessErr && !logoErr;
 
-  // What reaches the endpoint, for a test and for a save.
   const target = (): WebhookInput => ({
     provider,
     ...(url ? { url } : {}),
@@ -247,7 +236,6 @@ function WebhookForm({
     ...WEBHOOK_PROVIDERS.map((p) => ({ value: p, label: providerLabel(p), icon: PROVIDER_ICON[p] })),
   ];
 
-  // The logo the form shows now: a fresh upload, else what is stored.
   const logoPreview = d.upload?.src ?? null;
 
   return (
@@ -440,8 +428,6 @@ function WebhookForm({
   );
 }
 
-// -------------------------------------------------------------------------------- the list
-
 function WebhookRow({ w, now, testing, onTest, onEdit, onRemove }: { w: Webhook; now: number; testing: boolean; onTest: () => void; onEdit: () => void; onRemove: () => void }) {
   return (
     <li className="soft-row int-row" data-hover="true">
@@ -490,7 +476,6 @@ type Loaded = { state: "loading" } | { state: "ready"; list: Webhook[] } | { sta
 
 export function WebhooksCard({ value, onChange, now, preview }: { value: WebhookRef[]; onChange: Setter<WebhookRef[]>; now: number; preview: boolean }) {
   const { elevate } = useStepUp();
-  // Add goes straight to the form when there is nothing to list yet.
   const card = useCrudCard<Webhook>(value.length > 0);
   const { open } = card;
   const [loaded, setLoaded] = useState<Loaded>({ state: "loading" });

@@ -1,8 +1,6 @@
 /**
- * PR feedback for previews, through the GitHub App: ONE sticky comment per pull request and one
- * commit status ("Dockify preview") on the head commit, both updated in place as the preview moves
- * through building, ready, asleep, failed, blocked and deleted. The worker is the only writer; the
- * api and the pipeline queue preview_feedback, and this job renders whatever the row says now.
+ * PR feedback through the GitHub App: one sticky comment per pull request and one commit status on
+ * the head commit, updated in place. The worker is the only writer and renders what the row says now.
  */
 import { appLabel, projects as P } from "@dockify/contracts";
 import type { Db, PreviewStatus, SecretVault, ShownAppIconRow } from "@dockify/db";
@@ -28,9 +26,7 @@ export interface FeedbackView {
   isolation: P.PreviewIsolation;
   /** The URL asks for the project's preview password. The comment says so and never holds the password. */
   passwordProtected?: boolean;
-  /** Empty in a project with one environment, which names none. */
   baseEnvironment: string;
-  /** `icon` is the row's image; null leaves it out, so the comment reads the same with none. */
   apps: Array<{ name: string; url: string | null; icon?: string | null }>;
   dashboardUrl: string | null;
   idleMinutes: number;
@@ -47,11 +43,9 @@ const REASON: Record<string, string> = {
 };
 
 /**
- * A build error (HEALTHCHECK output, buildctl stderr, a `# syntax=` ref) is tenant-controlled and
- * ends up under the Dockify App's identity in a PR comment and a commit status. Collapse it to one
- * line and strip anything that would linkify, @mention or break out of a code span, so a PR author
- * cannot forge a link or mention in the bot's voice. The comment also wraps the result in a code
- * span; this keeps the status description (plain text) safe too.
+ * A build error is tenant-controlled and is posted under the Dockify App's identity. Collapse it to
+ * one line and strip anything that linkifies, mentions or breaks out of a code span, so a PR author
+ * cannot forge a link or mention in the bot's voice. This also keeps the plain text status safe.
  */
 export function safeError(s: string | null | undefined, fallback: string): string {
   if (!s) return fallback;
@@ -64,15 +58,9 @@ export function safeError(s: string | null | undefined, fallback: string): strin
 }
 
 const LOG_LINE_CHARS = 240;
-/** Lines of build output the comment and the email quote. */
 export const LOG_LINES = 12;
 
-/**
- * One line of a stranger's build output, for a code block in the comment or a tile in the email. A
- * code block already defuses markdown, but this text carries the Dockify App's name or the Dockify
- * brand, so it keeps no link, no mention and nothing that could end the block. Parentheses and
- * brackets stay: a build error is hard to read without them.
- */
+/** No link, no mention, nothing that ends the code block; brackets stay so the error stays readable. */
 export function inertLine(s: string): string {
   return s
     // eslint-disable-next-line no-control-regex
@@ -86,20 +74,14 @@ export function inertLine(s: string): string {
     .slice(0, LOG_LINE_CHARS);
 }
 
-/** A stranger's one-liner (a pull request title) with its links removed. */
 export const inertText = (s: string): string => inertLine(s).replace(/\s+/g, " ");
 
-/** How a Dockerfile failure names its place: "Dockerfile:9". */
 const PLACE = /^(Dockerfile[\w.-]*):(\d{1,6})$/;
 /** A failed RUN repeats its whole command in BuildKit's last line; the frame above already shows it. */
 const FAILED_RUN = /failed to solve: process ".*did not complete successfully: exit code: (\d+)/;
-/** Blank code frame lines, "10 |", say nothing. */
 const EMPTY_FRAME = /^\d+ \|\s*$/;
 
-/**
- * The failure as one plain sentence and only the lines worth reading, all safe. The sentence names
- * the place when the output does; our own "buildctl" wording stays out, here and in the status.
- */
+/** Names the place when the output does; our own "buildctl" wording stays out, here and in the status. */
 export function failureSummary(v: Pick<FeedbackView, "error" | "lines">): { sentence: string; lines: string[] } {
   const head = v.error ? inertLine(v.error) : "";
   const ours = /\bbuildctl\b/.test(head);
@@ -115,13 +97,12 @@ export function failureSummary(v: Pick<FeedbackView, "error" | "lines">): { sent
   return { sentence, lines };
 }
 
-/** The failure as a commit status says it: the plain sentence for a build, else the error's own first line. */
 export function failedStatusText(v: Pick<FeedbackView, "error" | "lines">): string {
   const first = v.error?.split(/\r?\n/)[0];
   return `Failed: ${/\bbuildctl\b/.test(first ?? "") ? failureSummary(v).sentence : safeError(first, "see the deploy log")}`;
 }
 
-/** Pure: the commit status for a state. GitHub caps the description at 140 characters. */
+/** GitHub caps the description at 140 characters. */
 export function statusFor(v: FeedbackView): { state: "pending" | "success" | "failure" | "error"; description: string; target: string | null } {
   const url = v.apps.find((a) => a.url)?.url ?? null;
   const cut = (s: string) => (s.length > 140 ? `${s.slice(0, 137)}...` : s);
@@ -150,18 +131,12 @@ const STATE: Partial<Record<PreviewStatus, [string, string]>> = {
   blocked: ["⚪", "Not started"],
 };
 
-/** One row's Actions: the link, or nothing. While a build fails or runs, a link opens the build still serving, and says so. */
 function actionFor(v: FeedbackView, url: string | null): string {
   if (url) return `[${v.status === "ready" ? "Preview" : "Previous build"}](${url})`;
   return v.status === "ready" ? "No public URL" : "";
 }
 
-/**
- * Pure: the sticky comment body: one line, one table with a row per app, what went wrong when
- * something did, and a small note while the preview lives. GitHub mails a comment when it is created
- * and not when it is edited, so the first one waits for a result (firstCommentNow); the commit
- * status says "building" until then. App names are kept out of link and table syntax.
- */
+/** GitHub mails a comment on creation, not on edit, so the first waits for a result (firstCommentNow). */
 export function commentFor(v: FeedbackView): string {
   const [dot, word] = STATE[v.status] ?? ["⚪", "Removed"];
   const state = v.dashboardUrl ? `${dot} [${word}](${v.dashboardUrl})` : `${dot} ${word}`;
@@ -193,7 +168,6 @@ export function commentFor(v: FeedbackView): string {
   return lines.join("\n");
 }
 
-/** Pure: whether a preview with no comment yet gets one now. Building says nothing worth an email, and nobody needs to hear of a preview ending that never had a result. */
 export const firstCommentNow = (status: PreviewStatus): boolean => status === "ready" || status === "failed" || status === "blocked";
 
 export interface FeedbackDeps {
@@ -202,7 +176,6 @@ export interface FeedbackDeps {
   http: HttpClient;
   apiBase: string;
   publicUrl: string | null;
-  /** Signs the rows' icon links; without it a row falls back to the Dockify mark. */
   internalToken?: string | undefined;
 }
 
@@ -216,7 +189,7 @@ export class FeedbackError extends Error {
 
 const REPO = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 
-/** The preview_feedback job. Without a GitHub App installation there is nobody to tell: a no-op. */
+/** Without a GitHub App installation there is nobody to tell: a no-op. */
 export async function runPreviewFeedback(deps: FeedbackDeps, payload: unknown): Promise<void> {
   const id = (payload as { previewId?: unknown } | null)?.previewId;
   if (typeof id !== "string") throw new FeedbackError("preview_feedback payload has no previewId", true);
@@ -245,9 +218,8 @@ export async function runPreviewFeedback(deps: FeedbackDeps, payload: unknown): 
 
   const live = ["building", "ready", "failed"].includes(env.status);
   const failedBuild = env.apps.map((a) => a.deployments[0]).find((d) => d?.status === "failed");
-  // A row shows what the dashboard shows: the app's icon, else its project's, else the Dockify mark.
-  // An SVG icon has no link (mailIconLinks), so the row falls through to the next of those.
-  // Only over https: GitHub's image proxy fetches nothing else.
+  // An SVG icon has no link (mailIconLinks), so the row falls through to the project's icon or the
+  // Dockify mark. Only over https: GitHub's image proxy fetches nothing else.
   const origin = deps.publicUrl && /^https:\/\//.test(deps.publicUrl) ? deps.publicUrl.replace(/\/+$/, "") : undefined;
   const signer = mailIconSigner(deps.internalToken);
   const iconOf = (app: ShownAppIconRow): string | null => {
@@ -259,7 +231,6 @@ export async function runPreviewFeedback(deps: FeedbackDeps, payload: unknown): 
     isolatedDb: env.isolatedDb, isolation: P.previewIsolation(env), passwordProtected: env.project.previewAccess === "password",
     baseEnvironment: env.project.environments.length > 1 ? env.baseEnvironment.name : "",
     // Only what answers gets a link: a first build that failed serves nothing.
-    // Each row names the app as the dashboard shows it, its display name when it has one.
     apps: env.apps.map((a) => ({ name: appLabel(a.app), url: a.app.port !== null && live && a.currentDeploymentId ? `https://${a.hostname}` : null, icon: iconOf(a.app) })),
     dashboardUrl: deps.publicUrl ? `${deps.publicUrl.replace(/\/+$/, "")}/projects/${encodeURIComponent(env.project.slug)}?tab=previews` : null,
     idleMinutes: env.project.previewIdleMinutes, ttlHours: env.project.previewTtlHours,

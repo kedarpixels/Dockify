@@ -1,13 +1,6 @@
 /**
- * The worker's own health: problems that stop some of its jobs while it keeps running. The
- * heartbeat writes them to Instance.workerIssues (the contract's WorkerIssue), where the Server
- * page shows them on the Worker row and the service alert counts the worker as failing.
- *
- * The one there is today is the work folder. Backups, restores and restore tests stage
- * their encrypted files in it; nothing else writes there (builds use their own scratch folder). A
- * worker that cannot write it keeps its heartbeat and every other job, reports the problem, and
- * fails exactly those jobs at once with one message that says how to fix it. It checks again every
- * minute and before each of those jobs, so it recovers as soon as the folder is fixed.
+ * Problems that stop some of the worker's jobs while it keeps running, written to Instance.workerIssues by the
+ * heartbeat. Today: a work folder it cannot write.
  */
 import { open, utimes } from "node:fs/promises";
 import type { Db } from "@dockify/db";
@@ -16,17 +9,15 @@ import { settleBackupRow, settleRestoreTest } from "./data/handlers.ts";
 import { PermanentJobError } from "./errors.ts";
 import type { ClaimedJob } from "./queue.ts";
 
-/** The contract's server.WorkerIssue, which the api parses back (modules/platform/server.ts). A type, so it is a JSON value as it is. */
+/** The contract's server.WorkerIssue, which the api parses back. A type alias, so it is a JSON value as it is. */
 export type WorkerIssue = {
   key: string;
   summary: string;
   message: string;
-  /** ISO time the issue was first seen. */
   since: string;
 };
 
 export const WORK_FOLDER_ISSUE = "work_folder";
-/** The job kinds that stage files in the work folder (data/pipeline.ts). */
 export const WORK_FOLDER_KINDS = ["backup", "restore", "restore_test"] as const;
 
 export class WorkerHealth {
@@ -39,7 +30,6 @@ export class WorkerHealth {
     return prev?.message !== message.slice(0, 500);
   }
 
-  /** True when the issue was there. */
   clear(key: string): boolean {
     return this.#issues.delete(key);
   }
@@ -62,11 +52,9 @@ export interface WorkFolderCheck {
   health: WorkerHealth;
   dir: string;
   log: Logger;
-  /** Null when the folder can be written, else why not. checkWritable unless a test passes its own. */
   check?: (dir: string) => Promise<string | null>;
 }
 
-/** Checks the folder and records the verdict, logging only when it changes. Null when writable. */
 export async function checkWorkFolder(o: WorkFolderCheck): Promise<string | null> {
   const problem = await (o.check ?? checkWritable)(o.dir);
   if (problem === null) {
@@ -87,9 +75,8 @@ const backupIdOf = (payload: unknown): string | null => {
 };
 
 /**
- * The work folder's jobs, each checking the folder first. One that cannot run fails at once and for
- * good (no retry can fix a folder's owner), with the message above on its job and, for a backup or a
- * restore test, on its row, so the page never waits on a row that reads "running".
+ * Wraps the work folder's jobs with a check of the folder. One that cannot run fails permanently at once (no
+ * retry fixes a folder's owner) and marks its backup or restore test row, so no row is left reading "running".
  */
 export function needsWorkFolder<T extends Partial<Record<string, Handler>>>(table: T, o: WorkFolderCheck & { db: Db }): T {
   const out: Partial<Record<string, Handler>> = { ...table };
@@ -115,11 +102,8 @@ export const ALIVE_FILE = "/tmp/dockify-worker-alive";
 export const BEAT_STALE_MS = 120_000;
 
 /**
- * Whether to keep the liveness file fresh. A worker still starting counts as alive, since it waits out
- * a database or Docker that is slow after a reboot, and the first heartbeat has yet to land. After
- * that it is alive while heartbeats reach the database: the check needs its event loop and its
- * database connection both working, which a running process alone does not prove. A false here makes
- * Docker report unhealthy; Docker itself restarts nothing for that, the updater's watchdog does.
+ * Fresh while starting, then only while heartbeats reach the database, which proves the event loop and the
+ * connection both work. False makes Docker report unhealthy; the updater's watchdog does the restart.
  */
 export function aliveNow(o: { booted: boolean; lastBeatMs: number | null; nowMs: number }): boolean {
   return !o.booted || o.lastBeatMs === null || o.nowMs - o.lastBeatMs < BEAT_STALE_MS;
@@ -138,7 +122,6 @@ export class AliveFile {
   beat(nowMs = Date.now()): void {
     this.#lastBeatMs = nowMs;
   }
-  /** Updates the file's time when alive. A failure here only reads as unhealthy later. */
   async touch(nowMs = Date.now()): Promise<void> {
     if (!aliveNow({ booted: this.#booted, lastBeatMs: this.#lastBeatMs, nowMs })) return;
     try {
@@ -151,7 +134,6 @@ export class AliveFile {
   }
 }
 
-/** The heartbeat: liveness for the Server page and the worker-down rule, with the issues this worker has now. */
 export function heartbeat(db: Db, health: WorkerHealth, now = new Date()) {
   return db.instance.updateMany({ where: { id: 1 }, data: { workerSeenAt: now, workerIssues: health.list() } });
 }

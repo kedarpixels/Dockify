@@ -26,5 +26,4 @@ export const SYSTEM_NAV: NavItem[] = [
 /** A nav entry is current on its own page and on any page under it; Overview only on "/". */
 export const isNavActive = (path: string, href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`));
 
-/** The one docs destination, for every "Docs" link in the dashboard (account menu, Settings nav). */
 export const DOCS_URL = "https://dockify.sh/docs";

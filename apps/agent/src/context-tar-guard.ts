@@ -1,9 +1,6 @@
 /**
- * Unpacks a build's context into a fresh folder, checking every entry first. Repositories hold
- * symlinks, so a link is allowed as an entry; nothing may be written through one, and no path may leave
- * the folder. Hard links, devices and FIFOs are refused. Reads the ustar and pax form
- * packages/engine/src/context-tar.ts writes, and nothing else. insideCheckout (engine) confines what a
- * build reads afterwards, measured from the repository's folder, which api.ts holds to be no link.
+ * Unpacks a build context into a fresh folder, checking every entry first. A symlink may be an entry, but
+ * nothing is written through one and no path leaves the folder. Hard links, devices and FIFOs are refused.
  */
 import { open, mkdir, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -38,7 +35,6 @@ function checksumOk(h: Buffer): boolean {
   return sum === octal(h.subarray(148, 156));
 }
 
-/** The parts of a clean relative path, or a refusal. */
 function cleanPath(name: string): string[] {
   if (!name || name.length > MAX_NAME || name.startsWith("/") || name.includes("\\") || name.includes("\0")) throw new ContextTarError(`tar entry ${JSON.stringify(name).slice(0, 200)} is not a relative path`);
   const parts = name.replace(/^(?:\.\/)+/, "").replace(/\/+$/, "").split("/");

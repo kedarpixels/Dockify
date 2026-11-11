@@ -1,21 +1,7 @@
 /**
- * The preview half of the deploy engine. A preview app is NOT its base app: it gets its own
- * container (never the app's canonical name or DNS alias), its own route file (pv-<id>), low
- * resource limits from the project's preview settings, no volumes, no added capabilities, and an
- * env built from the base environment:
- *
- *   same-repo PR, base not production
- *                  the base app's resolved env (linked references resolve to the base
- *                  environment's services, so the container joins the base environment network)
- *   same-repo PR, base production
- *                  only plain values, on a network of its own, unless the project owner allowed
- *                  production's secrets and services (P.previewIsolation). Pushing to a branch is not
- *                  enough to read them. An app that needs them fails, and the preview says so.
- *   fork PR        only plain values: no secret and no linked credential ever reaches fork code,
- *                  and the container runs on the shared fork network, which reaches no service
- *   isolated DB    a temporary Postgres per preview replaces DATABASE_URL and the PG* keys
- *
- * Labels tie every container to its preview so the reconcile can remove anything whose row is gone.
+ * The preview half of the deploy engine. A preview app is NOT its base app: its own container and route
+ * file, no volumes, no added capabilities. No secret or linked credential ever reaches fork code, and a
+ * same-repo preview of production gets only plain values unless the owner allowed more (P.previewIsolation).
  */
 import { randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -46,7 +32,6 @@ export const PREVIEW_LABEL = {
 export const FORK_NETWORK = "dockify-pv-forks";
 /** A same-repo preview kept out of production has a network to itself and its database, removed with it. */
 export const previewNetwork = (envId: string) => `${PREVIEW_NETWORK_PREFIX}${envId}`;
-/** The network a preview's containers belong on. */
 export function networkOf(isolation: P.PreviewIsolation, envId: string, baseEnvironmentId: string): string {
   return isolation === "fork" ? FORK_NETWORK : isolation === "own" ? previewNetwork(envId) : envNetwork(baseEnvironmentId);
 }
@@ -107,9 +92,9 @@ export async function loadPreviewContext(db: Db, pdId: string): Promise<PreviewC
 }
 
 /**
- * Pure: the env a preview runs with, at build and at run time. Anything but a preview sharing its base
- * loses every secret; one kept out of production loses the database keys too, marked secret or not, so a
- * plain DATABASE_URL cannot reach real data; an isolated DB replaces them.
+ * Pure: the env a preview runs with. Anything but a preview sharing its base loses every secret. One kept
+ * out of production loses the database keys too, marked secret or not, so a plain DATABASE_URL cannot reach
+ * real data.
  */
 export function previewVars(vars: ResolvedVar[], ctx: Pick<PreviewContext, "isolation" | "prNumber" | "hostname">, db: { url: string; host: string; port: number; user: string; password: string; database: string } | null): ResolvedVar[] {
   let out = ctx.isolation === "base" ? [...vars] : vars.filter((v) => !v.isSecret);
@@ -133,15 +118,9 @@ export function previewVars(vars: ResolvedVar[], ctx: Pick<PreviewContext, "isol
 
 const envOf = (info: ContainerInfo, key: string): string | null => info.Config.Env?.find((e) => e.startsWith(`${key}=`))?.slice(key.length + 1) ?? null;
 
-/** The tag a preview database runs, pinned per project on its first pull (previewDbImage). */
 export const PREVIEW_DB_IMAGE = "postgres:16-alpine";
 
-/**
- * The preview database's image, resolved the way a managed service's is (data/images.ts): the tag
- * pulled once, the digest it resolved to recorded on the project, and that digest run by every later
- * preview database of the project, pulled again by digest only if it left this server. No digest is
- * written in source.
- */
+/** Resolved like a managed service's image (data/images.ts): pulled once, its digest recorded on the project. */
 export async function previewDbImage(db: Db, docker: DockerApi, projectId: string, log: DeployLog, signal: AbortSignal): Promise<string> {
   const row = await db.project.findUnique({ where: { id: projectId }, select: { previewDbImage: true } });
   const port: ImagePort = {
@@ -162,10 +141,8 @@ export async function previewDbImage(db: Db, docker: DockerApi, projectId: strin
 }
 
 /**
- * The preview's throwaway Postgres: small limits, the password generated here and kept only in the
- * container's own config, never in the database. Its data sits on a volume named for the preview,
- * never the anonymous one the image would otherwise get, so the volume survives the preview's sleep
- * and teardown can name it: removePreviewDbVolume, and the reconcile for one a crash left behind.
+ * The password is generated here and kept only in the container's own config. The data sits on a volume named
+ * for the preview, never an anonymous one, so teardown and the reconcile can name it.
  */
 export async function ensurePreviewDb(db: Db, docker: DockerApi, ctx: PreviewContext, log: DeployLog, signal: AbortSignal) {
   // The fork network may not exist yet: its first container can be this database.
@@ -230,17 +207,14 @@ export interface PreviewSwapDeps {
   proxyContainer: string;
   dashboardHost: string;
   probe?: Partial<ProbeDeps>;
-  /** Whether the host's certificate is trusted yet. Left out where the edge is not this server's (a tunnel). */
   certificateReady?: CertificateCheck;
 }
 
 export type CertificateCheck = (hostname: string) => Promise<boolean>;
 
 /**
- * With per-host HTTP-01 a new route has only the proxy's default certificate until the first order
- * finishes, usually within half a minute, and "Ready" with a link that warns in a browser is not
- * ready. This waits for the good one, so what the PR comment says is true when it is posted. A
- * certificate that does not come stops nothing: the app is up, and the log says what is missing.
+ * With per-host HTTP-01 a new route has only the proxy's default certificate until the first order finishes,
+ * and a link that warns in a browser is not ready. A certificate that does not come stops nothing.
  */
 export async function waitForCertificate(hostname: string, ready: CertificateCheck, log: DeployLog, signal: AbortSignal, o: { timeoutMs?: number; everyMs?: number } = {}): Promise<boolean> {
   const deadline = Date.now() + (o.timeoutMs ?? 90_000);
@@ -255,7 +229,6 @@ export async function waitForCertificate(hostname: string, ready: CertificateChe
   }
 }
 
-/** The containerSpec input of a preview container: preview limits, no volume, no added capability. */
 export function previewContainerInput(app: Pick<PreviewApp, "port" | "startCommand"> & Partial<PreviewApp>, ctx: PreviewContext, o: { name: string; imageId: string; env: Record<string, string>; deploymentId: string }): ContainerInput {
   return {
     name: o.name,
@@ -287,10 +260,8 @@ export function previewContainerInput(app: Pick<PreviewApp, "port" | "startComma
 }
 
 /**
- * A preview's release one-off: the preview's isolation for code that may be a fork's. The app's own
- * builder (appContainerInput) knows nothing of previews and would put it on the base environment's
- * network with the app's capabilities, sysctls and limits. Labelled so the preview's sweep owns it
- * if a crash leaves it behind.
+ * A preview's release one-off gets the preview's isolation, since its code may be a fork's: the app's own
+ * builder would put it on the base environment's network with the app's capabilities and limits.
  */
 export function previewReleaseInput(ctx: PreviewContext, o: { name: string; imageId: string; env: Record<string, string>; deploymentId: string; command: string }): ContainerInput {
   const base = previewContainerInput({ port: null, startCommand: null }, ctx, o);
@@ -309,11 +280,7 @@ export const ensurePreviewNetwork = (docker: DockerApi, ctx: Pick<PreviewContext
     ...(ctx.isolation === "fork" ? { [PREVIEW_LABEL.role]: "preview-forks" } : ctx.isolation === "own" ? { [PREVIEW_LABEL.role]: "preview-network", [PREVIEW_LABEL.env]: ctx.envId } : {}),
   });
 
-/**
- * Start the new container, gate on readiness, point the route at it, then remove the older
- * containers of this preview app. A failure removes only the new container; whatever served keeps
- * serving.
- */
+/** A failure removes only the new container; whatever served keeps serving. */
 export async function previewSwap(app: PreviewApp, ctx: PreviewContext, deploymentId: string, imageId: string, env: Record<string, string>, deps: PreviewSwapDeps, signal: AbortSignal): Promise<{ containerId: string }> {
   const { docker, log } = deps;
   await ensurePreviewNetwork(docker, ctx);
@@ -368,18 +335,13 @@ export async function previewSwap(app: PreviewApp, ctx: PreviewContext, deployme
   return { containerId: id };
 }
 
-/** The preview's status from its apps' newest deployments: one building makes it building, one failed makes it failed. */
 export function previewStatusOf(latest: Array<string | null>): "building" | "ready" | "failed" {
   if (latest.some((s) => s === null || s === "queued" || s === "building" || s === "deploying" || s === "cancelling")) return "building";
   if (latest.some((s) => s === "failed" || s === "cancelled")) return "failed";
   return "ready";
 }
 
-/**
- * The first line worth showing of a build error, without the words that introduce the quoted output
- * ("Its last lines:", build.ts). Those lines stay on the deployment; the comment and the email read
- * them from there (failureLines), since a sentence that promises lines must not stand alone.
- */
+/** The first line worth showing of a build error. The quoted lines stay on the deployment (failureLines). */
 export function firstErrorLine(error: string | null): string | null {
   if (!error) return null;
   const line = error.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? null;
@@ -387,17 +349,14 @@ export function firstErrorLine(error: string | null): string | null {
   return line.replace(/\s*Its last lines:\s*$/i, "").slice(0, 300) || null;
 }
 
-/** The quoted output of a deployment's error: every line after the first. */
 export function failureLines(error: string | null): string[] {
   if (!error) return [];
   return error.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(1);
 }
 
 /**
- * Pure: whether this settle emails. A ready preview tells once, then only again after a failure, so
- * a push that merely updates it sends nothing. A real failure tells once per commit; a fork's, once
- * until it recovers, so a stranger cannot mail the admins with every failing push. A cancelled build
- * is not a failure, and a preview still building decides nothing.
+ * Pure: whether this settle emails. A ready preview tells once, then only after a failure. A fork's failure
+ * tells once until it recovers, so a stranger cannot mail the admins with every failing push.
  */
 export function previewNoticeFor(
   status: "building" | "ready" | "failed",
@@ -409,10 +368,7 @@ export function previewNoticeFor(
   return v.notifiedKey === key ? null : { state: "failed", key };
 }
 
-/**
- * After a preview deployment settles: the preview's status from its apps, the first error line,
- * and a PR comment update. A preview that is closing, closed or asleep keeps its status.
- */
+/** A preview that is closing, closed or asleep keeps its status. */
 export async function settlePreview(db: Db, envId: string): Promise<void> {
   await db.$transaction(async (tx) => {
     const env = await tx.previewEnv.findUnique({

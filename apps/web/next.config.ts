@@ -3,10 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
-  // The transactional emails load the Geist faces with @font-face from this dashboard's origin (mail
-  // clients and the sandboxed preview iframe). A font fetch is CORS-gated, so the two woff2 files
-  // answer any origin. The names are not versioned, so they cache for a day and then revalidate
-  // rather than being pinned as immutable.
+  // Emails load the Geist faces from this origin and a font fetch is CORS-gated, so the woff2 files answer any origin.
+  // Their names are not versioned, so they cache for a day and revalidate instead of being immutable.
   async headers() {
     return [
       {

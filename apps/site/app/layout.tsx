@@ -15,14 +15,12 @@ import "./styles/docs.css";
 import "./styles/landing.css";
 import "./styles/pages.css";
 
-/* Geist: everything read or clicked. foundation.css maps --font-sans onto it. */
+/* foundation.css maps --font-sans onto --font-geist. */
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
 
-/* Geist Mono: code, commands and paths, and the labels in the line drawings (--font-mono). */
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
-/* Geist Pixel Square (--font-geist-pixel-square): display type, 18px and up. It is preloaded, so it
-   blocks for its short load instead of painting the headline in a fallback face and reflowing. */
+/* Preloaded, so it blocks for its short load instead of painting the headline in a fallback face and reflowing. */
 const GeistPixelSquare = localFont({
   src: "./fonts/GeistPixel-Square.woff2",
   variable: "--font-geist-pixel-square",
@@ -32,8 +30,6 @@ const GeistPixelSquare = localFont({
   adjustFontFallback: false,
 });
 
-/* Pages set their own title through the template. Icons come from app/icon.png, apple-icon.png
-   and favicon.ico; social cards from each route's opengraph-image.tsx. */
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: { default: SITE_TITLE, template: "%s | Dockify" },

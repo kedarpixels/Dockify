@@ -5,10 +5,8 @@ import { isPreviewVercelApp } from "./preview-vercel";
 import type { ActorRef, AppKind, AppStatus, DeploymentStatus, GitAuthor, Overview, RecentDeployment, Resource } from "./types";
 import { seeded } from "@/lib/preview-random";
 
-// Sample data for the DOCKIFY_PREVIEW design build. Shaped exactly like GET /api/v1/overview so the
-// UI exercised here is the UI that ships; timestamps are relative to `now` so "12m ago" stays true.
-// `now` is floored to the minute, so every module that builds the fixture within the same minute
-// (the layout, a page loader, the poll route) gets identical timestamps.
+// Sample data for the DOCKIFY_PREVIEW build, shaped like GET /api/v1/overview. `now` is floored to
+// the minute, so every module that builds the fixture in the same minute gets identical timestamps.
 
 const GB = 1024 ** 3;
 
@@ -27,7 +25,7 @@ const deployAuthor = (i: number): GitAuthor => {
   return { name: login, login, avatarUrl: login === PREVIEW_OWNER_GITHUB ? PREVIEW_OWNER_AVATAR : null, isActor: true };
 };
 
-/** Rows that are not plain pushes, by the row's sha: a Deploy press still to find its commit, a member's redeploy of someone's commit, a commit with no GitHub account, an old row with no author. */
+/** Rows that are not plain pushes, keyed by sha. */
 const ODD_ROWS: Record<string, Partial<RecentDeployment>> = {
   e44c1a0: { trigger: "manual", commit: null, branch: null, message: null, actor: PREVIEW_OWNER, author: null },
   "41b7a2e": { trigger: "redeploy", actor: PREVIEW_OWNER, author: { name: "lenahart", login: "lenahart", avatarUrl: null, isActor: false } },
@@ -274,11 +272,8 @@ function daySeed(date: string) {
   return h % 233280;
 }
 
-/**
- * One day of preview deployments, newest first. The count and failures match that day's
- * `deployTrend` row from `buildPreviewOverview(now)`, and every row reuses the fixture's apps and
- * commit messages, so the heatmap and its day panel always agree. Days outside the trend are empty.
- */
+/** One day of preview deployments, newest first. Count and failures match that day's `deployTrend`
+ * row, so the heatmap and its day panel always agree. */
 export function buildPreviewDay(date: string, at: Date): RecentDeployment[] {
   const now = toMinute(at);
   const overview = buildPreviewOverview(now);

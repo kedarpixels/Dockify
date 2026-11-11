@@ -13,7 +13,6 @@ const KPIS: KpiData[] = [
   { icon: "clock", label: "Build time", value: <Skel w={56} h={22} />, lead: <Skel w={128} /> },
 ];
 
-/** Route loading state: the real head, the KPI strip, the toolbar and the feed's rows at their real sizes. */
 export default function Loading() {
   return (
     <>

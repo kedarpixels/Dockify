@@ -20,12 +20,7 @@ import { intFetch } from "./client";
 import { useStepUp } from "@/components/step-up/step-up";
 import { VercelImportDialog, type ImportTarget } from "./vercel-import";
 
-/*
- * Vercel: a personal access token reads the projects still hosted there, so their variables and
- * domains can move here, and it follows the deployments of the projects apps are linked to. Connecting
- * is two steps: the API checks the token and lists its teams, then the operator picks the scope and
- * the token is stored.
- */
+/* Connecting is two steps: the API checks the token and lists its teams, then the operator picks the scope. */
 
 const PERSONAL = "personal";
 
@@ -108,7 +103,7 @@ function ConnectForm({ onDone, onCancel, preview, current }: { onDone: (v: Verce
   );
 }
 
-/** How often the mirror reads Vercel with no webhook; worker/integrations/vercel-mirror.ts says the same. */
+/** Must match the mirror's interval in worker/integrations/vercel-mirror.ts. */
 const POLL_WORDS = "every 2 minutes";
 
 function webhookSub(w: VercelWebhookState | undefined): string {
@@ -120,7 +115,6 @@ function webhookSub(w: VercelWebhookState | undefined): string {
   return `Off. Dockify polls Vercel ${POLL_WORDS}, so a deployment can take that long to show. Register adds one webhook to your Vercel team, the only thing Dockify adds there for an app that follows. Webhooks need a Pro or Enterprise team.`;
 }
 
-/** The two ways deployments stay current: the mirror's last read, and the webhook that makes it instant. */
 function DeploymentSync({ value, onChange, now, preview }: { value: VercelIntegration; onChange: (v: VercelIntegration) => void; now: number; preview: boolean }) {
   const { elevate } = useStepUp();
   const [busy, setBusy] = useState<"sync" | "webhook" | null>(null);

@@ -11,11 +11,7 @@ import { localDestination, settle, withNext } from "./util";
 
 export type LoginReason = "expired" | "signed-out";
 
-/**
- * /login: email and password. A second factor, when on, follows at /login/verify. With email set
- * up the foot link is Forgot password (an emailed link); without it, Lost access goes to /recover,
- * where whoever runs the server resets the account over SSH.
- */
+/** With email set up the foot link is Forgot password; without it, Lost access goes to /recover. */
 export function LoginView({
   instanceName,
   next,

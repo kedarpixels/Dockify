@@ -9,27 +9,15 @@ import type { IntegrationsSummary } from "@/lib/pages/integrations";
 import type { UpdateMode } from "@/lib/pages/server-backups";
 import { SECTION_GROUPS, type SectionId } from "./sections";
 
-/*
- * The Settings sub-nav. Each group opens on a ruled 36px label row (12px muted ink, a hairline under
- * it across the nav column); groups are split by that same rule. Nodes sit only where the frame
- * crosses the column rule: the head rule above and the band below. The group lines meet it in plain
- * T joins, like the content column's card heads beside them. Rows are set like the app sidebar
- * beside it: 36px, an 18px icon, the label, then a quiet tabular meta on the right (member count,
- * integrations connected, update policy, token count, two-factor on or off). Hover takes the soft
- * fill; the selected row keeps it, with a blue icon and a 500 label. A ruled footer carries the
- * version (when the build reports one) and the docs. Narrow pages never see this; they get the
- * section dropdown in the content column.
- */
+/* Wide pages only: narrow ones get the section dropdown in the content column. */
 
 interface NavMeta {
   text: string;
-  /** A small round dot before the text (two-factor on or off). */
   tone?: "ok" | "idle";
   /** Read after the visible text, never instead of it, so the name starts with what is shown ("Off, two-factor"). */
   sr?: string;
 }
 
-/** Integrations that count as set up, out of the seven cards. */
 function connected(i: IntegrationsSummary, emailOn: boolean): number {
   const c = i.connected;
   if (c) return [c.github, c.vercel, c.cloudflare, c.registries, c.storage, c.webhooks, c.email].filter(Boolean).length;
@@ -44,7 +32,6 @@ function connected(i: IntegrationsSummary, emailOn: boolean): number {
   ].filter(Boolean).length;
 }
 
-/** The right-hand meta per section, or nothing when the data is not there to say it. */
 export function navMeta(data: SettingsData | null, integrations: IntegrationsSummary, emailOn: boolean, updates: UpdateMode | null): Partial<Record<SectionId, NavMeta>> {
   const n = connected(integrations, emailOn);
   const meta: Partial<Record<SectionId, NavMeta>> = { integrations: { text: `${n} of 7`, sr: " connected" } };

@@ -4,29 +4,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ConfirmDialog } from "./dialog";
 
-/*
- * The one unsaved-changes guard. While `dirty`, closing or reloading the tab gets the browser's
- * own question, and leaving the page asks "Leave without saving" or "Stay" first: a click on an
- * in-app link (caught in the capture phase, before Next routes it), and a navigation from code that
- * asks `claimLeave` before it pushes (the command menu, the security release popup). Render what
- * the hook returns once, inside the form's card.
- *
- *   const guard = useLeaveGuard(dirty);
- *   return <section>...{guard}</section>;
- *
- * A link leaves when its path or its query differs: the detail pages keep the open tab in `?tab=`,
- * so a link to the same page without it would still unmount the form; only a change of hash stays.
- * `ignoreQuery` is for a page that keeps every section mounted (Settings, `?section=`), where a
- * change of query never drops an edit.
- */
+// A link leaves when its path or query differs (detail pages keep the open tab in `?tab=`); only a
+// hash change stays. `ignoreQuery` is for a page that keeps every section mounted (Settings).
 
 type Guard = (href: string) => boolean;
 const guards = new Set<Guard>();
 
-/**
- * For code that navigates with router.push: true when a page holding unsaved changes took the
- * navigation over (it is asking now, and goes on itself if the answer is Leave), false to go ahead.
- */
+/** For code that navigates with router.push: true when a page with unsaved changes took the navigation over and goes on itself on Leave. */
 export function claimLeave(href: string): boolean {
   for (const g of guards) if (g(href)) return true;
   return false;

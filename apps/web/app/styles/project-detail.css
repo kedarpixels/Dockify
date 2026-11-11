@@ -1,9 +1,4 @@
-/* The project page (/projects/[slug]) and the app page (/apps/[id]): the head and its lead, the
-   section strip, the app overview (usage, latest deployment, runtime), the settings forms and the
-   danger zone, the runtime log, and the write kit's switch and checkbox rows. App cards are the
-   Projects page's card (projects.css), so a card reads the same on both pages. */
-
-/* -------------- Head -------------- */
+/* Head */
 .pd .shead-title {
   min-width: 0;
   max-width: 100%;
@@ -67,8 +62,7 @@ a.pd-repo:hover {
   color: var(--ink-3);
 }
 
-/* The open section (a TabPanel; the section tabs above it are the shared Tabs in foundation.css). Layouts inside it that depend on its width measure it, not the window, so a
-   collapsed sidebar counts. */
+/* Layouts inside the panel measure it, not the window, so a collapsed sidebar counts. */
 .pd-panel {
   container: pd-panel / inline-size;
   display: flex;
@@ -86,7 +80,6 @@ a.pd-repo:hover {
   border-top: 1px solid var(--line);
 }
 
-/* Card head actions: one group at the end of the head, wrapping under the title on a phone. */
 .pd-hd-acts {
   display: flex;
   flex-wrap: wrap;
@@ -97,7 +90,6 @@ a.pd-repo:hover {
   min-width: 0;
 }
 
-/* A mono value with its copy key, right aligned in the runtime list. */
 .pd-copytext {
   display: inline-flex;
   align-items: center;
@@ -109,7 +101,7 @@ a.pd-repo:hover {
   color: var(--ink);
 }
 
-/* The App ID stays on one line and cuts with an ellipsis; its copy key carries the full value. */
+/* Truncates on one line; the copy key carries the full value. */
 .pd-id {
   max-width: 100%;
 }
@@ -118,13 +110,12 @@ a.pd-repo:hover {
   min-width: 0;
 }
 
-/* Emphasis inside a callout: the medium weight in ink, never the browser bold. */
 .pd-strong {
   font-weight: 500;
   color: var(--ink);
 }
 
-/* -------------- App cards -------------- */
+/* App cards */
 .pd-app-sub {
   display: flex;
   align-items: center;
@@ -157,7 +148,6 @@ a.pd-repo:hover {
   color: var(--ink);
 }
 
-/* Resource pips: the projects page's app pips, lit up to the share of the limit in use. */
 .pd-res-row {
   display: flex;
   align-items: center;
@@ -183,14 +173,13 @@ a.pd-repo:hover {
   background: var(--line-strong);
 }
 
-/* Code fields in the app's mono face (Geist with tabular figures). */
 .pd-mono {
   font-family: var(--font-mono);
   font-size: 13px;
   letter-spacing: 0;
 }
 
-/* -------------- Forms -------------- */
+/* Forms */
 .pd-form {
   display: flex;
   flex-direction: column;
@@ -218,7 +207,6 @@ a.pd-repo:hover {
   padding: 0;
 }
 
-/* The muted mark after an optional field's label. */
 .pd-opt {
   margin-left: 8px;
   font-weight: 400;
@@ -231,12 +219,10 @@ a.pd-repo:hover {
   gap: 16px;
 }
 
-/* A lone field fills the row instead of stranding an empty half. */
 .pd-pair:has(> :only-child) {
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* A field with a glyph inside its start, the branch fields. */
 .pd-lead-field {
   position: relative;
   display: block;
@@ -265,8 +251,7 @@ a.pd-repo:hover {
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
-/* Checkbox rows (CheckRow: the New project popup's environments, the preview options). The box is
-   the global checkbox in foundation.css; it only drops 2px here so it centres on the 20px title line. */
+/* The global checkbox drops 2px here so it centres on the 20px title line. */
 .pd-check {
   align-items: flex-start;
   cursor: pointer;
@@ -282,9 +267,8 @@ a.pd-repo:hover {
   gap: 12px;
 }
 
-/* -------------- Danger zone -------------- */
-/* A calm ruled box the width of the settings form; only the action carries red, as text. The cap
-   sits on the padded block, as .pd-form does, so the box lines up with every field above it. */
+/* Danger zone */
+/* The cap sits on the padded block, as .pd-form does, so the box lines up with every field above it. */
 .pd-danger {
   max-width: 720px;
   padding: 24px var(--gutter) 32px;
@@ -314,8 +298,7 @@ a.pd-repo:hover {
   flex: none;
 }
 
-/* -------------- App overview -------------- */
-/* Usage runs the full width with CPU and memory side by side; nothing stretches it to a neighbour. */
+/* App overview */
 .pd-usage .meters {
   flex-direction: row;
 }
@@ -338,7 +321,6 @@ a.pd-repo:hover {
   height: 56px;
 }
 
-/* The latest deployment and the runtime facts: two equal columns, each as tall as its content. */
 .pd-ov-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -375,7 +357,7 @@ a.pd-repo:hover {
   text-align: right;
 }
 
-/* -------------- Runtime logs -------------- */
+/* Runtime logs */
 .pd-log {
   max-height: 480px;
   padding: 12px var(--gutter) 16px;
@@ -411,9 +393,7 @@ a.pd-repo:hover {
   color: var(--bad-ink);
 }
 
-/* -------------- Responsive -------------- */
-/* The latest deployment and the runtime facts stack once the panel is too narrow for two columns
-   of deployment row and facts. */
+/* Responsive */
 @container pd-panel (max-width: 840px) {
   .pd-ov-pair {
     grid-template-columns: minmax(0, 1fr);
@@ -425,7 +405,6 @@ a.pd-repo:hover {
 }
 
 @media (max-width: 760px) {
-  /* The head reads title, then its facts, then the actions, instead of putting the keys between them. */
   .pd .shead {
     display: flex;
     flex-direction: column;
@@ -476,7 +455,6 @@ a.pd-repo:hover {
 }
 
 @media (max-width: 520px) {
-  /* Card heads: the actions drop under the title, and the sub line wraps instead of cutting. */
   .pd .card-hd:has(.ctitle):has(> .btn, > .pd-hd-acts) {
     flex-wrap: wrap;
   }

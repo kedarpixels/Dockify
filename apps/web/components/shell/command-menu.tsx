@@ -25,11 +25,8 @@ interface Entry {
   alias?: string;
   href: string;
   icon?: IconName;
-  /** Projects show their icon and their state. */
   project?: { slug: string; tone: Tone };
-  /** Apps show their icon. */
   app?: { id: string; kind: AppKind };
-  /** Apps show their environment tag. */
   env?: string;
   /** Recent rows carry the id of the entry they repeat. */
   key?: string;
@@ -54,11 +51,7 @@ function rememberRecent(id: string) {
   }
 }
 
-/**
- * Ctrl K (Cmd K on Apple platforms). A modal over the shell: the page behind leaves the keyboard
- * and the accessibility tree while it is open. Closing gives focus back to whatever opened it;
- * `onNavigate` hears a pick's destination first, so the shell can land focus on the next page.
- */
+/** Closing gives focus back to whatever opened it. `onNavigate` hears a pick's destination first, so the shell can land focus on the next page. */
 export function CommandMenu({ data, onClose, onNavigate }: { data: ShellData; onClose: () => void; onNavigate: (href: string) => void }) {
   const router = useRouter();
   const mod = useModKey();
@@ -167,7 +160,6 @@ export function CommandMenu({ data, onClose, onNavigate }: { data: ShellData; on
     if (e.key === "Tab") e.preventDefault();
     else if (e.key === "ArrowDown") {
       e.preventDefault();
-      // Arrows wrap around the ends, like every list in the dashboard.
       if (results.length) setIndex((active + 1) % results.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -206,7 +198,6 @@ export function CommandMenu({ data, onClose, onNavigate }: { data: ShellData; on
             aria-label="Search"
             value={query}
             onChange={(e) => {
-              // A new query starts at the top.
               setQuery(e.target.value);
               setIndex(0);
             }}

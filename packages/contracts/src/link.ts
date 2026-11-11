@@ -56,13 +56,13 @@ export const BuildVarBody = z.strictObject({
   target: z.enum(["build", "runtime", "both"]),
 });
 
-/**
- * Names that end up inside one of buildctl's options. --output and --secret split on commas, so a comma
- * here would add an option of the caller's: dest= writes the image over any file the agent can write.
- */
 /** The ceiling DOCKIFY_MAX_REPO_BYTES has on the worker. What a server takes is its own agent's to say. */
 const contextBytes = z.number().int().min(1).max(50 * 1024 ** 3);
 
+/**
+ * Names that end up inside buildctl options. --output and --secret split on commas, so a comma here would
+ * add an option of the caller's: dest= writes the image over any file the agent can write.
+ */
 const argvWord = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/);
 
 /** The first line of POST /v1/build, before the context's tar. */
@@ -146,7 +146,7 @@ export const LINK_LIMITS = {
   joinLineBytes: 4 * 1024,
   joinLineMs: 10_000,
   h2MaxSessionMemoryMb: 64,
-  /** Design 2.3. One log follow per container is a stream each, and a call past this would wait for one to end. */
+  /** One log follow per container is a stream each, and a call past this would wait for one to end. */
   h2MaxConcurrentStreams: 256,
   /** Log follows one server may hold, so what is left of the streams always carries Docker calls and builds. */
   logFollowsMax: 200,

@@ -2,9 +2,8 @@ import type { AppSummary, EnvChange, EnvEntry, EnvRef, EnvRefView, EnvState, Env
 import type { ActorRef, AppKind } from "@/lib/types";
 import { appTitle } from "@/lib/format";
 
-/* The staged env model, pure and framework free. Edits never touch the stored state: they collect
-   as EnvChange records keyed by scope and key, and every view is the stored entries with the
-   staged changes laid over them. Apply sends the list; discard just clears it. */
+// Pure and framework free. Edits never touch the stored state: they collect as EnvChange records,
+// and every view is the stored entries with the staged changes laid over them.
 
 /** Where a variable lives: an environment's shared set, or one app's overrides in it. */
 export interface Scope {
@@ -53,7 +52,6 @@ export function changesIn(staged: Staged, s: Scope): EnvChange[] {
   return [...staged.values()].filter((c) => scopeId(c) === id);
 }
 
-/** The rows of one scope, sorted by key, with staged adds, edits and removals laid over. */
 export function rowsOf(base: EnvEntry[], changes: EnvChange[]): EnvRow[] {
   const byKey = new Map(changes.map((c) => [c.key, c]));
   const rows: EnvRow[] = base.map((b) => {
@@ -91,10 +89,7 @@ export function rowsOf(base: EnvEntry[], changes: EnvChange[]): EnvRow[] {
   return rows.sort((a, b) => a.key.localeCompare(b.key));
 }
 
-/**
- * Stages one edit against what is stored. An edit that lands back on the stored entry drops out,
- * a removal of a staged add forgets the add, and an edit of a staged add stays an add.
- */
+/** An edit that lands back on the stored entry drops out, and a removal of a staged add forgets the add. */
 export function stage(staged: Staged, next: EnvChange, base: EnvEntry | undefined): Map<string, EnvChange> {
   const out = new Map(staged);
   const id = changeId(next, next.key);
@@ -156,13 +151,10 @@ export interface Affected {
   keys: string[];
 }
 
-/**
- * The apps a set of changes reaches. A shared change reaches every app in its environment that
- * reads env, except apps whose own override of that key still stands. An override reaches its app.
- */
-/** A name a bundler reads for the browser: public by nature, and a secret never reaches the build as an ARG. Contracts' isPublicBuildKey; the web does not import the contracts. */
+/** Public by nature, and a secret never reaches the build as an ARG. Mirrors the contracts' isPublicBuildKey, which the web does not import. */
 export const isPublicBuildKey = (key: string): boolean => /^(?:NEXT_PUBLIC_|NUXT_PUBLIC_|VITE_|REACT_APP_|PUBLIC_|GATSBY_|EXPO_PUBLIC_)/.test(key);
 
+/** A shared change reaches every app in its environment that reads env, except apps whose own override of that key still stands. */
 export function affectedApps(changes: EnvChange[], state: EnvState, apps: AppSummary[]): Affected[] {
   const hit = new Map<string, Affected>();
   const touch = (app: AppSummary, key: string, target: EnvTarget) => {
@@ -228,7 +220,6 @@ export function applyLocal(state: EnvState, changes: EnvChange[], apps: AppSumma
   return { version, environments, overrides: overrides.filter((o) => o.vars.length) };
 }
 
-/** The history entry an apply writes, for the preview. */
 export function versionOf(changes: EnvChange[], state: EnvState, apps: AppSummary[], version: number, actor: ActorRef, redeployed: number): EnvVersion {
   return {
     version,

@@ -1,10 +1,4 @@
-/*
- * The client-safe half of the public status page: its types, the labels, and the figures the page
- * and the uptime bars compute. The loader (lib/pages/status-page.ts) re-exports all of it; client
- * components import from here, so the loader and its preview fixture never reach the browser.
- */
-
-// -------------- Types --------------
+// Client-safe half of the public status page: client components import from here, so the loader and its fixture never reach the browser.
 
 export type StatusState = "operational" | "degraded" | "outage";
 /** One UTC day of one app: ok, minor (degraded), major (down for part of it), or no data yet. */
@@ -88,8 +82,6 @@ export function worst(states: StatusState[]): StatusState {
   if (states.includes("outage")) return "outage";
   return states.includes("degraded") ? "degraded" : "operational";
 }
-
-// -------------- Derived figures --------------
 
 /** Share of the minutes with data that were up, 0 to 100, or null with no data at all. */
 export function uptimePct(days: StatusDay[], now = Date.now()): number | null {

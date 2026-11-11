@@ -1,7 +1,6 @@
 /**
- * Long-lived responses (SSE log streams) outlive the request's own policy check. A reauthorizer
- * re-runs that check at most once per interval, so a revoked session, a removed member or a
- * disabled user stops receiving data within one interval instead of when the stream times out.
+ * Long-lived responses (SSE log streams) outlive the request's own policy check, so it is re-run at most
+ * once per interval: a revoked session or a removed member stops receiving data within one interval.
  */
 export const REAUTH_MS = 60_000;
 

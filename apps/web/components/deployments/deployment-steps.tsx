@@ -19,7 +19,6 @@ const STEP_WORD: Record<DeploymentStep["status"], string> = {
   skipped: "Skipped",
 };
 
-/** A step's mark: the deploy status tile for anything that ran, a quiet waiting tile otherwise. */
 function StepMark({ step }: { step: DeploymentStep }) {
   const as: Partial<Record<DeploymentStep["status"], DeploymentStatus>> = {
     done: "ready",

@@ -5,7 +5,6 @@ import { Empty } from "@/components/ui/empty";
 import { Rule, Spacer } from "@/components/ui/rule";
 import { SectionHead } from "@/components/ui/section-head";
 
-/* A dashboard page that threw: the frame stays, the page body says so and offers one retry. */
 export default function ConsoleError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
     <>

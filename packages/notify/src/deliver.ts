@@ -1,18 +1,7 @@
 /**
- * Sends one message to one webhook through the net-guard client: https only, public addresses
- * checked inside the socket's own DNS lookup, no redirect followed, a hard timeout and a capped
- * answer. Nothing here ever puts the URL, a token or a secret into an error: a failure names the
- * provider, the status and, for a known provider, the short reason it gave.
- *
- * The generic webhook is signed. Each request carries
- *
- *   X-Dockify-Event: <event>
- *   X-Dockify-Delivery: <message id, the same across retries>
- *   X-Dockify-Timestamp: <unix seconds>
- *   X-Dockify-Signature: sha256=<hex HMAC-SHA256 of "<timestamp>.<raw body>" keyed by the signing secret>
- *
- * A receiver recomputes the HMAC over the raw bytes, compares in constant time, and refuses a
- * timestamp more than five minutes away from its own clock (verifySignature does exactly that).
+ * Sends through the net-guard client. Nothing here puts the URL, a token or a secret into an error.
+ * The generic webhook is signed: X-Dockify-Signature is sha256=<hex HMAC-SHA256 of "<timestamp>.<raw body>">,
+ * and a receiver refuses a timestamp more than five minutes off (verifySignature).
  */
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { WEBHOOK_PROVIDER_INFO, type WebhookProviderId } from "@dockify/contracts";
@@ -20,7 +9,6 @@ import { jsonOf, OutboundError, type HttpClient, type HttpResponse } from "@dock
 import { jsonBodyFor, ntfyRequest } from "./format.ts";
 import type { NotifyMessage } from "./message.ts";
 
-/** What a stored webhook opens to, right before a send. */
 export interface WebhookTarget {
   provider: WebhookProviderId;
   /** The endpoint (for Telegram, the bot's sendMessage URL, token included). */
@@ -88,9 +76,8 @@ export function classifyStatus(status: number): "ok" | "retry" | "permanent" {
 }
 
 /**
- * The short reason a known provider gave (Slack's "no_service", Discord's "Unknown Webhook",
- * Telegram's "Bad Request: chat not found"), letters and simple punctuation only. A generic
- * endpoint's answer is never echoed: it could repeat anything it was sent.
+ * The short reason a known provider gave (Slack's "no_service"), letters and simple punctuation only.
+ * A generic endpoint's answer is never echoed: it could repeat anything it was sent.
  */
 export function providerReason(provider: WebhookProviderId, res: HttpResponse): string | null {
   if (provider === "generic") return null;

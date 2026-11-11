@@ -6,37 +6,8 @@ import { STEP_UP_MESSAGE, STEP_UP_REQUIRED } from "@/lib/step-up";
 import type { OverviewSource } from "@/lib/types";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/*
- * Git connection loader. Dockify reaches GitHub through its own GitHub App, the way Vercel and
- * Coolify do: the API holds the App's private key and mints short installation tokens, so this
- * dashboard never sees a token. The routes are in packages/contracts/src/endpoints.ts (every call
- * forwards the session cookie, every answer is JSON, nothing is cached, every call is bounded).
- *
- *   -> GitInstallation[]: [{ id, account: { login, type: "User" | "Organization", avatarUrl },
- *      repositorySelection: "all" | "selected", selectedCount?, manageUrl }]
- *   Every account the App is installed on. manageUrl is the installation's page on GitHub, where
- *   the owner picks which repositories the App may read.
- *
- *   -> { url }: the App's install URL with a signed one-time `state`. After the install GitHub
- *   comes back through the API, which returns to /settings?section=integrations&github=installed
- *   (or github=failed); creating the App returns github=app-created or github=app-failed.
- *
- *   -> { items: GitRepo[], nextCursor: string | null }
- *   GitRepo: { id, fullName, name, owner, private, defaultBranch, pushedAt, language, framework? }.
- *   Newest push first, 20 a page. q matches the name, case-insensitive. framework is the API's
- *   detection from the default branch ("Next.js", "Vite", "Dockerfile"), when it has one.
- *
- *   -> GitBranch[]: [{ name, default }], the default branch first. 404 when the App cannot read it.
- *
- *   -> { ok: true }. Uninstalls the App from that account. Projects already imported keep their
- *   settings but stop receiving pushes until the account is connected again.
- *
- * Creating an app from a picked repository goes through POST /api/v1/projects/:slug/apps with its
- * source carrying `git: { installationId, repoId }`, so the API clones with an installation token
- * instead of the public URL. A project itself never names a repository.
- */
-
-// -------------- Types --------------
+// Git connection loader. Dockify reaches GitHub through its own GitHub App: the API holds the private
+// key and mints short installation tokens, so this dashboard never sees a token.
 
 export type GitAccountType = "User" | "Organization";
 
@@ -77,7 +48,6 @@ export interface GitBranch {
   default: boolean;
 }
 
-/** What every web proxy route under app/api/git answers. */
 export interface GitAnswer<T> {
   source: OverviewSource;
   data: T | null;
@@ -86,21 +56,16 @@ export interface GitAnswer<T> {
   code?: string;
 }
 
-/** An HTTP status and the JSON body for a route handler. */
 export interface GitRoute<T> {
   status: number;
   body: GitAnswer<T>;
 }
-
-// -------------- Validation --------------
 
 /** GitHub ids are numbers; the API may prefix them, so allow short URL-safe words. */
 export const isGitId = (v: string | null | undefined): v is string => typeof v === "string" && /^[\w-]{1,64}$/.test(v);
 export const isCursor = (v: string | null | undefined): v is string => typeof v === "string" && /^[\w.=:-]{1,256}$/.test(v);
 /** Search text, trimmed and capped. Anything longer is not a repository name. */
 export const cleanQuery = (v: string | null | undefined) => (v ?? "").trim().slice(0, 100);
-
-// -------------- API --------------
 
 
 type ApiAnswer<T> = { ok: true; body: T } | { ok: false; status: number; error: string; code?: string };
@@ -120,10 +85,7 @@ function failed<T>(res: { status: number; error: string; code?: string }, missin
 
 const NONE = { status: 503, body: { source: "none", data: null, error: "No data source, set DOCKIFY_API_URL for this dashboard" } } as const;
 
-/**
- * Through the API, else the preview fixture, else no data source. `elevated` refuses the preview
- * write outside its step-up window, as the API refuses it (lib/preview-step-up.ts).
- */
+/** `elevated` refuses the preview write outside its step-up window, as the API refuses it (lib/preview-step-up.ts). */
 async function route<T>(call: () => Promise<ApiAnswer<T>>, demo: () => GitRoute<T>, missing: string, elevated = false): Promise<GitRoute<T>> {
   if (process.env.DOCKIFY_API_URL !== undefined) {
     const res = await call();
@@ -187,9 +149,7 @@ export function deleteInstallation(id: string) {
   );
 }
 
-// -------------- Preview fixture --------------
-// Design preview only (DOCKIFY_PREVIEW=1 without an API). The repositories match the projects in
-// lib/preview-fixture.ts (horseai, inkwell, brightlane, fieldnote) plus Dockify itself and a few more.
+// Preview fixture. The repositories match the projects in lib/preview-fixture.ts.
 
 const PREVIEW_INSTALLATIONS: GitInstallation[] = [
   {

@@ -1,9 +1,4 @@
-/**
- * The I/O around the alert engine: builds the World from the sampler's memory and the probes, loads
- * rules, open events and mutes, applies the decision in the database, and enqueues one alert_notify
- * job for email and one per webhook the rule sends to. Opening is race-safe: an event is created
- * only if no open event exists for the same rule and subject, checked under an advisory lock.
- */
+/** Opening is race-safe: one open event per rule and subject, checked under an advisory lock. */
 import { request } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { LIVE_ALERT_METRIC, type Db, type JobKind } from "@dockify/db";
@@ -16,11 +11,10 @@ import type { Transition } from "./channels.ts";
 import type { ObserveConfig } from "./config.ts";
 import type { SamplerState } from "./sampler.ts";
 
-/** The job kind that carries one alert delivery. */
 export const ALERT_NOTIFY_KIND = "alert_notify" satisfies JobKind;
 
 
-/** GET a control-plane health URL; up means any answer under 500 within the timeout. */
+/** Up means any answer under 500 within the timeout. */
 export function probe(url: string | null, timeoutMs = 3_000): Promise<boolean | null> {
   if (!url) return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -41,7 +35,6 @@ export function probe(url: string | null, timeoutMs = 3_000): Promise<boolean | 
   });
 }
 
-/** The proxy's ping, over the server's dialer; up means the same as probe() above. */
 export function proxyPing(dial: Dialer, timeoutMs = 3_000): () => Promise<boolean> {
   return async () => {
     const socket = await dial({ proxy: 8080 }, { timeoutMs }).catch(() => null);
@@ -57,7 +50,6 @@ export function proxyPing(dial: Dialer, timeoutMs = 3_000): () => Promise<boolea
   };
 }
 
-/** The messages of the issues the worker's heartbeat last wrote (Instance.workerIssues). */
 export function workerIssueMessages(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((i) => (i && typeof i === "object" && typeof (i as { message?: unknown }).message === "string" ? [(i as { message: string }).message] : []));
@@ -99,7 +91,6 @@ export function createAlertRunner(
       const busy = a.status === "deploying" || a.deployments.length > 0;
       map.set(a.id, {
         id: a.id,
-        // An alert's detail reads as the dashboard does: the display name when the app has one.
         name: a.displayName || a.name,
         expectRunning: a.desiredState === "running" && a.deployTarget === "server" && !!a.currentDeploymentId && !busy,
         container: !sampler.dockerSeen
@@ -121,8 +112,8 @@ export function createAlertRunner(
     return {
       now,
       disk: h && h.diskUsedBytes !== null && h.diskTotalBytes ? { usedBytes: h.diskUsedBytes, totalBytes: h.diskTotalBytes } : null,
-      // This code runs in the worker, so the worker is up; a dead worker is the api's to notice
-      // (worker-watch.ts). One that reports an issue with its heartbeat (health.ts) is failing a part of its work.
+      // The worker is up if this runs; a dead one is the api's to notice (worker-watch.ts). Here it counts
+      // as down when its heartbeat reports an issue (health.ts).
       services: { api, worker: issues.length === 0, proxy, database },
       ...(issues.length ? { serviceDetail: { worker: issues.join(" ").slice(0, 500) } } : {}),
       apps: map,
@@ -130,7 +121,6 @@ export function createAlertRunner(
     };
   }
 
-  /** One job for email, and one per webhook, each retried on its own. */
   async function notify(eventId: string, to: { channels: Channel[]; webhooks: string[] }, transition: Transition): Promise<void> {
     const jobs: Array<{ payload: Record<string, string>; key: string }> = [];
     if (to.channels.includes("email")) jobs.push({ payload: { eventId, channel: "email", transition }, key: `alert:${eventId}:email:${transition}` });

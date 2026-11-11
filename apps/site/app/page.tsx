@@ -18,9 +18,6 @@ import { pageMetadata } from "@/components/seo/metadata";
 import { Corners, Rule, Spacer } from "@/components/ui/rule";
 import { INSTALL_CMD } from "@/lib/site";
 
-/* Landing. One idea per section: the hero, the tools it works with, the real dashboard, five
-   differentiators, three steps, a short comparison, the FAQ and the call to install. */
-
 export const metadata = pageMetadata({ path: "/", absolute: SITE_TITLE, description: SITE_DESCRIPTION });
 
 const BIG = {

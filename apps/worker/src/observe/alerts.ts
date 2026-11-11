@@ -1,23 +1,12 @@
 /**
- * The alert engine, pure. Given the rules, what the sampler and probes see now, the open events and
- * the mutes, it decides which events to open and which to resolve. The runner (alert-runner.ts)
- * does the I/O around it.
- *
- * Semantics:
- *  - A rule watches one or more subjects: the host (disk), a control-plane service, or apps (one app,
- *    or every app when appId is null). One open event per (rule, subject): that is the dedupe.
- *  - Gauge rules (disk, memory, down, service) fire after the condition held for durationMin, and
- *    resolve after it has been clear for CLEAR_MS. Disk and memory clear only HYSTERESIS points under
- *    the threshold, so a value hovering at the line cannot flap.
- *  - Window rules (crash loop) already measure over durationMin, so they fire at once.
- *  - No data (null) holds the current state: a blind tick never opens or resolves anything.
- *  - A muted app's events are recorded with muted = true and are never sent to email or webhooks.
+ * Pure alert engine: one open event per (rule, subject). No data (null) holds the current state. Disk
+ * and memory clear only HYSTERESIS points under the threshold, so a value at the line cannot flap.
  */
 import { server as S } from "@dockify/contracts";
 
 export type Metric = "disk" | "service" | "down" | "crash_loop" | "memory";
 export type Service = "any" | "api" | "worker" | "proxy" | "database";
-/** discord and webhook are values earlier versions stored; migration 0003 turned them into webhook links. */
+/** discord and webhook are legacy stored values; migration 0003 turned them into webhook links. */
 export type Channel = "discord" | "webhook" | "email" | "bell";
 
 export interface Rule {
@@ -28,7 +17,6 @@ export interface Rule {
   threshold: number | null;
   durationMin: number;
   channels: Channel[];
-  /** The enabled webhooks the rule sends to, by id. */
   webhooks: string[];
   enabled: boolean;
 }
@@ -41,13 +29,11 @@ const APP_RULES = new Set<Metric>(["down", "crash_loop", "memory"]);
 
 export interface AppView {
   id: string;
-  /** The name an alert's detail reads: the app's display name when it has one. */
   name: string;
   /** False for an app that should not be running (stopped, deploying, never deployed, on Vercel). */
   expectRunning: boolean;
   /** Null when the container list could not be read this tick. */
   container: { state: string; health: string | null; memBytes: number | null; memLimitBytes: number } | null | undefined;
-  /** Restart timestamps (ms) of the current container. */
   restarts: number[];
 }
 
@@ -56,7 +42,6 @@ export interface World {
   disk: { usedBytes: number; totalBytes: number } | null;
   /** Service up (true), down (false) or unknown (null, no probe configured). */
   services: Record<Exclude<Service, "any">, boolean | null>;
-  /** Why a service counts as down, when it says so itself (the worker's own issues). */
   serviceDetail?: Partial<Record<Exclude<Service, "any">, string>>;
   apps: Map<string, AppView>;
   /** False when Docker could not be read at all, so app rules hold. */
@@ -152,7 +137,6 @@ export function read(rule: Rule, s: Subject, world: World, isOpen: boolean): Rea
   }
 }
 
-/** One step of the per-subject state machine. */
 export function step(
   prev: Track,
   breached: boolean | null,
@@ -180,10 +164,7 @@ const hrefFor = (rule: Rule, s: Subject): string => {
 
 export const trackKey = (ruleId: string, subject: string): string => `${ruleId}|${subject}`;
 
-/**
- * Evaluates every rule once. `tracks` is mutated (it is the engine's memory between ticks).
- * Events whose rule is gone or disabled, or whose app no longer exists, are resolved.
- */
+/** `tracks` is mutated: it is the engine's memory between ticks. */
 export function evaluate(
   rules: Rule[],
   world: World,

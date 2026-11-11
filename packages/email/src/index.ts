@@ -1,7 +1,3 @@
-/**
- * @dockify/email: transactional email for Dockify. Typed templates that render { subject, html,
- * text } in client-safe HTML, and the SMTP sender (smtp.ts).
- */
 export { esc, maskEmail, safeUrl, utcTime, EmailInputError } from "./html.ts";
 export {
   factIcon, render, whereText, type AppKind, type AppRef, type Block, type Brand, type Email, type EmailMessage, type FactIcon, type FactRow, type FactValue, type Theme,

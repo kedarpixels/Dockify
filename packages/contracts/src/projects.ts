@@ -10,8 +10,6 @@ export * from "./env-refs.ts";
 
 export const SlugParams = z.strictObject({ slug: Slug });
 
-// ------------------------------------------------------------------ projects
-
 export const ProjectEnvironment = z.object({ name: z.string(), branch: z.string() });
 export const AppUsage = z.object({ cpuPct: z.number(), memoryBytes: z.number(), memoryLimitBytes: z.number() });
 export const AppSummary = Resource.extend({ url: z.string().nullable(), usage: AppUsage.optional(), lastDeployment: RecentDeployment.optional() });
@@ -20,7 +18,6 @@ export const ProjectDomain = z.object({
   host: z.string(),
   appId: z.string(),
   appName: z.string(),
-  /** The app's display name, when it has one. */
   appDisplayName: z.string().optional(),
   environment: z.string(),
   tls: TlsStatus,
@@ -48,15 +45,10 @@ export const NewProjectBody = z.strictObject({
   name: DisplayName.refine((n) => !isReservedSlug(n), "That name is reserved"),
   /** Left out, the instance's default branch (Settings, Instance). */
   defaultBranch: Branch.optional(),
-  /**
-   * Left out, the project starts with one environment, production (DEFAULT_ENVIRONMENT): a project is
-   * a folder of apps, and more environments are an option its settings add. Older clients that send
-   * the list keep working.
-   */
+  /** Left out, the project starts with one environment, production (DEFAULT_ENVIRONMENT). */
   environments: z.array(EnvName).min(1).max(10).optional(),
   git: GitRef.optional(),
 });
-/** The one environment a new project starts with. */
 export const DEFAULT_ENVIRONMENT = "production";
 
 /**
@@ -73,8 +65,6 @@ export const ProjectPatchBody = z.strictObject({
   environments: z.array(z.strictObject({ name: EnvName, branch: Branch })).max(10).optional(),
 });
 export const ConfirmBody = z.strictObject({ confirm: ConfirmText });
-
-// ------------------------------------------------------------------ project env (simple)
 
 export const EnvVarRow = z.object({ key: z.string(), value: z.string(), secret: z.boolean(), updatedAt: Iso });
 export const ProjectEnv = z.object({ environments: z.array(z.object({ name: z.string(), vars: z.array(EnvVarRow) })) });
@@ -105,8 +95,6 @@ export const EnvPutBody = z.strictObject({
   confirmDangerous: z.boolean().optional(),
 });
 export const EnvDeleteBody = z.strictObject({ environment: EnvName, key: EnvKey });
-
-// ------------------------------------------------------------------ project env (versioned)
 
 export const EnvTarget = z.enum(["build", "runtime", "both"]);
 export const EnvEntry = z.object({
@@ -143,10 +131,7 @@ export const EnvApplyBody = z.strictObject({
   confirmDangerous: z.boolean().optional(),
 });
 export const EnvApplyResponse = z.object({ version: z.number(), deploymentIds: z.array(z.string()) });
-/**
- * One value, opened for a signed-in Admin without a fresh step-up.
- * `purpose` says whether the eye or the copy button asked; both are audited the same.
- */
+/** `purpose` says whether the eye or the copy button asked; both are audited the same. */
 export const EnvRevealPurpose = z.enum(["view", "copy"]);
 export const EnvRevealBody = z.strictObject({ environment: EnvName, appId: Uuid.optional(), key: EnvKey, purpose: EnvRevealPurpose.optional() });
 export const EnvRevealResponse = z.object({ value: z.string() });
@@ -174,15 +159,10 @@ export const EnvVersions = z.object({ versions: z.array(EnvVersion) });
 export const EnvRollbackBody = z.strictObject({ version: z.number().int().min(1), baseVersion: z.number().int().min(0), redeploy: z.boolean(), confirmDangerous: z.boolean().optional() });
 export const EnvRollbackResponse = z.object({ version: z.number() });
 
-// ------------------------------------------------------------------ environments
-
 export const EnvironmentParams = z.strictObject({ slug: Slug, name: EnvName });
 export const AddEnvironmentBody = z.strictObject({ name: EnvName, branch: Branch, copyFrom: EnvName.optional() });
 export const EnvironmentBranchBody = z.strictObject({ branch: Branch });
 
-// ------------------------------------------------------------------ previews
-
-/** Every guardrail of a project's pull request previews. Defaults are the cheap ones. */
 export const PreviewAccess = z.enum(["public", "password"]);
 export type PreviewAccess = z.infer<typeof PreviewAccess>;
 export const PreviewSettings = z.strictObject({
@@ -209,7 +189,6 @@ export const PreviewSettings = z.strictObject({
   isolatedDb: z.boolean(),
   /** A same-repo preview of a production base may have production's secrets and network. Off by default. */
   productionAccess: z.boolean(),
-  /** Who can open a preview's URL: anyone with the link, or whoever has the project's preview password. */
   access: PreviewAccess,
 });
 export type PreviewSettings = z.infer<typeof PreviewSettings>;
@@ -224,10 +203,8 @@ export const PREVIEW_DEFAULTS = {
 } as const;
 
 /**
- * What a preview shares with its base environment:
- *   base  its secrets and its network
- *   own   neither: plain variables and a network of its own
- *   fork  neither: plain variables and the shared fork network
+ * base: the base's secrets and network. own: plain variables and its own network.
+ * fork: plain variables and the shared fork network.
  */
 export const PreviewIsolation = z.enum(["base", "own", "fork"]);
 export type PreviewIsolation = z.infer<typeof PreviewIsolation>;
@@ -235,16 +212,14 @@ export type PreviewIsolation = z.infer<typeof PreviewIsolation>;
 const PRODUCTION_NAMES = new Set(["production", "prod", "live"]);
 
 /**
- * An environment holds real data when it is named so, or when it is the project's only one: a project
- * with one environment has nothing else to deploy to, whatever it calls it. Branches say nothing,
- * since a new project's environments all start on the default branch.
+ * Real data lives in an environment named so, or in a project's only one. Branches say nothing: a new
+ * project's environments all start on the default branch.
  */
 export const isProductionEnvironment = (name: string, environmentCount: number): boolean => PRODUCTION_NAMES.has(name) || environmentCount < 2;
 
 /**
- * Pure, and the one place this is decided: the worker reads it to run a preview, and the card, email
- * and comment read it to describe one. Pushing to a branch must not be enough to get production's
- * secrets, so that takes the project owner's explicit setting. A fork never gets them, setting or not.
+ * The one place this is decided. Pushing to a branch must not be enough to get production's secrets:
+ * that takes the owner's explicit setting, and a fork never gets them.
  */
 export function previewIsolation(p: {
   fromFork: boolean;
@@ -257,10 +232,8 @@ export function previewIsolation(p: {
 }
 
 /**
- * The default instance preview domain: preview.<parent of the dashboard host>. dash.example.com
- * gives preview.example.com; an apex dashboard (example.com) gives preview.example.com too. A name
- * that spells its address (203-0-113-4.sslip.io) has no parent of its own: previews go under it, where
- * sslip.io still answers with that address.
+ * preview.<parent of the dashboard host>: dash.example.com and example.com both give preview.example.com.
+ * A name that spells its address (203-0-113-4.sslip.io) has no parent, so previews go under it.
  */
 export function defaultPreviewDomain(publicUrl: string): string | null {
   let host: string;
@@ -285,10 +258,8 @@ export function effectivePreviewDomain(project: string | null, instance: string 
   return { domain: defaultPreviewDomain(publicUrl), source: "derived" };
 }
 
-/** The wildcard record that serves a preview domain. */
 export const previewWildcard = (domain: string): string => `*.${domain}`;
 
-/** Memory a preview's throwaway Postgres may use. */
 export const PREVIEW_DB_MEMORY_MB = 256;
 
 /** The most a project's previews can use: "At most 2 previews, about 1 CPU and 1 GB". */
@@ -304,11 +275,9 @@ export const PreviewApp = z.object({
   appId: z.string(),
   /** The app's name: its preview host is pr-<n>-<name>. */
   name: z.string(),
-  /** What people read as its name, when it has one. */
   displayName: z.string().optional(),
   kind: AppKind,
   url: z.string().nullable(),
-  /** The newest deployment of this app in the preview. */
   deployment: z.object({ id: z.string(), status: RecentDeployment.shape.status, commit: z.string().nullable(), error: z.string().nullable(), createdAt: Iso }).nullable(),
   cpuPct: z.number().nullable(),
   memoryBytes: z.number().nullable(),
@@ -331,7 +300,6 @@ export const PreviewRow = z.object({
   repo: z.string().nullable(),
   fromFork: z.boolean(),
   isolatedDb: z.boolean(),
-  /** What it shares with its base environment, under the project's setting now. */
   isolation: PreviewIsolation,
   baseEnvironment: z.string(),
   createdAt: Iso,
@@ -345,19 +313,16 @@ export const PreviewRow = z.object({
   apps: z.array(PreviewApp),
 });
 export const PreviewDns = z.object({
-  /** The domain previews of this project use, and where it came from. */
   domain: z.string().nullable(),
   source: z.enum(["project", "instance", "derived"]),
   /** Whether *.domain resolves to this server, from the last check. Previews refuse to start until it does. */
   status: z.enum(["ok", "mismatch", "missing", "unchecked"]),
   detail: z.string().nullable(),
   checkedAt: Iso.nullable(),
-  /** Cloudflare automation for the wildcard record. */
   cloudflare: z.enum(["none", "pending", "managed", "external", "failed"]),
   cloudflareMessage: z.string().nullable(),
   /** The record to create by hand (or the one Dockify made). */
   record: z.object({ type: z.enum(["CNAME", "A"]), name: z.string(), content: z.string() }).nullable(),
-  /** How preview certificates are issued in this ingress mode. */
   tls: z.enum(["cloudflare", "wildcard_dns01", "per_host_http01"]),
 });
 export const PreviewState = z.object({
@@ -375,8 +340,6 @@ export const PreviewDetail = PreviewRow.extend({
 });
 export const PreviewParams = z.strictObject({ slug: Slug, pr: z.coerce.number().int().min(1).max(10_000_000) });
 
-// ------------------------------------------------------------------ status page
-
 export const StatusPageState = z.object({ enabled: z.boolean(), path: z.string(), publicApps: z.number() });
 export const StatusPagePatch = z.strictObject({
   enabled: z.boolean().optional(),
@@ -386,8 +349,6 @@ export const StatusPagePatch = z.strictObject({
   /** Replaces the component list when present. */
   items: z.array(z.strictObject({ appId: Uuid, label: SafeLabel(60, 1) })).max(50).optional(),
 });
-
-// ------------------------------------------------------------------ new app ("host any application")
 
 export const ServiceKind = z.enum(["postgres", "redis", "minio"]);
 export const Builder = BuilderKind;
@@ -422,20 +383,16 @@ export const AppSpec = z.strictObject({
   target: z.enum(["server", "vercel"]),
 });
 /**
- * Apps a new Postgres or Redis is linked to as it is created: each gets DATABASE_URL or REDIS_URL as
- * a reference to the service (env-refs.ts), so a changed credential follows on its next deploy.
- * `replace` names the apps whose variable of that name the caller agreed to replace; any other app
- * that already has one makes the create answer 409 LINK_CONFLICT with those apps, and nothing is created.
+ * Apps linked to a new Postgres or Redis: each gets DATABASE_URL or REDIS_URL as a reference (env-refs.ts).
+ * An app that already has that variable and is not in `replace` makes the create answer 409 LINK_CONFLICT.
  */
 export const ServiceLink = z.strictObject({
   apps: z.array(Uuid).max(50),
   replace: z.array(Uuid).max(50).optional(),
 });
 /**
- * Two shapes, chosen by what the body holds rather than tried in turn. A z.union returns the only
- * branch that did not abort, and a strict object's "unrecognized key" does not abort: a full spec
- * with one bad field fell through to the bare shape and answered `Unrecognized key: "source"`
- * instead of naming the field. Routing keeps each shape's own errors, with their paths.
+ * Routes by what the body holds instead of z.union: a strict object's "unrecognized key" does not abort,
+ * so a full spec with one bad field would fall through to the bare shape and lose the field's own error.
  */
 function routed<A extends z.ZodType, B extends z.ZodType>(isA: (v: Record<string, unknown>) => boolean, a: A, b: B) {
   return z.unknown().transform((v, ctx): z.output<A> | z.output<B> => {
@@ -447,7 +404,7 @@ function routed<A extends z.ZodType, B extends z.ZodType>(isA: (v: Record<string
   });
 }
 const BARE_APP_KEYS = new Set(["name", "kind", "environment"]);
-/** Old shape { name, kind, environment } stays valid: a bare app with no source yet. Any other key means the full spec. */
+/** { name, kind, environment } is a bare app with no source yet. Any other key means the full spec. */
 export const NewAppBody = routed(
   (v) => Object.keys(v).some((k) => !BARE_APP_KEYS.has(k)),
   AppSpec.extend({ environment: EnvName, link: ServiceLink.optional() }),
@@ -476,7 +433,6 @@ export const DetectResult = z.object({
   framework: z.string().nullable(),
   /** Served as static files, so nothing of it needs a server process. */
   staticSite: z.boolean(),
-  /** Why nothing was detected, in a sentence. */
   reason: z.string().nullable(),
   rootDir: z.string(),
   installCommand: z.string(),

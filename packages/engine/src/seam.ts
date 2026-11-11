@@ -21,7 +21,6 @@ export interface RouteChange {
 /** The proxy's route files, by file name (no folders). System files are in here too. */
 export interface RouteStore {
   read(name: string): Promise<string | null>;
-  /** Every file by name, for the passes that look across files. */
   snapshot(): Promise<Record<string, string>>;
   apply(change: RouteChange): Promise<void>;
 }
@@ -33,10 +32,8 @@ export interface Builder {
   plan(input: PlanInput, onLine: (line: string) => string | null, signal: AbortSignal): Promise<PlanInfo>;
   /** Each answers with buildctl's own output, which the disk module parses. */
   cacheUsage(timeoutMs: number): Promise<string>;
-  /** Empties the build cache. */
   pruneCache(timeoutMs: number): Promise<string>;
   /** Empties one scope's cache mounts, when the preview that owned them goes. */
   pruneCacheScope(scope: string, timeoutMs: number): Promise<string>;
-  /** Prunes the build cache down to a size. */
   trimCache(keepBytes: number): Promise<string>;
 }

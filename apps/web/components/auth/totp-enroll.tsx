@@ -17,12 +17,7 @@ import { settle } from "./util";
 /* Base32 key in groups of four, the way authenticator apps show it. */
 const groups = (secret: string) => secret.match(/.{1,4}/g) ?? [];
 
-/**
- * Optional step after an account is made (setup and invites): add Dockify to an authenticator
- * app and confirm one code. Skipping is fine; Settings can do it later. Both calls are elevated:
- * the new session starts with a step-up (lib/pages/auth.ts), and once that has lapsed they ask
- * "Confirm it is you" (components/step-up).
- */
+/** Both calls are elevated: once the new session's step-up has lapsed they ask "Confirm it is you". */
 export function ProtectStep({ step, onEnabled, onSkip }: { step?: [number, number]; onEnabled: () => void; onSkip: () => void }) {
   const [key, setKey] = useState<TotpSecret | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -218,7 +213,6 @@ export function ProtectStep({ step, onEnabled, onSkip }: { step?: [number, numbe
   );
 }
 
-/** Last card: the account is ready. */
 export function DoneStep({ lead }: { lead: string }) {
   return (
     <section className="auth-block">

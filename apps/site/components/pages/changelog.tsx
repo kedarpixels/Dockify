@@ -1,10 +1,7 @@
 import { Node } from "@/components/ui/rule";
 import { formatDay, type Release } from "@/lib/releases";
 
-/**
- * One release: a meta column (version, date, state, signed release) beside the notes. The column
- * divider meets the rule above and the Spacer below, so it carries a node at each end.
- */
+/** The column divider meets the rule above and the Spacer below, so it carries a node at each end. */
 export function Entry({ r }: { r: Release }) {
   const released = r.date !== null;
   return (

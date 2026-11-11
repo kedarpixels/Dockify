@@ -5,11 +5,8 @@ import type { AuthResult } from "@/lib/pages/auth";
 /* A throwaway origin to resolve `next` against: whatever leaves it is another site. */
 const SELF = "http://dockify.invalid";
 
-/**
- * Only same-origin paths survive as a post sign-in destination; anything else lands on Overview.
- * The value is resolved the way the browser will resolve it, so tricks such as "/\evil.com" or
- * "/<tab>/evil.com" (the URL parser drops tabs and reads a backslash as a slash) cannot escape.
- */
+// Only same-origin paths survive. The value is resolved the way the browser will resolve it, so
+// "/\evil.com" or a tab between the slashes cannot escape.
 export function safeNext(next: string | string[] | undefined | null): string {
   const v = Array.isArray(next) ? next[0] : next;
   if (!v || !v.startsWith("/")) return "/";
@@ -25,10 +22,7 @@ export function safeNext(next: string | string[] | undefined | null): string {
   }
 }
 
-/**
- * True for a path the browser resolves on this origin: one leading slash, no "//" or "/\"
- * opening (protocol-relative), and nothing that leaves the origin when resolved.
- */
+/** True for a path the browser resolves on this origin: no "//" or "/\" opening, nothing that leaves when resolved. */
 export function isLocalPath(path: string): boolean {
   if (!path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return false;
   try {
@@ -38,7 +32,6 @@ export function isLocalPath(path: string): boolean {
   }
 }
 
-/** The destination the client may navigate to after sign in: `next` when it is local, else Overview. */
 export function localDestination(next: string): string {
   return isLocalPath(next) ? next : "/";
 }
@@ -48,10 +41,7 @@ export function withNext(path: string, next: string): string {
   return next === "/" ? path : `${path}${path.includes("?") ? "&" : "?"}next=${encodeURIComponent(next)}`;
 }
 
-/**
- * Awaits a server action and turns a thrown call (the web server restarting, the network
- * dropping) into an ordinary error, so a failed request never reaches the error boundary.
- */
+/** Turns a thrown call (server restarting, network dropping) into an ordinary error, so it never reaches the error boundary. */
 export async function settle<T extends object>(action: Promise<AuthResult<T>>): Promise<AuthResult<T>> {
   try {
     return await action;

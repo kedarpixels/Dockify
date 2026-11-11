@@ -1,10 +1,5 @@
-// Writes components/icon-glyphs.ts: the geist-icons drawings the site uses, as plain data, so the
-// browser never loads the whole geist-icons library (about 450 icons in one 600 KB chunk).
-//
-//   node scripts/gen-icons.mjs
-//
+// Writes components/icon-glyphs.ts as plain data, so the browser never loads the whole geist-icons library (600 KB).
 // Add a name to NAMES (site name: geist-icons export), run it, and use <Icon name="..." />.
-// geist-icons stays a devDependency only for this script; nothing at runtime imports it.
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,9 +66,8 @@ function toData(el) {
   return kids.length ? [el.type, props, kids] : [el.type, props];
 }
 
-/* A few drawings wrap everything in <g clip-path="url(#clip0_...)"> with a defs clip that is just
-   the whole 16px square. The svg box already is that square, and a fixed id repeats on every use,
-   so the wrapper and its defs are dropped. Any other clip is kept and fails loudly. */
+/* Some drawings wrap everything in a clip that is just the whole 16px square, under a fixed id that would
+   repeat on every use, so that wrapper is dropped. Any other clip is kept and fails loudly. */
 function unclip(kids) {
   const defs = kids.find((k) => k[0] === "defs");
   if (!defs) return kids;

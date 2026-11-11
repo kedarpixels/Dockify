@@ -3,10 +3,7 @@ import { openLogStream, parseLogQuery } from "@/lib/pages/logs";
 
 export const dynamic = "force-dynamic";
 
-/**
- * GET /api/logs/stream?apps&q&regex&stream&level&since: the live tail as server-sent events. The
- * browser's own reconnect sends Last-Event-ID, which is passed on so no line is lost or repeated.
- */
+/** The browser's reconnect sends Last-Event-ID, which is passed on so no line is lost or repeated. */
 export async function GET(request: Request) {
   const parsed = parseLogQuery(new URL(request.url).searchParams, { stream: true });
   if (!parsed.ok) return json({ error: parsed.error }, 400);

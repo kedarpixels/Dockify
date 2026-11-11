@@ -1,9 +1,5 @@
 import { cx } from "./cx";
 
-/**
- * Section or page heading: Geist Pixel title (32px, `level` 1 or 2) with a muted 15px lead 8px
- * below, 40px above and 32px below (portfolio spacing). `actions` sit at the right of the title row.
- */
 export function SectionHead({
   id,
   title,

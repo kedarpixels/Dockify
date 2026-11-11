@@ -15,13 +15,9 @@ import type { BackupRun, BackupSchedule, BackupStorage, BackupTier, BackupTierSc
 import { send } from "./use-poll";
 import { cronText, dbLabel, placeName } from "./util";
 
-/* A database's two backup tiers, as both the Backups page and a database's Backups tab show them:
-   copies on this server, and copies offsite in an S3 bucket, each with its own schedule and count. */
-
 export const TIERS: BackupTier[] = ["local", "offsite"];
 export const TIER_LABEL: Record<BackupTier, string> = { local: "On this server", offsite: "Offsite" };
 
-/** Where to add an S3 destination. */
 const STORAGE_HREF = "/settings?section=integrations";
 
 /** "Every 12 hours, keep 1": the schedule and what it keeps, in words. */
@@ -31,13 +27,10 @@ export function tierWords(t: Pick<BackupTierSchedule, "cron" | "keep" | "keepDay
   return `${when}, keep ${t.keep.toLocaleString("en-US")}${t.keepDays ? ` and ${plural(t.keepDays, "day")}` : ""}`;
 }
 
-/** Where a tier's copies go, in words. */
 export const tierPlace = (t: BackupTierSchedule) => (t.tier === "local" ? "To this server's disk" : t.storage ? `To ${t.storage.name}` : "No S3 destination yet");
 
-/** The newest finished run of one database's tier: its last result. */
 export const lastOf = (runs: BackupRun[], resourceId: string, tier: BackupTier) => runs.find((r) => r.resourceId === resourceId && r.tier === tier && r.status !== "running") ?? null;
 
-/** What a run of one tier did, in words: "last good" or "last run failed". */
 export const lastWord = (r: BackupRun | null) => (r ? (r.status === "failed" ? "Last run failed" : "Last good") : null);
 
 /** Where Back up now sends a database's copies: every tier that is on, else where its schedule points. */
@@ -46,8 +39,6 @@ export function backUpPlaces(s: BackupSchedule): string {
   const places = (on.length ? on : [s.destination === "s3" ? "offsite" : "local"] as BackupTier[]).map((k) => (k === "local" ? "this server" : placeName(s.tiers[k].storage)));
   return places.join(" and ");
 }
-
-// ------------------------------------------------------------------------------------- dialog
 
 const PRESETS: Array<{ value: string; label: string }> = [
   { value: "0 * * * *", label: "Every hour" },
@@ -175,11 +166,7 @@ function TierFields({ t, d, set, errs, destinations }: { t: BackupTierSchedule; 
   );
 }
 
-/**
- * Both tiers of one database: on or off, how often, how many to keep, and where offsite goes.
- * Opened after "Confirm it is you" (the caller runs ensureStepUp first), so the check never stacks
- * on it. Saves only the tiers that changed, one request each.
- */
+/** Opened after "Confirm it is you" (the caller runs ensureStepUp first), so the check never stacks on it. Saves only the tiers that changed. */
 export function ScheduleDialog({
   schedule,
   destinations,

@@ -7,17 +7,8 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { toast } from "@/components/ui/toast";
 import { chunkBytes, clampSize, MAX_PASTE_BYTES, terminalUrl } from "@/lib/terminal";
 
-/*
- * The screen and the socket, in a module of its own so xterm.js loads only when a terminal opens
- * (terminal-tab.tsx imports this through next/dynamic). xterm is the one real choice: a shell needs
- * a whole terminal emulator, and vim or top do not work on anything less.
- *
- * What runs in a container may be hostile, and its output lands here. So: xterm renders text, never
- * markup; hyperlinks in the output do nothing when clicked; there is no clipboard addon, so output
- * cannot read or write the clipboard; nothing is ever written to storage.
- *
- * data-raw-keys tells the shell's global shortcuts to leave every chord to the terminal.
- */
+// Container output may be hostile: xterm renders text, never markup, links do nothing, and there
+// is no clipboard addon or storage. data-raw-keys makes the global shortcuts leave every chord here.
 
 export interface TerminalHandle {
   copy(): Promise<boolean>;

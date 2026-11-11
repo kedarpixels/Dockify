@@ -1,24 +1,7 @@
 /**
- * Which registries Dockify pulls from, by what an image reference spells. The one copy of the rule:
- * the agent's gate asks it at every pull (apps/agent/src/docker-gate.ts), the api asks it when an image
- * is saved (apps/api/src/modules/projects/host-rule.ts), so a reference the dashboard takes is one the
- * pull takes.
- *
- * A pull makes dockerd, on the host's network, fetch `/v2/` from whatever registry the image names, and
- * Docker speaks plain HTTP to a loopback address. So a worker that can ask for a pull could otherwise
- * reach what only the host can: its loopback services, cloud metadata, the control networks. This refuses
- * those by what the reference says. Registries on a LAN stay allowed, on any port: people run them.
- *
- * Not covered, and this layer cannot cover it: a DNS name that resolves to one of these addresses, and a
- * public registry that redirects there. dockerd does its own lookup later, so an answer read here proves
- * nothing about the one it will get. Only a rule on the host's network could stop those. The api does
- * read a name's answer at save time, which catches the plain mistake and nothing more.
- *
- * deploy/socket-proxy/haproxy.cfg holds the same list as a second layer. apps/worker/src/socket-proxy.test.ts
- * keeps the two in step, and `docker pull` of Dockify's own images (the installer, the updater) does not
- * come through here, so a registry on the box's own loopback still serves those.
- *
- * Plain string work only: the browser bundle and the agent both load this package.
+ * Which registries Dockify may pull from, by what an image reference spells; the api and the agent's gate
+ * share this one rule. A pull makes dockerd fetch on the host's network, so loopback, metadata and control
+ * networks are refused. Not covered: a DNS name or a redirect that leads there (dockerd resolves later).
  */
 
 /** Names that mean this host, or its metadata service, whatever DNS says. Compared in lower case. */
@@ -31,7 +14,6 @@ const PLAIN_OCTET = /^(?:0|[1-9][0-9]{0,2})$/;
 /** The compose file's fixed control networks, /24 each. A test holds this list to the compose file. */
 export const CONTROL_SUBNETS: readonly string[] = ["172.30.1.0", "172.30.2.0", "172.30.3.0", "172.30.4.0", "172.30.5.0"];
 
-/** Why this dotted quad may not be a registry, or null. */
 function refusedQuad(a: number, b: number, c: number, d: number): string | null {
   if (a === 0) return "this host";
   if (a === 127) return "loopback";
@@ -42,7 +24,7 @@ function refusedQuad(a: number, b: number, c: number, d: number): string | null 
   return null;
 }
 
-/** Why this host may not be a registry, or null. Takes the host alone, with no port. */
+/** Takes the host alone, with no port. */
 export function refusedHost(hostIn: string): string | null {
   const host = hostIn.toLowerCase().replace(/\.+$/, "");
   if (host === "") return "no host";

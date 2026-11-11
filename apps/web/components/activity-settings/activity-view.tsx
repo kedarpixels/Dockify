@@ -37,11 +37,10 @@ const FILTERS = filterOptions<Filter>([
   { value: "system", label: "System" },
 ]);
 
-/** How often page one is asked again for events newer than the top of the list. */
 const POLL_MS = 15_000;
-/** A poll shows the "Updating" mark only once it has taken this long, as every polling page does. */
+/** A poll shows the "Updating" mark only once it has taken this long. */
 const SLOW_MS = 600;
-/** How long a new row keeps its arrival tint. Matches the act-fresh animation in the CSS. */
+/** Matches the act-fresh animation in the CSS. */
 const FRESH_MS = 2_000;
 /** The sticky top bar's height: a log whose top is above this line is out of view. */
 const TOPBAR_PX = 56;
@@ -49,18 +48,15 @@ const TOPBAR_PX = 56;
 /** The event row's columns (tile, sentence, place, time, key), so the skeleton holds its shape. */
 const SKEL_TEMPLATE = "var(--col-status) minmax(0, 1fr) 176px var(--col-time) var(--col-key)";
 
-/** The sentence as plain text, for the CSV export. */
 function sentence(e: ActivityEvent) {
   return [e.actor?.name ?? SYSTEM_NAME, e.verb, e.target?.label, e.suffix].filter(Boolean).join(" ");
 }
 
-/** `more` after `have`, without the events `have` already holds. */
 function append(have: ActivityEvent[], more: ActivityEvent[]) {
   const seen = new Set(have.map((e) => e.id));
   return [...have, ...more.filter((e) => !seen.has(e.id))];
 }
 
-/** The loaded events as CSV, one row each, every cell quoted. */
 function toCsv(items: ActivityEvent[]) {
   const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
   const rows = items.map((e) => [e.at, e.category, e.action, e.actor?.name ?? SYSTEM_NAME, sentence(e), e.ip ?? "", e.location ?? ""].map(q).join(","));
@@ -88,8 +84,6 @@ export function ActivityView({ overview, initial }: { overview: OverviewResult; 
   const req = useRef(0);
   const search = useRef<HTMLInputElement>(null);
   const card = useRef<HTMLElement>(null);
-  // Live updates: ids that just slid in, how many arrived while the top was out of view, whether it
-  // is, and whether a slow poll is on its way.
   const [fresh, setFresh] = useState<Set<string>>(() => new Set());
   const [unseen, setUnseen] = useState(0);
   const [away, setAway] = useState(false);
@@ -98,7 +92,6 @@ export function ActivityView({ overview, initial }: { overview: OverviewResult; 
 
   const download = () => downloadText(`dockify-activity-${new Date(now).toISOString().slice(0, 10)}.csv`, toCsv(items));
 
-  // The search settles for 250ms before it asks the API.
   useEffect(() => {
     const t = setTimeout(() => setQ(query.trim()), 250);
     return () => clearTimeout(t);
@@ -136,8 +129,7 @@ export function ActivityView({ overview, initial }: { overview: OverviewResult; 
     setStatus("idle");
   };
 
-  // Any filter change reloads from the newest event. The first render already has page one, and
-  // comparing keys (not a first-render flag) keeps a double-run effect from fetching it again.
+  // Comparing keys, not a first-render flag, keeps a double-run effect from refetching page one.
   const filterKey = JSON.stringify([filter, actor, q]);
   const loadedKey = useRef(filterKey);
   const reload = useEffectEvent(() => {
@@ -156,8 +148,6 @@ export function ActivityView({ overview, initial }: { overview: OverviewResult; 
   // The activity log is for admins (the API refuses a Viewer), so a Viewer gets a plain note instead.
   const readable = can.manage;
 
-  // Page one for the current filters, asked while the tab is visible and nothing else is loading.
-  // Events newer than the top of the list slide in above it; a load that starts meanwhile wins.
   const tick = useEffectEvent(async () => {
     const loading = status === "loading" || status === "more";
     // One poll at a time: the interval and a tab coming back can fire together.
@@ -170,9 +160,8 @@ export function ActivityView({ overview, initial }: { overview: OverviewResult; 
     setRefreshing(false);
     polling.current = false;
     const page = r.ok ? r.data?.data : null;
-    // A missed poll is silent; the next one tries again. A load that started meanwhile wins.
+    // A missed poll is silent; a load that started meanwhile wins.
     if (!page || id !== req.current) return;
-    // Any answer ends an error state: the log is reachable again.
     if (status === "error") {
       setStatus("idle");
       setError(undefined);
@@ -207,14 +196,12 @@ export function ActivityView({ overview, initial }: { overview: OverviewResult; 
     };
   }, [noSource, readable]);
 
-  // New rows lose their arrival tint once it has played.
   useEffect(() => {
     if (!fresh.size) return;
     const t = setTimeout(() => setFresh(new Set()), FRESH_MS);
     return () => clearTimeout(t);
   }, [fresh]);
 
-  // "Away" once the top of the log has scrolled under the top bar. Coming back clears the count.
   useEffect(() => {
     const onScroll = () => {
       const r = card.current?.getBoundingClientRect();
@@ -233,8 +220,7 @@ export function ActivityView({ overview, initial }: { overview: OverviewResult; 
     setUnseen(0);
   };
 
-  // Up and Down walk the rows: Down from the search enters them, Up from the first row goes back
-  // to the search. Enter on a row opens it.
+  // Down from the search enters the rows; Up from the first row goes back to the search.
   const walk = (ev: React.KeyboardEvent, from: "list" | "search") => {
     if (ev.key !== "ArrowDown" && ev.key !== "ArrowUp") return;
     if (from === "search" && ev.key === "ArrowUp") return;

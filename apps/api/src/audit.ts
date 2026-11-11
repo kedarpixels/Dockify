@@ -19,7 +19,7 @@ export interface AuditEntry {
   changes?: Prisma.InputJsonValue;
 }
 
-/** Writes one audit row. Failures to audit are logged by the caller's error handler, never hidden. */
+/** Does not catch: a failed audit write fails the caller, never silently. */
 export async function audit(db: Tx, e: AuditEntry): Promise<void> {
   await db.activityLog.create({
     data: {

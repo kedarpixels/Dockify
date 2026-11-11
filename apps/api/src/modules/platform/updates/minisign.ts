@@ -1,8 +1,7 @@
 import { createHash, createPublicKey, verify, type KeyObject } from "node:crypto";
 
 /**
- * Minisign signature verification (Ed25519), so releases can be signed with the stock `minisign`
- * tool and checked here against one public key pinned at install.
+ * Minisign (Ed25519) verification, compatible with the stock `minisign` tool.
  *
  *   public key   base64( "Ed" | keyId[8] | ed25519 pk[32] )
  *   .minisig     untrusted comment line

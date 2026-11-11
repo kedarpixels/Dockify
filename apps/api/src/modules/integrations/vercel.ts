@@ -1,13 +1,6 @@
 /**
- * Vercel: token check, teams, projects, importing a Vercel project's env and domains into a Dockify
- * environment, the deployment webhook and the app's logs. The frontend deploy target (sync env,
- * trigger a deploy, read its status) runs in the worker as vercel_sync jobs and the deployment mirror
- * as vercel_mirror jobs; enqueueVercelSync and enqueueVercelMirror below are the api side of them.
- *
- * Row: integrations kind vercel, name "default". config { username, name, team: {id,name,slug}|null,
- * webhook: {id,url,projectIds,registeredAt,state,reason}|null, mirror: {triedAt,syncedAt,error}|null,
- * apps: per-app sync state }, secretId the token (integration_token), secondSecretId the secret Vercel
- * signs its webhook deliveries with (vercel_webhook_secret).
+ * Vercel integration, api side: handlers, the webhook receiver and the enqueuers for the worker's sync and mirror jobs.
+ * On the integration row, secretId is the API token and secondSecretId the webhook signing secret.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyRequest } from "fastify";
@@ -56,12 +49,9 @@ interface VercelConfig {
   [k: string]: unknown;
 }
 
-/**
- * Vercel's event for a deleted deployment. It fires when the deployment is removed for good, after
- * the recovery period; the mirror's own pass notices a deletion sooner, by Vercel answering 404.
- */
+/** Fires only once the deployment is gone for good, after the recovery period. The mirror sees a deletion sooner, as a 404. */
 export const DELETED_EVENT = "deployment.cleanup";
-/** The deployment events the mirror cares about; each only ever queues a sync. */
+/** Each of these only ever queues a mirror pass. */
 export const WEBHOOK_EVENTS = ["deployment.created", "deployment.succeeded", "deployment.ready", "deployment.error", "deployment.canceled", "deployment.promoted", "deployment.rollback", DELETED_EVENT];
 /** A deployment event's body is small. Past this it is not one of Vercel's, or not worth reading. */
 export const VERCEL_WEBHOOK_MAX_BYTES = 256 * 1024;
@@ -92,7 +82,7 @@ export class VercelApi {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     let res = await send();
-    // A read Vercel asks to slow down is tried once more after a short wait; a longer wait is the caller's answer.
+    // A rate-limited GET is retried once after a short wait; a longer wait goes back to the caller.
     if (res.status === 429 && method === "GET") {
       const wait = vercelRetryAfter(res.headers);
       if (wait <= INLINE_RETRY_S) {
@@ -139,10 +129,7 @@ export class VercelApi {
     return d.domains;
   }
 
-  /**
-   * Registers an account webhook. A refusal that is about the plan or the address is an answer, not
-   * an error: the mirror polls instead, and the card says why. The token being refused is an error.
-   */
+  /** A refusal about the plan or the address is a result, not an error: the mirror polls instead. A refused token throws. */
   async createWebhook(url: string, projectIds: string[]): Promise<{ ok: true; id: string; secret: string } | { ok: false; reason: string }> {
     const res = await this.http({
       method: "POST",
@@ -161,7 +148,7 @@ export class VercelApi {
     return { ok: false, reason: res.status === 402 || res.status === 403 ? (said ?? "Vercel only offers account webhooks on Pro and Enterprise plans, or this token may not create them") : (said ?? `Vercel answered ${res.status}`) };
   }
 
-  /** Removes a webhook. One that is already gone counts as removed. */
+  /** Already gone counts as removed. */
   async deleteWebhook(id: string): Promise<void> {
     const res = await this.http({ method: "DELETE", url: this.url(`/v1/webhooks/${encodeURIComponent(id)}`), headers: { Authorization: `Bearer ${this.token}` } });
     if (res.status === 404 || res.status === 410 || (res.status >= 200 && res.status < 300)) return;
@@ -169,7 +156,7 @@ export class VercelApi {
     throw new HttpError(502, `Vercel returned ${res.status}`, "UPSTREAM");
   }
 
-  /** Stops a build in progress. Vercel answers 400 once it has already finished. */
+  /** Vercel answers 400 once the build has finished. */
   async cancelDeployment(id: string): Promise<void> {
     const res = await this.http({ method: "PATCH", url: this.url(`/v12/deployments/${encodeURIComponent(id)}/cancel`), headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" } });
     if (res.status >= 200 && res.status < 300) return;
@@ -180,13 +167,10 @@ export class VercelApi {
   }
 }
 
-/** The longest wait a read sits out by itself before trying Vercel once more. */
+/** Longest wait, in seconds, a read sits out before its one retry. */
 const INLINE_RETRY_S = 2;
 
-/**
- * Seconds until Vercel takes this token's calls again: Retry-After when it sends one, else its
- * X-RateLimit-Reset (epoch seconds). Bounded, and a minute when it says neither.
- */
+/** Seconds until Vercel takes calls again: Retry-After, else X-RateLimit-Reset (epoch seconds), else a minute. Bounded. */
 export function vercelRetryAfter(headers: Record<string, string | string[] | undefined>, now = Date.now()): number {
   const one = (h: string) => {
     const v = headers[h];
@@ -201,7 +185,6 @@ export function vercelRetryAfter(headers: Record<string, string | string[] | und
   return Number.isFinite(s) ? Math.min(3600, Math.max(0, s)) : 60;
 }
 
-/** Vercel's 429, as Dockify answers it: a clear sentence and when to try again. */
 export function vercelRateLimited(retryAfter: number): HttpError {
   const wait = Math.max(1, retryAfter);
   const when = wait < 90 ? `${wait} second${wait === 1 ? "" : "s"}` : `${Math.ceil(wait / 60)} minutes`;
@@ -213,7 +196,7 @@ export function normaliseTargets(t: string[] | string | undefined): VercelTarget
   return list.filter((x): x is VercelTarget => x === "production" || x === "preview" || x === "development");
 }
 
-/** Which Vercel variables an import takes: the chosen target, readable, a valid Dockify key, not Vercel's own. */
+/** An import takes the chosen target's readable variables with a valid Dockify key, never Vercel's own. */
 export function importableEnv<T extends { key: string; target: VercelTarget[]; type: string }>(envs: T[], target: VercelTarget): T[] {
   const seen = new Set<string>();
   return envs.filter((e) => {
@@ -227,15 +210,14 @@ export function importableEnv<T extends { key: string; target: VercelTarget[]; t
   });
 }
 
-/** Domains worth importing: not the *.vercel.app ones, not redirects. */
+/** Skips the *.vercel.app names and redirects. */
 export function importableDomains(domains: Array<{ name: string; redirect?: string | null }>): string[] {
   return domains.filter((d) => !d.redirect && !d.name.endsWith(".vercel.app")).map((d) => d.name.toLowerCase());
 }
 
 /**
- * The env changes an import makes, as the versioned env store applies them. A new key is added as
- * a secret, or plain for a browser-facing name; an existing key keeps its secret flag and target and only gets the Vercel value; a key
- * whose value already matches is left out, so an import that changes nothing writes no version.
+ * A new key is added as a secret, or plain for a browser-facing name; an existing key keeps its flag and target.
+ * A value that already matches is left out, so an import that changes nothing writes no version.
  */
 export function importChanges(
   values: Array<{ key: string; value: string }>,
@@ -263,7 +245,7 @@ export const importGate = (a: Actor) => (touchesSecret: boolean): void => {
   if (!a.elevated) throw stepUpRequired();
 };
 
-/** Hostnames an import may add: valid, not reserved (the dashboard and DOCKIFY_RESERVED_HOSTS), once each. */
+/** Valid, not reserved (the dashboard and DOCKIFY_RESERVED_HOSTS), once each. */
 export function importableHosts(hosts: string[], reserved: Set<string>): string[] {
   const out = new Set<string>();
   for (const h of hosts) {
@@ -281,13 +263,12 @@ export async function vercelApiFor(db: Tx, ring: Keyring, http: HttpClient): Pro
   return new VercelApi(http, token, configOf<VercelConfig>(row).team?.id ?? null);
 }
 
-/** The Vercel projects at least one app is linked to. */
 export async function linkedProjects(db: Tx): Promise<string[]> {
   const apps = await db.app.findMany({ where: { deployTarget: "vercel", vercelProjectId: { not: null } }, select: { vercelProjectId: true } });
   return [...new Set(apps.map((a) => a.vercelProjectId!))];
 }
 
-/** The contract's webhook state. Projects linked since the last registration are not covered yet. */
+/** Projects linked since the last registration are not covered yet. */
 export function webhookState(w: VercelWebhookRecord | null | undefined, linked: readonly string[]) {
   if (!w) return { state: "off" as const, projects: 0, missingProjects: 0, registeredAt: null, reason: null };
   if (w.state !== "active") return { state: "unavailable" as const, projects: 0, missingProjects: 0, registeredAt: null, reason: w.reason };
@@ -295,9 +276,8 @@ export function webhookState(w: VercelWebhookRecord | null | undefined, linked: 
   return { state: "active" as const, projects: linked.filter((p) => covered.has(p)).length, missingProjects: linked.filter((p) => !covered.has(p)).length, registeredAt: w.registeredAt, reason: null };
 }
 
-/** What the card says once Vercel refuses the stored token. */
 export const TOKEN_DEAD = "Vercel no longer accepts the stored token. Connect again with a new token; your links and deployments stay.";
-/** The mirror's words for a refused token (worker/integrations/vercel-mirror.ts). */
+/** Matches the mirror's error text in worker/integrations/vercel-mirror.ts. */
 const tokenRefused = (e: string | null | undefined) => typeof e === "string" && /refused the stored token/i.test(e);
 
 export async function vercelView(db: Tx) {
@@ -325,9 +305,8 @@ async function patchConfig(tx: Tx, id: string, patch: Partial<VercelConfig>): Pr
 }
 
 /**
- * Queues a mirror pass: one project, or every linked one. An open pass for the same scope covers it.
- * A deployment Vercel said it deleted gets a pass of its own that asks about that id, since the
- * scope's open pass may have read the list before the deletion.
+ * One project, or every linked one; an open pass for the same scope covers it. A deleted deployment gets its own
+ * pass that asks about that id, because the open one may have read the list before the deletion.
  */
 export async function enqueueVercelMirror(db: Db, projectId: string | null, deletedId: string | null = null): Promise<void> {
   const payload = projectId ? { projectId, ...(deletedId ? { deploymentId: deletedId } : {}) } : {};
@@ -337,7 +316,7 @@ export async function enqueueVercelMirror(db: Db, projectId: string | null, dele
   });
 }
 
-/** Vercel's signature: the hex HMAC-SHA1 of the raw body. Compared in constant time. */
+/** Hex HMAC-SHA1 of the raw body, compared in constant time. */
 export function verifyVercelSignature(secret: string, payload: Buffer, header: unknown): boolean {
   if (typeof header !== "string" || !/^[0-9a-f]{40}$/.test(header)) return false;
   const expected = createHmac("sha1", secret).update(payload).digest("hex");
@@ -345,10 +324,8 @@ export function verifyVercelSignature(secret: string, payload: Buffer, header: u
 }
 
 /**
- * One delivery, already raw. Answers 202 for anything correctly signed, so Vercel does not retry what
- * Dockify chose to ignore. Its only effect is a mirror pass for a linked project, which reads Vercel
- * itself: nothing in the body is ever stored or believed beyond naming that project, so a replay or
- * a forged id can at worst cause one more read. No signing secret means no webhook: 404.
+ * Answers 202 for anything correctly signed, so Vercel does not retry what is ignored; no signing secret means 404.
+ * The body is trusted only to name a project: the mirror pass reads Vercel itself, so a replay or forged id costs one read.
  */
 export async function receiveVercelWebhook(db: Db, ring: Keyring, req: FastifyRequest, raw: unknown, now = Date.now()): Promise<{ status: number; error?: { error: string; code: string } }> {
   const row = await findIntegration(db, "vercel");
@@ -392,7 +369,7 @@ export async function receiveVercelWebhook(db: Db, ring: Keyring, req: FastifyRe
   return { status: 202 };
 }
 
-/** The app a Vercel log read is for, and the deployment it reads: the one named, else what it serves. */
+/** Reads the named deployment, else the one the app serves. */
 async function logTarget(db: Db, appId: string, deployment: string | undefined) {
   const app = await db.app.findUnique({
     where: { id: appId },
@@ -421,7 +398,7 @@ async function currentRetention(db: Tx) {
   return retentionNote(row ? configOf<VercelConfig>(row).webhook?.state === "active" : false);
 }
 
-/** apps.vercel.logs, and apps.logs for an app Vercel hosts. */
+/** Serves apps.vercel.logs, and apps.logs for an app Vercel hosts. */
 export async function vercelRuntimeTail(db: Db, ring: Keyring, appId: string, deployment: string | undefined, tail: number, signal?: AbortSignal) {
   const { app, dep } = await logTarget(db, appId, deployment);
   const fetchedAt = new Date().toISOString();
@@ -432,14 +409,10 @@ export async function vercelRuntimeTail(db: Db, ring: Keyring, appId: string, de
   return { lines, nextCursor: null, deployment: logDeployment(dep), retention, fetchedAt };
 }
 
-/** The answer to anything that would change Vercel for an app that only follows its project. */
 export const followOnly = (): HttpError =>
   new HttpError(409, "This app only follows its Vercel project, so Dockify changes nothing on Vercel for it. Do this on Vercel, or make Vercel its deploy target in the app's Settings.", "VERCEL_FOLLOW_ONLY");
 
-/**
- * Queues the worker side of the Vercel deploy target for one app. The one way to that job, so it is
- * the one place that refuses a followed app, inside the transaction that would queue it.
- */
+/** The only way to a vercel_sync job, so the refusal of a followed app lives here, inside the queuing transaction. */
 export async function enqueueVercelSync(db: Db, appId: string, action: "sync_env" | "deploy" | "status", extra: Record<string, unknown> = {}): Promise<void> {
   const key = `vercel_sync:${appId}:${action}`;
   await db.$transaction(async (tx) => {
@@ -453,10 +426,7 @@ export async function enqueueVercelSync(db: Db, appId: string, action: "sync_env
   });
 }
 
-/**
- * A Deploy of a Vercel app: its row and its job in one transaction, or a refusal. With a deploy already
- * open a second row would have no job to run it, so nothing could ever cancel it or let the app go.
- */
+/** Row and job are written in one transaction: a deploy row with no job could never be cancelled or let the app go. */
 export async function requestVercelDeploy(db: Db, appId: string, row: { trigger: "api" | "manual"; actorType: "token" | "user"; actorId: string; actorName: string }): Promise<string> {
   const key = `vercel_sync:${appId}:deploy`;
   return db.$transaction(async (tx) => {
@@ -669,9 +639,8 @@ export function vercelHandlers(deps: IntegrationDeps): Handlers {
       }
       const reserved = reservedHosts(ctx.config.publicUrl, ctx.config.reservedHosts.join(","));
       const hosts = importableHosts(importableDomains(await api.domains(body.vercelProjectId)), reserved);
-      // Domains attach to the app linked to this Vercel project, else the environment's only frontend,
-      // else its only app. Only an app this server routes can serve one: a linked app that stays on
-      // Vercel, or a database, gets none. With no single answer they wait, and the result says how many.
+      // Domains go to the app linked to this Vercel project, else the only frontend, else the only app, and only to one
+      // this server routes. With no single answer they wait, and the result says how many.
       const routes = (x: { kind: string; deployTarget: string }) => x.deployTarget === "server" && ROUTABLE_KINDS.has(x.kind);
       const servable = env.apps.filter(routes);
       const frontends = servable.filter((x) => x.kind === "frontend");

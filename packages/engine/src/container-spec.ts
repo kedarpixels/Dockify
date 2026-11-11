@@ -1,14 +1,7 @@
 /**
- * containerSpec() is the ONLY place a Docker container create body is made. Every tenant container,
- * one-off release command and preview goes through it, and assertSafeSpec() re-checks the final body
- * just before it reaches the daemon, so a bug in a caller (or a body built by hand) cannot slip
- * privileges past the policy.
- *
- * Always: CapDrop ALL plus a fixed minimal add-back, no-new-privileges, a memory cap with no extra
- * swap, a CPU cap and a lower CPU weight than the control plane, a pids cap, a log size cap, a named
- * Dockify network, and none of an image's own labels on the keys Compose and Dockify read.
- * Never: privileged, host network, PID,
- * IPC, UTS, user or cgroup namespaces, devices, bind mounts, host ports, or host-gateway.
+ * The ONLY place a container create body is made; assertSafeSpec() re-checks the final body before it reaches
+ * the daemon. Always: CapDrop ALL plus a fixed add-back, no-new-privileges, memory, CPU, pids and log caps, a
+ * Dockify network. Never: privileged, host namespaces, devices, bind mounts, host ports or host-gateway.
  */
 import { CAPABILITY_ALLOWLIST, defaultCpuCores, isAllowedSysctl } from "@dockify/contracts";
 
@@ -20,9 +13,8 @@ export class ContainerPolicyError extends Error {
 }
 
 /**
- * What every container gets back after CapDrop ALL: enough for an entrypoint to chown its data
- * dir and drop to a service user (postgres, nginx, redis). Not user selectable. Compared with
- * Docker's default set this removes MKNOD, NET_RAW, SETFCAP, SETPCAP, SYS_CHROOT, AUDIT_WRITE, FSETID.
+ * What every container gets back after CapDrop ALL: enough for an entrypoint to chown its data dir and drop
+ * to a service user. Not user selectable.
  */
 export const BASE_CAPABILITIES = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "KILL", "NET_BIND_SERVICE"] as const;
 const ALLOWED_CAPS = new Set<string>([...BASE_CAPABILITIES, ...CAPABILITY_ALLOWLIST]);
@@ -38,10 +30,9 @@ export const LOG_MAX_SIZE = "10m";
 export const LOG_MAX_FILES = "3";
 
 /**
- * Docker merges an image's labels into its container's unless the create body sets that key, so a
- * Dockerfile (a fork's included) could otherwise claim to be a Compose service, and `docker compose
- * exec` would run the update's dump, the restore or `dockify admin` inside it, or claim Dockify's own
- * labels. Each of these is always in the body, blank unless the caller set it.
+ * Docker merges an image's labels into its container's unless the create body sets the key, so a Dockerfile
+ * could claim to be a Compose service (and receive `docker compose exec` of the update's dump or `dockify
+ * admin`) or claim Dockify's own labels. Each key is always in the body, blank unless the caller set it.
  */
 const COMPOSE_LABELS = ["com.docker.compose.project", "com.docker.compose.service", "com.docker.compose.oneoff", "com.docker.compose.container-number"] as const;
 const IMAGE_MAY_NOT_SET = [
@@ -80,7 +71,6 @@ export interface VolumeMount {
 
 export interface ContainerInput {
   name: string;
-  /** A pinned image id (sha256:...) or a reference. */
   image: string;
   network: string;
   /** DNS names other containers on the network use for this one. */
@@ -106,7 +96,6 @@ export interface ContainerInput {
   healthcheck?: { test: string[]; intervalSeconds: number; timeoutSeconds: number; retries: number; startSeconds: number };
 }
 
-/** The subset of the Docker Engine ContainerCreate body Dockify produces. */
 export interface ContainerSpec {
   Image: string;
   Env: string[];

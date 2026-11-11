@@ -1,8 +1,6 @@
 /**
- * Env resolution for one deployment: project, then environment, then app (later wins). The result
- * is sealed into one env_snapshot secret on the Deployment, so a retry or a rollback runs with
- * exactly the config that deployment shipped with, and an undecryptable value fails before any
- * expensive build.
+ * Env resolution for one deployment: project, then environment, then app (later wins). The result is sealed
+ * into one snapshot on the Deployment, so a retry or a rollback runs with exactly the config it shipped with.
  */
 import { projects as P } from "@dockify/contracts";
 import { openServiceCredentials, readSecretValue, readSecretValues, ServiceCredentialsError, storeSecret, type Db, type SecretVault, type ServiceCredentials } from "@dockify/db";
@@ -13,7 +11,6 @@ export type ResolvedVar = BuildVar;
 
 const RANK = { project: 0, environment: 1, app: 2 } as const;
 
-/** Pure merge: higher scope wins per key, output sorted by key so snapshots are stable. */
 export function mergeScopes(rows: Array<ResolvedVar & { scope: keyof typeof RANK }>): ResolvedVar[] {
   const byKey = new Map<string, ResolvedVar & { scope: keyof typeof RANK }>();
   for (const r of rows) {
@@ -64,11 +61,8 @@ export async function resolveEnv(db: Db, vault: SecretVault, ids: { projectId: s
 }
 
 /**
- * A linked variable's value now: the service's current credential, so a rotated password reaches
- * the app on this deploy. Only a service in the deploying app's own project resolves; anything
- * else fails the deploy rather than hand one tenant's credential to another. The credentials are
- * read by the shared reader (@dockify/db), which also reads an older install's bare password, so
- * a stored value never fails a deploy with a raw JSON error.
+ * A linked variable resolves to the service's current credential, so a rotated password reaches the app on this
+ * deploy. Only a service in the app's own project resolves: never hand one tenant's credential to another.
  */
 async function resolveRef(db: Db, vault: SecretVault, key: string, stored: string, projectId: string): Promise<string> {
   const ref = P.decodeEnvRef(stored);
@@ -112,17 +106,13 @@ export async function openSnapshot(db: Db, vault: SecretVault, secretId: string)
 
 export interface RollbackEnv {
   vars: ResolvedVar[];
-  /** Secret keys whose rollback-target value differs from today's: today's value is used. */
   secretsKeptCurrent: string[];
-  /** Keys the target shipped with that no longer exist: they stay removed. */
   notRestored: string[];
 }
 
 /**
- * The env a rollback runs with. Only the image and plain (non-secret) values roll back. A rollback
- * is a deploy-scope action, so it must never undo an env change that needed more: a rotated secret
- * keeps its current value and a removed variable (secret or not) stays removed. Rolling env itself
- * back is env.rollback, which is elevated and audited. Pure, sorted by key like mergeScopes.
+ * Only the image and plain values roll back. A rollback is a deploy-scope action, so it never undoes an env
+ * change that needed more: a rotated secret keeps its current value and a removed variable stays removed.
  */
 export function rollbackEnv(snapshot: ResolvedVar[], current: ResolvedVar[]): RollbackEnv {
   const old = new Map(snapshot.map((v) => [v.key, v]));

@@ -1,17 +1,7 @@
 /**
- * Preview lifecycle on the worker: teardown, sleep and wake, and the reconcile that makes
- * the cleanup guarantee hold whatever crashed in between. Runs every few minutes:
- *
- *   rows     a closing preview whose teardown job was lost is queued again; a preview whose
- *            project turned previews off (or was archived) or whose TTL (hours without a commit)
- *            ran out is deleted; a ready preview with no request for idleMinutes goes to sleep
- *   docker   every container labelled dockify.preview whose preview row is gone, closed, or no
- *            longer includes that app is removed, and so is every pv-* route file nobody owns
- *   setting  a preview on the wrong network for what its project allows now (the owner changed the
- *            setting, or it predates it) loses its containers and is built again: secrets live in a
- *            container's config, so nothing short of a new container takes them back
- *
- * The decisions are pure (planReconcile, planDockerSweep) so the tests can prove no preview leaks.
+ * Preview teardown, sleep and wake, and the reconcile that makes the cleanup guarantee hold whatever
+ * crashed in between. A preview on the wrong network for its project's setting is built again:
+ * secrets live in a container's config, so nothing short of a new container takes them back.
  */
 import { projects as P } from "@dockify/contracts";
 import { enqueuePreviewTx, type Db, type PreviewStatus, type Tx } from "@dockify/db";
@@ -43,7 +33,6 @@ export interface PreviewFacts {
   updatedAt: Date;
   ttlHours: number;
   idleMinutes: number;
-  /** A teardown job for this preview is open right now. */
   cleanupQueued: boolean;
 }
 
@@ -54,13 +43,9 @@ export interface ReconcilePlan {
   requeue: string[];
 }
 
-/** The latest sign of life: a commit or a request. */
 export const lastActivity = (r: Pick<PreviewFacts, "lastCommitAt" | "lastRequestAt">): number => Math.max(r.lastCommitAt.getTime(), r.lastRequestAt?.getTime() ?? 0);
 
-/**
- * Pure: what the reconcile does to the rows. `trafficKnown` is false when the proxy's request
- * counters could not be read; nothing is put to sleep on a guess.
- */
+/** `trafficKnown` is false when the proxy's request counters could not be read; nothing sleeps on a guess. */
 export function planReconcile(rows: PreviewFacts[], now: Date, trafficKnown: boolean): ReconcilePlan {
   const plan: ReconcilePlan = { retire: [], sleep: [], requeue: [] };
   const t = now.getTime();
@@ -78,15 +63,9 @@ export function planReconcile(rows: PreviewFacts[], now: Date, trafficKnown: boo
 }
 
 export interface DockerFacts {
-  /** Every preview row that still exists, with its status and the member (preview app) ids it holds. */
   envs: Array<{ id: string; status: PreviewStatus; isolatedDb: boolean; members: string[] }>;
 }
 
-/**
- * Pure: the preview containers and route files that must go. A container is kept only while its
- * preview row exists, keeps containers in its status, and (for an app container) still lists that
- * member; a route file only while its member's preview is building, ready, failed or asleep.
- */
 export function planDockerSweep(containers: ContainerSummary[], routeFiles: string[], facts: DockerFacts): { containers: string[]; routes: string[] } {
   const byEnv = new Map(facts.envs.map((e) => [e.id, e]));
   const removeContainers: string[] = [];
@@ -110,12 +89,7 @@ export function planDockerSweep(containers: ContainerSummary[], routeFiles: stri
 /** A deleted preview's cache mounts may take this long to go; the janitor's trim gets whatever does not. */
 const SCOPE_PRUNE_TIMEOUT_MS = 2 * 60_000;
 
-/**
- * Pure: the containers on the wrong network for what their preview may have now, and the previews to
- * build again for it. A preview asleep only loses them: its wake finds none and builds. A building one
- * waits for the next pass, since its new container may be starting right now. A container that does
- * not report its networks is left alone.
- */
+/** A building preview waits a pass (its new container may be starting); unknown networks are left alone. */
 export function planIsolationDrift(containers: ContainerSummary[], envs: Array<{ id: string; status: PreviewStatus; network: string }>): { containers: string[]; rebuild: string[] } {
   const byEnv = new Map(envs.map((e) => [e.id, e]));
   const remove: string[] = [];
@@ -132,9 +106,6 @@ export function planIsolationDrift(containers: ContainerSummary[], envs: Array<{
   return { containers: remove, rebuild: [...rebuild] };
 }
 
-// ------------------------------------------------------------------ request counters
-
-/** Sums Traefik's request counter per pv-* service from its Prometheus text. */
 export function parseRequestCounters(text: string): Map<string, number> {
   const out = new Map<string, number>();
   for (const line of text.split("\n")) {
@@ -148,7 +119,6 @@ export function parseRequestCounters(text: string): Map<string, number> {
 
 export type CounterSource = () => Promise<Map<string, number> | null>;
 
-/** Reads the proxy's metrics entrypoint. Null when it cannot be read. */
 export function traefikCounters(dial: Dialer): CounterSource {
   return async () => {
     const socket = await dial({ proxy: 8082 }, { timeoutMs: 5_000 }).catch(() => null);
@@ -173,8 +143,6 @@ export function traefikCounters(dial: Dialer): CounterSource {
   };
 }
 
-// ------------------------------------------------------------------ teardown
-
 export interface PreviewRuntimeDeps {
   db: Db;
   docker: DockerApi;
@@ -186,11 +154,8 @@ export interface PreviewRuntimeDeps {
   counters?: CounterSource;
   stats?: (containerId: string) => Promise<{ cpuPct: number; memoryBytes: number } | null>;
   log?: (msg: string, extra?: object) => void;
-  /** Reclaims a deleted preview's own network. */
   networks?: Pick<NetworkSweepDeps, "docker" | "ownContainers">;
-  /** Reclaims a deleted preview's own build cache. */
   builder?: Pick<Builder, "pruneCacheScope">;
-  /** The clock every timestamp and age in this module comes from; tests pin it. */
   now?: () => Date;
 }
 
@@ -211,13 +176,7 @@ async function removeContainer(docker: DockerApi, id: string): Promise<void> {
   });
 }
 
-/**
- * Removes the images only this preview's deployments used, the moment the preview goes. An image
- * still in use stays: one the app's own deployments point at (a rollback target), or a preview that
- * still holds containers. Two identical builds share one image id, and the row of a preview closed
- * long ago holds nothing: counting it kept the image forever, since neither preview's cleanup would
- * ever remove it.
- */
+/** Stays while a rollback target or a preview with containers uses it; a closed preview's row does not count. */
 export async function prunePreviewImages(db: Db, docker: DockerApi, deploymentIds: string[], serverId: string): Promise<number> {
   if (!deploymentIds.length) return 0;
   const mine = await db.deployment.findMany({ where: { id: { in: deploymentIds }, imageId: { not: null } }, select: { imageId: true } });
@@ -236,7 +195,6 @@ export async function prunePreviewImages(db: Db, docker: DockerApi, deploymentId
       await docker.removeImage(id);
       removed++;
     } catch {
-      // In use or already gone: the janitor's next pass decides.
     }
   }
   return removed;
@@ -273,11 +231,7 @@ export async function runPreviewCleanup(deps: PreviewRuntimeDeps, payload: unkno
   }
 }
 
-/**
- * The database volume of a preview that no longer holds containers: a row deleted with its project
- * (the reconcile removes the containers, by label, but never saw a volume), or a crash mid cleanup.
- * A volume in use is left alone.
- */
+/** Left by a row deleted with its project or a crash mid cleanup. A volume in use is left alone. */
 export async function sweepPreviewDbVolumes(deps: { db: Db; serverId: string; docker: Pick<DockerApi, "removeVolume">; volumes: () => Promise<Array<{ Name: string; UsageData?: { RefCount?: number } | null }>> }): Promise<number> {
   const mine = (await deps.volumes()).filter((v) => v.Name.startsWith(PREVIEW_DB_VOLUME_PREFIX) && (v.UsageData?.RefCount ?? 0) === 0);
   if (!mine.length) return 0;
@@ -292,9 +246,7 @@ export async function sweepPreviewDbVolumes(deps: { db: Db; serverId: string; do
   return n;
 }
 
-// ------------------------------------------------------------------ sleep and wake
-
-/** Stops the containers and takes the routes down. The images and containers stay for a fast wake. */
+/** The images and containers stay for a fast wake. */
 export async function sleepPreview(deps: PreviewRuntimeDeps, id: string): Promise<void> {
   const { db, docker } = deps;
   const env = await db.previewEnv.findUnique({ where: { id }, select: { status: true, apps: { select: { id: true, hostname: true, app: { select: { port: true } } } } } });
@@ -319,7 +271,6 @@ export async function sleepPreview(deps: PreviewRuntimeDeps, id: string): Promis
   });
 }
 
-/** Builds one preview app again from the preview's commit. */
 async function queueMemberBuild(tx: Tx, m: { id: string; appId: string; app: { serverId: string } }, env: { commitSha: string | null; branch: string; title: string; fromFork: boolean }, at: Date): Promise<void> {
   const now = at.toISOString();
   const key = `deploy:preview:${m.id}`;
@@ -335,10 +286,9 @@ async function queueMemberBuild(tx: Tx, m: { id: string; appId: string; app: { s
 }
 
 /**
- * Applies planIsolationDrift. The new build is queued first, so a crash here leaves a preview that is
- * building, not one that says ready with nothing behind it. The old containers then go at once and
- * nothing keeps serving: a build that fails for want of a secret must not leave the old container,
- * secret and all, answering at the preview's URL.
+ * The new build is queued first, so a crash leaves a preview that is building, not a ready one with
+ * nothing behind it. The old containers then go at once: a build that fails for want of a secret must
+ * not leave the old container, secret and all, answering at the preview's URL.
  */
 export async function correctIsolation(deps: PreviewRuntimeDeps, containers: ContainerSummary[], now: Date): Promise<{ containers: number; rebuilt: string[] }> {
   const { db } = deps;
@@ -368,10 +318,7 @@ export async function correctIsolation(deps: PreviewRuntimeDeps, containers: Con
   return { containers: plan.containers.length, rebuilt: plan.rebuild };
 }
 
-/**
- * The preview_wake job: start what sleeps and route it again. A container that is gone (pruned,
- * removed by hand) cannot be started, so that app is built again from the preview's commit.
- */
+/** A container that is gone (pruned, removed by hand) cannot be started, so that app is built again. */
 export async function runPreviewWake(deps: PreviewRuntimeDeps, payload: unknown): Promise<void> {
   const { db, docker } = deps;
   const id = previewIdOf(payload);
@@ -415,12 +362,7 @@ export async function runPreviewWake(deps: PreviewRuntimeDeps, payload: unknown)
   });
 }
 
-// ------------------------------------------------------------------ reconcile
-
-/**
- * The previews this server holds: any with a member app here. One with no member at all is nobody's
- * work but this server's reconcile can still close it, and the rows guard against doing that twice.
- */
+/** A preview with no member app can still be closed here; the rows guard against doing that twice. */
 const previewsHere = (serverId: string) => ({ OR: [{ apps: { some: { app: appsHere(serverId) } } }, { apps: { none: {} } }] });
 
 export interface ReconcileReport {
@@ -431,11 +373,7 @@ export interface ReconcileReport {
   routesRemoved: number;
 }
 
-/**
- * Rewrites a serving preview's route to its current form, keeping its backend. A route written before
- * previews had a gate has no gate, and nothing else would touch it until the next push. Writing an
- * unchanged file is a no-op (edge/routes.ts), and only a backend that is a container name is carried over.
- */
+/** Gives a route written without a gate its gate; only a container-name backend is carried over. */
 export async function gateOlderRoutes(deps: Pick<PreviewRuntimeDeps, "db" | "serverId" | "routes" | "mode" | "dashboardHost" | "log">): Promise<void> {
   const rows = await deps.db.previewDeployment.findMany({
     where: { env: { status: { in: ["building", "ready", "failed"] } }, currentDeploymentId: { not: null }, app: appsHere(deps.serverId) },
@@ -450,7 +388,6 @@ export async function gateOlderRoutes(deps: Pick<PreviewRuntimeDeps, "db" | "ser
   }
 }
 
-/** One reconcile pass: rows first (retire, requeue, sleep), then the docker sweep against what is left. */
 export async function reconcilePreviews(deps: PreviewRuntimeDeps, now = clock(deps)): Promise<ReconcileReport> {
   const { db, docker, serverId } = deps;
   const rows = await db.previewEnv.findMany({
@@ -462,9 +399,8 @@ export async function reconcilePreviews(deps: PreviewRuntimeDeps, now = clock(de
     },
   });
 
-  // Traffic: a counter that moved since the last pass is a request. A closing or blocked preview
-  // serves nothing, and writing its row would restart the clock that finds a stuck cleanup
-  // (updatedAt), so it is left alone.
+  // A counter that moved since the last pass is a request. A closing or blocked preview is skipped:
+  // writing its row would restart the clock (updatedAt) that finds a stuck cleanup.
   const counters = deps.counters ? await deps.counters().catch(() => null) : null;
   if (counters) {
     for (const r of rows) {
@@ -504,7 +440,6 @@ export async function reconcilePreviews(deps: PreviewRuntimeDeps, now = clock(de
   for (const id of plan.requeue) await db.$transaction(async (tx) => enqueuePreviewTx(tx, "preview_cleanup", id, serverId));
   for (const id of plan.sleep) await sleepPreview(deps, id).catch((e: unknown) => deps.log?.("preview sleep failed", { id, error: e instanceof Error ? e.message : String(e) }));
 
-  // Resource use of what runs, for the dashboard list.
   if (deps.stats) {
     for (const r of rows) {
       if (r.status !== "ready" && r.status !== "failed" && r.status !== "building") continue;
@@ -516,7 +451,6 @@ export async function reconcilePreviews(deps: PreviewRuntimeDeps, now = clock(de
     }
   }
 
-  // Docker against the rows as they are now (closed and deleted rows hold nothing).
   const envs = await db.previewEnv.findMany({ where: { status: { not: "closed" }, ...previewsHere(serverId) }, select: { id: true, status: true, isolatedDb: true, apps: { select: { id: true } } } });
   let containers = await docker.listContainers({ "dockify.managed": "true" });
   // Never lets the rest of the pass go: a stuck preview must still be swept.
@@ -536,7 +470,6 @@ export async function reconcilePreviews(deps: PreviewRuntimeDeps, now = clock(de
   return { retired: plan.retire, slept: plan.sleep, requeued: plan.requeue, containersRemoved: sweep.containers.length, routesRemoved: sweep.routes.length };
 }
 
-/** Route ids the edge reconcile must keep: every routed preview app. */
 export async function previewRouteIds(db: Db): Promise<string[]> {
   const rows = await db.previewDeployment.findMany({ where: { env: { status: { in: ["building", "ready", "failed", "asleep"] } } }, select: { id: true } });
   return rows.map((r) => previewRouteId(r.id));

@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { DisplayName, Email, Hostname, Iso, isTimeZone, NewPassword, Password, Role, Slug, TokenGrant, TokenScope, TotpCode, Uuid } from "./common.ts";
 
-// ------------------------------------------------------------------ sign in (anonymous)
-
 export const LoginBody = z.strictObject({ email: Email, password: Password });
 export const LoginResponse = z.object({ next: z.enum(["done", "verify"]) });
 
@@ -25,14 +23,12 @@ export const SetupStatus = z.object({ needsSetup: z.boolean(), instanceName: z.s
 export const ForgotBody = z.strictObject({ email: Email });
 export const ResetToken = z.string().regex(/^[A-Za-z0-9_-]{20,200}$/);
 export const ResetParams = z.strictObject({ token: ResetToken });
-/** What the reset page shows before the new password: the account, masked, and the deadline. */
 export const ResetPreview = z.object({ email: z.string(), expiresAt: Iso });
 export const PasswordResetBody = z.strictObject({ password: NewPassword });
 
 /**
- * Email codes: 6 digits, hashed at rest, 10 minutes, 5 tries. With `email` set to a new address
- * the code goes there and confirming it moves the account (step-up required); without it the code
- * goes to the current address and confirming it marks that address verified.
+ * 6 digits, hashed at rest, 10 minutes, 5 tries. With `email` the code goes to that new address and confirming
+ * it moves the account (step-up required); without it, confirming marks the current address verified.
  */
 export const EmailCodeBody = z.strictObject({ email: Email.optional() });
 export const EmailCodeResponse = z.object({ email: z.string(), purpose: z.enum(["verify", "change"]), expiresAt: Iso });
@@ -66,8 +62,6 @@ export const StepUpResponse = z.object({ expiresAt: Iso });
 
 export const OkEmpty = z.object({});
 
-// ------------------------------------------------------------------ account
-
 export const TwoFactor = z.object({ enabled: z.boolean() });
 export const Me = z.object({
   id: z.string(),
@@ -93,10 +87,7 @@ export const Me = z.object({
 });
 export type Me = z.infer<typeof Me>;
 
-/**
- * GitHub's username rules: 1 to 39 letters, digits or single hyphens, never a hyphen at either end.
- * Stored lowercased, since GitHub logins ignore case.
- */
+/** GitHub's username rules. Stored lowercased, since GitHub logins ignore case. */
 export const GitHubLogin = z
   .string()
   .trim()
@@ -104,7 +95,6 @@ export const GitHubLogin = z
   .transform((v) => v.toLowerCase());
 export const GitHubLoginBody = z.strictObject({ login: GitHubLogin.nullable() });
 
-/** A zone this runtime knows (Intl accepts it), such as Europe/Berlin or UTC. */
 export const TimeZone = z
   .string()
   .min(1)
@@ -145,8 +135,6 @@ export const SessionRow = z.object({
   current: z.boolean(),
 });
 
-// ------------------------------------------------------------------ team
-
 export const TeamMember = z.object({
   id: z.string(),
   name: z.string(),
@@ -185,8 +173,6 @@ export const CreateInviteBody = z.strictObject({ email: Email, role: InviteRole,
 export const CreateInviteResponse = z.object({ url: z.string(), invite: TeamInvite, emailed: z.boolean() });
 export const IdParams = z.strictObject({ id: Uuid });
 
-// ------------------------------------------------------------------ instance settings
-
 export const NotifyEvent = z.enum(["deployFailed", "appDown", "backupFailed", "tlsExpiring", "previewDeployments", "jobFailed"]);
 export type NotifyEventName = z.infer<typeof NotifyEvent>;
 /** Every event notifies until the owner turns it off. */
@@ -202,7 +188,7 @@ export const InstanceSettings = z.object({
   instanceName: z.string(),
   publicUrl: z.string(),
   defaultBranch: z.string(),
-  /** Stored, not applied: deploys run one at a time on the worker's deploy lane. Settings no longer shows it. */
+  /** Stored, not applied: deploys run one at a time on the worker's deploy lane. */
   buildConcurrency: z.number().int(),
   /** Days the worker keeps runtime logs (its prune pass reads this); a build log stays with its deployment. */
   logRetentionDays: z.number().int(),
@@ -212,7 +198,6 @@ export const InstanceSettings = z.object({
   /** preview.<parent of the dashboard host>, used while previewDomain is not set by hand. */
   previewDomainDefault: z.string().nullable(),
   previewDomainCustom: z.boolean(),
-  /** The off switch for the web terminal, for the whole instance. */
   terminalEnabled: z.boolean(),
 });
 export const PatchSettingsBody = z.strictObject({
@@ -227,8 +212,6 @@ export const PatchSettingsBody = z.strictObject({
   terminalEnabled: z.boolean().optional(),
 });
 
-// ------------------------------------------------------------------ API tokens
-
 export const ApiTokenRow = z.object({
   id: z.string(),
   name: z.string(),
@@ -242,7 +225,6 @@ export const ApiTokenRow = z.object({
   projects: z.array(z.string()),
   grants: z.array(TokenGrant),
 });
-/** The project scope of a new token: "all" chosen deliberately, or at least one project slug. */
 export const TokenProjects = z.union([z.literal("all"), z.array(Slug).min(1).max(50)]);
 export const CreateTokenBody = z.strictObject({
   name: DisplayName,

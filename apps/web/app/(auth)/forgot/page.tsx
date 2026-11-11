@@ -5,10 +5,7 @@ import { getSetupStatus } from "@/lib/pages/auth-loaders";
 
 export const metadata: Metadata = { title: "Forgot password" };
 
-/**
- * /forgot: only while email is set up. Without it there is nothing to send, so the visitor lands
- * on /recover (the reset over SSH) instead.
- */
+/** Only while email is set up; without it the visitor lands on /recover (the reset over SSH). */
 export default async function ForgotPage() {
   const status = await getSetupStatus();
   if (status.data && !status.data.emailEnabled) redirect("/recover");

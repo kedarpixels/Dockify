@@ -1,12 +1,6 @@
 /**
- * Deleting the backups of an app that no longer exists (backup_delete, queued by the api's
- * backups.orphans.delete, which waits for it and reads the result off the job row). It runs here
- * because the worker is the one service that can write the dockify-backups volume: the api mounts it
- * read-only, for downloads, so a compromised api cannot destroy local backups.
- *
- * The job names only the source app. The rows, and so every object key, come from the database, and
- * LocalStore keeps every key inside its folder. A file or object that could not be deleted keeps its
- * row, the only record of where it is. Bytes freed are what the disk says, not what the row says.
+ * Runs in the worker because the api mounts the backups volume read-only, so a compromised api cannot destroy
+ * local backups. Object keys come from the database rows, never the job. An undeletable file keeps its row.
  */
 import { DataError, type DataDeps } from "./context.ts";
 

@@ -46,15 +46,8 @@ import { deployTemplate, useTemplates } from "./client";
 import { TemplatePicker, TemplateReview } from "./template-source";
 import { draftFor, initialTemplate, templateHostError, templateInputError, templateNameError, type TemplateRow } from "./template-spec";
 
-/* The new app flow, three steps in one Dialog: the source, its settings, then name and environment.
-   Every draft lives here so Back keeps what was typed; it mounts only while open, so each opening
-   starts clean. `start` opens it on step 2 with that source picked, the way a link such as
-   /projects/{slug}?new=service lands on "Database or service"; `forApp` is the app it was opened
-   from, which a new Postgres or Redis starts linked to.
-
-   Linking never replaces a variable silently: when the API answers that a checked app already has
-   DATABASE_URL or REDIS_URL, nothing was created, the step says which apps, and the primary key
-   becomes "Replace and create". Unchecking those apps instead creates without touching them. */
+// Every draft lives here so Back keeps what was typed; it mounts only while open, so each opening
+// starts clean. Linking never replaces a variable silently: a conflict creates nothing and asks.
 
 const SOURCES: CardOption<SourceType>[] = [
   { value: "git", icon: "github", title: "GitHub repository", body: "Build a branch, from its Dockerfile when it has one, otherwise detected and built for you." },
@@ -79,7 +72,6 @@ type Props = {
   start?: SourceType;
   /** The app New app was opened from: a new service starts in its environment, linked to it. */
   forApp?: string;
-  /** The environment the project page is showing: the new app starts there. */
   environment?: string;
 };
 
@@ -103,7 +95,6 @@ function NewAppFlow({ p, open, onClose, start, forApp, environment }: Props) {
     const from = p.apps.find((a) => a.id === forApp && LINKABLE_KINDS.has(a.kind));
     return { name: "", named: false, environment: from?.environment ?? (p.environments.some((e) => e.name === environment) ? environment! : (p.environments[0]?.name ?? "production")), kind: null, target: "server", links: from ? [from.id] : [] };
   });
-  // The API's last link conflict, and the apps the operator has agreed to replace since.
   const [conflict, setConflict] = useState<LinkConflict | null>(null);
   const [replace, setReplace] = useState<string[]>([]);
   const [tried, setTried] = useState<Step | 0>(0);
@@ -146,8 +137,6 @@ function NewAppFlow({ p, open, onClose, start, forApp, environment }: Props) {
     ? `${clashes.join(", ")} already ${clashes.length === 1 ? "exists" : "exist"} in ${multi ? env : "this project"}. Rename ${clashes.length === 1 ? "it" : "them"} in the file, or leave ${clashes.length === 1 ? "it" : "them"} out.`
     : undefined;
 
-  // Linking: only a service, only the checked apps of the chosen environment, and a conflict only
-  // while one of its apps is still checked.
   const linkApps = useMemo(() => (source === "service" ? linkable(p.apps, details.environment) : []), [source, p.apps, details.environment]);
   const links = details.links.filter((id) => linkApps.some((a) => a.id === id));
   const pending = conflict?.apps.filter((a) => links.includes(a.id)) ?? [];
@@ -222,7 +211,6 @@ function NewAppFlow({ p, open, onClose, start, forApp, environment }: Props) {
     if (step === 3) void create(shownConflict !== null);
   };
 
-  // One new app that serves HTTP, on a server that can offer it.
   const canTestDomain = !!offer?.available && !many && source !== "service" && (kind === "frontend" || kind === "backend");
 
   const create = async (replacing = false) => {
@@ -262,7 +250,6 @@ function NewAppFlow({ p, open, onClose, start, forApp, environment }: Props) {
   };
 
   const count = many?.length ?? 1;
-  // One step line on every step, "Step N of 3, what this step does"; the cards and fields say the rest.
   const sub =
     step === 1
       ? "Step 1 of 3, choose a source"

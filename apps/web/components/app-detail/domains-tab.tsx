@@ -21,9 +21,7 @@ import { TabCard, TabFailed } from "./states";
 import { useAppTab } from "./use-tab";
 import { notRunning } from "@/lib/derive";
 
-/* Domains: this app's hostnames in the same rows as /domains, with their certificate, DNS and the
-   record a broken one needs. Adding one opens the same two step dialog as /domains; removal and
-   the bulk recheck stay on that page. A Viewer reads the rows without their keys, as on /domains. */
+/* The same rows and add dialog as /domains; removal and the bulk recheck stay on that page. */
 
 export function DomainsTab({ app, now }: { app: AppDetail; now: number }) {
   const q = useAppTab<DomainsPayload>(app.id, "domains");
@@ -33,7 +31,6 @@ export function DomainsTab({ app, now }: { app: AppDetail; now: number }) {
   const [checking, setChecking] = useState<ReadonlySet<string>>(() => new Set());
   const preview = q.source === "preview";
   const items = q.data?.items ?? [];
-  // Where a domain's records should point. The tab gets the API's payload as it is (null for an unknown target).
   const target = useMemo(() => domainTargets(q.data), [q.data]);
   const where = `${app.projectSlug} / ${appTitle(app)}`;
 

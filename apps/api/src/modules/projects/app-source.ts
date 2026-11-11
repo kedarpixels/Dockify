@@ -1,11 +1,6 @@
-/**
- * The New app rules for every source (git, image, service) and the mapping from a validated spec
- * to an App row. The contract already fixes the shape; these are the cross-field rules a schema
- * cannot say, each a refusal with a reason the dashboard can show next to the field.
- *
- * Nothing here can ask for a host port, privileged mode, a capability or a host path: the
- * contract has no field for them, and containerSpec() in the worker refuses them again.
- */
+// The cross-field rules of a new app that the contract schema cannot say. A spec cannot ask for a
+// host port, privileged mode, a capability or a host path: the contract has no field for them,
+// and containerSpec() in the worker refuses them again.
 import type { z } from "zod";
 import { projects as P, refusedPull } from "@dockify/contracts";
 import { isBlockedHost, repoHostOf } from "./host-rule.ts";
@@ -26,24 +21,19 @@ const STATEFUL = new Set<AppKind>(["postgres", "redis", "s3"]);
 const SERVICE_KIND = { postgres: "postgres", redis: "redis", minio: "s3" } as const satisfies Record<string, AppKind>;
 
 /**
- * The versions a managed service can be created with, and the tag each one stores in App.image.
- * Exactly the list New app offers (apps/web/components/new-app/service-versions.ts; versions.test.ts
- * keeps the two in step). The worker pulls the tag on the service's first deploy and pins the digest
- * it resolved to (App.pinnedImage), so later deploys never follow the moving tag (worker
- * data/images.ts). Versions outside this list are refused. Storage has none: MinIO no longer
- * publishes an image, so the kind is not offered (STORAGE_UNAVAILABLE).
+ * Must match the list in apps/web/components/new-app/service-versions.ts (versions.test.ts checks).
+ * The worker pins the digest the tag resolves to on first deploy, so later deploys never follow the tag.
  */
 export const SERVICE_IMAGES: Record<keyof typeof SERVICE_KIND, Record<string, string>> = {
   postgres: { "17": "postgres:17-alpine", "16": "postgres:16-alpine", "15": "postgres:15-alpine" },
   redis: { "8.2": "redis:8.2-alpine", "7.4": "redis:7.4-alpine" },
   minio: {},
 };
-/** What a service gets when no version is named: the newest offered. */
 export const SERVICE_DEFAULT_VERSION = { postgres: "17", redis: "8.2" } as const;
 export const SERVICE_PORTS: Record<keyof typeof SERVICE_KIND, number> = { postgres: 5432, redis: 6379, minio: 9000 };
 export const STORAGE_UNAVAILABLE = "Storage is not available: MinIO no longer publishes an image Dockify can run. Use S3 compatible storage from your provider instead.";
 
-/** Paths a volume may never cover. The same list containerSpec() enforces. */
+/** Paths a volume may never cover. Keep in step with containerSpec() in the worker. */
 const FORBIDDEN_MOUNTS = ["/", "/proc", "/sys", "/dev", "/etc", "/bin", "/sbin", "/usr", "/lib", "/lib64", "/boot", "/run", "/var/run"];
 /** Variables Dockify sets itself; a tenant may not shadow them. */
 const RESERVED_ENV = /^(DOCKIFY_|PORT$)/;
@@ -54,7 +44,6 @@ const isForbiddenMount = (path: string): boolean => {
   return FORBIDDEN_MOUNTS.some((f) => p === f || (f !== "/" && p.startsWith(`${f}/`)));
 };
 
-/** Every refusal for one spec. Empty means the spec may be stored. */
 export function checkSpec(spec: AppSpec, at = ""): Refusal[] {
   const out: Refusal[] = [];
   const f = (field: string) => (at ? `${at}.${field}` : field);
@@ -68,7 +57,6 @@ export function checkSpec(spec: AppSpec, at = ""): Refusal[] {
     }
     if (spec.build) out.push({ field: f("build"), reason: "A managed service has no build settings" });
     if (spec.run?.startCommand) out.push({ field: f("run.startCommand"), reason: "A managed service runs its own command" });
-    // Its one volume, its credentials and its config are Dockify's: nothing a spec sets would reach it.
     if (spec.volumes?.length) out.push({ field: f("volumes"), reason: "A managed service keeps its data on its own volume, which Dockify creates" });
     if (spec.env?.length) out.push({ field: f("env"), reason: "A managed service takes no variables; Dockify sets its credentials and configuration" });
   } else {
@@ -107,7 +95,7 @@ export function checkSpec(spec: AppSpec, at = ""): Refusal[] {
   const keys = new Set<string>();
   spec.env?.forEach((e, i) => {
     if (RESERVED_ENV.test(e.key)) out.push({ field: f(`env.${i}.key`), reason: `${e.key} is set by Dockify` });
-    // Hook keys have one door: the variables page, where they need an explicit confirmation and an audit row.
+    // Hook keys have one door: the variables page, where they are confirmed and audited.
     if (P.isDangerousEnvKey(e.key)) out.push({ field: f(`env.${i}.key`), reason: `Set ${e.key} from the project's variables page, where it needs an explicit confirmation` });
     if (keys.has(e.key)) out.push({ field: f(`env.${i}.key`), reason: `${e.key} is set twice` });
     keys.add(e.key);
@@ -115,10 +103,9 @@ export function checkSpec(spec: AppSpec, at = ""): Refusal[] {
   return out;
 }
 
-/** The docker volume name for a Volume row: namespaced by app so two apps never share one. */
+/** Namespaced by app so two apps never share a volume; 128 is docker's name limit. */
 export const dockerVolumeName = (appId: string, name: string): string => `dk-${appId.replace(/-/g, "").slice(0, 12)}-${name}`.slice(0, 128);
 
-/** App columns for a validated spec (no relations; the handler adds ids and the environment). */
 export function appColumns(spec: AppSpec): {
   kind: AppKind;
   deployTarget: "server" | "vercel";

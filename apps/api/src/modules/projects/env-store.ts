@@ -1,11 +1,5 @@
-/**
- * Loads and stores a project's env set. Every value is sealed in `secrets` (one row per value,
- * owner env_var:<envVar id>); each applied version also seals a full snapshot (owner
- * env_version:<version id>), which is what rollback restores from.
- *
- * Apply is optimistic: the project's envVersion moves only if it still equals the caller's
- * baseVersion, inside the transaction that writes the rows, so two tabs cannot both win.
- */
+// Every value is sealed in `secrets`, one row per value; each applied version also seals a full
+// snapshot, which is what rollback restores from.
 import { randomUUID } from "node:crypto";
 import { projects as P } from "@dockify/contracts";
 import type { Keyring } from "@dockify/crypto";
@@ -39,10 +33,7 @@ export async function loadScope(tx: Tx, projectId: string): Promise<ProjectScope
   return { projectId, environments, apps };
 }
 
-/**
- * Every stored entry of a project. Only values `unseal` approves are opened; the rest stay null,
- * so a masked view never decrypts a secret it will not show. Apply passes `true`.
- */
+/** Only values `unseal` approves are opened; the rest stay null, so a masked view never decrypts a secret it will not show. */
 export async function loadEntries(
   tx: Tx, ring: Keyring, scope: ProjectScope, unseal: boolean | ((secret: boolean) => boolean),
 ): Promise<Map<string, StoredEntry>> {
@@ -76,9 +67,8 @@ export async function loadEntries(
 }
 
 /**
- * A service's current credentials, opened for a reference: the audited reveal, never a listing.
- * Read by the shared reader (@dockify/db), the same one the worker deploys with, so the value
- * revealed is the value a linked app gets, in either stored shape.
+ * A service's current credentials, for the audited reveal only, never a listing. Uses the same
+ * reader the worker deploys with, so the value revealed is the value a linked app gets.
  */
 export async function openRefTarget(tx: Tx, ring: Keyring, svc: RefService): Promise<P.RefTarget> {
   const app = await tx.app.findUnique({ where: { id: svc.id }, select: { id: true, name: true, kind: true, passwordSecretId: true } });
@@ -112,9 +102,12 @@ export interface ApplyResult {
 
 const ownerOf = (rowId: string) => ({ kind: "env_var" as const, ownerType: "env_var", ownerId: rowId });
 
-/** Runs inside the caller's transaction. Throws HttpError 409 on a stale baseVersion. */
+/**
+ * Optimistic: envVersion moves only if it still equals baseVersion, in the caller's transaction,
+ * so two tabs cannot both win. Throws HttpError 409 on a stale baseVersion.
+ */
 export async function applyChanges(tx: Prisma.TransactionClient, ring: Keyring, scope: ProjectScope, input: ApplyInput): Promise<ApplyResult> {
-  // The row lock this update takes serialises every apply on the project.
+  // The row lock the update below takes serialises every apply on the project.
   const project = await tx.project.findUniqueOrThrow({ where: { id: scope.projectId }, select: { envVersion: true } });
   const base = input.baseVersion === "current" ? project.envVersion : input.baseVersion;
   const bumped = await tx.project.updateMany({ where: { id: scope.projectId, envVersion: base }, data: { envVersion: { increment: 1 } } });
@@ -180,7 +173,7 @@ export async function applyChanges(tx: Prisma.TransactionClient, ring: Keyring, 
   return { version, records: p.records, deploymentIds };
 }
 
-/** Every secret id a set of env rows, versions and app credentials hold: for teardown. */
+/** For teardown: secrets are not cascaded from their owners, so they are collected and deleted by id. */
 export async function secretIdsFor(tx: Tx, scope: { environmentIds: string[]; appIds: string[]; projectId?: string }): Promise<string[]> {
   const vars = await tx.envVar.findMany({
     where: {

@@ -2,17 +2,12 @@
 
 import { useEffect } from "react";
 
-/*
- * The browser tab mirrors the console, so a background tab still says what is going on:
- * - the title gains a count while builds are in flight, "(2) Deployments | Dockify";
- * - the favicon gains a red dot while a problem in the bell is unread, drawn on a canvas over
- *   /icon.png, and goes back to the plain icon once it is read or has cleared. Like the bell's own
- *   dot, it asks for attention once; the project dots in the sidebar keep showing the live state.
- */
+// The title gains a count while builds are in flight; the favicon gains a red dot while a problem
+// in the bell is unread. Like the bell's dot, it asks for attention once.
 
 const COUNT = /^\(\d+\)\s/;
 
-/** Keeps the "(n) " prefix on document.title, including after Next swaps the title on navigation. */
+/** Reapplied after Next swaps the title on navigation. */
 function useTitleCount(count: number) {
   useEffect(() => {
     const apply = () => {
@@ -21,7 +16,6 @@ function useTitleCount(count: number) {
       if (document.title !== next) document.title = next;
     };
     apply();
-    // Next replaces the <title> element or its text when the route changes.
     const mo = new MutationObserver(apply);
     mo.observe(document.head, { childList: true, subtree: true, characterData: true });
     return () => {
@@ -31,7 +25,7 @@ function useTitleCount(count: number) {
   }, [count]);
 }
 
-/** Swaps every icon link to a badged copy while `alert` holds, restoring the originals after. */
+/** Restores the original icon links after. */
 export function useFaviconDot(alert: boolean) {
   useEffect(() => {
     if (!alert) return;

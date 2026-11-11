@@ -1,7 +1,4 @@
-/**
- * Image apps: the worker tells the server's Docker to pull, and pins what came. Nothing here needs
- * the builder, and a pull's progress and its failures are the deploy's own to report.
- */
+/** Image apps: the worker tells the server's Docker to pull, and pins what came. */
 import type { Db, SecretVault } from "@dockify/db";
 import { DockerError, isNotFound, type DockerApi, type ImageInfo } from "@dockify/engine";
 import { PermanentDeployError } from "@dockify/engine";
@@ -19,11 +16,7 @@ export async function pullAuth(db: Db, vault: SecretVault, registryId: string | 
   }
 }
 
-/**
- * A pull that can never succeed as asked: the image or tag does not exist, or the registry refuses
- * it. Retrying spends two more attempts on the same answer, so these are permanent, and the reason
- * is one sentence rather than the daemon's raw reply.
- */
+/** A pull that can never succeed as asked (no such image, or a refusal). Permanent: a retry gets the same answer. */
 export function pullFailure(ref: string, e: unknown): Error {
   const msg = e instanceof Error ? e.message : String(e);
   if (/manifest unknown|manifest for \S+ not found|not found: manifest|name unknown|no such image|repository name not known/i.test(msg)) {
@@ -43,7 +36,6 @@ export function pullFailure(ref: string, e: unknown): Error {
   return e instanceof Error ? e : new Error(msg);
 }
 
-/** The image as the daemon has it, or null when it is not on this server. */
 async function localCopy(docker: DockerApi, ref: string): Promise<ImageInfo | null> {
   try {
     return await docker.inspectImage(ref);
@@ -53,7 +45,6 @@ async function localCopy(docker: DockerApi, ref: string): Promise<ImageInfo | nu
   }
 }
 
-/** The id to run, and the reference to record: the repo digest of ref's own repository when there is one. */
 function pinnedOf(info: ImageInfo, ref: string, log: DeployLog): { imageId: string; imageRef: string } {
   const digest = repoDigestFor(info.RepoDigests ?? [], ref);
   const imageRef = digest ? `${repositoryOf(ref)}@${digest}` : ref;
@@ -62,14 +53,8 @@ function pinnedOf(info: ImageInfo, ref: string, log: DeployLog): { imageId: stri
 }
 
 /**
- * Pulls an image-based app and pins what was pulled by id (and repo digest when there is one).
- *
- * `localFirst` is for a reference that cannot move, the digest a template recorded: when it is on
- * this server already there is nothing to ask a registry for. A tag is pulled as before, since its
- * owner expects a redeploy to bring what the tag names now. Either way, a pull that fails for a reason
- * that is not the registry's answer about the image (a rate limit such as Docker Hub's, a timeout, an
- * outage) runs the copy of that same reference already on this server, and says so. A refusal or an
- * unknown image never does: the registry answered, and a copy here does not change that answer.
+ * `localFirst`: a recorded digest already here runs without asking a registry. A pull that fails for a reason
+ * other than the registry's answer about the image (a rate limit, an outage) runs the local copy; a refusal never does.
  */
 export async function pullImage(
   docker: DockerApi,

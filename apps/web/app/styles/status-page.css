@@ -1,8 +1,4 @@
-/* The public status page: its narrow frame, the overall state, component uptime bars and the
-   incident history, on foundation's tokens and primitives. */
-
-/* -------------- Frame -------------- */
-/* A narrower column than the console: a status page is read, not worked in. */
+/* Frame */
 main.page.stp {
   --rail: min(960px, calc(100% - 32px));
   min-height: 100vh;
@@ -14,7 +10,6 @@ main.page > .stp-fill {
   min-height: 24px;
 }
 
-/* 56px like the console top bar and the sign-in head. */
 .stp-top,
 .stp-foot {
   display: flex;
@@ -56,8 +51,6 @@ main.page > .stp-fill {
   white-space: nowrap;
 }
 
-/* Without a project the head shows Dockify itself: the one wordmark, as the sidebar and the
-   sign-in pages set it (pixel face, 18px, one weight). */
 .stp-name[data-wordmark] {
   font-family: var(--font-pixel);
   font-feature-settings: "ss09";
@@ -83,7 +76,6 @@ main.page > .stp-fill {
   gap: 8px;
 }
 
-/* The Dockify mark at 16px tall keeps its 33 by 24 shape. */
 .stp-credit img {
   flex: none;
   width: 22px;
@@ -95,14 +87,14 @@ main.page > .stp-fill {
   padding: 48px var(--gutter);
 }
 
-/* -------------- Overall state -------------- */
+/* Overall state */
 .stp-state {
   display: inline-flex;
   align-items: center;
   gap: 12px;
 }
 
-/* The one dot above 6px: it stands beside the 32px headline, so it scales with that type. */
+/* The one dot above 6px: it scales with the 32px headline beside it. */
 .stp-state .dot {
   flex: none;
   width: 10px;
@@ -113,14 +105,14 @@ main.page > .stp-fill {
   color: var(--ink-3);
 }
 
-/* -------------- Components -------------- */
+/* Components */
 .stp-comps {
   margin: 0;
   padding: 0 var(--gutter);
   list-style: none;
 }
 
-/* Each row measures its own width, so the bar's days can be whole-pixel squares (below). */
+/* Each row measures its own width, so the bar's days can be whole-pixel squares. */
 .stp-comp {
   container: stp-comp / inline-size;
   padding: 20px 0;
@@ -155,7 +147,6 @@ main.page > .stp-fill {
   line-height: 20px;
 }
 
-/* The bar: one square per UTC day, filling the column exactly; the heatmap's 2px radius. */
 .stp-bar {
   --days: 90;
   display: grid;
@@ -177,8 +168,8 @@ main.page > .stp-fill {
   background: var(--heat-0);
 }
 
-/* As tall as a day is wide, rounded to the nearest whole pixel, so the card and every band and
-   rule under it stay on whole pixels (a square aspect ratio gave 7.98px rows). */
+/* Height is the day's width rounded to a whole pixel, so everything under it stays on whole
+   pixels (a square aspect ratio gives 7.98px rows). */
 .stp-bar .stp-cell {
   height: 8px;
   height: round(nearest, calc((100cqw - (var(--days) - 1) * 2px) / var(--days)), 1px);
@@ -241,7 +232,7 @@ main.page > .stp-fill {
   height: 10px;
 }
 
-/* -------------- Incidents -------------- */
+/* Incidents */
 .stp-inc {
   padding: 20px var(--gutter);
   scroll-margin-top: 16px;
@@ -332,7 +323,7 @@ main.page > .stp-fill {
   color: var(--ink-muted);
 }
 
-/* -------------- Narrow screens -------------- */
+/* Narrow screens */
 /* Fewer, larger days: 45 under 760px, 30 under 520px. The earliest days drop off. */
 @media (max-width: 760px) {
   .stp-bar {

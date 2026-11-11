@@ -13,11 +13,7 @@ import { isNavActive, MAIN_NAV, SYSTEM_NAV, type NavItem } from "./nav";
 import type { ShellData } from "./shell";
 import { useCan } from "@/lib/viewer";
 
-/*
- * Geometry: every leading glyph sits in a 24px slot 24px from the sidebar's left edge, so its
- * centre is x = 36 in both widths (264 open, 72 collapsed). Collapsing only clips and fades the
- * labels; nothing moves.
- */
+/* Every leading glyph centres at x = 36 in both widths, so collapsing only clips and fades the labels; nothing moves. */
 
 function NavCell({ item, active, extra, flag }: { item: NavItem; active: boolean; extra?: React.ReactNode; flag?: boolean }) {
   return (
@@ -39,10 +35,7 @@ function NavCell({ item, active, extra, flag }: { item: NavItem; active: boolean
   );
 }
 
-/**
- * The console's navigation column: brand, search, the Main and System navs, projects, account.
- * A plain block rather than a complementary landmark, so its three navs read as the site's own.
- */
+/** A plain block rather than a complementary landmark, so its three navs read as the site's own. */
 export function Sidebar({
   data,
   collapsed,
@@ -79,9 +72,8 @@ export function Sidebar({
     (collapsed ? markKey : toggleKey).current?.focus();
   }, [collapsed]);
 
-  /* Collapsed, the labels are hidden, so each glyph names itself in a tooltip to the right. It is
-     one fixed element, because the scrolling nav would clip a tooltip drawn inside it. A key with a
-     shortcut lists it in data-side-keys ("Ctrl B"), shown as chips. */
+  // One fixed tooltip element, because the scrolling nav would clip a tooltip drawn inside it. A key
+  // with a shortcut lists it in data-side-keys ("Ctrl B"), shown as chips.
   const showTip = (e: React.PointerEvent | React.FocusEvent) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-side-tip]");
     if (!collapsed || !el || (e.type === "focus" && !el.matches(":focus-visible"))) return setTip(null);

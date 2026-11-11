@@ -85,8 +85,7 @@ export function DeployHeatmap({ trend, rollbacks, todayIso }: { trend: Overview[
   // The last picked day stays rendered while the panel folds shut.
   const [shown, setShown] = useState<string | null>(null);
   const [focusDate, setFocusDate] = useState<string | null>(null);
-  // The day panel's content height, measured, so the fold animates to the exact height on open,
-  // on close, and whenever the content changes (skeleton to rows, or stepping to another day).
+  // Measured, so the fold animates to the exact height on open, on close and when the content changes.
   const dayBody = useRef<HTMLDivElement>(null);
   const [dayH, setDayH] = useState(0);
   useLayoutEffect(() => {
@@ -97,9 +96,8 @@ export function DeployHeatmap({ trend, rollbacks, todayIso }: { trend: Overview[
     ro.observe(node);
     return () => ro.disconnect();
   }, []);
-  // The year on show: today's, unless the trend has none of it yet (a stale snapshot over New Year),
-  // then the trend's own. The API also sends up to 59 days of the previous year for the 30-day KPIs;
-  // those are not part of this year's grid.
+  // Today's year, unless the trend has none of it yet (a stale snapshot over New Year). The API also
+  // sends up to 59 days of the previous year for the 30-day KPIs; those are not part of this grid.
   const year = useMemo(() => {
     const now = todayIso.slice(0, 4);
     return trend.some((d) => d.date.startsWith(now)) ? now : (trend.at(-1)?.date.slice(0, 4) ?? now);
@@ -107,7 +105,6 @@ export function DeployHeatmap({ trend, rollbacks, todayIso }: { trend: Overview[
   const yearTrend = useMemo(() => trend.filter((d) => d.date.startsWith(year)), [trend, year]);
   const { weeks, cells, months } = useMemo(() => layout(yearTrend, todayIso), [yearTrend, todayIso]);
 
-  // Days that can be hovered, picked and stepped through: real dates up to today, never the future.
   const real = useMemo(() => cells.filter((c) => !c.empty && !c.future), [cells]);
   const index = useMemo(() => new Map(real.map((c, i) => [c.date, i])), [real]);
   // Grid position of every day, so arrow keys move by calendar day and week even across gaps.
@@ -140,8 +137,7 @@ export function DeployHeatmap({ trend, rollbacks, todayIso }: { trend: Overview[
     };
   }, [real, rollbacks, todayIso, year]);
 
-  // On narrow screens the grid scrolls sideways. Start with today's week at the right edge (the rest
-  // of the year is still to come, so the end of December would open on empty weeks).
+  // Narrow screens scroll the grid sideways: start with today's week at the right edge, not on empty weeks.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -153,8 +149,7 @@ export function DeployHeatmap({ trend, rollbacks, todayIso }: { trend: Overview[
     el.scrollLeft += cell.getBoundingClientRect().right - el.getBoundingClientRect().right + 16;
   }, [weeks, todayIso]);
 
-  // The tooltip lives in a fixed layer on <body>, so a stale position after a scroll or a resize
-  // must go.
+  // The tooltip lives in a fixed layer on <body>, so a stale position after a scroll or resize must go.
   const tipOpen = tip !== null;
   useEffect(() => {
     if (!tipOpen) return;
@@ -266,7 +261,6 @@ export function DeployHeatmap({ trend, rollbacks, todayIso }: { trend: Overview[
             data-date={c.date}
             data-on={hovered === c.date || undefined}
             data-picked={on || undefined}
-            // The picked day opens its panel under the grid: the cell says so and names it.
             aria-expanded={on}
             aria-controls={on ? DAY_PANEL_ID : undefined}
             aria-label={cellLabel(c)}

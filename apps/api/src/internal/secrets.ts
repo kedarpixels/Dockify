@@ -1,14 +1,7 @@
 /**
- * The secret-opening service. The worker holds no master key: when a
- * job needs a plaintext value it names the secret rows here, over the control network, with the
- * internal channel token. The api checks that every row is of a kind the worker may ever see,
- * that the job the worker claims to run is live, opens the rows, writes one audit row, and
- * answers with the values. Nothing else leaves: no key, no wrapped DEK, no rows it did not name.
- *
- * Routes (policy "internal", see policy.ts INFRA_POLICIES):
- *   POST /internal/secrets/open    { ids, context }        -> { values: { [id]: string | null } }
- *   POST /internal/secrets/seal    { id, kind, ownerType, ownerId, value, context } -> sealed fields
- *   POST /internal/secrets/escrow  { id, context }         -> { text }  (backup_key rows only)
+ * The secret-opening service. The worker holds no master key: it names secret rows here with the internal
+ * channel token, and the api checks every kind and that the claimed job is live, audits, and answers with
+ * the values. Nothing else leaves: no key, no wrapped DEK, no row it did not name.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -20,22 +13,19 @@ import { HttpError } from "../errors.ts";
 import { INFRA_POLICIES } from "../policy.ts";
 
 /**
- * Kinds the worker can ask for. Not here: totp seeds, env versions, the inbound webhook secrets
- * GitHub and Vercel sign with, and the GitHub App's client secret: the api's alone.
- * email_message is a queued email the api sealed for one email_send job. channel_url and
- * channel_secret are a notification webhook's endpoint and its signing secret or access token,
- * which the worker needs to send alerts and update notices.
+ * Kinds the worker may open. Deliberately absent, the api's alone: totp seeds, env versions, the inbound
+ * webhook secrets GitHub and Vercel sign with, and the GitHub App's client secret.
  */
 export const WORKER_OPEN_KINDS: ReadonlySet<SecretKind> = new Set<SecretKind>([
   "env_var", "env_snapshot", "integration_token", "storage_secret_key", "channel_url", "channel_secret", "github_private_key", "backup_key", "database_password",
   "email_message",
 ]);
-/** Kinds the worker creates: a deployment's env snapshot and the instance backup key. */
+/** Kinds the worker creates. */
 export const WORKER_SEAL_KINDS = ["env_snapshot", "backup_key"] as const satisfies readonly SecretKind[];
 
 const MAX_IDS = 500;
 
-/** What the worker says it is doing: the claimed job, or a named timer. Audited as given, checked when it names a job. */
+/** What the worker says it is doing. Audited as given; checked only when it names a job. */
 export const Context = z.strictObject({
   jobId: Uuid.nullable(),
   /** A job kind, or "timer:<name>" for periodic work. */

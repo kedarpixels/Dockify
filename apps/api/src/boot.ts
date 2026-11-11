@@ -25,8 +25,7 @@ export async function ensureInstance(db: Db, ring: Keyring, publicUrl: string, i
         "Restore the original key, or set it as DOCKIFY_MASTER_KEY_PREVIOUS while rotating.",
     );
   }
-  // DOCKIFY_INGRESS is what this install really runs; nothing ever wrote instance.ingressMode, which
-  // the migration copied, so the primary server takes the truth here.
+  // DOCKIFY_INGRESS is what this install really runs, so the primary server row follows it.
   await db.server.updateMany({ where: { isPrimary: true, ingress: { not: ingress } }, data: { ingress } });
   if (row.publicUrl !== publicUrl) await recordAddressChange(db, row.publicUrl, publicUrl);
 }
@@ -43,10 +42,8 @@ const hostOf = (url: string): string | null => {
 const isLocal = (host: string) => host === "localhost" || host === "[::1]" || /^[\d.]+$/.test(host);
 
 /**
- * DOCKIFY_PUBLIC_URL moved: from Settings, from `dockify admin set-domain` or from .env by hand, this is
- * where all three meet. The address it left joins the ones that keep answering and redirect (the worker
- * writes their routes, edge/dashboard.ts), a pending domain that is now the address is done, and the
- * change is on the record for the page and for the GitHub webhook that follows it.
+ * Every way DOCKIFY_PUBLIC_URL can move (Settings, `dockify admin set-domain`, .env by hand) meets here.
+ * The address it left joins the ones that keep answering and redirect.
  */
 export async function recordAddressChange(db: Db, before: string, after: string): Promise<void> {
   const from = hostOf(before);
@@ -62,9 +59,8 @@ export async function recordAddressChange(db: Db, before: string, after: string)
     const previous = [...new Set(kept)].filter((h) => h !== to).slice(0, KEEP_PREVIOUS);
     const pending = D.readPendingDomain(row.dashboardDomain);
     const done = pending?.host === to;
-    // The record Dockify made for the new address outlives the pending row, so that Stop answering
-    // on it, once it is an old address, removes that record and only that one. Moved to on a record
-    // the owner made, any older entry for the name goes: it is not certain to be Dockify's any more.
+    // The DNS record Dockify made for the new address outlives the pending row, so dropping the address later
+    // removes that record and only that one. On an owner-made record, any older entry for the name is forgotten.
     const records = D.readCfRecords(row.dashboardCfRecords);
     if (done && pending.cfRecord) records[to] = pending.cfRecord;
     else if (done) delete records[to];

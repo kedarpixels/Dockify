@@ -1,10 +1,5 @@
 import { readSecretValue, type Db, type Tx, type SecretVault } from "@dockify/db";
 
-/**
- * The stored Cloudflare connection, read the one way every edge job reads it. The integration row
- * is kind "cloudflare"; its non-secret config holds the account, the tunnel the installer created
- * for this box, and the zones the owner marked managed.
- */
 export interface CloudflareConn {
   token: string;
   accountId: string;

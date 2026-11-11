@@ -7,18 +7,9 @@ import { isStepUpCancel } from "@/lib/step-up";
 import { useTimeFormat } from "@/lib/time-prefs";
 import { dueIn } from "./util";
 
-/**
- * Small live pieces shared by /server and /backups: a number that eases to its new value, the time
- * to a scheduled run on the shared second clock, and toast tracking for long work.
- */
-
 const reduced = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/**
- * Eases from the value on screen to `target` whenever `target` changes, so a poll that moves
- * CPU from 41 to 47 counts up instead of jumping. The first render shows the target as is.
- * Reduced motion skips the tween.
- */
+/** The first render shows the target as is. Reduced motion skips the tween. */
 export function useTween(target: number, ms = 600) {
   const [value, setValue] = useState(target);
   const shown = useRef(target);
@@ -44,10 +35,7 @@ export function useTween(target: number, ms = 600) {
   return value;
 }
 
-/*
- * One shared one-second clock for every ticking cell on the page: a single interval runs while
- * anything subscribes, and stops when the last one leaves.
- */
+/* A single interval runs while anything subscribes, and stops when the last one leaves. */
 const clock = { now: 0, subs: new Set<() => void>(), timer: undefined as ReturnType<typeof setInterval> | undefined };
 
 function subscribe(cb: () => void) {
@@ -68,18 +56,12 @@ function subscribe(cb: () => void) {
 // With no subscriber yet the stored time may be stale, so read the current second instead.
 const readClock = () => (clock.subs.size ? clock.now : Math.floor(Date.now() / 1000) * 1000);
 
-/**
- * The shared second clock. `serverNow` is the page's snapshot time, used for the server render
- * and hydration so both print the same text; the live clock takes over right after.
- */
+/** `serverNow` is used for the server render and hydration so both print the same text; the live clock takes over right after. */
 export function useSecond(serverNow: number) {
   return useSyncExternalStore(subscribe, readClock, () => serverNow);
 }
 
-/**
- * "Next in 3h 12m", then "Next in 12m 08s" in the last hour (or "In ..." with no prefix). The
- * exact time sits in the tip, as every relative time keeps its absolute one.
- */
+/** Switches to seconds in the last hour. The exact time sits in the tip. */
 export function Countdown({
   at,
   serverNow,
@@ -103,11 +85,7 @@ export function Countdown({
   );
 }
 
-/**
- * The toast.promise flow (one toast, loading then success or error in place) with a description
- * on every step: success can name what changed ("Freed 1.2 GB"), and an error carries the API's
- * message as its description, the way the brief asks for toast.error.
- */
+/** Like toast.promise, with a description on every step: an error carries the API's message. */
 export async function track<T>(
   p: Promise<T>,
   m: {

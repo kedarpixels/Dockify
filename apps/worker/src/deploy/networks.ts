@@ -1,14 +1,6 @@
 /**
- * Environment networks (dockify-env-<environment id>) outlive nothing they serve. A deleted
- * app's teardown and the janitor remove the network of an environment with no app left on this server.
- * Docker's default address pools hold a limited number of bridge networks, so a long-lived install
- * would otherwise run out of them.
- *
- * A network is judged per server: it is removed only when no app of its environment is on this one
- * (the environment's row may be gone, or its apps elsewhere), and only when nothing but the proxy and
- * the worker itself is attached and no container of any state still names it. The two are disconnected
- * first, since Docker refuses to remove a network with an active endpoint. Any doubt leaves the
- * network for the next pass.
+ * Removes the network of an environment with no app left on this server: Docker's address pools hold a limited
+ * number. Only when nothing but Dockify's own containers is attached and no container of any state names it.
  */
 import type { Db } from "@dockify/db";
 import { appsHere } from "../server/apps-here.ts";
@@ -24,12 +16,10 @@ export interface NetworkSweepDeps {
   db: Db;
   serverId: string;
   docker: NetworkDocker;
-  /** The container names Dockify itself attaches to tenant networks: the proxy and this worker. */
   ownContainers: string[];
   log?: (msg: string, extra?: object) => void;
 }
 
-/** Removes every orphaned environment network. Returns how many went. Never throws for one network. */
 export async function sweepEnvNetworks(deps: NetworkSweepDeps): Promise<number> {
   const { db, docker } = deps;
   const named = (await docker.listEnvNetworks()).map((name) => ({ name, id: name.slice(ENV_NETWORK_PREFIX.length) })).filter((n) => UUID.test(n.id));

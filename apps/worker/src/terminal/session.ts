@@ -1,24 +1,7 @@
 /**
- * The worker's half of the web terminal: one interactive process inside one tenant container.
- *
- * What makes it safe to expose, in the order it runs:
- *   1. The target is never a name from the caller. The caller sends an app id, which must be a uuid
- *      with a row in the database, and the container name is derived from it: dk-<app id>.
- *   2. assertTerminalTarget checks what Docker reports about that container (below). Its labels are
- *      not ones an image can forge: containerSpec() writes every key an image could use to claim
- *      them into the create body, blank unless Dockify set it, and a key in the body beats the image's.
- *   3. An exec is inert until started. Docker's answer to "what does this exec run in" is compared with
- *      the id checked in step 2, so a swap or a rename between the two steps refuses instead of
- *      landing somewhere else. The socket proxy allows exec on dk- names only.
- *   4. The command is the constant SHELL_COMMAND, with no User and no Privileged key: the process is
- *      the container's own configured user with the container's own capabilities. Docker reports that
- *      inherited user on the exec, so step 3 also holds it to the container's own.
- *   5. Bytes pass through. Nothing here reads, logs or stores them, apart from removing the one marker
- *      our own command prints first.
- *
- * Docker has no call that ends an exec, and closing a TTY exec's stream leaves its process running, so
- * every close signals the shell by the pid it reported, and asks Docker whether that exec is still
- * running before each signal, so the signal can never reach a process that reused the number.
+ * One interactive process in one tenant container. The target is derived from an app id (dk-<app id>),
+ * checked against what Docker reports, and the exec is verified to sit in that container before it starts.
+ * Docker cannot end an exec, so every close signals the shell's pid after checking the exec still runs.
  */
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
@@ -49,7 +32,6 @@ export interface ExecBody {
   ConsoleSize?: [number, number];
 }
 
-/** What the terminal needs from the daemon, and nothing else. Tests pass a fake. */
 export interface TerminalDocker {
   inspect(name: string): Promise<ContainerInfo | null>;
   createExec(name: string, body: ExecBody): Promise<string>;
@@ -85,19 +67,9 @@ const refuse = (why: string): never => {
 };
 
 /**
- * Pure: is this exactly the running tenant container of this app? Returns its id, the one thing later
- * steps compare against. Every check names something Docker reports, not something a caller claimed.
- *
- * Why a spoofed label cannot pass, against each way of getting one:
- *   LABEL in the image       containerSpec() puts dockify.app, dockify.environment, dockify.role, the
- *                            preview keys and the Compose keys in every create body; Docker merges an
- *                            image's labels only under keys the body did not set.
- *   Another tenant's image   claims dockify.app=<victim>: its body sets dockify.app to its own id, and
- *                            the name below is the victim's, which only the victim's deploy can hold.
- *   A preview of the victim  has a dk-pv- name, a blank dockify.app and preview labels.
- *   A parked or one-off copy has a longer name (dk-<id>-prev-..., dk-<id>-release-...).
- *   A control container      has no dk- name, and the proxy lets nothing rename one into it; a
- *                            hand-made impostor still fails the Compose check.
+ * Pure: is this exactly the running tenant container of this app? Returns its id, which later steps
+ * compare against. A spoofed label cannot pass: containerSpec() sets every such key in the create body,
+ * and Docker merges an image's labels only under keys the body did not set.
  */
 export function assertTerminalTarget(info: ContainerInfo, app: { id: string; environmentId: string }): string {
   const labels = info.Config?.Labels ?? {};
@@ -137,7 +109,6 @@ const MARK_END = "\x1e";
  */
 export const SHELL_COMMAND: readonly string[] = ["/bin/sh", "-c", String.raw`printf '\036dockify-pid:%s\036' "$$"; if command -v bash >/dev/null 2>&1; then exec bash; fi; exec sh`];
 
-/** Exit codes of a command that could not start: not found, and found but not runnable. */
 const NO_SHELL_EXIT = new Set([126, 127]);
 
 /** The first bytes of a session, until the marker has gone by. Holds at most MARK_LIMIT bytes back. */
@@ -146,7 +117,6 @@ export class PidFilter {
   pid: string | null = null;
   private held: Buffer | null = Buffer.alloc(0);
 
-  /** Bytes to pass on, possibly none. */
   push(chunk: Buffer): Buffer {
     if (this.held === null) return chunk;
     const all = Buffer.concat([this.held, chunk]);
@@ -182,7 +152,6 @@ export interface OpenedExec {
   head: Buffer;
 }
 
-/** A verified exec for the app, not started until every check has passed. */
 export async function openExec(deps: { db: Db; docker: TerminalDocker }, appId: string, size: { cols: number; rows: number }): Promise<OpenedExec> {
   if (!UUID.test(appId)) throw new TerminalRefused(400, "refused", "not an app id");
   const instance = await deps.db.instance.findUnique({ where: { id: 1 }, select: { terminalEnabled: true } });
@@ -203,10 +172,8 @@ export async function openExec(deps: { db: Db; docker: TerminalDocker }, appId: 
 }
 
 /**
- * The hangup. A TTY exec's shell leads its own session, and busybox ash, unlike bash, does not pass a
- * hangup on to its background jobs, so `sleep 9999 &` outlived the tab on every Alpine image. This
- * hangs up the whole session by reading /proc, in plain sh because a slim image has no pkill. `nohup`
- * still survives, as the docs say. Constant: only the checked pid arrives, as $0.
+ * busybox ash does not pass a hangup on to its background jobs, so this hangs up the whole session by
+ * reading /proc, in plain sh because a slim image has no pkill. Constant: only the checked pid arrives.
  */
 export const HANGUP_SCRIPT = 'kill -HUP "$0"; for d in /proc/[0-9]*; do read -r l < "$d/stat" 2>/dev/null || continue; l="${l##*) }"; set -- $l; [ "$4" = "$0" ] && kill -HUP "${d##*/}" 2>/dev/null; done; exit 0';
 
@@ -227,7 +194,6 @@ export interface ChannelTerminalDeps {
   docker: TerminalDocker;
   token: string;
   log?: (msg: string, extra?: object) => void;
-  /** How long a shell has to go after a hangup; tests shorten it. */
   hangupMs?: number;
   /** How long a close waits for the shell's pid when it has not printed it yet. */
   markerWaitMs?: number;
@@ -241,10 +207,7 @@ function answer(socket: Duplex, status: number, code: string): void {
   socket.end(`HTTP/1.1 ${status} Refused\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
 }
 
-/**
- * Serves terminals on the worker's control-network channel, next to the data browser. Returns the way
- * to end them all when the worker stops, which a server's close would otherwise wait on for good.
- */
+/** Returns the way to end every terminal, which a server's close would otherwise wait on for good. */
 export function attachTerminalChannel(server: Server, deps: ChannelTerminalDeps): { closeAll(): Promise<void>; count(appId?: string): number } {
   const live = new Map<Duplex, { appId: string; close(): Promise<void> }>();
   const countFor = (appId?: string) => (appId ? [...live.values()].filter((s) => s.appId === appId).length : live.size);
@@ -296,7 +259,6 @@ export function attachTerminalChannel(server: Server, deps: ChannelTerminalDeps)
   };
 }
 
-/** Moves bytes both ways until either side ends, then makes sure the shell ends too. Returns the way to close it. */
 function pump(deps: ChannelTerminalDeps, socket: Duplex, head: Buffer, exec: OpenedExec, onDone: () => void): () => Promise<void> {
   const { docker } = deps;
   const decoder = new FrameDecoder();

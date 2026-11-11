@@ -1,7 +1,6 @@
 /**
- * In-memory token buckets. Dockify is one control-plane process, so a shared store would add a
- * failure mode worse than the one it fixes. Every key is the client address from client-ip.ts,
- * never a raw header, so the whole internet cannot share (or spoof its way out of) one bucket.
+ * In-memory token buckets: Dockify is one control-plane process, so a shared store would only add a failure mode.
+ * Keys are client addresses from client-ip.ts, never a raw header, so a bucket cannot be shared or spoofed away.
  */
 
 export interface LimitRule {
@@ -9,11 +8,7 @@ export interface LimitRule {
   burst: number;
 }
 
-/**
- * The bucket key for a client address. One IPv6 host is handed a whole /64 (or more), so keying on
- * the full address would give an attacker unlimited fresh buckets; collapse IPv6 to its /64 network.
- * IPv4 and IPv4-mapped addresses key on the full address. Audit and logs still use the full address.
- */
+/** IPv6 collapses to its /64: one host is handed the whole /64, so the full address would give an attacker unlimited fresh buckets. */
 export function rateKey(ip: string): string {
   if (!ip.includes(":") || ip.includes(".")) return ip;
   const [head, tail = ""] = ip.split("::");
@@ -23,11 +18,7 @@ export function rateKey(ip: string): string {
   return [...h, ...fill, ...t].slice(0, 4).map((g) => (g || "0").toLowerCase()).join(":") + "::/64";
 }
 
-/**
- * The client's network, for limits keyed on an account: the /24 of an IPv4 address (an IPv4-mapped
- * IPv6 address counts as IPv4) and the /64 of an IPv6 one. A sign-in limit keyed on the network
- * cannot be dodged by hopping addresses inside it, and cannot be spent by anyone outside it.
- */
+/** The client's network for account-keyed limits (IPv4 /24, IPv6 /64), so hopping addresses inside it does not dodge the limit. */
 export function networkKey(ip: string): string {
   const v4 = /^(?:::ffff:)?(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/i.exec(ip);
   if (v4) return `${v4[1]}.${v4[2]}.${v4[3]}.0/24`;
@@ -73,7 +64,7 @@ export class Limiter {
     return Math.max(1, Math.ceil((1 - bucket.tokens) / refillPerMs / 1000));
   }
 
-  /** Null when `take` would allow the key now, else the seconds to wait. Spends nothing. */
+  /** Like `take`, but spends nothing. */
   peek(key: string, now = Date.now()): number | null {
     const b = this.buckets.get(key);
     if (!b) return null;
@@ -104,15 +95,9 @@ export const LOGIN_RESET_TRUST_MS = 3_600_000;
 export const LOGIN_KNOWN_NETWORK_MS = 30 * 86_400_000;
 
 /**
- * Sign in. The old guard spent a per-email bucket on every attempt before the password was
- * checked, so one address could keep a known user out from everywhere. Now only failures count
- * against an account, keyed per account and client network (networkKey), so a sprayer elsewhere
- * cannot spend the owner's budget; a generous per-account ceiling across all networks bounds a
- * guesser spread over many networks. Every attempt also spends the per-address bucket
- * (RateLimits.auth) before the handler runs.
- *
- * `attempt` takes a token from both buckets up front and `succeeded` hands them back, so parallel
- * guesses cannot all pass a check before any failure is recorded: a failure simply keeps its token.
+ * Sign-in limits. Only failures count, keyed per account and client network, so a sprayer elsewhere cannot lock
+ * the owner out; a per-account ceiling across all networks bounds a spread-out guesser. `attempt` takes tokens
+ * up front and `succeeded` returns them, so parallel guesses cannot all pass before a failure is recorded.
  */
 export class LoginGuard {
   private readonly network = new Limiter(LOGIN_PER_NETWORK);
@@ -122,11 +107,7 @@ export class LoginGuard {
   /** When each account's ceiling was last reported, so a flood writes one audit row a quarter hour. */
   private readonly reported = new Map<string, number>();
 
-  /**
-   * Null when the attempt may go ahead (its tokens are taken), else the seconds to wait. `ceiling`
-   * false leaves the per-account bucket out (a client the account knows); the network's bucket
-   * always applies, so a guesser who shares that client's network is still held to its rate.
-   */
+  /** Null when allowed (its tokens are taken), else the seconds to wait. `ceiling` false skips the per-account bucket for a client the account knows. */
   attempt(account: string, ip: string, now = Date.now(), ceiling = true): number | null {
     const net = `${account}|${networkKey(ip)}`;
     const a = this.network.peek(net, now);
@@ -137,16 +118,12 @@ export class LoginGuard {
     return null;
   }
 
-  /**
-   * True when only the per-account ceiling stands in the way: this network has budget left. Five
-   * networks can hold that ceiling down for good, so this is when a client the account knows is
-   * let through; anyone else still waits.
-   */
+  /** True when only the per-account ceiling blocks. Five networks can hold it down for good, so this is when a client the account knows is let through. */
   onlyCeiling(account: string, ip: string, now = Date.now()): boolean {
     return this.network.peek(`${account}|${networkKey(ip)}`, now) === null && this.account.peek(account, now) !== null;
   }
 
-  /** The password was right: the attempt was not a failure, so its tokens go back. */
+  /** Returns the tokens `attempt` took: only failures count. */
   succeeded(account: string, ip: string, ceiling = true): void {
     this.network.give(`${account}|${networkKey(ip)}`);
     if (ceiling) this.account.give(account);
@@ -186,10 +163,9 @@ const LOCKOUT_THRESHOLD = 10;
 const LOCKOUT_MS = 15 * 60_000;
 
 /**
- * A guard keyed on the thing under attack (an email, a session) on top of the per-IP bucket.
- * `check` honours a hard lockout and suits secrets only the holder can try (a session's step-up).
- * `rate` ignores the lockout and suits attacker-known keys (an email), where a lockout would let a
- * stranger lock the owner out.
+ * A guard keyed on the thing under attack. `check` honours a hard lockout and suits secrets only the holder
+ * can try (a session's step-up). `rate` ignores it and suits attacker-known keys (an email), where a lockout
+ * would let a stranger lock the owner out.
  */
 export class SubjectGuard {
   private readonly bucket: Limiter;
@@ -205,7 +181,7 @@ export class SubjectGuard {
     return this.bucket.take(subject, now);
   }
 
-  /** True while the subject is locked out. Takes nothing from the bucket. */
+  /** Takes nothing from the bucket. */
   locked(subject: string, now = Date.now()): boolean {
     const a = this.attempts.get(subject);
     return !!a && a.lockedUntil > now;
@@ -246,10 +222,7 @@ export const TOTP_MAX_FAILS = 10;
 export const TOTP_LOCK_MS = 15 * 60_000;
 export const TOTP_LOCK_MAX_MS = 24 * 3_600_000;
 
-/**
- * How long a lockout lasts after `lockouts` earlier ones in a row: 15 minutes, doubling each time,
- * a day at most. The count itself is kept on the user row (mfa.ts), so a restart cannot clear it.
- */
+/** 15 minutes, doubling per lockout in a row, a day at most. The count lives on the user row (mfa.ts), so a restart cannot clear it. */
 export function totpLockMs(lockouts: number): number {
   return Math.min(TOTP_LOCK_MAX_MS, TOTP_LOCK_MS * 2 ** Math.min(Math.max(0, lockouts), 20));
 }
@@ -260,22 +233,17 @@ export class RateLimits {
   readonly auth = new Limiter({ perMinute: 10, burst: 10 });
   /** Every signed-in route; a first paint fans out to a dozen calls. */
   readonly general = new Limiter({ perMinute: 300, burst: 120 });
-  /**
-   * Routes anyone can reach without a credential (public status, setup status, invite lookups).
-   * Their own smaller bucket, so anonymous traffic never drains the signed-in one.
-   */
+  /** Credential-free routes get their own bucket, so anonymous traffic never drains the signed-in one. */
   readonly anon = new Limiter({ perMinute: 120, burst: 60 });
   /**
-   * The signed webhook receivers. GitHub sends a busy organization's events from a few addresses and
-   * does not retry a 429, so they neither share anon nor sit near its size. The signature and body cap
-   * are what stop a forger; this only bounds the signature work one address can ask for.
+   * Signed webhook receivers. GitHub sends a busy organization's events from a few addresses and does not retry
+   * a 429, so this is large; the signature stops a forger, this only bounds signature work per address.
    */
   readonly webhook = new Limiter({ perMinute: 1200, burst: 300 });
   /** Single env value reveals (eye and copy), keyed on the session or token, not the address. */
   readonly reveal = new Limiter({ perMinute: 60, burst: 60 });
   /** Terminal tickets, keyed on the session: a person opens a few, a loop does not get thousands. */
   readonly terminalTicket = new Limiter({ perMinute: 10, burst: 10 });
-  /** Sign in: failures per account and client network, with a per-account ceiling (LoginGuard). */
   readonly login = new LoginGuard();
   /** Step-up by password, keyed on the session. A code goes through the per-user lockout in mfa.ts. */
   readonly stepUp = new SubjectGuard();

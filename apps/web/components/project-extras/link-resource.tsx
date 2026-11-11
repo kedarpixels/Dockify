@@ -17,10 +17,8 @@ import type { AppSummary, EnvRef, EnvTarget, StatefulKind } from "@/lib/pages/pr
 import { FIELD_NAME, isService, KIND_NAME, REF_FIELDS } from "./env-refs";
 import { TARGET_LABEL } from "./env-model";
 
-/* "Link a service": pick one of the project's Postgres, Redis or Storage services, then the
-   variables it should fill. Each becomes a reference, staged like any other edit; nothing is sent
-   until Apply, and the value is resolved on the server at deploy time. Services in another
-   environment are listed but cannot be picked: each environment runs on its own private network. */
+// Each pick becomes a reference, staged like any other edit and resolved on the server at deploy
+// time. Services in another environment cannot be picked: each environment has its own private network.
 
 export interface LinkPick {
   key: string;
@@ -65,7 +63,7 @@ export function LinkResourceDialog({
   open: boolean;
   onClose: () => void;
   slug: string;
-  /** The environment the variables live in. Only its services can be picked. */
+  /** Only its services can be picked. */
   environment: string;
   /** The scope, for the sub line: "Production, shared" or "Production, api". */
   where: string;
@@ -77,7 +75,6 @@ export function LinkResourceDialog({
   onLink: (picks: LinkPick[]) => void;
 }) {
   const services = useMemo(() => apps.filter((a): a is Service => isService(a.kind)), [apps]);
-  // The scope's own environment first, then the rest in project order.
   const groups = useMemo(() => {
     const names = [...new Set([environment, ...services.map((s) => s.environment)])];
     return names.map((env) => ({ env, items: services.filter((s) => s.environment === env) })).filter((g) => g.items.length);

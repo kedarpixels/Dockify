@@ -15,19 +15,13 @@ import { isRecord } from "@/lib/validation";
 
 type Fetched = { ok: true; body: unknown } | { ok: false; error: string };
 
-/**
- * Sends a visitor whose session the API rejected (401) to sign in, keeping the page they were on.
- * The path is checked again here, so a forged header can only ever point back into this console.
- */
+/** Sends a visitor with a rejected session to sign in. The return path is checked again, so a forged header cannot leave the console. */
 async function expireSession(): Promise<never> {
   const next = safeNext((await headers()).get(PATH_HEADER));
   redirect(next === "/" ? "/login?reason=expired" : `/login?reason=expired&next=${encodeURIComponent(next)}`);
 }
 
-/**
- * GETs a Dockify API path with the caller's cookies (lib/api.ts, 10 second timeout), and turns
- * every failure into one short line. A 401 never returns: the visitor goes to /login?reason=expired.
- */
+/** Turns every failure into one short line. A 401 never returns: the visitor goes to /login?reason=expired. */
 async function apiGet(path: string, query?: Record<string, string>): Promise<Fetched> {
   const r = await apiRequest<unknown>(path, { query });
   if (r.ok) return { ok: true, body: r.data };
@@ -88,12 +82,7 @@ function deploymentRows(body: unknown): RecentDeployment[] | null {
   return Array.isArray(rows) ? rows : null;
 }
 
-/**
- * Deployments created on `day` (UTC). Reads GET /api/v1/deployments?from=<day>&to=<day+1> from the
- * Dockify API (the API supports that half-open created_at filter and returns the same
- * row shape as overview.recentDeployments, either as an array or as `{ items }`). In the design
- * preview it returns the fixture's day, whose count matches that day's deployTrend row.
- */
+/** Deployments created on `day` (UTC), through the half-open filter ?from=<day>&to=<day+1>. */
 export async function getDeploymentsForDay(day: string): Promise<DayDeploymentsResult> {
   const base = process.env.DOCKIFY_API_URL;
   if (!isDay(day)) return { source: base !== undefined ? "api" : "none", day, data: null, error: "Day must be YYYY-MM-DD" };

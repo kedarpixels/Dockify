@@ -12,12 +12,8 @@ import { DoneStep, ProtectStep } from "./totp-enroll";
 
 type Step = "account" | "protect" | "done";
 
-/**
- * /invite/[token]: a teammate sets a name and password, then may add an authenticator. Signing in
- * sets a cookie, so Next refreshes this route the moment the account exists, and its loader then
- * reads the invite as used. The flow runs on the invite this visit opened with; `gone` only shows to
- * a visitor who arrived with a link that was already dead.
- */
+// Signing in refreshes this route and its loader then reads the invite as used, so the flow runs on
+// the invite this visit opened with. `gone` only shows for a link that was already dead.
 export function InviteView({ token, invite: loaded, expires: loadedExpires, gone }: { token: string; invite: Invite | null; expires: string; gone: ReactNode }) {
   const [opened] = useState(() => (loaded ? { invite: loaded, expires: loadedExpires } : null));
   return opened ? <InviteFlow token={token} invite={opened.invite} expires={opened.expires} /> : gone;

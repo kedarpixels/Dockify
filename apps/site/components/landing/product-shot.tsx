@@ -36,10 +36,7 @@ const VIEWS: { id: string; label: string; icon: IconName; caption: string; alt: 
   },
 ];
 
-/**
- * The live product shot: four real screens behind a segmented switch, in one browser-style card.
- * Only the screen on show is in the page; pointing at an option loads its screen ahead of the click.
- */
+/** Only the screen on show is in the page; pointing at an option loads its screen ahead of the click. */
 export function ProductShot() {
   const [on, setOn] = useState(0);
   const [loaded, setLoaded] = useState<number[]>([0]);

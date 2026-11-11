@@ -1,10 +1,5 @@
-/*
- * The browser's half of the terminal protocol (packages/contracts terminal.ts; the web has its own
- * install, so these numbers are repeated here and tests/terminal.test.mjs holds them to that file).
- * Pure, so it tests without a browser.
- *
- * The ticket is the socket's first message, never part of the URL: a URL ends up in proxy logs.
- */
+// Mirrors packages/contracts terminal.ts; tests/terminal.test.mjs holds the numbers to that file.
+// The ticket is the socket's first message, never part of the URL: a URL ends up in proxy logs.
 
 export const TERMINAL_CLOSE = {
   exited: 4000,
@@ -76,7 +71,6 @@ export function terminalUrl(location: { protocol: string; host: string }, appId:
   return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/v1/apps/${encodeURIComponent(appId)}/terminal`;
 }
 
-/** Cuts bytes into pieces a socket accepts. */
 export function chunkBytes(bytes: Uint8Array, size: number = PASTE_CHUNK_BYTES): Uint8Array[] {
   const piece = Math.min(size, MAX_MESSAGE_BYTES);
   const out: Uint8Array[] = [];

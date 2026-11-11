@@ -4,17 +4,11 @@ import { guardWrite, json, readJsonObject, refuse, upstreamStatus } from "@/lib/
 import { previewDashboardDomain } from "@/lib/pages/dashboard-domain";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/*
- * Same-origin proxy for /api/v1/settings/domain: the dashboard's own address (contract in
- * lib/dashboard-domain.ts). Each body is rebuilt from its checked fields, so a crafted call can neither
- * crash the route nor smuggle a key to the API. The API holds the rules: Admin only, step-up on anything
- * that changes the address, an audit row for each.
- */
+/* Each body is rebuilt from its checked fields. The API holds the rules: Admin only, step-up to change the address. */
 
 const CF_ID = /^[0-9a-f]{32}$/;
 type Ctx = { params: Promise<{ path?: string[] }> };
 
-/** The checked record body, or null when it does not read. */
 function recordBody(b: Record<string, unknown>): { proxied?: boolean; replace?: string[] } | null {
   const out: { proxied?: boolean; replace?: string[] } = {};
   if (b.proxied !== undefined) {

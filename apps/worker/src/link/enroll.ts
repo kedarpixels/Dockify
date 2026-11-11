@@ -1,8 +1,4 @@
-/**
- * Enrolment: a key the worker has never seen presents a one-time token once. One atomic update, so a
- * token works one time only. An agent key is what identifies a server from then on. The first server
- * goes straight to active; any other waits for the admin's Approve.
- */
+/** A join token is taken in one atomic update, so it works once. Any server but the first waits for Approve. */
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Db } from "@dockify/db";
@@ -14,11 +10,11 @@ export interface KnownServer {
   state: "awaiting_join" | "pending_approval" | "active" | "revoked";
 }
 
-/** The server a key belongs to, or null. A revoked row keeps its key, so that key stays refused. */
+/** A revoked row keeps its key, so that key stays refused. */
 export const serverByPin = (db: Db, pin: string): Promise<KnownServer | null> =>
   db.server.findUnique({ where: { certPin: pin }, select: { id: true, state: true } });
 
-/** Takes a join token for this key. True when it matched; false says nothing about why. */
+/** True when the token matched; false says nothing about why. */
 export async function enroll(db: Db, token: string, pin: string, joinedIp: string | null): Promise<boolean> {
   const n = await db.$executeRaw`
     UPDATE servers SET
@@ -34,10 +30,7 @@ export async function enroll(db: Db, token: string, pin: string, joinedIp: strin
   return n === 1;
 }
 
-/**
- * The first server's token, from the file the installer wrote. Stored as its hash while the row has
- * no key, so a restart before the agent joined loses nothing and nothing changes afterwards.
- */
+/** Stored as its hash while the row has no key, so a restart before the agent joined loses nothing. */
 export async function offerPrimaryToken(db: Db, tokenFile: string): Promise<boolean> {
   const token = (await readFile(tokenFile, "utf8")).trim();
   if (!token) return false;

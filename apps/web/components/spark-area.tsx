@@ -33,10 +33,7 @@ function smooth(pts: Array<[number, number]>) {
   return d;
 }
 
-/**
- * Area sparkline with a pointer-tracking cursor, point marker and tooltip. `domain` pins the
- * vertical scale (0 to 100 for percentages); without it the line fills the available height.
- */
+/** `domain` pins the vertical scale (0 to 100 for percentages); without it the line fills the available height. */
 export function SparkArea({
   points,
   unit,

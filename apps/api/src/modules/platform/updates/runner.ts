@@ -3,21 +3,9 @@ import type { Images } from "./release.ts";
 export type { Images } from "./release.ts";
 
 /*
- * One self-update (or a rollback to the previous version), as a journal that is safe to resume.
- *
- *   preflight  free disk, database healthy, nothing deploying or restoring (otherwise: wait)
- *   pull       re-verify the signed release, note the running digests, pull the new ones by digest
- *   backup     stop api and worker, pg_dump the control-plane database, record its sha256
- *   migrate    the new image's migrations in a one-off container (a rollback job restores instead)
- *   swap_*     pin the new digests and recreate api, worker and web one at a time, each healthy
- *   health     api readiness, worker heartbeat and web health, all at once
- *
- * The recorder writes the whole journal after every transition, so an updater that crashes is
- * taken over by the next lease holder and continues from the recorded phase: every step is safe
- * to repeat (pull and up are idempotent, prisma migrate deploy skips applied migrations, a dump
- * restore drops and rebuilds the schema in one transaction). Before the backup nothing durable has
- * changed. From the backup on, ANY failure rolls back: the previous digests come back and, once
- * the migration has started, the dump is restored first.
+ * One self-update or rollback as a resumable journal. The journal is saved after every transition
+ * and every step is safe to repeat, so a takeover continues from the recorded phase. Before the
+ * backup nothing durable has changed; from the backup on, any failure rolls back.
  */
 
 export const STEP_ORDER = ["preflight", "pull", "backup", "migrate", "swap_api", "swap_worker", "swap_web", "health"] as const;
@@ -64,51 +52,44 @@ export interface Dump {
   bytes: number;
 }
 
-/** The side effects. steps.ts implements them with the docker CLI; tests use fakes. */
+/** Every step must be safe to repeat: a takeover reruns the one that was in flight. */
 export interface UpdateSteps {
   preflight(): Promise<Preflight>;
   /** Re-fetches and re-verifies the signed feed; returns this host's digests if its hash still matches. */
   resolve(version: string, manifestSha256: string): Promise<Images>;
   currentImages(): Promise<Images>;
-  /** Pulls each image by digest and checks the pulled image carries exactly that digest. */
   pull(images: Images): Promise<void>;
   /** Stops api and worker so the dump is the last write. Web stays up and shows the outage. */
   quiesce(): Promise<void>;
   dump(updateId: string): Promise<Dump>;
   migrate(images: Images): Promise<void>;
-  /** Writes release.env with these digests (atomically, idempotent). */
   pin(images: Images): Promise<void>;
-  /** Recreates one service on the pinned digests and waits for that service's own health signal. */
   swap(service: Service, since: Date): Promise<void>;
-  /** All three together; null when healthy, else the reason. */
+  /** Null when healthy, else the reason. */
   healthy(since: Date): Promise<string | null>;
   /** Verifies the dump's sha256, then drops and rebuilds the schema from it in one transaction. */
   restoreDump(dump: { id: string; sha256: string }): Promise<void>;
 }
 
 export interface UpdateRecorder {
-  /** Persists the whole journal (an upsert: it must survive a dump restore). */
+  /** Must be an upsert: the row has to survive a dump restore. */
   save(j: Journal): Promise<void>;
-  /** One audit row per step transition. */
   audit(j: Journal, step: StepId, status: "done" | "failed" | "skipped", detail: string | null): Promise<void>;
-  /** Around a dump restore: keep the update history and its audit rows across it. */
+  /** Together they carry the update history and its audit rows across a dump restore. */
   beforeRestore(): Promise<void>;
   afterRestore(j: Journal): Promise<void>;
   /**
-   * Marks the instance as running `version`; called only after the health check passed. After a
-   * rollback `skipVersion` is the version left, so automatic updates do not put it straight back. It
-   * is written here because the restore resets that column. A newer release, or the admin picking
-   * this one, still installs.
+   * Called only after the health check passed. After a rollback `skipVersion` is the version left,
+   * so automatic updates do not put it straight back; the restore resets that column, so it is set here.
    */
   finish(version: string, skipVersion?: string): Promise<void>;
   log(line: string): void;
   now(): Date;
 }
 
-/** A rollback job restores the target update's pre-update dump where an update migrates. */
 export interface RunContext {
+  /** A rollback job restores this dump where an update would migrate. */
   restoreTarget?: { id: string; sha256: string } | null;
-  /** Preflight gives up waiting for a busy server after this long. */
   maxWaitMs?: number;
 }
 
@@ -123,7 +104,6 @@ const same = (a: Images, b: Images) => a.control === b.control && a.web === b.we
 const SWAP: Record<"swap_api" | "swap_worker" | "swap_web", Service> = { swap_api: "api", swap_worker: "worker", swap_web: "web" };
 const DEFAULT_MAX_WAIT = 2 * 3_600_000;
 
-/** A fresh journal's step list: every planned step, pending. */
 export const plannedSteps = (): StepRow[] => STEP_ORDER.map((id) => ({ id, status: "pending", startedAt: null, finishedAt: null, detail: null }));
 
 export class Run {
@@ -203,7 +183,7 @@ export class Run {
     return this.settle("done", null);
   }
 
-  /** Runs one step; returns a result to stop the run, or null to go on. */
+  /** Returns a result to stop the run, or null to go on. */
   private async step(id: (typeof STEP_ORDER)[number]): Promise<RunResult | null> {
     const j = this.j;
     await this.mark(id, "running", this.row(id).detail);
@@ -226,8 +206,8 @@ export class Run {
           if (!to) throw new Error("the rollback has no previous images recorded");
           if (j.toImages && !same(j.toImages, to)) throw new Error("the signed manifest no longer matches the release that was approved");
           j.toImages = to;
-          // From release.env, never from the row, which a database write could have forged. No pin has
-          // happened before this step, so a retry reads the same file; after the swap it names the new digests.
+          // Read from release.env, never from the row, which a database write could have forged.
+          // Nothing is pinned before this step, so a retry reads the same value.
           j.fromImages = await this.steps.currentImages();
           await this.rec.save(j);
           await this.steps.pull(to);

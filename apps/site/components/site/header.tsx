@@ -10,11 +10,7 @@ import { Burger } from "@/components/ui/burger";
 import { cx } from "@/components/ui/cx";
 import { isActive, TOP_NAV } from "@/lib/site";
 
-/**
- * Sticky solid top bar inside the rails: brand cell, nav, then a cell of keys (theme, Install).
- * Below 761px the nav moves into a ruled menu that drops under the bar, as in the dashboard.
- * The `top` class is what the shared tip guard measures the bar by.
- */
+/** The `top` class is what the shared tip guard measures the bar by. */
 export function SiteHeader() {
   const path = usePathname();
   const [open, setOpen] = useState(false);

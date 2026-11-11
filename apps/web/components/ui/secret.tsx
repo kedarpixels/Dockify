@@ -7,19 +7,10 @@ import { CopyButton } from "./copy-button";
 import { cx } from "./cx";
 import { toast } from "./toast";
 
-/*
- * A secret value: masked until the eye key reveals it, with a copy key beside. Every env value
- * and credential starts masked.
- *
- *   <Secret value={v.value} what="DATABASE_URL" />
- *   <Secret what="API token" onReveal={() => fetchSecret(id)} />                 fetched on first reveal or copy
- *   <span>{token.prefix}<MaskDots /></span>                                      inline mask, no keys
- *
- * The eye key is a toggle with one name, "Show DATABASE_URL", and aria-pressed for its state, so it
- * never reads as "Hide DATABASE_URL, pressed".
- */
+// The eye key is a toggle with one name, "Show DATABASE_URL", and aria-pressed for its state, so
+// it never reads as "Hide DATABASE_URL, pressed".
 
-/** The one mask: twelve round dots at a fixed width, whatever the value's length, so rows never shift. */
+/** A fixed width whatever the value's length, so rows never shift. */
 export function MaskDots({ className }: { className?: string }) {
   return (
     <span className={cx("mask", className)} aria-hidden="true">
@@ -45,7 +36,6 @@ export function Secret({
   what: string;
   /** Fetches the value on the first reveal or copy when `value` is not loaded. */
   onReveal?: () => Promise<string>;
-  /** What shows while hidden; MaskDots by default. */
   mask?: React.ReactNode;
   copy?: boolean;
   /** Tip alignment for keys at a row's right edge. */
@@ -88,7 +78,6 @@ export function Secret({
     }
   };
 
-  // One name for the toggle; aria-pressed says whether it is shown. The eye needs no tip.
   const name = `Show ${what}`;
   const canReveal = plain !== null || Boolean(onReveal);
 

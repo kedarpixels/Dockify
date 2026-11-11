@@ -8,12 +8,7 @@ export interface DomainTargets {
   tunnelTarget: string;
 }
 
-/**
- * The record targets of a domains payload, read one way on the server (getDomains) and in the
- * browser (an app's Domains tab gets the API's payload as it is). An unknown target is null there,
- * and an API older than these fields sends neither the mode, which is then direct, nor the IPv6
- * address.
- */
+/** An API older than these fields sends no mode, which then reads as direct, and no IPv6 address. */
 export function domainTargets(p: { ingress?: unknown; server?: { ipv4?: unknown; ipv6?: unknown; tunnelTarget?: unknown } | null } | null | undefined): DomainTargets {
   const s = p?.server ?? {};
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");

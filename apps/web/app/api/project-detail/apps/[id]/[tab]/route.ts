@@ -3,12 +3,8 @@ import { APP_TAB_KEYS, getAppTab, type AppTabKey } from "@/lib/pages/project-det
 
 const isTab = (v: string): v is AppTabKey => (APP_TAB_KEYS as readonly string[]).includes(v);
 
-/**
- * GET /api/project-detail/apps/:id/:tab: one app tab's data (metrics, domains, tables, rows, keys,
- * backups, config). The tab is a fixed list and `getAppTab` checks the id and every query value,
- * so the browser can never steer the upstream path. Cross-site reads are refused outright: some of
- * these answers carry database rows.
- */
+/** The tab is a fixed list and getAppTab checks the id and every query value. Cross-site reads are refused:
+ *  some answers carry database rows. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string; tab: string }> }) {
   const site = request.headers.get("sec-fetch-site");
   if (site && site !== "same-origin") return refuse(403, "Cross-site request refused");

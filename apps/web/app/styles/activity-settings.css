@@ -1,9 +1,5 @@
-/* Activity and Settings: what these two pages add on top of foundation's tokens and primitives. */
+/* Shared pieces (as-) */
 
-/* ============== Shared pieces (as-) ============== */
-/* What Activity and Settings add on top of the shared field, dialog and copy primitives. */
-
-/* A field with a key beside it (Send test). */
 .as-inline {
   display: flex;
   align-items: center;
@@ -14,8 +10,6 @@
   flex: 1;
 }
 
-/* Token reach, Selected projects: one checkbox row per project in a soft ruled box, as the import
-   preview lists what moves. The whole row flips its checkbox. */
 .as-pick {
   display: flex;
   flex-direction: column;
@@ -55,7 +49,6 @@
   overflow-wrap: anywhere;
 }
 
-/* Two-factor setup: the QR area beside three steps. */
 .as-tfa {
   display: grid;
   grid-template-columns: 168px minmax(0, 1fr);
@@ -99,7 +92,6 @@
   list-style: none;
 }
 
-/* Each step: the shared 20px round number (.step-n), then its body. */
 .as-tfa-steps > li {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
@@ -114,7 +106,6 @@
   min-width: 0;
 }
 
-/* Key facts about something just made (a token): label over value pairs, in a row. */
 .as-facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -125,14 +116,12 @@
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
-/* The shared dropdown is inline by default; in a filter or the section picker it fills the width. */
 .act-actor-filter > .sel,
 .set-pick > .sel {
   display: flex;
   width: 100%;
 }
 
-/* Rows and bars that appear rise 4px into place. */
 @keyframes as-bar-in {
   from {
     opacity: 0;
@@ -140,7 +129,7 @@
   }
 }
 
-/* ============== Activity (act-) ============== */
+/* Activity (act-) */
 
 .act-cats {
   display: flex;
@@ -153,19 +142,18 @@
   margin-left: auto;
 }
 
-/* Wraps the search only to catch Down; the search itself is the toolbar's flex item. */
+/* Wraps the search only to catch the Down key; the search itself is the toolbar's flex item. */
 .act-search {
   display: contents;
 }
 
 .act-card {
   container: act / inline-size;
-  /* "N new" scrolls the log back under the sticky top bar, not behind it. */
+  /* Keeps a scrolled-to log clear of the sticky top bar. */
   scroll-margin-top: calc(var(--top-h) + 8px);
 }
 
-/* Live updates. The shared "N new" pill rides 12px under the top bar while the top of the log is
-   out of view; its wrap takes no height, so nothing below it moves when it appears. */
+/* The pill's wrap takes no height, so nothing below it moves when it appears. */
 .act-new-wrap {
   position: sticky;
   top: calc(var(--top-h) + 12px);
@@ -175,7 +163,6 @@
   justify-content: center;
 }
 
-/* A row that arrived by polling opens downward into place, then its soft blue tint fades. */
 .act-fresh {
   overflow: hidden;
   animation: act-fresh-in 320ms var(--ease) backwards;
@@ -211,8 +198,7 @@
   padding: 8px calc(var(--gutter) - 8px) 16px;
 }
 
-/* 44px for one line; a long sentence wraps onto more lines instead of cutting off, with the tile,
-   place, time and key held on the first line. The time column fits the widest relative time. */
+/* A long sentence wraps instead of cutting off. The time column fits the widest relative time. */
 .act-row {
   --cols: var(--col-status) minmax(0, 1fr) 176px var(--col-time) var(--col-key);
   align-items: start;
@@ -242,7 +228,6 @@
   color: var(--ink-3);
 }
 
-/* The actor's avatar rides the first line of the sentence, so a wrapped row stays aligned. */
 .act-who {
   display: inline-flex;
   align-items: center;
@@ -302,7 +287,6 @@ a.act-target:hover {
   background: var(--hover);
 }
 
-/* Diff: key, old masked value, an arrow, new masked value. */
 .act-diff {
   margin: 4px 8px 8px 44px;
   padding: 8px 12px;
@@ -378,7 +362,6 @@ a.act-target:hover {
   color: var(--ink-3);
 }
 
-/* Narrow list: the sentence wraps and the place and time drop under it. */
 @container act (max-width: 640px) {
   .act-row {
     --cols: 24px minmax(0, 1fr) auto;
@@ -424,10 +407,7 @@ a.act-target:hover {
   }
 }
 
-/* ============== Settings (set-) ============== */
-/* Under the head rule: the grouped sub-nav, then a content column to the frame edge. A section is
-   ruled blocks (a CardTitle head, then 56px setting rows ruled between) with one sticky save bar at
-   its foot. */
+/* Settings (set-) */
 
 .set-layout {
   display: grid;
@@ -448,16 +428,14 @@ a.act-target:hover {
   display: none;
 }
 
-/* The page is a size container, so the sub-nav folds into the picker by the room the page really
-   has (sidebar open or collapsed), not by the viewport width. */
+/* A size container, so the sub-nav folds by the room the page really has (sidebar open or
+   collapsed), not by the viewport width. */
 main.page:has(> .set-layout) {
   container: set-page / inline-size;
 }
 
-/* A fixed panel (owner): the sub-nav alone sets the block's height, so it never has a gap above its
-   footer and the block keeps one size across sections. The content column is out of flow, so it
-   adds no height, and scrolls inside the panel. Rows and tables fold by the column's own width
-   (set-main below). */
+/* A fixed panel: the sub-nav alone sets the block's height. The content column is out of flow, so
+   it adds no height and scrolls inside the panel. */
 .set-main {
   container: set-main / inline-size;
   position: relative;
@@ -476,9 +454,7 @@ main.page:has(> .set-layout) {
   overflow: hidden;
 }
 
-/* What scrolls is the list itself (owner): the tabs and a block's head hold still, and the scrollbar
-   runs only beside the rows. A segment or section of one block scrolls its body; one with several
-   blocks scrolls those blocks, still under the tabs. Nothing scrolls, and no bar shows, when it fits. */
+/* The list itself scrolls: tabs and block heads hold still and the scrollbar runs only beside the rows. */
 .set-pane:not([hidden]) {
   display: flex;
   flex: 1 1 0;
@@ -519,8 +495,8 @@ main.page:has(> .set-layout) {
   overflow-y: auto;
 }
 
-/* A 6px thumb with no arrow keys. Chromium ignores these pseudo-elements while the global thin
-   scrollbar properties apply, so they are reset here; Firefox keeps the global thin bar. */
+/* Chromium ignores these pseudo-elements while the global thin scrollbar properties apply, so
+   they are reset here; Firefox keeps the global thin bar. */
 @supports selector(::-webkit-scrollbar) {
   :is(.set-tabpanel, .set-pane, .set-body) {
     scrollbar-width: auto;
@@ -542,14 +518,12 @@ main.page:has(> .set-layout) {
 }
 
 
-/* A section's segments (section-tabs.tsx): the shared strip, ruled off above the blocks. */
 .set-tabs {
   border-bottom: 1px solid var(--line);
   background: var(--bg);
 }
 
-/* These strips are two or three short words, so they stay a strip on a phone instead of turning
-   into a second dropdown under the section one. */
+/* Two or three short words, so they stay a strip on a phone instead of a second dropdown. */
 .set-tabs .tabs {
   overflow-x: auto;
 }
@@ -562,10 +536,7 @@ main.page:has(> .set-layout) {
   display: none;
 }
 
-/* In the fixed panel the strip and the block heads hold still while a long list scrolls under them,
-   so the rule above the column never has cut-off content under it. Rows lift to --z-hover on hover,
-   and the save bar sits one over these. */
-/* A list's column labels hold still at the top of the scrolling body. */
+/* Sticky under a scrolling list. Rows lift to --z-hover on hover, and the save bar sits one over these. */
 .set-col .set-body > .set-ss-head,
 .set-col .set-body > .set-tk-head {
   position: sticky;
@@ -589,7 +560,6 @@ main.page:has(> .set-layout) {
   gap: 8px;
 }
 
-/* Card head subs wrap instead of cutting off. */
 .set-group .ctitle-sub.ellipsis {
   overflow: visible;
   white-space: normal;
@@ -602,8 +572,6 @@ main.page:has(> .set-layout) {
   padding: 0 var(--gutter);
 }
 
-/* One setting: label over description on the left (kept to a readable measure), the control on the
-   right edge, 56px, ruled. */
 .set-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -613,8 +581,6 @@ main.page:has(> .set-layout) {
   padding: 8px 0;
 }
 
-/* A lead (a picture, a status tile) takes the Team row geometry: a 32px column 12px from the
-   text, so the text starts on the card head title edge. The control keeps its 24px gap. */
 .set-row-lead {
   grid-template-columns: 32px minmax(0, 1fr) auto;
   column-gap: 12px;
@@ -646,7 +612,6 @@ main.page:has(> .set-layout) {
   cursor: default;
 }
 
-/* A section link inside a row's sub line: "You can change roles in Team". */
 .set-inline-link {
   padding: 0;
   border: 0;
@@ -664,7 +629,6 @@ main.page:has(> .set-layout) {
   text-decoration-color: currentColor;
 }
 
-/* A chip after a row label: Verified after Email in Profile. */
 .set-row .two-main > .chip {
   margin-left: 8px;
   vertical-align: top;
@@ -686,7 +650,6 @@ main.page:has(> .set-layout) {
   width: round(down, clamp(240px, 40cqi, 360px), 1px);
 }
 
-/* What a viewer reads where an admin gets a control (Settings, Updates): plain text on the right. */
 .set-ro {
   font-size: 14px;
   line-height: 20px;
@@ -695,19 +658,17 @@ main.page:has(> .set-layout) {
   overflow-wrap: anywhere;
 }
 
-/* Words that wrap as one piece, so a time never starts a line alone at the column edge. */
+/* Wraps as one piece, so a time never starts a line alone at the column edge. */
 .set-keep {
   white-space: nowrap;
 }
 
-/* The loading block head's two bars, centred on the 20px title and 18px sub lines they stand for,
-   so the head keeps its loaded height. */
+/* Centred on the 20px title and 18px sub lines they stand for, so the head keeps its loaded height. */
 .set-skel-title {
   gap: 12px;
   padding-block: 5px;
 }
 
-/* Sticky save bar: only rendered while the section has unsaved edits. */
 .set-savebar {
   position: sticky;
   bottom: 0;
@@ -731,8 +692,6 @@ main.page:has(> .set-layout) {
   color: var(--ink-3);
 }
 
-/* Phone columns: controls drop under their label and fill the width; switches stay beside it.
-   Head keys wrap under the title at the same column width, so a head and its rows agree. */
 @container set-main (max-width: 520px) {
   .set-row:not(.set-row-toggle) {
     grid-template-columns: minmax(0, 1fr);
@@ -775,10 +734,7 @@ main.page:has(> .set-layout) {
   }
 }
 
-/* -------------- Integrations -------------- */
-/* One ruled setting row per service (set-row): a 32px tile, the name over what is connected or
-   what it is for, then the status chip and its key on the shared right edge. A long status wraps
-   in its own row and never stretches the others. Dialog lists share one row too (int-row). */
+/* Integrations */
 .int-rows {
   margin: 0;
   padding: 0;
@@ -793,12 +749,10 @@ main.page:has(> .set-layout) {
   overflow-wrap: anywhere;
 }
 
-/* A load warning above the rows: clear of the head rule, then the rows keep their own rhythm. */
 .int-load-note {
   margin: 16px 0 8px;
 }
 
-/* A stored secret: the mask, then its last four characters in the same muted line. */
 .int-hint .secret-value {
   display: inline-flex;
   align-items: center;
@@ -822,7 +776,6 @@ main.page:has(> .set-layout) {
   margin: 0;
 }
 
-/* Dialog lists: rows sit flush with the dialog body's 24px padding. */
 .int-list {
   gap: 2px;
   margin: 0 -8px;
@@ -850,7 +803,6 @@ main.page:has(> .set-layout) {
   gap: 8px;
 }
 
-/* Zone rows: no tile, the switch on the right, the label flips it. */
 .int-toggle {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 24px;
@@ -860,8 +812,7 @@ main.page:has(> .set-layout) {
   cursor: pointer;
 }
 
-/* A sub line of several parts, comma separated, wrapping between parts. The comma hangs back over
-   the gap so it sits against the part before it ("Slack, hooks.slack.com"), then the gap follows. */
+/* The comma hangs back over the gap so it sits against the part before it, then the gap follows. */
 .int-sub-line {
   display: flex;
   flex-wrap: wrap;
@@ -882,7 +833,6 @@ main.page:has(> .set-layout) {
   overflow-wrap: anywhere;
 }
 
-/* Disconnect sits on the left of a dialog foot, away from Done. */
 .int-ft-start {
   margin-right: auto;
 }
@@ -897,7 +847,6 @@ main.page:has(> .set-layout) {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-/* What an import moves: keys over their mask, then domains, in one soft container. */
 .int-preview {
   display: flex;
   flex-direction: column;
@@ -936,7 +885,6 @@ main.page:has(> .set-layout) {
   line-height: 20px;
 }
 
-/* A stored webhook URL or secret in the field box: host and hint, then its keys. */
 .int-stored {
   display: flex;
   flex-wrap: wrap;
@@ -998,9 +946,8 @@ main.page:has(> .set-layout) {
   }
 }
 
-/* ============== Webhooks (wh-) ============== */
+/* Webhooks (wh-) */
 
-/* What the URL field recognised, in its hint line: the service's mark, then the words. */
 .wh-detect {
   display: inline-flex;
   align-items: center;
@@ -1008,7 +955,6 @@ main.page:has(> .set-layout) {
   min-width: 0;
 }
 
-/* A generic webhook's own logo, or its site's icon, in place of a glyph: kept whole, never cropped. */
 .wh-logo {
   display: block;
   flex: none;
@@ -1016,13 +962,10 @@ main.page:has(> .set-layout) {
   border-radius: 3px;
 }
 
-/* A failing webhook's last error can be a long provider answer. */
 .wh-state {
   overflow-wrap: anywhere;
 }
 
-/* Where the logo comes from, then the link field or the upload row under it. The choice keeps its
-   own width, like every other segmented choice in a form. */
 .wh-logo-field {
   display: flex;
   flex-direction: column;
@@ -1058,8 +1001,7 @@ main.page:has(> .set-layout) {
   gap: 8px;
 }
 
-/* Two marks keep their brand colours in both themes except where the colour sinks into the dark
-   surface: there they take a lighter tint of the same hue. */
+/* Brand colours that sink into the dark surface take a lighter tint of the same hue. */
 .dark .mk-mattermost path {
   fill: #3f8cff;
 }
@@ -1068,9 +1010,8 @@ main.page:has(> .set-layout) {
   fill: #3fa78f;
 }
 
-/* ============== Email (int-mail-, as-code-) ============== */
+/* Email (int-mail-, as-code-) */
 
-/* The server row in the email form: the host takes the room, the port needs little. */
 .int-mail-server {
   grid-template-columns: minmax(0, 1fr) 120px;
 }
@@ -1080,7 +1021,6 @@ main.page:has(> .set-layout) {
   margin-top: -10px;
 }
 
-/* Send test email and Preview emails, with the fine print after them. */
 .int-mail-keys {
   display: flex;
   flex-wrap: wrap;
@@ -1088,7 +1028,7 @@ main.page:has(> .set-layout) {
   gap: 8px 12px;
 }
 
-/* The email code dialog: the sending placeholder holds the code field's height. */
+/* Holds the code field's height while sending, so the dialog does not jump. */
 .as-code-wait {
   display: flex;
   flex-direction: column;
@@ -1100,9 +1040,6 @@ main.page:has(> .set-layout) {
   align-self: flex-start;
 }
 
-/* "Forgot your current password?" under its field: the quiet underlined link of the sign-in pages. */
-/* The Current password field's note: 8px under the input like every field note (the body's 16px gap
-   less 8). */
 .as-forgot {
   align-self: flex-start;
   margin-top: -8px;
@@ -1131,9 +1068,7 @@ main.page:has(> .set-layout) {
   border-radius: 4px;
 }
 
-/* ============== Settings: Team, API tokens, sessions and the sub-nav (set-tm-, set-tk-, set-ss-, set-snav-) ============== */
-/* Team, token and session rows are 56px tables with fixed end columns, so role picks, copy keys
-   and more keys line up row to row. */
+/* Settings: Team, API tokens, sessions and the sub-nav (set-tm-, set-tk-, set-ss-, set-snav-) */
 
 .set-tm-list {
   margin: 0;
@@ -1141,7 +1076,7 @@ main.page:has(> .set-layout) {
   list-style: none;
 }
 
-/* Lead 32 (avatar or tile), the two-line main, a 112px role cell, a 28px key cell. */
+/* Columns: 32px lead, the two-line main, a 112px role cell, a 28px key cell. */
 .set-tm-row {
   --cols: 32px minmax(0, 1fr) 112px 28px;
   grid-template-areas: "lead main role end";
@@ -1154,8 +1089,7 @@ main.page:has(> .set-layout) {
   border-top: 1px solid var(--line);
 }
 
-/* A list where no row has a key (what a viewer sees, or an admin alone) drops the key column, so
-   the role cell ends on the right edge like every other control. */
+/* With no key in any row, drop the key column so the role cell ends on the right edge. */
 .set-tm-list:not(:has(.set-tm-end > *)) > .set-tm-row {
   --cols: 32px minmax(0, 1fr) 112px;
   grid-template-areas: "lead main role";
@@ -1189,7 +1123,6 @@ main.page:has(> .set-layout) {
   overflow-wrap: anywhere;
 }
 
-/* The linked GitHub login beside the name, in the sub line's type. */
 .set-tm-gh {
   display: inline-flex;
   align-items: center;
@@ -1235,9 +1168,7 @@ main.page:has(> .set-layout) {
   width: 100%;
 }
 
-/* A value you cannot change here (your own role in Team and Profile, every role for a viewer): a
-   quiet 32px box that hugs its text (owner: no padding past the 12px sides), with no chevron, so it
-   never reads as a picker. In Team it sits at the right of the role cell, under the pickers' edge. */
+/* Read-only value: no chevron, so it never reads as a picker. */
 .set-readonly {
   display: inline-flex;
   flex: none;
@@ -1263,7 +1194,6 @@ main.page:has(> .set-layout) {
   justify-content: flex-end;
 }
 
-/* Send invite email: a checkbox beside its label over the note. */
 .set-tm-check {
   display: flex;
   align-items: flex-start;
@@ -1271,13 +1201,12 @@ main.page:has(> .set-layout) {
   cursor: pointer;
 }
 
-/* The shared 16px checkbox, dropped 2px to centre on the label's 20px first line. */
+/* Dropped 2px to centre on the label's 20px first line. */
 .set-tm-check > input {
   flex: none;
   margin-top: 2px;
 }
 
-/* Tokens: token, access, usage, key. The head uses the row template. */
 .set-tk-head,
 .set-tk-row {
   --cols: minmax(0, 1fr) 200px 152px 28px;
@@ -1285,8 +1214,6 @@ main.page:has(> .set-layout) {
   column-gap: 16px;
 }
 
-/* Sessions: the session, when it was last active, the key. The same table as Tokens, so the group
-   head (tile, title, sub line, key) and its rows never share one shape. */
 .set-ss-head,
 .set-ss-row {
   --cols: minmax(0, 1fr) 152px 28px;
@@ -1322,7 +1249,6 @@ main.page:has(> .set-layout) {
 .set-ss-seen { grid-area: seen; min-width: 0; }
 .set-ss-row > .set-tm-end { grid-area: end; }
 
-/* The device glyph rides before the name, as the GitHub mark does on a Team row. */
 .set-ss-device {
   display: inline-flex;
   align-items: center;
@@ -1339,7 +1265,6 @@ main.page:has(> .set-layout) {
   gap: 0 8px;
 }
 
-/* The stored prefix plus one fixed ellipsis, as a small mono chip on the 18px sub line. */
 .set-tk-prefix {
   display: inline-flex;
   align-items: center;
@@ -1362,7 +1287,6 @@ main.page:has(> .set-layout) {
   gap: 4px;
 }
 
-/* Admin scope: a touch stronger than Read only and Deploy, never a warning colour. */
 .chip.set-tk-admin {
   box-shadow: inset 0 0 0 1px var(--line-strong);
   color: var(--ink);
@@ -1388,8 +1312,6 @@ main.page:has(> .set-layout) {
   color: var(--ink-2);
 }
 
-/* Narrow columns: tokens stack, the name and key on top, access and usage side by side. Sessions
-   put the last active time under the name, as the third line of the same block. */
 @container set-main (max-width: 640px) {
   .set-tk-head,
   .set-ss-head {
@@ -1424,7 +1346,6 @@ main.page:has(> .set-layout) {
   }
 }
 
-/* Phone columns: the role cell drops under the name, at its fixed width. */
 @container set-main (max-width: 520px) {
   .set-tm-row {
     --cols: 32px minmax(0, 1fr) 28px;
@@ -1463,12 +1384,8 @@ main.page:has(> .set-layout) {
   }
 }
 
-/* Sub-nav: ruled group heads across the column, then rows set like the app sidebar beside it (36px,
-   8px radius, a soft fill on hover and when current), a quiet meta, a ruled footer. */
-/* As tall as the frame, with Docs on its last row: lists are capped (below), so a section runs
-   only a little past the nav, and that bit becomes room above Docs instead of an empty box. It is
-   not sticky and paints no background: a sticky nav is a layer of its own, and the content column
-   then paints over the right half of every node on the column rule, which reads as chipped corners. */
+/* Not sticky and no background: a sticky nav is its own layer, and the content column then paints
+   over the right half of every node on the column rule. */
 .set-snav {
   position: relative;
   display: flex;
@@ -1521,7 +1438,6 @@ main.page:has(> .set-layout) {
   transition: background-color 150ms, color 150ms;
 }
 
-/* Glyphs draw at 18px, as the sidebar nav draws its own. */
 .set-snav-item > .ic {
   flex: none;
   width: 18px;
@@ -1548,7 +1464,7 @@ main.page:has(> .set-layout) {
   font-weight: 500;
 }
 
-/* The ring sits inside the row, as in the sidebar, so the column edge never clips it. */
+/* Inset ring, so the column edge never clips it. */
 .set-snav-item:focus-visible {
   outline-offset: -2px;
 }
@@ -1581,8 +1497,6 @@ main.page:has(> .set-layout) {
   color: var(--ink-2);
 }
 
-/* The foot closes the column: the version when the build reports one, then the docs, ruled above.
-   At least the list's own 16px sits above it. */
 .set-snav-foot {
   position: relative;
   margin-top: auto;
@@ -1618,8 +1532,7 @@ main.page:has(> .set-layout) {
 }
 
 
-/* -------------- Updates -------------- */
-/* The maintenance window's day toggles and its two time selects. */
+/* Updates */
 .set-upd-days {
   display: flex;
   flex-wrap: wrap;
@@ -1639,7 +1552,7 @@ main.page:has(> .set-layout) {
 }
 
 
-/* ============== Layout breakpoints (after every base rule, so they win) ============== */
+/* Layout breakpoints (after every base rule, so they win) */
 @media (max-width: 1100px) {
   .set-layout {
     grid-template-columns: 200px minmax(0, 1fr);
@@ -1655,9 +1568,8 @@ main.page:has(> .set-layout) {
   }
 }
 
-/* A narrow page (a phone, or a tablet with the sidebar open): the sub-nav becomes the section
-   dropdown at the top of the column. Measured on the page, not the viewport, so the content column
-   beside the sub-nav is never narrower than on a phone. */
+/* Measured on the page, not the viewport, so the content column beside the sub-nav is never
+   narrower than on a phone. */
 @container set-page (max-width: 880px) {
   .set-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -1677,7 +1589,6 @@ main.page:has(> .set-layout) {
     inset: auto;
     overflow: visible;
   }
-  /* The page scrolls here, so nothing scrolls or holds still inside the column. */
   .set-pane:not([hidden]),
   .set-tabpanel,
   .set-seg:not([hidden]):has(> .set-group:only-child),
@@ -1697,9 +1608,8 @@ main.page:has(> .set-layout) {
   }
 }
 
-/* Ruled rows run edge to edge, like the card heads and group rules around them; only their content
-   keeps the gutter. A list of rows reaches the edges as one box. Last in the file so it wins over
-   each row's own padding, phone sizes included. Rows inside a dialog keep the dialog's own insets. */
+/* Ruled rows run edge to edge; only their content keeps the gutter. Must stay last in the file to
+   win over each row's own padding. Rows inside a dialog keep the dialog's insets. */
 .set-body :is(.set-row, .set-tk-head, .set-ss-head, .set-tm-list):not(.dlg *) {
   margin-inline: calc(-1 * var(--gutter));
 }

@@ -1,9 +1,6 @@
 /**
- * The version of Dockify this process runs: the one baked into its image (DOCKIFY_IMAGE_VERSION, set
- * by deploy/Dockerfile from the release tag). Nothing at runtime can change it, so it is right after
- * an in-app update, which swaps the image and rewrites only release/release.env. DOCKIFY_VERSION in
- * .env is what the installer last installed by hand and goes stale after such an update, so it is
- * read only by an image that has no baked version (a local build or a test).
+ * The version baked into the image (DOCKIFY_IMAGE_VERSION), which stays right after an in-app update.
+ * DOCKIFY_VERSION in .env goes stale then, so only an image with no baked version (local build, test) reads it.
  */
 export const DEV_VERSION = "0.0.0-dev";
 

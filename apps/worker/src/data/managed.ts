@@ -1,26 +1,7 @@
 /**
- * The one way a managed Postgres or Redis gets its container: the deploy job of a service app (a
- * resource created through the api queues one too) and a restore into a new service both come
- * here, never through the generic app pipeline. In order:
- *
- *   1. read its credentials (the shared JSON shape, or an older install's bare password)
- *   2. find its data volume row: the named volume every deploy, backup and restore uses
- *   3. resolve its image: the recorded digest, or the configured tag pulled once and pinned
- *   4. stop everything serving the app (one writer, always) and park the previous container
- *   5. a setup helper with the volume mounted: into an empty named volume, copy the data the
- *      previous container kept on an anonymous volume (older installs), then write the secret
- *      file (the Redis config, the Postgres password file) from stdin
- *   6. start the new container and wait for its health check; an adopted Postgres then gets the
- *      stored password set over its local socket (it was created with other credentials); finally
- *      prove a login with the stored credentials
- *   7. success removes the parked container (its anonymous volumes stay, the janitor lists them);
- *      a failure removes the new one, empties a volume it had just adopted into, and puts the
- *      previous container back as it was
- *
- * The setup helper runs the service's image with nothing at the image's VOLUME path, which makes
- * Docker create an empty anonymous volume for it, so it is always removed along with that.
- *
- * No project or app variable is ever read: a service runs with exactly what this file gives it.
+ * The one way a managed Postgres or Redis gets its container, never the generic app pipeline. Everything
+ * serving the app stops before anything new starts (one writer, always), and a failure puts the previous
+ * container back as it was. No project or app variable is read: a service runs with only what this file gives it.
  */
 import { readAll } from "./context.ts";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -36,7 +17,6 @@ import {
 
 /** Postgres needs the longest to flush and checkpoint on the way down. */
 export const SERVICE_STOP_SECONDS = 30;
-/** Mount points inside the setup helper. */
 export const SETUP_DATA = "/v";
 export const SETUP_FROM = "/from";
 /** How long the idle setup helper lives if the worker dies before removing it. */
@@ -46,10 +26,8 @@ export const ANONYMOUS_VOLUME = /^[0-9a-f]{64}$/;
 
 export const setupName = (appId: string) => `${containerNameFor(appId)}-setup`;
 const parkedPattern = (appId: string) => new RegExp(`^dk-${appId}-prev-[0-9a-z]+$`);
-/** The roles of a container that serves the app (a deployed app, or a service), never a helper. */
 const serving = (role: string | undefined) => role === "app" || (role ?? "").startsWith("service-");
 
-/** A failed managed deploy. rolledBack: the previous container was put back as it was. */
 export class ManagedServiceError extends Error {
   readonly permanent: boolean;
   readonly rolledBack: boolean;
@@ -62,11 +40,8 @@ export class ManagedServiceError extends Error {
 }
 
 /**
- * The setup helper's first step. Adopts only into a volume that holds nothing but Dockify's own
- * folder, from a source that holds something, so a named volume with data is never written over.
- * The source is mounted read-only: it is never changed or deleted. Prints adopted=0|1 and
- * layout=root|sub (a Postgres cluster at the volume root, as an adopted one is, or the pgdata
- * folder a fresh volume gets).
+ * Adopts only into a volume that holds nothing but Dockify's own folder, so a named volume with data is never
+ * written over; the source is mounted read-only. Prints adopted=0|1 and layout=root|sub.
  */
 export const SETUP_SCRIPT = [
   "set -eu",
@@ -87,9 +62,8 @@ export const SETUP_SCRIPT = [
 ].join("\n");
 
 /**
- * Writes one secret file from stdin. Reads exactly DK_BYTES bytes, so it never waits for the end
- * of stdin to reach it through the socket proxy, then renames into place. The value is never on
- * argv or in the exec's environment.
+ * Writes one secret file from stdin, reading exactly DK_BYTES bytes so it never waits for an EOF to cross
+ * the socket proxy. The value is never on argv or in the exec's environment.
  */
 export const SECRET_SCRIPT = [
   "set -eu",
@@ -104,17 +78,14 @@ export const SECRET_SCRIPT = [
 /** Empties the volume after an adoption whose deploy failed, so the next deploy adopts again. */
 export const WIPE_SCRIPT = `rm -rf ${SETUP_DATA}/..?* ${SETUP_DATA}/.[!.]* ${SETUP_DATA}/*`;
 
-/** The one-off SQL file that sets an adopted cluster's password; removed as soon as it has run. */
 export const RESET_FILE = "reset-password.sql";
 /** Where the official Postgres image puts its socket, which its pg_hba.conf trusts for local connections. */
 export const PG_SOCKET_DIR = "/var/run/postgresql";
 const ROLE_NAME = /^[a-z_][a-z0-9_]{0,62}$/;
 
 /**
- * The SQL that gives the stored role the stored password in an adopted cluster: ALTER ROLE when the
- * role exists, else CREATE ROLE, as the superuser the image would have made it. It is written into
- * the volume and read with psql -f, so the password is never on argv or in an exec's environment.
- * The role is a name Dockify generated and the password is base64url: neither can break a quote.
+ * Written into the volume and read with psql -f, so the password is never on argv. The role is a name Dockify
+ * generated and the password is base64url: neither can break a quote.
  */
 export function resetPasswordSql(c: ServiceCredentials): string {
   if (!ROLE_NAME.test(c.user)) throw new ProvisionError(`The stored user ${c.user} is not a role name Dockify can reset`, true);
@@ -133,10 +104,8 @@ export function resetPasswordSql(c: ServiceCredentials): string {
   ].join("\n");
 }
 
-/** A KEY=value from a container's environment, or null. */
 const envValue = (env: string[] | undefined, key: string): string | null => env?.find((e) => e.startsWith(`${key}=`))?.slice(key.length + 1) || null;
 
-/** The secret file a kind keeps in its volume, and its contents. */
 export function secretFileFor(kind: ServiceKind, c: ServiceCredentials): { file: string; content: string } {
   if (kind === "postgres") return { file: POSTGRES_PASSWORD_FILE, content: c.password };
   if (kind === "redis") return { file: REDIS_CONFIG_FILE, content: redisConfig(c) };
@@ -149,10 +118,8 @@ export function parseSetupOutput(out: string): { adopted: boolean; layout: "root
 
 export interface ManagedDeps {
   db: Db;
-  /** Opens secrets only; nothing here seals one. */
   vault: SecretAccess;
   docker: DockerPort;
-  /** One line for the deploy log. */
   log: (line: string) => void;
   /** Called once the image is known, before anything running is touched (the deploy's steps). */
   onImage?: (image: { imageId: string; pin: string | null }) => Promise<void>;
@@ -172,15 +139,12 @@ export interface ManagedOptions {
 export interface ManagedOutcome {
   containerId: string;
   imageId: string;
-  /** The recorded digest reference, null when a rollback ran another image this once. */
   pin: string | null;
-  /** The anonymous volume the data was copied from, when this deploy adopted one. */
   adoptedFrom: string | null;
   /** Anonymous volumes the replaced containers left behind. Never deleted. */
   keptVolumes: string[];
 }
 
-/** Runs one exec to the end: its stdout, or a ProvisionError naming the step and its stderr tail. */
 async function run(docker: DockerPort, container: string, what: string, cmd: string[], env: Record<string, string> = {}, input?: string): Promise<string> {
   const h = await docker.exec(container, { cmd, env, stdin: input !== undefined });
   if (input !== undefined) {
@@ -194,13 +158,11 @@ async function run(docker: DockerPort, container: string, what: string, cmd: str
   return out;
 }
 
-/** How long a Redis may stay busy loading its dataset into memory before the deploy gives up on it. */
 const LOADING_TIMEOUT_MS = 5 * 60_000;
 
 /**
- * Proves the stored credentials open the running service, and that Redis refuses a client without
- * them. Redis answers NOAUTH (its health check) before it has loaded its data, and LOADING to an
- * authenticated client until it has, so that answer is waited out rather than read as a refusal.
+ * Proves the stored credentials open the running service, and that Redis refuses a client without them.
+ * Redis answers LOADING until its data is in memory, which is waited out rather than read as a refusal.
  */
 export async function verifyCredentials(docker: DockerPort, container: string, kind: ServiceKind, c: ServiceCredentials, pollMs = 1_000, loadingTimeoutMs = LOADING_TIMEOUT_MS): Promise<void> {
   if (kind === "postgres") {
@@ -230,11 +192,8 @@ export async function verifyCredentials(docker: DockerPort, container: string, k
 }
 
 /**
- * An adopted cluster keeps the users and passwords it was created with: the old container took its
- * POSTGRES_PASSWORD from the project's variables. Over the local socket, which the official image
- * trusts, the stored role gets the stored password; the caller then proves a login with them.
- * Connects as the first role that exists: the stored user, the old container's POSTGRES_USER, then
- * postgres, the image's default superuser. Returns the role it connected as.
+ * An adopted cluster keeps the passwords it was created with; over the local socket, which the official image
+ * trusts, the stored role gets the stored one. Connects as the first role that exists and returns it.
  */
 async function resetAdoptedPassword(
   docker: DockerPort,
@@ -261,10 +220,8 @@ async function resetAdoptedPassword(
 }
 
 /**
- * An adopted cluster keeps every role it came with, and their passwords. Dockify does not
- * touch them: the owner's apps may log in with them, and a conversion that runs by itself on an
- * upgrade must not take those apps down. It says so instead, in the deploy log and in Activity, so
- * the owner can change or drop them. Best effort: this never fails a deploy that has succeeded.
+ * An adopted cluster keeps its other roles and their passwords, since the owner's apps may log in with
+ * them. They are only reported, in the deploy log and in Activity. Best effort: never fails a deploy.
  */
 async function reportOtherRoles(deps: ManagedDeps, o: { service: string; as: string; stored: string; app: { id: string; name: string } }): Promise<void> {
   try {

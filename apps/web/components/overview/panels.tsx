@@ -15,7 +15,6 @@ import { useDayHeading } from "@/lib/time-prefs";
 import type { RecentDeployment } from "@/lib/types";
 import { DeployRow, elapsed } from "./deploy-row";
 
-/** Recent deployments across every project, newest first, grouped by day with each day's count. */
 export function DeploymentList({ deployments, now }: { deployments: RecentDeployment[]; now: number }) {
   const heading = useDayHeading();
   const groups: Array<{ label: string; rows: RecentDeployment[] }> = [];
@@ -55,11 +54,7 @@ export function DeploymentList({ deployments, now }: { deployments: RecentDeploy
   );
 }
 
-/**
- * Builds running or waiting for a slot. With nothing in flight it renders nothing: the KPI strip
- * already says so, and an empty card would only repeat it. Its top line meets the column divider
- * and the rail on nodes, as the lines inside it do.
- */
+/** Renders nothing with nothing in flight: the KPI strip already says so. */
 export function InFlight({ deployments, now }: { deployments: RecentDeployment[]; now: number }) {
   if (deployments.length === 0) return null;
   const building = deployments.filter((d) => d.status !== "queued").length;

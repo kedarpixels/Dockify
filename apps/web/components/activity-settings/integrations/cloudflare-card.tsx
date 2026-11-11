@@ -15,11 +15,7 @@ import { ExternalLink } from "@/components/ui/external-link";
 import { intFetch, type Setter } from "./client";
 import { useStepUp } from "@/components/step-up/step-up";
 
-/*
- * Cloudflare: an API token allowed to edit DNS on its zones lets Dockify create the DNS record and the
- * certificate when a domain is added. Each zone opts in on its own switch, which flips at once and
- * rolls back if the API refuses.
- */
+/* Each zone opts in on its own switch, which flips at once and rolls back if the API refuses. */
 
 function ConnectForm({ onDone, onCancel, preview }: { onDone: (v: CloudflareIntegration) => void; onCancel: () => void; preview: boolean }) {
   const { elevate } = useStepUp();
@@ -81,12 +77,10 @@ function ZoneRow({ zone, busy, onToggle }: { zone: CloudflareZone; busy: boolean
 
 export function CloudflareCard({ value, onChange, now, preview }: { value: CloudflareIntegration | null; onChange: Setter<CloudflareIntegration | null>; now: number; preview: boolean }) {
   const { elevate } = useStepUp();
-  // The list is the truth; the card's counts follow it.
   const { open, setOpen, leaving, setLeaving, list: zones, setList: setZones, load, openManage } = useProviderCard<CloudflareZone>(value !== null, "/cloudflare/zones", (list) => onChange((v) => v && { ...v, zones: list.length, managed: list.filter((z) => z.managed).length }));
 
-  // Zones with a switch in flight. Two writes for one zone can land out of order and leave the
-  // switch showing the opposite of what Cloudflare holds, so a zone waits for its answer. The ref
-  // is read synchronously: a second click can come before the state has rendered.
+  // Two writes for one zone can land out of order, so a zone waits for its answer. A ref, read
+  // synchronously: a second click can come before the state has rendered.
   const inFlight = useRef(new Set<string>());
   const [switching, setSwitching] = useState<ReadonlySet<string>>(() => new Set());
   const mark = (id: string, on: boolean) => {
@@ -95,7 +89,6 @@ export function CloudflareCard({ value, onChange, now, preview }: { value: Cloud
     setSwitching(new Set(inFlight.current));
   };
 
-  // Flips one zone here and moves the card's managed count with it.
   const flip = (id: string, managed: boolean) => {
     setZones((s) => (s.state === "ready" ? { ...s, list: s.list.map((z) => (z.id === id ? { ...z, managed } : z)) } : s));
     onChange((v) => v && { ...v, managed: Math.max(0, v.managed + (managed ? 1 : -1)) });

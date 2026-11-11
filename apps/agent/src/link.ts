@@ -1,8 +1,7 @@
 /**
- * The agent's end of the link: it dials out, and from then on only answers. WebSocket so that ordinary
- * proxies carry it, then mutual TLS 1.3 with the worker's certificate pinned before a byte is sent, then
- * HTTP/2 with the worker as client. No session is kept and no early data sent, so every connection is a
- * full handshake. Certificate dates are never read: no clock can break the link.
+ * The agent's end of the link: it dials out, then only answers. WebSocket so ordinary proxies carry it, then
+ * mutual TLS 1.3 with the worker's certificate pinned, then HTTP/2 with the worker as client. No session
+ * resumption or early data, and certificate dates are never read, so no clock can break the link.
  */
 import { link as L } from "@dockify/contracts";
 import { capWrites, writesAsBuffers } from "@dockify/engine";
@@ -19,22 +18,18 @@ export interface LinkOptions {
   cert: string | Buffer;
   /** The worker's certificate fingerprint. A mismatch hangs up before anything is sent. */
   workerPin: string;
-  /** Present until this agent's key is enrolled. */
   joinToken: () => Promise<string | null>;
-  /** The worker took the token, or already knows this key. */
   onJoined: () => Promise<void>;
   /** A connection ended and the worker never spoke HTTP/2 on it: it does not know this key (any more). */
   onUnknown?: () => void;
   onStream: (stream: ServerHttp2Stream, headers: IncomingHttpHeaders) => void;
   log: (msg: string, extra?: object) => void;
   random?: () => number;
-  /** Tests shorten it. */
   pingEveryMs?: number;
 }
 
 export interface LinkHandle {
   stop(): Promise<void>;
-  /** Whether a session is up now. */
   up(): boolean;
 }
 

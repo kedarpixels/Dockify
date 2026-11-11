@@ -1,10 +1,9 @@
 import { callJson } from "@/lib/client-api";
 import { UPLOAD_MAX_BYTES, UPLOAD_MIN_PX, type IconBody, type IconResult, type IconTarget } from "@/lib/icons";
 
-/* The Icon card's browser half: the one write through app/api/icons, and the upload prep that
-   crops to a centered square and shrinks it before the server checks it again by magic bytes. */
+/* The upload is cropped to a centered square and shrunk here; the server checks it again by magic bytes. */
 
-/** Sends one icon write through callJson, so offline and a lapsed session read as everywhere. Never throws. */
+/** Never throws. */
 export async function sendIcon(t: IconTarget, body: IconBody): Promise<IconResult> {
   const r = await callJson<IconResult | null>("/api/icons", { body: { ...t, body } });
   if (r.ok) return r.data ?? { ok: false, source: "api", error: "This dashboard sent something it cannot read" };

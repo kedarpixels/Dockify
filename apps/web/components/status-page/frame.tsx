@@ -1,9 +1,6 @@
 import { ProjectTile } from "@/components/project-tile";
 
-/**
- * The head line of a public status page: the project's logo (or the folder tile) and its name,
- * with `actions` at the right end. Without a project it shows the Dockify mark.
- */
+/** Without a project it shows the Dockify mark. */
 export function StatusTop({ name, logoUrl, actions }: { name?: string; logoUrl?: string | null; actions?: React.ReactNode }) {
   return (
     <header className="stp-top">
@@ -33,7 +30,6 @@ export function StatusTop({ name, logoUrl, actions }: { name?: string; logoUrl?:
   );
 }
 
-/** The foot line: a quiet credit and the time zone every date on the page uses. */
 export function StatusFoot({ utc }: { utc?: boolean }) {
   return (
     <footer className="stp-foot">

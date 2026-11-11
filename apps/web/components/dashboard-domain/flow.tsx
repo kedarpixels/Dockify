@@ -18,15 +18,7 @@ import { domainTargets } from "@/lib/domain-targets";
 import { describe } from "@/lib/feedback";
 import { isStepUpCancel } from "@/lib/step-up";
 
-/*
- * Moving the dashboard to its own domain, in one place for Settings and for first-run setup. The three
- * screens follow the API's state, so a page reload, or a second admin, lands on the same step:
- *
- *   enter a domain     the name, typed or picked from a managed Cloudflare zone
- *   point it here      the record to add (or Dockify adds it), and the three checks. Switch stays off
- *                      until the domain answers and has its certificate. The old address is untouched.
- *   switching          the services restart on the new address; the link to it is there from the start
- */
+/* The screens follow the API's state, so a page reload, or a second admin, lands on the same step. */
 
 const STATE_URL = "/api/settings/domain";
 
@@ -127,7 +119,7 @@ export function DomainFlow({
   const note = (text?: string) => describe(text, { preview });
   // Counts finished writes, so the poll can tell an answer that was asked for before one.
   const writes = useRef(0);
-  /** The one write: its answer is the new state; a closed step-up leaves everything as it is. */
+  /** A closed step-up leaves everything as it is. */
   const send = useCallback(
     async (key: NonNullable<typeof busy>, call: () => Promise<Answer<DashboardDomain>>, what: string, success?: string) => {
       setBusy(key);

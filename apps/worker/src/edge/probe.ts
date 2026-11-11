@@ -5,17 +5,9 @@ import { DOMAIN_CHECK_PREFIX, domainCheckAnswer, domainCheckToken } from "@docki
 import { guardedLookup } from "@dockify/net-guard";
 
 /**
- * The domain ownership probe. A domain behind a proxy such as Cloudflare's resolves to
- * the proxy, so its DNS cannot say whether requests for it reach this server. The worker asks the
- * domain itself: GET http://<host>/.well-known/dockify-check/<token>, following one redirect to
- * https on the same name and path (a proxy's "always use https"), and expects this server's answer
- * for that host and token (@dockify/crypto domain-check.ts). Traefik sends that path to the api on
- * every host, above every tenant route (edge/routes.ts), so only this server can give the answer:
- * directly, or through a proxy in front of it.
- *
- * The https leg does not check the certificate: before the domain passes there is none for it, and
- * the answer, not the certificate, is the proof. Every connection goes through net-guard's lookup,
- * so a name that resolves to a private or internal address is never asked.
+ * A domain behind a proxy resolves to the proxy, so the probe GETs /.well-known/dockify-check/<token>
+ * on the name itself. Traefik sends that path to the api above every tenant route, so only this server
+ * can answer. The https leg skips the certificate check; net-guard's lookup refuses private addresses.
  */
 export type ProbeResult = {
   status: "passed" | "failed";
@@ -30,14 +22,11 @@ export type ProbeResult = {
 export interface ProbeAnswer {
   status: number;
   location: string | null;
-  /** The first 256 bytes of the body. */
   body: string;
 }
 
-/** One GET. The real one is below; tests pass their own. */
 export type ProbeFetch = (url: URL, timeoutMs: number) => Promise<ProbeAnswer>;
 
-/** A failed connection that says something about the name itself, not about the moment. */
 const isLasting = (e: unknown) => {
   const code = typeof e === "object" && e && "code" in e ? String((e as { code: unknown }).code) : "";
   return code === "EBLOCKED" || code === "ENOTFOUND" || code === "ENODATA";
@@ -53,9 +42,8 @@ const reasonOf = (e: unknown) => {
 };
 
 /**
- * `timeout` on a request only measures idle time, so a server sending one header byte every few
- * seconds holds it for hours, and with it the whole maintenance lane (alerts included). The deadline
- * covers the whole exchange: lookup, connect, TLS, headers and body.
+ * `timeout` on a request only measures idle time, so a slow-drip server could hold the maintenance
+ * lane for hours. The deadline covers the whole exchange: lookup, connect, TLS, headers and body.
  */
 export const nodeProbeFetch: ProbeFetch = (url, timeoutMs) =>
   new Promise((resolve, reject) => {
@@ -97,16 +85,14 @@ export const nodeProbeFetch: ProbeFetch = (url, timeoutMs) =>
   });
 
 /**
- * Asks `host` for this server's answer. `domainId` and `secret` derive the token and the answer.
- * Each request has `timeoutMs` (5 s), so two hops and the TLS read that follows fit inside the
- * api's wait on a recheck (modules/domains/handlers.ts, CHECK_WAIT_MS).
+ * Each request has `timeoutMs` (5 s), so two hops and the TLS read that follows fit inside the api's
+ * wait on a recheck (modules/domains/handlers.ts, CHECK_WAIT_MS).
  */
 export async function probeDomain(o: { host: string; domainId: string; secret: string; fetch?: ProbeFetch; timeoutMs?: number }): Promise<ProbeResult> {
   const fetch = o.fetch ?? nodeProbeFetch;
   const timeoutMs = o.timeoutMs ?? 5_000;
   const failed = (why: string, transient = false): ProbeResult => ({ status: "failed", detail: `Asking ${o.host} did not reach this server: ${why}.`, ...(transient ? { transient } : {}) });
   // Node connects to an address without calling the guarded lookup, so only names are ever asked.
-  // A domain is always a name (the api refuses addresses); this keeps the guard whole regardless.
   if (isIP(o.host.replace(/^\[|\]$/g, ""))) return failed("it is an address, not a name");
   const token = domainCheckToken(o.secret, o.domainId, o.host);
   const expected = domainCheckAnswer(o.secret, o.host, token);
@@ -146,8 +132,7 @@ export async function probeDomain(o: { host: string; domainId: string; secret: s
     if (r.status === 200 && r.body.trim() === expected) {
       return { status: "passed", detail: `Asking ${o.host} reached this server${url.protocol === "https:" ? " over https" : ""}.` };
     }
-    // Cloudflare's "invalid origin certificate": Full (strict) before this server holds a certificate
-    // for the name, which it only asks for once the name passes this check.
+    // Cloudflare's "invalid origin certificate": Full (strict) before this server holds one for the name.
     // A live domain keeps its route through it: dropping the route would also stop the renewal.
     if (r.status === 526) return failed("Cloudflare refused this server's certificate (526). Set SSL/TLS to Full until the certificate is active", true);
     return failed(r.status === 200 ? "the answer was not this server's" : `it answered ${r.status}`, r.status >= 500);

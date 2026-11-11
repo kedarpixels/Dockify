@@ -1,8 +1,4 @@
-/**
- * The read-only data browser routes. The api checks the policy (admin; SQL and row contents need a step-up) and the
- * app, then relays to the worker's data channel, which alone can reach tenant networks. Every SQL
- * run and every rows read is audited, since both return tenant data.
- */
+// Read-only data browser. The api checks the policy and the app, then relays to the worker's data channel, which alone can reach tenant networks.
 import type { FastifyRequest } from "fastify";
 import { internalChannelToken } from "@dockify/crypto";
 import { assertProjectScope, type Actor } from "../../actor.ts";
@@ -12,7 +8,6 @@ import { HttpError } from "../../errors.ts";
 
 export type DataOp = "tables" | "rows" | "keys" | "query";
 
-/** How the api reaches the worker. The default posts JSON; tests pass a fake. */
 export interface DataChannel {
   call(op: DataOp, body: Record<string, unknown>, ctx: Ctx): Promise<unknown>;
 }

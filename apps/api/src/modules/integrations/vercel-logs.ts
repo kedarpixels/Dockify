@@ -1,16 +1,6 @@
 /**
- * A Vercel deployment's logs, read live from Vercel with the stored token and redacted here, like
- * every other log the dashboard shows. Nothing is written to the database: Vercel keeps them.
- *
- *   Build logs    GET /v3/deployments/:id/events: a JSON page, or a stream with follow=1. Finished or
- *                 running alike; Vercel keeps them for as long as the deployment.
- *   Runtime logs  GET /v1/projects/:p/deployments/:d/runtime-logs: a stream only. Vercel documents no
- *                 way to page back, and a connection may end after a few minutes, so the tail is what
- *                 arrives in a short read and the stream reconnects on its own. Older lines stay in
- *                 Vercel's Logs tab, for as long as the plan keeps them (retentionNote).
- *
- * The token goes in an Authorization header to api.vercel.com only, through the guarded client. It
- * and the project's secret values are concealed from every line, in case a build prints them.
+ * Vercel deployment logs, read live with the stored token and redacted here; nothing is stored, Vercel keeps them.
+ * Runtime logs are a stream only: Vercel has no way to page back and may close the connection after a few minutes.
  */
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { OutboundError, createHttpClient, createStreamClient, type HttpClient, type StreamClient, type StreamEnd } from "@dockify/net-guard";
@@ -32,7 +22,6 @@ export const setVercelLogClients = (c: { http: HttpClient; stream: StreamClient 
 };
 const client = () => (clients ??= { http: createHttpClient(), stream: createStreamClient() });
 
-// ------------------------------------------------------------------ lines
 
 export interface BuildLine {
   ts: string;
@@ -44,7 +33,7 @@ export interface BuildLine {
 const PRINTED = new Set(["stdout", "stderr", "command", "fatal", "exit"]);
 const MAX_LINE = 16 * 1024;
 
-/** One event as Vercel sends it, in either of its documented shapes; null when it prints nothing. */
+/** Accepts either of Vercel's documented event shapes; null when the event prints nothing. */
 export function eventToLine(raw: unknown): BuildLine | null {
   if (!raw || typeof raw !== "object") return null;
   const e = raw as { type?: unknown; created?: unknown; date?: unknown; text?: unknown; level?: unknown; payload?: { text?: unknown; date?: unknown; created?: unknown } | null };
@@ -85,7 +74,7 @@ export interface RuntimeLine {
 
 const LEVEL: Record<string, RuntimeLine["level"]> = { fatal: "error", error: "error", warning: "warn", info: "info", debug: "debug", trace: "debug" };
 
-/** One runtime row. A request with no output of its own reads as its method, path and status. */
+/** A request with no output of its own reads as its method, path and status. */
 export function runtimeToLine(raw: unknown, appId: string): RuntimeLine | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as { rowId?: unknown; timestampInMs?: unknown; level?: unknown; message?: unknown; source?: unknown; requestMethod?: unknown; requestPath?: unknown; responseStatusCode?: unknown };
@@ -100,19 +89,18 @@ export function runtimeToLine(raw: unknown, appId: string): RuntimeLine | null {
   return { id: row, appId, ts: new Date(at).toISOString(), stream: level === "error" ? "stderr" : "stdout", level, text: text.slice(0, MAX_LINE) };
 }
 
-// ------------------------------------------------------------------ what a read needs
 
 interface Link {
   token: string;
   teamId: string | null;
-  /** A new redactor per read, since its PEM state belongs to one run of lines. */
+  /** A new redactor per read, because its PEM state belongs to one run of lines. */
   redactor: () => Redactor;
 }
 
 const SECRETS_TTL_MS = 60_000;
 const secretCache = new Map<string, { at: number; values: string[] }>();
 
-/** The project's secret values, for the literal pass. One that cannot be opened empties nothing else. */
+/** Values for the literal redaction pass. A secret that cannot be opened is skipped, not fatal. */
 async function projectSecrets(db: Db, ring: Keyring, projectId: string): Promise<string[]> {
   const hit = secretCache.get(projectId);
   if (hit && Date.now() - hit.at < SECRETS_TTL_MS) return hit.values;
@@ -146,7 +134,6 @@ function refused(status: number): HttpError {
 
 const unreachable = (e: unknown): HttpError => (e instanceof HttpError ? e : new HttpError(502, e instanceof OutboundError && e.code === "TIMEOUT" ? "Vercel did not answer in time" : "Vercel could not be reached", "UPSTREAM"));
 
-// ------------------------------------------------------------------ build logs: the page
 
 const PAGE_EVENTS = 10_000;
 const SMALLER_PAGE = 2_000;
@@ -223,9 +210,9 @@ export const clearVercelLogCache = (): void => {
   secretCache.clear();
 };
 
-/** The lines after `after`, in the shape of deployments.logs. Seq is the line's place in the log, from 1. */
+/** Returns the lines after `after`. Seq is the line's place in the log, from 1. */
 export async function readBuildLog(db: Db, ring: Keyring, d: { externalId: string | null; projectId: string; terminal: boolean }, after: number) {
-  // Dockify asked Vercel to deploy and Vercel has not answered yet: nothing to read so far.
+  // Vercel has not answered the deploy request yet, so there is nothing to read.
   if (!d.externalId) return { lines: [], done: d.terminal, source: "vercel" as const };
   const link = await linkFor(db, ring, d.projectId);
   const whole = await cached(link, d.externalId, d.terminal);
@@ -244,7 +231,6 @@ export async function readBuildLog(db: Db, ring: Keyring, d: { externalId: strin
   return { lines, done: d.terminal && !more, source: "vercel" as const, ...(whole.truncated ? { truncated: true } : {}) };
 }
 
-// ------------------------------------------------------------------ streams
 
 const MAX_STREAMS_PER_USER = 4;
 const MAX_STREAMS_TOTAL = 24;
@@ -275,17 +261,16 @@ function takeSlot(userId: string): () => void {
 export const openVercelStreams = (): number => openTotal;
 
 interface Pump {
-  /** The upstream address to read; called again for each reconnect. */
+  /** Called again for each reconnect. */
   url: () => string;
   onLine(raw: string): Promise<boolean>;
-  /** The stream ended because Vercel finished sending: what to say, or null to reconnect. */
+  /** Called when Vercel finished sending: the closing event, or null to reconnect. */
   finished(end: StreamEnd | null): Promise<{ event: string; data: unknown } | null>;
 }
 
 /**
- * Runs one SSE answer over an upstream stream, with reconnects. The slot is taken before the hijack
- * so a refusal is a clean 429; a viewer who leaves aborts the upstream at once, and a lapsed session
- * ends the stream at the next standing check.
+ * The slot is taken before the hijack so a refusal is a clean 429. A viewer who leaves aborts the upstream at once,
+ * and a lapsed session ends the stream at the next standing check.
  */
 async function pump(req: FastifyRequest, reply: FastifyReply, token: string, userId: string, allowed: Reauthorizer, build: (send: (frame: string) => Promise<boolean>) => Pump): Promise<void> {
   const release = takeSlot(userId);
@@ -298,8 +283,7 @@ async function pump(req: FastifyRequest, reply: FastifyReply, token: string, use
     release();
   };
   raw.on("close", leave);
-  // A viewer who left while the handler was still reading the database closed the socket before the
-  // listener above existed, so no close event will ever come: give the slot back now.
+  // A viewer who left before the close listener existed will never fire it: give the slot back now.
   if (raw.destroyed || req.raw.destroyed || req.raw.socket?.destroyed) {
     leave();
     reply.hijack();
@@ -314,8 +298,7 @@ async function pump(req: FastifyRequest, reply: FastifyReply, token: string, use
     "x-content-type-options": "nosniff",
     connection: "keep-alive",
   });
-  // A write that cannot reach the viewer means the viewer is gone: the slot and the upstream go with it,
-  // rather than waiting for a close event that a half-open connection may never send.
+  // A failed write means the viewer is gone; a half-open connection may never send a close event.
   const send = async (frame: string): Promise<boolean> => {
     if (closed || raw.destroyed || raw.writableEnded) {
       leave();
@@ -391,7 +374,7 @@ async function pump(req: FastifyRequest, reply: FastifyReply, token: string, use
         await send(sseFrame("end", { reason: "stopped" }));
         break;
       }
-      // Each quiet round waits longer, so an upstream that keeps closing at once is not asked every 2 s for an hour.
+      // Each quiet round waits longer, so an upstream that closes at once is not asked every 2 s.
       await new Promise((r) => setTimeout(r, Math.min(RECONNECT_MS * (quiet + 1), MAX_RECONNECT_MS)));
     }
   } finally {
@@ -403,9 +386,8 @@ async function pump(req: FastifyRequest, reply: FastifyReply, token: string, use
 }
 
 /**
- * The live build log. Events `line` (id = seq, the same seq as the page) and `done` with the final
- * status. Vercel closes the follow once the build has finished, so a finished deployment streams its
- * whole log and ends. `after` skips what the viewer already has.
+ * Events: `line` (id = seq, the same seq as the page) and `done` with the final status. Vercel closes the follow
+ * once the build has finished. `after` skips what the viewer already has.
  */
 export async function streamBuildLog(
   db: Db, ring: Keyring, req: FastifyRequest, reply: FastifyReply,
@@ -447,14 +429,14 @@ export async function streamBuildLog(
       async finished(end) {
         const status = await settled();
         if (status) return { event: "done", data: { status } };
-        // Vercel says the follow is over, and the mirror has not caught up: the page reads the row next.
+        // Vercel ended the follow but the mirror has not caught up: the page reads the row next.
         return end === "done" ? { event: "done", data: { status: "syncing" } } : null;
       },
     };
   });
 }
 
-/** The live runtime log. Events `line` (id = Vercel's row id) and `end`. It reconnects as Vercel closes. */
+/** Events: `line` (id = Vercel's row id) and `end`. Reconnects whenever Vercel closes. */
 export async function streamRuntimeLog(
   db: Db, ring: Keyring, req: FastifyRequest, reply: FastifyReply,
   d: { appId: string; externalId: string; vercelProjectId: string; projectId: string },
@@ -489,10 +471,7 @@ export async function streamRuntimeLog(
 
 const TAIL_WAIT_MS = 3_000;
 
-/**
- * Aborts when the viewer's connection closes before the answer was sent, so a read for a page that
- * has gone (a tab switched or closed) stops at once instead of holding its slot for the full read.
- */
+/** Aborts when the viewer disconnects before the answer is sent, so an abandoned read frees its slot at once. */
 export function viewerLeft(reply: FastifyReply): AbortSignal {
   const ctrl = new AbortController();
   const raw = reply.raw;
@@ -503,13 +482,12 @@ export function viewerLeft(reply: FastifyReply): AbortSignal {
   return ctrl.signal;
 }
 
-/** What arrives in a short read of the runtime stream: Vercel has no way to ask for the last N. */
+/** Returns what arrives in a short read of the stream: Vercel has no way to ask for the last N. */
 export async function tailRuntime(db: Db, ring: Keyring, d: { appId: string; externalId: string; vercelProjectId: string; projectId: string }, tail: number, signal?: AbortSignal) {
   const link = await linkFor(db, ring, d.projectId);
   const url = withTeam(`/v1/projects/${encodeURIComponent(d.vercelProjectId)}/deployments/${encodeURIComponent(d.externalId)}/runtime-logs`, link.teamId);
   let res: Awaited<ReturnType<StreamClient>>;
   try {
-    // The viewer's signal ends the read the moment they leave, so the read slot is free at once.
     res = await client().stream({ url, headers: { Authorization: `Bearer ${link.token}` }, signal, maxMs: TAIL_WAIT_MS, idleMs: TAIL_WAIT_MS, timeoutMs: 10_000, maxBytes: 8 * 1024 * 1024 });
   } catch (e) {
     throw unreachable(e);
@@ -547,16 +525,12 @@ export async function tailRuntime(db: Db, ring: Keyring, d: { appId: string; ext
   return lines.slice(-tail);
 }
 
-// ------------------------------------------------------------------ what the page may say
 
 const BY_PLAN = { hobby: 1, pro: 24, enterprise: 72, observabilityPlus: 720 };
 /** Vercel's own limit per request; lines beyond it never reach any reader. */
 const LINES_PER_REQUEST = 256;
 
-/**
- * How far back Vercel keeps runtime logs, as far as Dockify can tell: Vercel does not report a plan,
- * but it accepts a webhook only from Pro or Enterprise.
- */
+/** Vercel does not report a plan, so it is inferred: only Pro or Enterprise may register a webhook. */
 export function retentionNote(webhookActive: boolean) {
   return {
     plan: webhookActive ? ("pro_or_enterprise" as const) : ("unknown" as const),

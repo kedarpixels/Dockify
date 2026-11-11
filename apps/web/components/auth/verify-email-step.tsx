@@ -11,10 +11,7 @@ import { settle } from "./util";
 
 const RESEND_SECONDS = 30;
 
-/**
- * Setup, when email is on: a 6-digit code to the admin's address proves the mail arrives and the
- * address is theirs. Optional; skipping leaves it unverified and Settings, Profile can verify later.
- */
+/** Optional: skipping leaves the address unverified, and Settings, Profile can verify later. */
 export function VerifyEmailStep({ step, onDone, onSkip, onBack }: { step: [number, number]; onDone: () => void; onSkip: () => void; /** Back to the email settings, when this setup connected them: a code that never comes is often the from domain. */ onBack?: () => void }) {
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -23,13 +20,11 @@ export function VerifyEmailStep({ step, onDone, onSkip, onBack }: { step: [numbe
   const [wait, startWait] = useCooldown();
   const [resendIn, startResend] = useCooldown();
   const [pending, startTransition] = useTransition();
-  // The first code goes out as the step opens.
   const [sending, setSending] = useState(true);
   const otpRef = useRef<OtpHandle>(null);
   const live = useRef(true);
   const started = useRef(false);
 
-  // Results land only in the promise callback.
   const request = () =>
     settle(sendVerifyCode()).then((r) => {
       if (!live.current) return;

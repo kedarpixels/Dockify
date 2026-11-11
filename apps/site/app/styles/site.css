@@ -1,6 +1,3 @@
-/* Site shell: top bar, phone menu, page heads, the command line and the footer. Builds on the
-   foundation.css tokens and ruled frame. */
-
 /* Hidden until focused; then it floats just under the top bar, clear of the logo and the nav. */
 .skip {
   position: fixed;
@@ -19,8 +16,7 @@
   top: calc(var(--top-h) + 12px);
 }
 
-/* One centred column for the nav, every section and the footer. Above phone width the rails keep
-   at least 32px of page outside them, so the ruled frame never hugs the window edge. */
+/* Above phone width the rails keep at least 32px of page outside them, so the frame never hugs the window edge. */
 @media (min-width: 761px) {
   html:root {
     --rail: min(1200px, calc(100vw - 64px));
@@ -36,12 +32,9 @@
   object-fit: contain;
 }
 
-/* -------------- Top bar -------------- */
-/* Solid, sticky, 56px. The inner row sits between the rails, on the same whole-pixel offset as the
-   page blocks (foundation.css, the frame note); its cells are split by hairlines. Its two bottom
-   corners carry the nodes where its rule crosses the rails. As in the dashboard, the bottom rule is
-   an inset shadow, not a border, so the cells keep all 56px and the logo, links, theme switch and
-   install key centre on whole pixels. */
+/* Top bar */
+/* The bottom rule is an inset shadow, not a border, so the cells keep all 56px and their contents centre on
+   whole pixels. */
 .st-top {
   position: sticky;
   top: 0;
@@ -139,7 +132,7 @@
   display: none;
 }
 
-/* -------------- Phone: burger and menu, the same as the dashboard -------------- */
+/* Phone: burger and menu */
 @media (max-width: 760px) {
   .st-top-in {
     margin-left: 0;
@@ -334,7 +327,7 @@
   }
 }
 
-/* -------------- Page head -------------- */
+/* Page head */
 .phead {
   padding: 64px var(--gutter) 48px;
 }
@@ -391,9 +384,8 @@
   margin-top: 16px;
 }
 
-/* -------------- Command line -------------- */
-/* A copyable shell command in Geist Mono. It wraps at its spaces rather than being cut, so the
-   whole command is always readable; the copy key copies it as one line. */
+/* Command line */
+/* Wraps at its spaces rather than being cut; the copy key copies it as one line. */
 .cmdline {
   display: flex;
   align-items: flex-start;
@@ -431,9 +423,8 @@
   white-space: nowrap;
 }
 
-/* -------------- Footer -------------- */
-/* The rows sit between the rails on the same whole-pixel offset as the page. The brand column takes
-   what the three link columns leave, each of those a whole number of pixels. */
+/* Footer */
+/* The brand column takes what the three link columns leave, each of those a whole number of pixels. */
 .st-foot {
   border-top: 1px solid var(--line);
   overflow-x: clip;
@@ -505,9 +496,8 @@
   color: var(--ink-3);
 }
 
-/* -------------- Responsive -------------- */
-/* Tablet: a fifth of the rail is too narrow for "Report a vulnerability", so the brand takes the
-   first row and the three link columns share the second, each a whole number of pixels. */
+/* Responsive */
+/* Tablet: a fifth of the rail is too narrow for "Report a vulnerability", so the brand takes the first row. */
 @media (min-width: 761px) and (max-width: 1100px) {
   .st-foot-in {
     grid-template-columns: repeat(3, minmax(0, 1fr));

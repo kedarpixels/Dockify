@@ -1,12 +1,7 @@
 /**
- * The one SSRF rule: only globally routable unicast addresses, checked
- * inside the socket's own DNS resolution so the check and the connect share one answer (no
- * rebinding window), https only, redirects never followed, a hard timeout and a response size cap.
- *
- * Every outbound call from the api and the worker goes through here: GitHub, Vercel, Cloudflare,
- * registries, S3 endpoints, alert channels, and the at-rest checks on hosts a user hands us.
- * There is no second copy of the rule anywhere; net-guard.test.ts feeds it every IANA
- * special-purpose range.
+ * The one SSRF rule: only globally routable unicast addresses, checked inside the socket's own DNS
+ * resolution so check and connect share one answer (no rebinding window). https only, no redirects, hard
+ * timeout, size cap. Every outbound call from the api and the worker goes through here.
  */
 import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from "node:dns";
 import { lookup as dnsLookupAsync } from "node:dns/promises";
@@ -15,8 +10,6 @@ import { request as httpsRequest } from "node:https";
 import { BlockList, isIP } from "node:net";
 import { StringDecoder } from "node:string_decoder";
 
-// ------------------------------------------------------------------ address rule
-
 /** Every IANA special-purpose IPv4 block, plus multicast and reserved space. */
 export const V4_DENY: ReadonlyArray<readonly [string, number]> = [
   ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16],
@@ -24,11 +17,7 @@ export const V4_DENY: ReadonlyArray<readonly [string, number]> = [
   ["192.88.99.0", 24], ["192.168.0.0", 16], ["192.175.48.0", 24], ["198.18.0.0", 15], ["198.51.100.0", 24],
   ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4],
 ];
-/**
- * Inside 2000::/3 (the only global unicast block), the IPv6 special-purpose blocks that are not
- * ordinary unicast: 2001::/23 (Teredo, benchmarking, ORCHID, AMT, AS112, drone id), documentation,
- * 6to4, SRv6 and the direct delegation AS112 block. Everything outside 2000::/3 is refused anyway.
- */
+/** Special-purpose blocks inside 2000::/3, the only global unicast block. Everything outside it is refused anyway. */
 export const V6_DENY: ReadonlyArray<readonly [string, number]> = [
   ["2001::", 23], ["2001:db8::", 32], ["2002::", 16], ["3fff::", 20], ["5f00::", 16], ["2620:4f:8000::", 48],
 ];
@@ -95,8 +84,6 @@ export function outboundUrlProblem(raw: string): string | null {
   return null;
 }
 
-// ------------------------------------------------------------------ guarded lookup
-
 type LookupCallback = (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void;
 export type Resolver = (host: string, cb: (err: NodeJS.ErrnoException | null, addrs: LookupAddress[]) => void) => void;
 
@@ -134,19 +121,16 @@ export type AsyncResolver = (host: string) => Promise<Array<{ address: string }>
 const systemAsyncResolver: AsyncResolver = (host) => dnsLookupAsync(host, { all: true, verbatim: true });
 
 /**
- * The same rule for a client that cannot take a custom lookup (fetch, a database driver): resolves
- * the host right before the call and refuses when any answer is not public. A rebinding between
- * this check and the connect is possible here, which is why the http client above is preferred.
+ * For clients that cannot take a custom lookup (fetch, a database driver): resolves right before the call.
+ * A rebinding window remains between this check and the connect, so prefer the http client.
  */
 export async function assertPublicHost(hostname: string, resolve: AsyncResolver = systemAsyncResolver): Promise<void> {
   await pinPublicHost(hostname, resolve);
 }
 
 /**
- * The same check for a client that can be told which address to dial (SMTP): one resolution, every
- * answer must be public, and the answer is the address to connect to, IPv4 first, so a later DNS
- * change cannot move the connection. The caller keeps the name for TLS. A name with no answer
- * throws with code UNRESOLVED, a refused one with URL_REFUSED or EBLOCKED.
+ * For clients that can be told which address to dial (SMTP): returns the checked address, IPv4 first, so a
+ * later DNS change cannot move the connection. Throws with code UNRESOLVED, URL_REFUSED or EBLOCKED.
  */
 export async function pinPublicHost(hostname: string, resolve: AsyncResolver = systemAsyncResolver): Promise<string> {
   const host = hostname.trim().replace(/^\[|\]$/g, "");
@@ -163,8 +147,6 @@ export async function pinPublicHost(hostname: string, resolve: AsyncResolver = s
   if (addrs.some((a) => !isPublicAddress(a.address))) throw new OutboundError(`${hostname} resolves to a non-public address`, "EBLOCKED");
   return first.address;
 }
-
-// ------------------------------------------------------------------ http client
 
 export interface HttpRequest {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
@@ -196,9 +178,8 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 
 /**
- * The production client. Never follows a redirect: a 3xx comes back to the caller as is.
- * `timeoutMs` bounds the whole exchange, not only each idle gap, so a peer that drips a byte at a
- * time cannot hold a job for longer than that.
+ * Never follows a redirect: a 3xx comes back as is. `timeoutMs` bounds the whole exchange, so a peer that
+ * drips a byte at a time cannot hold a job longer.
  */
 export function createHttpClient(resolver?: Resolver, transport: typeof httpsRequest = httpsRequest): HttpClient {
   const lookup = guardedLookup(resolver);
@@ -254,8 +235,6 @@ export function createHttpClient(resolver?: Resolver, transport: typeof httpsReq
     });
 }
 
-// ------------------------------------------------------------------ streaming client
-
 export interface StreamRequest {
   url: string;
   headers?: Record<string, string>;
@@ -295,12 +274,8 @@ const STREAM_MAX_BYTES = 64 * 1024 * 1024;
 const STREAM_MAX_LINE = 64 * 1024;
 
 /**
- * The same rule for a body that is read as it arrives (a log that follows a build): https only,
- * the guarded lookup, redirects never followed, GET only. Memory stays bounded because the body is
- * handed out one chunk at a time and cut at maxBytes, and one over-long line is cut rather than
- * buffered. Time is bounded by the idle gap and the whole-exchange cap. The caller's signal, close(),
- * or a consumer that stops reading early destroys the connection, so a viewer who leaves never
- * leaves a stream open upstream.
+ * Streaming GET under the same rule. Memory stays bounded: the body is cut at maxBytes and long lines are
+ * cut, not buffered. The caller's signal, close(), or a consumer that stops reading destroys the connection.
  */
 export function createStreamClient(resolver?: Resolver, transport: typeof httpsRequest = httpsRequest): StreamClient {
   const lookup = guardedLookup(resolver);
@@ -443,8 +418,6 @@ function streamResponse(res: IncomingMessage, r: ClientRequest, req: StreamReque
   };
 }
 
-// ------------------------------------------------------------------ following redirects
-
 export interface FollowOptions {
   headers?: Record<string, string>;
   timeoutMs?: number;
@@ -453,15 +426,12 @@ export interface FollowOptions {
   maxRedirects?: number;
   /** Which redirect targets the caller accepts (default any). The client's own rule applies to each as well. */
   allow?: (url: URL) => boolean;
-  /** The message a refused redirect throws with. */
   refused?: string;
 }
 
 /**
- * GETs a URL through a guarded client and follows a few redirects, the one place that does: the
- * client itself never follows one. Each target is resolved against the URL that answered, must be
- * https with no credentials and pass `allow`, and is then requested through the same client, so the
- * address rule and the DNS check hold at every hop. Returns where it ended and what it got there.
+ * The only place that follows redirects. Each target must be https with no credentials and pass `allow`,
+ * and goes through the same client, so the address rule and the DNS check hold at every hop.
  */
 export async function getFollowing(http: HttpClient, url: string, o: FollowOptions = {}): Promise<{ url: string; res: HttpResponse }> {
   const max = o.maxRedirects ?? 3;
@@ -485,7 +455,6 @@ export async function getFollowing(http: HttpClient, url: string, o: FollowOptio
   }
 }
 
-/** Parses a JSON body, or null. */
 export function jsonOf<T>(res: HttpResponse): T | null {
   try {
     return JSON.parse(res.body.toString("utf8")) as T;

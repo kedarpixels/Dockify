@@ -1,8 +1,4 @@
-/**
- * A ServerRuntime over the link. Nothing above this knows: Docker calls are the same client on an H2
- * stream, each route change and build is one call, and a dial is a stream of its own. Every answer is
- * parsed, because a node's answers are hostile input.
- */
+/** A ServerRuntime over the link. Every answer is parsed, because a node's answers are hostile input. */
 import { relative } from "node:path";
 import { constants as h2c } from "node:http2";
 import type { Duplex } from "node:stream";
@@ -13,7 +9,6 @@ import type { ServerRuntime } from "../server/runtime.ts";
 import { AgentRefusal, LinkDownError, type ServerLink } from "./session.ts";
 
 const DIAL_TIMEOUT_MS = 10_000;
-/** A build's context can be large; this is the most it may be. The agent has its own ceiling, the same by default. */
 const DEFAULT_MAX_CONTEXT = L.LINK_LIMITS.contextBytesDefault;
 /** A build's last line holds Railpack's plan, whose schema allows 4 MiB. */
 const MAX_ANSWER_LINE = 8 * 1024 * 1024;
@@ -54,7 +49,6 @@ const dialer = (link: ServerLink): Dialer => (target: DialTarget, opts = {}) =>
         try {
           reason = String((JSON.parse(text) as { error?: unknown }).error ?? text);
         } catch {
-          // plain text
         }
         fail(status >= 400 && status < 500 ? new AgentRefusal(reason.slice(0, 1_000)) : new Error(reason.slice(0, 1_000) || `the agent answered ${status} to a dial`));
       });
@@ -69,7 +63,6 @@ const routeStore = (link: ServerLink): RouteStore => ({
   },
 });
 
-/** Reads a build's answer: lines into the log, then one last line with what came of it. */
 async function readAnswer(st: AsyncIterable<unknown>, log: { line(l: Extract<L.BuildLine, { t: "system" | "stdout" | "stderr" }>): void }): Promise<unknown> {
   let partial = "";
   for await (const chunk of st) {
@@ -172,7 +165,6 @@ export function createRemoteRuntime(o: { link: ServerLink; mode: EdgeMode; cpuCo
   };
 }
 
-/** What the server says about itself, checked, for the servers row and the runtime. */
 export async function readAgentInfo(link: ServerLink): Promise<L.AgentInfo> {
   return L.AgentInfo.parse(await link.current.call("GET", "/v1/info"));
 }

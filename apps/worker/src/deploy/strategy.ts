@@ -1,8 +1,4 @@
-/**
- * Zero-downtime or stop-then-start, decided once per deploy and always explained. Never a silent
- * fallback: the reasons go into the deploy log, and the same function can tell the UI before a
- * deploy why an app cannot get zero downtime.
- */
+/** Decided once per deploy and never a silent fallback: the reasons go into the deploy log. */
 export type SwapMode = "zero_downtime" | "stop_then_start";
 
 export interface StrategyInput {

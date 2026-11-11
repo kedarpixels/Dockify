@@ -4,7 +4,6 @@ import { Rule, Spacer } from "@/components/ui/rule";
 import { SectionHead } from "@/components/ui/section-head";
 import { Skel } from "@/components/ui/skeleton";
 
-/** Route loading state: the real head, both toolbars as bars, and the log box's own loading rows. */
 export default function Loading() {
   return (
     <>

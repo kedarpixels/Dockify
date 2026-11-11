@@ -10,9 +10,6 @@ import { appTitle } from "@/lib/format";
 import { APP_STATUS_LABEL, type ProjectCard as ProjectSummary } from "@/lib/derive";
 import { DeployDot, DeployRefs, DeployTime, Envs, ProjectCard } from "./project-card";
 
-/* The projects list in its two layouts: ruled cards in a grid, or ruled rows. Up and Down move
-   between projects in either. */
-
 /** Up and Down step between the rows' main links; Enter opens one, as any link does. */
 function stepRows(e: React.KeyboardEvent<HTMLElement>) {
   if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;

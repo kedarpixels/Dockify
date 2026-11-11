@@ -2,8 +2,6 @@ import { ogVariants, renderOg } from "@/components/seo/og";
 import { readDoc } from "@/lib/docs";
 import { DOC_PAGES } from "@/lib/docs-nav";
 
-/* Social card for each docs page: the sidebar title in the pixel face, the frontmatter description under it. */
-
 function titleOf(slug: string) {
   return DOC_PAGES.find((d) => d.slug === slug)?.title ?? "Dockify docs";
 }

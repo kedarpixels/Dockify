@@ -1,10 +1,6 @@
 /**
- * The deploy_notify job, while Deploy failed is on in Settings, Notifications. Every enabled webhook
- * hears it. So does the member who started it, by email: the user who clicked, or for a push the
- * member whose verified GitHub login is the commit author, while email is set up and they kept
- * "Deploys I started that fail" on in Settings, Profile. A deployment on Vercel is told the same way.
- * The branch, the commit and the error are text a repository or its build wrote, on this server as
- * much as on Vercel, so they lose links and mentions first.
+ * The deploy_notify job: every enabled webhook, plus an email to the member who started the deploy.
+ * Branch, commit and error are text a repository or its build wrote: they lose links and mentions first.
  */
 import { appLabel } from "@dockify/contracts";
 import type { Db } from "@dockify/db";
@@ -24,7 +20,6 @@ export function parseDeployNotify(raw: unknown): { deploymentId: string } {
   return { deploymentId: id };
 }
 
-/** The current member who started a deployment and wants to hear when it fails, or null. */
 export async function deployStarter(db: Db, d: { actorType: string; actorId: string | null; gitAuthor: string | null }) {
   const where = d.actorType === "user" && d.actorId ? { id: d.actorId } : d.actorType === "webhook" && d.gitAuthor ? { githubLogin: d.gitAuthor, githubVerifiedAt: { not: null } } : null;
   if (!where) return null;
@@ -66,7 +61,6 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
   const project = d.app.environment.project;
   // A project with one environment names none, as the dashboard does; the data payload always has it.
   const env = (project._count?.environments ?? 2) > 1 ? d.app.environment.name : null;
-  // What people read as the app's name; the payload's data keeps the name, which is its identity.
   const shown = appLabel(d.app);
   // Line by line: the error quotes the build's last output under its first line.
   const inert = (d.error ?? "").split(/\r?\n/).map(inertLine).filter(Boolean).join("\n");
@@ -93,14 +87,12 @@ export async function deliverDeployFailed(deps: DeployNotifyDeps, raw: unknown):
   const message = deployFailed({
     instanceName: inst?.name ?? "Dockify",
     origin,
-    // The place as the dashboard shows it: project icon or folder, EnvTag, app icon or kind tile.
     where: {
       projectName: project.name, projectSlug: project.slug, env, appName: shown, appKind: d.app.kind,
       ...mailIconLinks(origin, mailIconSigner(deps.internalToken), d.app, project),
     },
     error,
     source,
-    // A GitHub App install, or a repository URL on github.com, gets the GitHub mark on its Source row.
     github: !vercel && (Boolean(d.app.gitInstallationId) || /^https:\/\/github\.com\//i.test(d.app.gitRepository ?? "")),
     at: d.finishedAt ?? new Date(),
     url: new URL(`/deployments/${deploymentId}`, deps.publicUrl).toString(),

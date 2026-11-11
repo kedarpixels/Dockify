@@ -2,36 +2,20 @@ import { isIP } from "node:net";
 import { isValidHost, normalizeHost } from "./hostnames.ts";
 
 /**
- * The one ingress setting. The same env var (DOCKIFY_INGRESS) is read by the api config, so the
- * api, the worker and the web all agree on which front door is in use.
- *
- *   cloudflare_tunnel (default)  no public ports. cloudflared sends /api/v1/ on the dashboard host
- *                                to the api, the rest of the dashboard host to the web, and every
- *                                tenant host to Traefik on :80. TLS ends at Cloudflare, and
- *                                CF-Connecting-IP is set by Cloudflare's edge.
- *   direct_tls                   Traefik publishes 80 and 443 and gets certificates from Let's
- *                                Encrypt (HTTP-01). Every client header is untrusted, so Traefik
- *                                is the hop that decides the client address.
- *
- * In both modes the api answers outside callers itself on the dashboard host under API_PATH_PREFIX:
- * API tokens, GitHub's webhook, and GitHub's return after an install or an App creation. The web
- * never serves a route under that prefix.
+ * cloudflare_tunnel: no public ports; TLS ends at Cloudflare, whose edge sets CF-Connecting-IP.
+ * direct_tls: every client header is untrusted, so Traefik is the hop that decides the client address.
  */
 export type IngressMode = "cloudflare_tunnel" | "direct_tls";
 export type EdgeMode = { ingress: "cloudflare_tunnel" } | { ingress: "direct_tls"; certResolver: string };
 
 export const CERT_RESOLVER = "le";
-/** The headers middleware every direct-mode router carries. Defined in the __edge.yml system file. */
 export const CLIENT_IP_MIDDLEWARE = "dockify-client-ip";
-/** Where cloudflared sends tenant hosts, and what every Dockify tunnel rule points at. */
 export const TUNNEL_SERVICE = "http://proxy:80";
 
 /**
- * The control plane's fixed addresses on the compose edge network; deploy/docker-compose.yml pins
- * each one (routes.test.ts checks they agree). The dashboard routes name the web and the api by
- * address, never by service name: Traefik joins tenant networks, where a managed service can answer
- * to its own name (an app or service called "web" or "api"), and "api" also resolves on the egress network,
- * where a caller's source address is not one the api trusts to report the client.
+ * Fixed addresses on the compose edge network, pinned by deploy/docker-compose.yml. Dashboard routes
+ * name the web and the api by address, never by service name: Traefik joins tenant networks, where a
+ * tenant app or service called "web" or "api" can answer to that name.
  */
 export const EDGE_ADDRESSES = { api: "172.30.1.10", web: "172.30.1.20", proxyDirect: "172.30.1.30", cloudflared: "172.30.1.40" } as const;
 export const WEB_UPSTREAM = `http://${EDGE_ADDRESSES.web}:3000`;
@@ -41,11 +25,8 @@ export const API_PATH_PREFIX = "/api/v1/";
 
 export interface EdgeSettings {
   mode: EdgeMode;
-  /** The dashboard hostname, from DOCKIFY_PUBLIC_URL. Reserved everywhere. */
   dashboardHost: string;
-  /** The server's public IPv4, which direct-mode A records must point at. */
   serverIpv4: string | null;
-  /** The server's public IPv6, when it has one, which direct-mode AAAA records must point at. */
   serverIpv6: string | null;
   acmeEmail: string | null;
   acmeCaServer: string | null;
@@ -98,15 +79,8 @@ export interface StaticOptions {
 }
 
 /**
- * Traefik's static configuration for either mode, as JSON (valid YAML), for a Traefik run outside
- * the compose stack. deploy/docker-compose.yml passes its own static settings as flags; both
- * watch the route root's conf/ folder, never the root itself.
- *
- * The hardened client-IP path for direct mode lives in the entry points: forwardedHeaders has no
- * trustedIPs and insecure is false, so Traefik drops any X-Forwarded-* a client sent and sets
- * X-Forwarded-For and X-Real-Ip from the TCP peer. The web container then trusts only Traefik's
- * address, and the api trusts only the web container (apps/api/src/client-ip.ts walks the chain
- * right to left). No docker provider and no dashboard: routes come only from the file provider.
+ * forwardedHeaders has no trustedIPs and insecure is false, so Traefik drops any X-Forwarded-* a client
+ * sent and sets X-Forwarded-For and X-Real-Ip from the TCP peer.
  */
 export function renderTraefikStatic(o: StaticOptions): string {
   const dynamicDir = o.dynamicDir ?? "/proxy-dynamic/conf";

@@ -1,17 +1,14 @@
 import Link from "next/link";
 import { cx } from "./cx";
 
-/** The status tones a dot can take. */
 export type ChipTone = "ok" | "live" | "warn" | "pending" | "bad" | "idle";
 
 type ChipProps = {
-  /** Optional leading glyph (muted, ink on hover). */
   icon?: React.ReactNode;
   /** Chosen state: the soft blue tint. Sets aria-pressed on buttons. */
   picked?: boolean;
   /** "md" 32px (default, 14px text), "sm" 28px (13px text), "xs" 20px (12px text, weight 500), the tag inside a row title. */
   size?: "md" | "sm" | "xs";
-  /** Round 6px status dot before the label, coloured by tone. */
   tone?: ChipTone;
   className?: string;
   title?: string;
@@ -21,10 +18,7 @@ type ChipProps = {
   children: React.ReactNode;
 };
 
-/**
- * Flat pill: page fill and a hairline ring (the surface-key material).
- * Renders a <Link> with `href`, a <button> with `onClick`, otherwise a plain <span>.
- */
+/** Renders a <Link> with `href`, a <button> with `onClick`, otherwise a plain <span>. */
 export function Chip({
   icon,
   picked,
@@ -83,15 +77,8 @@ export function Chip({
   );
 }
 
-/**
- * The one status mark: the state's name in a 28px chip led by its tone dot. Use it for a status
- * column in any list and for the status in a card head or detail lead. Other marks stay in their
- * lanes: an xs Chip is a tag inside a title ("You", "This device", a scope), and a bare dot with
- * text lives only inside Select and Segmented options.
- *
- *   <StatusChip tone="ok">Running</StatusChip>
- *   <StatusChip tone="bad" tip="Exited with code 137">Stopped</StatusChip>
- */
+// The one status mark, for a status column, a card head or a detail lead. An xs Chip is a tag
+// inside a title; a bare dot with text lives only inside Select and Segmented options.
 export function StatusChip({
   tone,
   tip,

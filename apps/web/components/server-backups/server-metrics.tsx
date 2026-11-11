@@ -15,11 +15,7 @@ import type { HostSnapshot } from "@/lib/types";
 import { useKeyedLoad } from "@/lib/use-keyed-load";
 import { useTween } from "./live";
 
-/*
- * The four host metric cards on /server: the shared KPI cell with its own range picker in the
- * head, the live figure (labelled "Now": it never depends on the range), then the range's chart and
- * its average and peak, which show only once that range's samples are in (lib/use-keyed-load.ts).
- */
+/* The live figure is labelled "Now" and never depends on the range; average and peak show only once that range's samples are in. */
 
 const RANGES: Array<{ value: MetricRange; label: string }> = [
   { value: "1h", label: "1h" },
@@ -40,7 +36,6 @@ const METRICS: Array<{ key: MetricKey; name: string; icon: IconName }> = [
 /** A busy reading: the figure gains the warn or bad dot, the chart keeps the one chart colour. */
 const toneOf = (pct: number) => (pct > 85 ? "bad" : pct > 70 ? "warn" : undefined);
 
-/** One range's samples from the dashboard's route. */
 async function readRange(range: string, signal: AbortSignal) {
   const r = await callJson<MetricsResult>(`/api/server/metrics?range=${range}`, { signal });
   if (!r.ok) return { error: r.error, aborted: r.aborted };
@@ -69,7 +64,6 @@ function MetricCard({ metric, host, initial }: { metric: (typeof METRICS)[number
           : share(host.network.outMbps, link);
   const tone = net ? undefined : toneOf(nowPct);
   const live = net ? host.network.outMbps : nowPct;
-  // Each poll eases the figure from the last reading to the new one.
   const eased = useTween(live);
   const detail =
     metric.key === "cpu"
@@ -151,7 +145,7 @@ function MetricCard({ metric, host, initial }: { metric: (typeof METRICS)[number
   );
 }
 
-/** Four metric cards, each with its own range. The page's 24h samples come with every poll. */
+/** The page's 24h samples come with every poll. */
 export function Metrics({ host, initial }: { host: HostSnapshot; initial: ServerMetrics | null }) {
   return (
     <section className="kpi" aria-label="Host metrics">

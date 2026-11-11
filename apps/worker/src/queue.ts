@@ -1,8 +1,7 @@
 import type { Db, JobKind, JobLane } from "@dockify/db";
 
 /**
- * The jobs table is the queue. FOR UPDATE SKIP LOCKED lets workers step over each other's rows,
- * and the lease (lockedUntil) covers a worker killed mid-job, whose row lock dies with it.
+ * The jobs table is the queue: FOR UPDATE SKIP LOCKED, plus a lease (lockedUntil) for a worker killed mid-job.
  * Every time comparison happens in SQL against now(), so the app clock never matters.
  */
 export interface ClaimedJob {
@@ -13,9 +12,7 @@ export interface ClaimedJob {
   /** Already counted by the claim: the number of the attempt now running. */
   attempts: number;
   maxAttempts: number;
-  /** When the job was queued. Absent from fakes that do not need it. */
   createdAt?: Date;
-  /** The server whose loop claimed it, null for the global loops. Absent from fakes that do not need it. */
   serverId?: string | null;
 }
 
@@ -45,11 +42,8 @@ interface Row {
 export const EXHAUSTED_ERROR = "The worker stopped before this job finished, on every attempt";
 
 /**
- * Settles jobs whose every attempt died with its worker (OOM kill, host reset, a SIGKILL during
- * cleanup): attempts reached maxAttempts through expired leases, so fail() never ran. Without this
- * such a job is neither claimable nor failed, and whatever waits on it (an in-flight deployment,
- * a dedupe key) waits forever. Runs at every claim, so no lane can keep such a row. Not limited to
- * the claiming server: such a job is finished whoever notices, and its own server's loops may be gone.
+ * Fails jobs whose every attempt died with its worker, so fail() never ran: otherwise the row is neither
+ * claimable nor failed, and whatever waits on it waits forever. Any server's loop may settle it.
  */
 export async function failExhausted(db: Db, lane: JobLane): Promise<number> {
   return db.$executeRaw`
@@ -89,8 +83,8 @@ export async function claim(db: Db, lane: JobLane, leaseMs: number, workerId: st
 }
 
 /**
- * Extends this worker's lease. One that lapsed during a database outage still counts while the row
- * names this worker: a claim would have rewritten lockedBy, and this update is atomic with that.
+ * Extends this worker's lease. One that lapsed during a database outage still counts while the row names
+ * this worker: a claim would have rewritten lockedBy, and this update is atomic with that.
  */
 export async function extendLease(db: Db, id: string, workerId: string, leaseMs: number): Promise<boolean> {
   const n = await db.$executeRaw`
@@ -102,9 +96,8 @@ export async function extendLease(db: Db, id: string, workerId: string, leaseMs:
 }
 
 /**
- * Renews a lease for as long as a job runs. A renewal that throws is the database blinking, so it
- * is retried on the next beat and costs the job nothing. Only an answer that the row is no longer
- * this worker's ends it: `signal` aborts, and the job stops without writing to a row it lost.
+ * Renews a lease for as long as a job runs. A renewal that throws is the database blinking and is retried
+ * on the next beat. Only an answer that the row is no longer this worker's aborts `signal`.
  */
 export function holdLease(db: Db, id: string, workerId: string, leaseMs: number, log: (msg: string, extra?: object) => void): { signal: AbortSignal; stop(): void } {
   const lost = new AbortController();

@@ -1,8 +1,6 @@
 /**
- * The release step: a one-off container from the pinned image runs the app's release command
- * (migrations) once, before any swap. Exit 0 or the deploy stops with nothing swapped. A non-zero
- * exit and a timeout are permanent: re-running a migration that was killed mid-way is worse than
- * failing. The run-once marker is the "release" step in Deployment.steps, set by the caller.
+ * A one-off container from the pinned image runs the release command once, before any swap. A non-zero exit and
+ * a timeout are permanent: re-running a migration that was killed mid-way is worse than failing.
  */
 import type { DockerApi } from "@dockify/engine";
 import { isNotFound } from "@dockify/engine";
@@ -19,7 +17,6 @@ export async function runReleaseCommand(
   app: RunnableApp,
   o: {
     command: string; imageId: string; env: Record<string, string>; deploymentId: string; timeoutMs: number;
-    /** A preview's own container input (previewReleaseInput); left out, the app's. */
     input?: (name: string, command: string) => ContainerInput;
   },
   log: DeployLog,
@@ -45,7 +42,6 @@ export async function runReleaseCommand(
 
 type Outcome = { ok: true } | { ok: false; notRun: boolean; message: string };
 
-/** One run of the one-off, removed whatever happens. Throws only for a cancel, a timeout or a daemon error. */
 async function runOnce(
   docker: DockerApi,
   name: string,
@@ -98,6 +94,5 @@ async function drain(docker: DockerApi, id: string, log: DeployLog): Promise<voi
     out.end();
     err.end();
   } catch {
-    // Output is diagnostic only.
   }
 }

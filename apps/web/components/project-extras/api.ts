@@ -8,10 +8,6 @@ import { apiFetch } from "@/lib/hooks";
 import type { ExtrasMutation, ExtrasMutationResult, PageResult, ProjectExtras } from "@/lib/pages/project-detail";
 import type { OverviewSource } from "@/lib/types";
 
-/* The client side of the project extras: one GET for every section and one POST per write, both
-   through the same-origin proxy at app/api/project-extras. */
-
-/** What an elevated write needs the check for, as "Confirm it is you" says it. */
 const WHAT: Partial<Record<ExtrasMutation["type"], string>> = {
   "env.apply": "Changing variables",
   "env.rollback": "Rolling back variables",
@@ -30,14 +26,14 @@ async function post(m: ExtrasMutation): Promise<ExtrasMutationResult> {
   return { ok: false, source: typeof b?.source === "string" ? (b.source as OverviewSource) : "api", error: r.error, code: r.code, status: r.status, keys };
 }
 
-/** Sends one write; an elevated one the API refuses for a missing step-up asks "Confirm it is you" and is sent again. Never throws. */
+/** Never throws. An elevated write refused for a missing step-up asks "Confirm it is you" and is sent again. */
 export function send(m: ExtrasMutation): Promise<ExtrasMutationResult> {
   return elevate(() => post(m), { what: WHAT[m.type] });
 }
 
 export type ExtrasLoad = { state: "loading" } | { state: "error"; error: string } | { state: "ready"; result: PageResult<ProjectExtras> };
 
-/** One read of every section. A 404 still carries the page's answer; a body that is not JSON reads as the status. */
+/** A 404 still carries the page's answer; a body that is not JSON reads as the status. */
 async function fetchExtras(slug: string): Promise<ExtrasLoad> {
   try {
     const res = await apiFetch(`/api/project-extras?slug=${encodeURIComponent(slug)}`, { cache: "no-store", headers: { accept: "application/json" } });
@@ -49,10 +45,7 @@ async function fetchExtras(slug: string): Promise<ExtrasLoad> {
   }
 }
 
-/**
- * Loads the extras once per slug, with `reload` for a retry or after a write the page cannot
- * merge by itself. Only the newest request lands. `patch` edits the loaded data in place.
- */
+/** Only the newest request lands. `patch` edits the loaded data in place. */
 export function useProjectExtras(slug: string) {
   const [load, setLoad] = useState<ExtrasLoad>({ state: "loading" });
   const seq = useRef(0);

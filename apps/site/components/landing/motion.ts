@@ -13,7 +13,7 @@ function subscribeRm(cb: () => void) {
   return () => mq.removeEventListener("change", cb);
 }
 
-/** True when the visitor asked for less motion. Server render assumes motion is allowed. */
+/** Server render assumes motion is allowed. */
 export function useReducedMotion() {
   return useSyncExternalStore(
     subscribeRm,

@@ -13,11 +13,7 @@ import { describe } from "@/lib/feedback";
 import { isStepUpCancel } from "@/lib/step-up";
 import { Group, SettingRow } from "./form";
 
-/*
- * Settings, Instance, Dashboard domain: where this dashboard is reached, for an admin. The flow itself
- * lives in a dialog (components/dashboard-domain/flow.tsx) and the row brings it back while a new
- * domain waits. A viewer sees the address and nothing to press.
- */
+/* The flow lives in a dialog (components/dashboard-domain/flow.tsx); this row brings it back while a new domain waits. */
 
 const PHASE: Record<NonNullable<DashboardDomain["pending"]>["phase"], { label: string; tone: "pending" | "ok" | "bad" }> = {
   waiting: { label: "Waiting for DNS", tone: "pending" },

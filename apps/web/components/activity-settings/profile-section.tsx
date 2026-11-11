@@ -15,23 +15,16 @@ import { displayNameProblem } from "@/lib/validation";
 
 const MAX_BYTES = 1024 * 1024;
 
-/**
- * Profile: picture, name, email and role. Upload reads the file in the browser; one
- * Save sends every change. With email configured, a new
- * email is confirmed by a code sent to it (the old address gets a notice), and the current one can
- * be verified the same way.
- */
+/** With email configured, a new address is confirmed by a code sent to it. */
 export function ProfileSection({ data, update, onDirty, preview, go, emailEnabled, elevate }: SectionProps) {
   const me = data.me;
   const [name, setName] = useState(me.name);
   const [email, setEmail] = useState(me.email);
-  // undefined: unchanged; string: a new picture as a data URL. There is no Remove (owner): a picture
-  // is only ever replaced by another upload.
+  // undefined: unchanged; string: a new picture as a data URL. A picture is only ever replaced, never removed.
   const [avatar, setAvatar] = useState<string | undefined>(undefined);
   const [fileError, setFileError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  // The code dialog: a change to `target`, or a check of the current address.
   const [coding, setCoding] = useState<{ target?: string } | null>(null);
   const file = useRef<HTMLInputElement>(null);
   // The file being read; a discard or a newer pick makes an older read land nowhere.
@@ -85,7 +78,6 @@ export function ProfileSection({ data, update, onDirty, preview, go, emailEnable
     // With email on, the address moves only through its code; the rest saves as usual first.
     const byCode = emailEnabled && nextEmail !== me.email.toLowerCase();
     const profileChanges = name !== me.name || pictureChanged || (!byCode && email !== me.email);
-    // A new picture alone gets its own title, so the toast says what actually changed.
     const onlyPicture = pictureChanged && name === me.name && (email === me.email || byCode);
     const done: string[] = [];
     let latest = me;

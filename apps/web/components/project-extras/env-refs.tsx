@@ -2,9 +2,7 @@ import { Icon } from "@/components/icon";
 import type { EnvRef, EnvRefField, EnvRefView, StatefulKind } from "@/lib/pages/project-detail";
 import type { AppKind } from "@/lib/types";
 
-/* Linked variables: a variable that names a service's credential instead of holding a copy. The
-   API resolves it at deploy time (contracts env-refs.ts holds the same field table), so here it
-   only ever shows as a chip: "horseai / postgres, DATABASE_URL". */
+/* The API resolves a link at deploy time (contracts env-refs.ts holds the same field table), so here it only shows as a chip. */
 
 /** The fields each kind offers, with the key a new link gets and whether it is picked by default. */
 export const REF_FIELDS: Readonly<Record<StatefulKind, ReadonlyArray<{ field: EnvRefField; key: string; linked: boolean }>>> = {
@@ -58,10 +56,7 @@ export function refText(slug: string, ref: EnvRef, view: Pick<EnvRefView, "resou
   return `${slug} / ${view.resourceName}, ${fieldLabel(view.kind, ref.field)}`;
 }
 
-/**
- * The link as a chip: 12px glyph and text, like every chip. A broken link (its service was deleted)
- * turns red; the row says what to do about it in words under the chip, never only in a tip.
- */
+/** A broken link turns red; the row says what to do in words under the chip, never only in a tip. */
 export function RefChip({ text, missing }: { text: string; missing?: boolean }) {
   return (
     <span className="px-ref" data-missing={missing || undefined} data-tip={missing ? undefined : "Resolved at deploy time"}>

@@ -1,11 +1,6 @@
 import type { MdBlock, MdInline } from "@/lib/markdown";
 
-/*
- * Release notes and other untrusted Markdown, as React elements only (never innerHTML): parse with
- * lib/markdown.ts `parseMarkdown`, then render each block with <Block />. Headings render as small
- * headings at one size, links open in a new tab and only when lib/markdown.ts judged them safe.
- * Raw HTML in the source shows as the literal text it is.
- */
+/* Untrusted Markdown as React elements only, never innerHTML. Links render only when lib/markdown.ts judged them safe. */
 
 function Inline({ nodes }: { nodes: MdInline[] }) {
   return (

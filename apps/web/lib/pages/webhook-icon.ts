@@ -2,12 +2,7 @@ import "server-only";
 import { apiStream } from "@/lib/api";
 import { NO_STORE } from "@/lib/http";
 
-/*
- * A generic webhook's logo or site icon, relayed from the API the way app icons are
- * (lib/pages/icons.ts): same origin, so the console never loads the API or a third-party host
- * directly; only the type the API's check found, with nosniff and a sandboxing CSP, which matters
- * for an SVG logo even though the API stores one only as its sanitised rebuild.
- */
+// Relays a webhook's icon same origin, with nosniff and a sandboxing CSP, which matters for an SVG logo.
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VERSION = /^[a-f0-9]{12}$/;

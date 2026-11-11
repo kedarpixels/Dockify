@@ -1,15 +1,7 @@
 /**
- * The "worker down" alert, raised from outside the worker. The worker evaluates every other
- * alert rule itself (apps/worker/src/observe/alerts.ts) and so cannot report its own death: it always
- * read itself as up. The api watches the heartbeat instead (Instance.workerSeenAt, stamped every 30
- * seconds). Once the worker has been silent for WORKER_SILENT_MS plus a rule's durationMin, every
- * enabled service rule covering the worker (service worker, any, or none) opens one event, deduped
- * under the same advisory lock and subject the worker uses, and the api sends it at once through its
- * own path: each of the rule's enabled webhooks, opened and delivered here (integrations/webhooks.ts
- * openTarget, @dockify/notify deliver through net-guard), because the worker that would run the
- * alert_notify jobs is the thing that is down. Email only leaves through the worker (an email_send
- * job), so the email notice is queued and goes out when the worker is back. The worker's own alert
- * pass then reads itself as up, resolves the event, and sends the resolution where the firing went.
+ * The "worker down" alert. The worker evaluates every other alert rule and cannot report its own
+ * death, so the api watches its heartbeat and delivers the webhooks itself. Once the worker is back
+ * its own alert pass resolves the event.
  */
 import type { Keyring } from "@dockify/crypto";
 import { enqueue, type Db } from "@dockify/db";
@@ -24,12 +16,11 @@ const DETAIL = "The worker service is not responding";
 export interface WorkerWatchDeps {
   db: Db;
   ring: Keyring;
-  /** The dashboard address, for the alert's link. */
   publicUrl: URL;
   http?: HttpClient;
-  /** When this api started: a worker that never reported counts as silent from here. */
+  /** A worker that never reported counts as silent from here. */
   startedAt?: number;
-  /** Sends one message to one stored webhook; true when it was delivered. Tests pass a fake. */
+  /** True when the message was delivered. */
   sendWebhook?: (hook: WebhookRow, message: NotifyMessage) => Promise<boolean>;
 }
 
@@ -41,7 +32,6 @@ export interface WebhookRow {
   secondSecretId: string | null;
 }
 
-/** The api's own path to a webhook: open its URL (and second secret) and deliver through net-guard. */
 function webhookSender(deps: WorkerWatchDeps): (hook: WebhookRow, message: NotifyMessage) => Promise<boolean> {
   const http = deps.http ?? createHttpClient();
   return async (hook, message) => {
@@ -58,7 +48,7 @@ export function workerDownSince(seenAt: Date | null, startedAt: number, now: num
   return now - last > WORKER_SILENT_MS ? last + WORKER_SILENT_MS : null;
 }
 
-/** The firing message every webhook gets, the shape the worker's alertMessage sends for a service alert. */
+/** Must keep the shape the worker's alertMessage sends for a service alert. */
 export function workerDownMessage(ev: { id: string; startedAt: Date }, publicUrl: URL, instanceName: string): NotifyMessage {
   const url = new URL("/server", publicUrl).toString();
   return {
@@ -79,7 +69,7 @@ export function workerDownMessage(ev: { id: string; startedAt: Date }, publicUrl
   };
 }
 
-/** One check. Returns the ids of the events it opened. */
+/** Returns the ids of the events it opened. */
 export async function checkWorker(deps: WorkerWatchDeps, now = Date.now()): Promise<string[]> {
   const { db } = deps;
   const inst = await db.instance.findUnique({ where: { id: 1 }, select: { workerSeenAt: true, name: true } });
@@ -93,7 +83,7 @@ export async function checkWorker(deps: WorkerWatchDeps, now = Date.now()): Prom
   for (const rule of rules) {
     if (now - since < rule.durationMin * 60_000) continue;
     const ev = await db.$transaction(async (tx) => {
-      // The worker's lock key and subject for this rule and service (alert-runner.ts).
+      // The same lock key and subject the worker's alert runner uses, so the two never open a duplicate.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`alert:${rule.id}:service:worker`}))`;
       const dup = await tx.alertEvent.findFirst({ where: { ruleId: rule.id, state: "firing", appId: null, service: "worker" }, select: { id: true } });
       if (dup) return null;
@@ -123,7 +113,7 @@ export async function checkWorker(deps: WorkerWatchDeps, now = Date.now()): Prom
   return opened;
 }
 
-/** Runs checkWorker every WATCH_EVERY_MS, single flight. The first check waits one period. */
+/** Single flight. The first check waits one period. */
 export function startWorkerWatch(deps: WorkerWatchDeps, log: (msg: string, err: unknown) => void): () => void {
   const watch = { ...deps, startedAt: deps.startedAt ?? Date.now() };
   let running = false;

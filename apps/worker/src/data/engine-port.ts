@@ -1,8 +1,4 @@
-/**
- * The data module's DockerPort over the worker's Docker Engine client (behind the socket proxy).
- * Simple calls reuse DockerClient; exec and attach hijack the connection for a raw duplex stream,
- * demultiplex it, and report the exit code only once Docker says the process stopped running.
- */
+/** exec and attach hijack the connection, and report the exit code only once Docker says the process stopped. */
 import { request, type IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
 import { PassThrough, type Writable } from "node:stream";
@@ -18,7 +14,6 @@ const KILLED_EXIT = 137;
 /** A managed service image is a few tens of MB; a pull that runs this long is stuck. */
 const PULL_TIMEOUT_MS = 15 * 60_000;
 
-/** Keeps the last `cap` bytes of stderr for an error message. */
 export class Tail {
   private buf = Buffer.alloc(0);
   private readonly cap: number;
@@ -34,7 +29,6 @@ export class Tail {
   }
 }
 
-/** Splits a hijacked multiplexed stream into a stdout stream and a bounded stderr tail. */
 export function wireDemux(source: NodeJS.ReadableStream, head: Buffer | null): { stdout: PassThrough; stderr: Tail; ended: Promise<void> } {
   const stdout = new PassThrough();
   const stderr = new Tail();
@@ -93,7 +87,6 @@ export function toState(info: InspectLike): ContainerState {
 
 type Hijacked = { socket: Socket | IncomingMessage; head: Buffer | null; writable: boolean };
 
-/** POST with Upgrade: tcp; resolves the raw duplex (or the plain response on an old engine). */
 export function hijackDocker(target: Endpoint, path: string, body: unknown): Promise<Hijacked> {
   return new Promise((resolve, reject) => {
     const payload = Buffer.from(JSON.stringify(body ?? {}));

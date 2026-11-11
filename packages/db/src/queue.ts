@@ -22,10 +22,8 @@ interface EnqueueFields {
 }
 
 /**
- * The one enqueue for the leased jobs table, shared by the api and the worker. While an open job
- * has the dedupe key, a second enqueue returns the open one instead of adding a row. The type says
- * what CHECK jobs_server_bound says: a server-bound kind or a server's lane names its server (the
- * lane defaults to deploy, so only a bound kind may leave it out), and anything else names none.
+ * The one enqueue for the leased jobs table. The type says what CHECK jobs_server_bound says: a server-bound
+ * kind or a server's lane names its server (the lane defaults to deploy), and anything else names none.
  */
 export type EnqueueInput = EnqueueFields &
   (
@@ -67,15 +65,14 @@ export async function enqueue(db: PrismaClient, input: EnqueueInput): Promise<st
   return db.$transaction((tx) => enqueueTx(tx, input));
 }
 
-/** Preview apps run on the primary server for now, so these two take its id (defaultServerId). */
+/** Preview apps run on the primary server, so these two take its id (defaultServerId). */
 export type ServerPreviewJobKind = "preview_cleanup" | "preview_wake";
 export type GlobalPreviewJobKind = "preview_feedback" | "preview_dns";
 export type PreviewJobKind = ServerPreviewJobKind | GlobalPreviewJobKind;
 
 /**
- * The one enqueue for preview jobs, keyed per preview (or per domain for preview_dns). A feedback
- * or wake job that a worker already claimed read the old state, so a new one is added behind it;
- * an unclaimed one is reused. A cleanup is idempotent, so any open one is reused.
+ * Keyed per preview (or per domain for preview_dns). A claimed feedback or wake job read the old state, so a
+ * new one is added behind it; an unclaimed one is reused. A cleanup is idempotent, so any open one is reused.
  */
 export async function enqueuePreviewTx(tx: Prisma.TransactionClient, kind: ServerPreviewJobKind, id: string, serverId: string): Promise<string>;
 export async function enqueuePreviewTx(tx: Prisma.TransactionClient, kind: GlobalPreviewJobKind, id: string): Promise<string>;

@@ -4,14 +4,11 @@ import { BackupStorageRef } from "./backups.ts";
 import { VercelLogRetention, WebhookRef } from "./integrations.ts";
 import { SecurityRelease } from "./security-release.ts";
 
-// ------------------------------------------------------------------ server
-
 export const DiskSliceId = z.enum(["images", "buildCache", "volumes", "logs"]);
 export const DiskSlice = z.object({ id: DiskSliceId, bytes: z.number(), reclaimableBytes: z.number(), count: z.number().optional() });
 /**
- * A problem the running worker reports about itself (Instance.workerIssues, written with every
- * heartbeat): it keeps working, but some jobs cannot run. `summary` fits a Services row; `message`
- * says what fails and how to fix it.
+ * A problem the running worker reports about itself with every heartbeat: it keeps working, but some jobs
+ * cannot run. `summary` fits a Services row; `message` says what fails and how to fix it.
  */
 export const WorkerIssue = z.object({ key: z.string().max(40), summary: z.string().max(120), message: z.string().max(500), since: Iso });
 export const ServerSnapshot = z.object({
@@ -29,10 +26,8 @@ export const ServerSnapshot = z.object({
     state: z.enum(["running", "restarting", "unhealthy", "exited"]),
   })),
   /**
-   * Every control-plane service and its state: the api itself, Postgres by a probe, the worker by
-   * its heartbeat (down past two minutes of silence), and the rest (web, proxy, BuildKit, the socket
-   * proxy, the updater, cloudflared in tunnel mode) as the worker last saw their containers. redis
-   * is an id earlier versions knew; no control-plane service uses it.
+   * The worker is down past two minutes without a heartbeat; the other services are as the worker last saw
+   * their containers. redis is a legacy id: no control-plane service uses it.
    */
   services: z.array(z.object({
     id: z.enum(["api", "worker", "proxy", "postgres", "redis", "web", "buildkit", "socketProxy", "updater", "cloudflared"]),
@@ -64,8 +59,6 @@ export const ServerMetrics = z.object({
 });
 export const PruneBody = z.strictObject({ targets: z.array(z.enum(["images", "buildCache", "logs"])).min(1).max(3) });
 export const PruneResult = z.object({ reclaimedBytes: z.number(), disk: z.array(DiskSlice) });
-
-// ------------------------------------------------------------------ self-update (signed releases)
 
 export const ReleaseVersion = z.string().regex(/^v?\d+\.\d+\.\d+(?:-[\w.]+)?$/);
 export const ReleaseChannel = z.enum(["stable", "beta"]);
@@ -150,21 +143,17 @@ export const UpdateStatus = z.object({
   blocked: z.object({ version: z.string(), minFrom: z.string() }).nullable(),
   /** When the scheduler will install `latest` on its own, or null (manual, skipped, paused, none). */
   autoAt: Iso.nullable(),
-  /** The update in flight, or the last one that finished. */
   job: UpdateJob.nullable(),
   /** Newest first, at most 20. */
   history: z.array(UpdateJob),
   /** The last good version this install can return to: within 7 days, its dump still on disk. */
   rollback: z.object({ updateId: z.string(), version: z.string(), until: Iso }).nullable(),
-  /** The pending security release from the signed feed (security-release.ts), or null. */
   security: SecurityRelease.nullable(),
 });
 export const ApplyUpdateBody = z.strictObject({ version: ReleaseVersion });
 export const RollbackUpdateBody = z.strictObject({ updateId: Uuid });
 export const SkipUpdateBody = z.strictObject({ version: ReleaseVersion.nullable() });
 export const PauseUpdatesBody = z.strictObject({ days: z.union([z.literal(0), z.literal(7)]) });
-
-// ------------------------------------------------------------------ runtime logs
 
 export const LogLevel = z.enum(["error", "warn", "info", "debug"]);
 const AppIdList = z
@@ -191,7 +180,6 @@ export const RuntimeLogLine = z.object({
 });
 export const LogPage = z.object({ lines: z.array(RuntimeLogLine), nextCursor: z.string().nullable() });
 
-/** A Vercel app's runtime logs, read from Vercel: its current deployment, or the one named. */
 export const VercelLogsQuery = z.strictObject({
   /** A Dockify deployment id of this app that ran on Vercel; absent means the app's current one. */
   deployment: Uuid.optional(),
@@ -215,12 +203,7 @@ export const VercelLogPage = z.object({
   fetchedAt: Iso,
 });
 
-// ------------------------------------------------------------------ alerts
-
-/**
- * The host disk alert fires at this percentage when its rule has no threshold of its own. One value
- * for the worker, the api and the docs; the dashboard's alert form shows the same default.
- */
+/** The host disk alert's threshold when its rule sets none. One value for the worker, the api, the docs and the form. */
 export const DISK_ALERT_DEFAULT_PCT = 85;
 
 export const AlertMetric = z.enum(["disk", "service", "down", "crashLoop", "memory"]);
@@ -236,7 +219,6 @@ export const AlertRule = z.object({
   threshold: z.number().nullable(),
   durationMin: z.number(),
   channels: z.array(AlertChannel),
-  /** The webhooks this rule sends to, by id (AlertsPayload.webhooks names them). */
   webhooks: z.array(z.string()),
   enabled: z.boolean(),
   firing: z.boolean(),
@@ -262,9 +244,8 @@ export const AlertsPayload = z.object({
   rules: z.array(AlertRule),
   events: z.array(AlertEvent),
   mutes: z.array(AlertMute),
-  /** Whether email is set up. discord and webhook are deprecated, kept for one version: whether an enabled webhook of that provider exists. */
+  /** Whether email is set up. discord and webhook are deprecated: whether an enabled webhook of that provider exists. */
   channels: z.object({ discord: z.boolean(), webhook: z.boolean(), email: z.boolean() }),
-  /** Every webhook a rule can send to, in the order they were added. */
   webhooks: z.array(WebhookRef),
 });
 const RuleFields = {
@@ -282,8 +263,6 @@ export const RuleBody = z.strictObject(RuleFields);
 export const RulePatchBody = z.strictObject(RuleFields).partial();
 export const MuteParams = z.strictObject({ appId: Uuid });
 export const MuteBody = z.strictObject({ hours: z.union([z.literal(1), z.literal(8), z.literal(24)]) });
-
-// ------------------------------------------------------------------ public status page
 
 export const PublicStatusParams = z.strictObject({ slug: Slug });
 const StatusState = z.enum(["operational", "degraded", "outage"]);

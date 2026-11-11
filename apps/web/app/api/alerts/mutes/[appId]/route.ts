@@ -1,7 +1,7 @@
 import { guardWrite, json, readJsonObject, refuse } from "@/lib/http";
 import { isAlertId, isMuteHours, muteApp, unmuteApp } from "@/lib/pages/alerts";
 
-/** PUT /api/alerts/mutes/:appId { hours: 1 | 8 | 24 }: mutes the app's alerts, replacing any mute it had. */
+/** PUT { hours: 1 | 8 | 24 }: replaces any mute the app had. */
 export async function PUT(req: Request, { params }: { params: Promise<{ appId: string }> }) {
   const refused = guardWrite(req);
   if (refused) return refused;
@@ -13,7 +13,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ appId: s
   return json(body, status);
 }
 
-/** DELETE /api/alerts/mutes/:appId: ends the mute now. */
 export async function DELETE(req: Request, { params }: { params: Promise<{ appId: string }> }) {
   const refused = guardWrite(req, { json: false });
   if (refused) return refused;

@@ -1,9 +1,4 @@
-/**
- * Security mail about a user's own account: a sign in from a device it has not used recently, a
- * password change, two-factor on or off. Sent only while email is set up; an admin always gets it,
- * a viewer can turn it off in Settings, Profile. Best effort: a failure to queue never fails the
- * request that triggered it.
- */
+/** Security mail about a user's own account. Best effort: a failure to queue never fails the request that triggered it. */
 import type { FastifyRequest } from "fastify";
 import type { Db } from "@dockify/db";
 import { securityNotice, type SecurityEvent } from "@dockify/email";
@@ -14,7 +9,7 @@ import { describeDevice } from "./routes/account.ts";
 /** How far back a device label counts as known for the sign in notice. */
 export const KNOWN_DEVICE_DAYS = 90;
 
-/** Whether the user wants this mail: always for admins, else their own choice. */
+/** Admins always get it; a viewer can turn it off. */
 export function wantsSecurityMail(user: { emailSecurity: boolean; disabledAt: Date | null; member: { role: string } | null }): boolean {
   if (user.disabledAt || !user.member) return false;
   return user.member.role === "admin" || user.emailSecurity;

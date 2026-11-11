@@ -6,12 +6,7 @@ import { apiErrorMessage } from "../http-status";
 import { authCall as call, PREVIEW_RESET, RESET_TOKEN, UNREACHABLE } from "./auth-api";
 import type { Invite, InviteResult, ResetPreview, ResetResult, SetupStatus, SetupStatusResult } from "./auth";
 
-/*
- * The sign-in pages' loaders: setup status, an invite and a reset link, read on the server for
- * /login, /forgot, /recover, /setup, /invite/[token] and /reset/[token]. Server only, and outside
- * the "use server" module (auth.ts), so none of them is a callable action. The API contract is in
- * auth.ts.
- */
+// Loaders for the sign-in pages. Server only, and outside the "use server" module (auth.ts), so none of them is a callable action.
 
 /** GET /api/v1/auth/setup-status: whether the first admin still has to be created. */
 export async function getSetupStatus(): Promise<SetupStatusResult> {

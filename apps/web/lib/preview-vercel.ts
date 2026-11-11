@@ -3,10 +3,7 @@ import type { DeploymentStep } from "./pages/deployments";
 import type { VercelEnvList, VercelProjectView } from "./pages/project-detail";
 import type { RecentDeployment } from "./types";
 
-/*
- * The design preview's one app on Vercel (DOCKIFY_PREVIEW only, never a real record): inkwell / web,
- * linked to the Vercel project the Settings fixture lists. Every other row stays a build on this server.
- */
+// Design preview only: inkwell / web is the one app on Vercel; every other row is a build on this server.
 
 export const PREVIEW_VERCEL_PROJECT = "prj_ink_web";
 
@@ -38,10 +35,7 @@ export function previewVercelRows<T extends RecentDeployment>(rows: T[]): T[] {
   });
 }
 
-/**
- * The Vercel project that app follows, as the API reads it from Vercel. Production is the newest
- * ready production row of the app's own list, so the Overview and the Deployments tab agree.
- */
+/** Production is the newest ready production row of the app's own list, so the Overview and the Deployments tab agree. */
 const COMMIT = "4f9c2a1e7b3d5f8a0c6e2b4d9f1a3c5e7b9d0f2a";
 
 export function previewVercelProject(rows: RecentDeployment[]): VercelProjectView {

@@ -14,12 +14,7 @@ import { gitFetch, startInstall, type Installations } from "./client";
 import { clause } from "@/lib/format";
 import { RepoRow, RepoSkeleton } from "./repo-row";
 
-/*
- * The New app repository step: the Vercel style "Import Git Repository" box. The account picker and
- * a search over that account's repositories sit on one row, the list scrolls under them, and the
- * App's permissions page is one link away. Arrow keys in the search move through the rows and
- * Enter imports; "/" jumps to the search, Esc clears it, then leaves it.
- */
+/* Arrow keys in the search move through the rows and Enter imports; "/" jumps to the search. */
 
 type Repos =
   | { state: "loading" }
@@ -60,14 +55,12 @@ export function RepoPicker({
   const accounts = installations.state === "ready" ? installations.list : [];
   const current = accounts.find((i) => i.id === account) ?? null;
 
-  // The search takes focus once there is something to search, like a field with autofocus.
   const searchable = accounts.length > 0;
   useEffect(() => {
     if (searchable) search.current?.focus({ preventScroll: true });
   }, [searchable, search]);
 
-  // Typing settles for 200ms before it searches; clearing searches at once (the field's own
-  // change handler drops the settled text, so an empty box never waits).
+  // Typing settles for 200ms before it searches; clearing searches at once.
   const onQuery = (next: string) => {
     setQuery(next);
     if (!next.trim()) setSettled("");
@@ -80,8 +73,7 @@ export function RepoPicker({
   }, [query]);
   const q = query.trim() ? settled : "";
 
-  // A new account, search or retry starts over: the list shows its skeleton and the first row is
-  // active again, from the render that asks for it.
+  // A new account, search or retry starts over, from the render that asks for it.
   const page = current ? `${current.id}\n${q}\n${attempt}` : "";
   const [asked, setAsked] = useState(page);
   if (page !== asked) {
@@ -90,7 +82,7 @@ export function RepoPicker({
     setActive(0);
   }
 
-  // The first page for this account and search. A newer one aborts the call still in flight.
+  // A newer first page aborts the call still in flight.
   useEffect(() => {
     if (!current) return;
     const ctl = new AbortController();
@@ -109,8 +101,7 @@ export function RepoPicker({
 
   const cursor = repos.state === "ready" && repos.more === "idle" ? repos.nextCursor : null;
 
-  // The next page loads when the end of the list scrolls into view. Its call belongs to the first
-  // page it extends, so only a new account or search aborts it, not the cursor turning busy.
+  // The next page's call belongs to the first page it extends, so only a new account or search aborts it.
   useEffect(() => {
     const end = sentinel.current;
     if (!cursor || !current || !end) return;
@@ -197,7 +188,6 @@ export function RepoPicker({
           title="No GitHub accounts yet"
           body="Install the Dockify GitHub App on your account or organization, then pick a repository from the list."
           action={
-            // On success the browser leaves for GitHub, so the key stays busy and keeps the focus.
             <PendingButton className="btn btn-primary" pending={installing} icon="github" onClick={() => void connect()}>
               Connect GitHub
             </PendingButton>

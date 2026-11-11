@@ -2,20 +2,8 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { REPO } from "@/lib/site";
 
-/*
- * Release notes. The source of truth is docs/releases/<version>.md in the repository, one
- * file per release:
- *
- *   ## 1.1.0 (2026-11-03)            or  ## 1.0.0 (unreleased)
- *
- *   One line that says what this release is for.
- *
- *   ### Added                        any group title is allowed
- *   - An item.
- *
- * The prebuild (scripts/publish-installer.mjs) copies them into content/releases/, the one folder
- * read here, so the build and the standalone server never look outside the app.
- */
+/* One docs/releases/<version>.md per release, headed "## 1.1.0 (2026-11-03)" or "## 1.0.0 (unreleased)".
+   The prebuild copies them into content/releases/, the only folder read here. */
 
 export type Release = {
   version: string;
@@ -39,7 +27,7 @@ export function formatDay(iso: string): string {
   return y && m && d ? `${d} ${MONTHS[m - 1]} ${y}` : iso;
 }
 
-/** Every release found in one notes file. Lines before the first release heading are ignored. */
+/** Lines before the first release heading are ignored. */
 function parseNotes(source: string): Release[] {
   const out: Release[] = [];
   let cur: Release | null = null;

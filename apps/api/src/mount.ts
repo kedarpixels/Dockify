@@ -4,7 +4,7 @@ import type { Ctx, Handler } from "./app.ts";
 import { notImplemented } from "./errors.ts";
 import { POLICIES } from "./policy.ts";
 
-/** One catalog endpoint as a route: its schema, its policy and its handler; no handler yet answers 501. */
+/** An endpoint with no handler answers 501. */
 export function mountEndpoint(app: FastifyInstance, ctx: Ctx, id: EndpointId, handler: Handler<EndpointId> | undefined): void {
   const def = endpoints[id] as EndpointDef;
   app.route({

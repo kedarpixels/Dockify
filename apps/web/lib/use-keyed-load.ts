@@ -2,21 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/*
- * The one way a range or a filter that refetches reads its data. Data belongs to the key it was
- * asked for, so another key's values can never show under the picked label:
- *
- *   - a key with no answer yet has `data: null` and `loading: true`, so the caller draws its
- *     same-size skeleton;
- *   - a key answered earlier shows at once and is asked again in the background (`loading` stays
- *     true until the new answer lands), and a failed refresh keeps what it has;
- *   - moving to another key aborts the request, and a late answer is dropped;
- *   - `seed` is data the page already holds for one key (a server render, a poll): it always wins,
- *     and that key asks nothing.
- *
- *   const q = useKeyedLoad(range, (r, signal) => read(r, signal));
- *   q.data ? <Chart points={q.data} /> : q.error ? <Failed onRetry={q.reload} /> : <Skeleton />
- */
+// Data belongs to the key it was asked for, so another key's values never show under the picked label.
+// A key answered earlier shows at once and refreshes in the background; `seed` always wins and asks nothing.
 
 export type KeyedAnswer<T> = { data: T | null; error?: string | null } | { error: string; aborted?: boolean };
 

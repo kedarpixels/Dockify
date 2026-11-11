@@ -5,10 +5,6 @@ import { Rule, Spacer } from "@/components/ui/rule";
 import { SectionHead } from "@/components/ui/section-head";
 import { Skel, SkelRows } from "@/components/ui/skeleton";
 
-/**
- * Route loading state for an app: a head of bars, the section strip, then the Overview tab's usage
- * card and its latest deployment and runtime cards at their real sizes.
- */
 export default function Loading() {
   return (
     <>

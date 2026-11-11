@@ -6,16 +6,7 @@ import { PREVIEW_LENA, PREVIEW_OWNER, PREVIEW_OWNER_AVATAR, PREVIEW_OWNER_GITHUB
 import type { ActorKind, OverviewSource } from "../types";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/*
- * Activity and Settings loaders. The routes are in packages/contracts/src/endpoints.ts (all JSON, the
- * session cookie authenticates, every write answers `{ error }` with a 4xx on failure).
- *
- * Webhooks live under /api/v1/integrations/webhooks, see lib/pages/integrations.ts.
- * `notifications` here holds only which events notify.
- *
- */
-
-/* ============== Types ============== */
+// Activity and Settings loaders. Webhooks live in lib/pages/integrations.ts; `notifications` here holds only which events notify.
 
 export type ActivityCategory = "deploys" | "config" | "access" | "system";
 
@@ -196,13 +187,8 @@ export interface SettingsResult {
   fetchedAt: string;
 }
 
-/**
- * What every write returns to the client. `code` names a refusal the page acts on:
- * step_up_required (lib/step-up.ts), or the API's own code.
- */
+/** `code` names a refusal the page acts on: step_up_required (lib/step-up.ts), or the API's own code. */
 export type Outcome<T = null> = { ok: true; data: T } | { ok: false; error: string; code?: string };
-
-/* ============== Transport ============== */
 
 export function dataSource(): OverviewSource {
   if (process.env.DOCKIFY_API_URL) return "api";
@@ -212,17 +198,12 @@ export function dataSource(): OverviewSource {
   return "none";
 }
 
-/**
- * One call to the Dockify API with the visitor's cookie forwarded, never cached and always bounded
- * (lib/api.ts). A step-up refusal comes back as the shared refusal (lib/step-up.ts), never as raw text.
- */
+/** A step-up refusal comes back as the shared refusal (lib/step-up.ts), never as raw text. */
 export async function apiCall<T>(method: Method, path: string, body?: unknown): Promise<Outcome<T>> {
   if (!process.env.DOCKIFY_API_URL) return { ok: false, error: "No data source" };
   const r = await apiRequest<T>(path, { method, body });
   return r.ok ? { ok: true, data: r.data } : { ok: false, error: r.error, code: r.code };
 }
-
-/* ============== Loaders ============== */
 
 const PAGE_SIZE = 20;
 export const CATEGORIES: ActivityCategory[] = ["deploys", "config", "access", "system"];
@@ -281,9 +262,7 @@ export async function getSettings(): Promise<SettingsResult> {
   return { source, data: null, fetchedAt };
 }
 
-/* ============== Preview fixture ============== */
-/* Derived from buildPreviewOverview so projects, apps, deploy ids and the viewer agree everywhere.
-   IPs come from the documentation ranges (RFC 5737) and people use example.com addresses. */
+// Preview fixture, derived from buildPreviewOverview. IPs come from the documentation ranges (RFC 5737).
 
 const MIN = 60_000;
 const ago = (now: Date, minutes: number) => new Date(now.getTime() - minutes * MIN).toISOString();

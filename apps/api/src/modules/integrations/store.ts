@@ -1,7 +1,6 @@
 /**
- * Integration rows and their sealed credentials. A credential goes in through storeSecret and only
- * its hint ever comes back out of this module's responses; the plain value is opened only inside
- * the call that sends it to its own service.
+ * Only a credential's hint ever leaves this module's responses. The plain value is opened only inside the call
+ * that sends it to its own service.
  */
 import type { Keyring } from "@dockify/crypto";
 import { hintOf, readSecretValue, storeSecret, type Integration, type IntegrationKind, type Prisma, type SecretKind, type Tx } from "@dockify/db";
@@ -18,7 +17,7 @@ export async function findIntegration(db: Tx, kind: IntegrationKind, name = "def
   return db.integration.findUnique({ where: { kind_name: { kind, name } } });
 }
 
-/** Whether the owner finished setup; the installer's environment seeds integrations only before. */
+/** The installer's environment seeds integrations only before setup completes. */
 export async function setupDone(db: Tx): Promise<boolean> {
   const inst = await db.instance.findUnique({ where: { id: 1 }, select: { setupCompletedAt: true } });
   return !!inst?.setupCompletedAt;
@@ -30,7 +29,7 @@ export async function requireIntegration(db: Tx, kind: IntegrationKind, name = "
   return row;
 }
 
-/** Opens the primary (or second) credential of a row. Null when the row has none. */
+/** Null when the row has no credential in that slot. */
 export async function openSecret(db: Tx, ring: Keyring, row: Integration, which: "primary" | "second" = "primary"): Promise<string | null> {
   const id = which === "primary" ? row.secretId : row.secondSecretId;
   return id ? readSecretValue(db, ring, id) : null;
@@ -42,10 +41,7 @@ export async function hintOfSecret(db: Tx, id: string | null): Promise<string> {
   return s?.hint ?? "****";
 }
 
-/**
- * Seals a new value for one slot of a row and drops the value it replaces. Runs inside the caller's
- * transaction, so a failed write never leaves a row pointing at a deleted secret.
- */
+/** Must run in the caller's transaction, so a failed write never leaves a row pointing at a deleted secret. */
 export async function replaceSecret(
   tx: Tx,
   ring: Keyring,
@@ -62,7 +58,6 @@ export async function replaceSecret(
   return id;
 }
 
-/** Deletes a row together with its sealed credentials. */
 export async function dropIntegration(tx: Tx, row: Pick<Integration, "id" | "secretId" | "secondSecretId">): Promise<void> {
   await tx.integration.delete({ where: { id: row.id } });
   const ids = [row.secretId, row.secondSecretId].filter((x): x is string => !!x);

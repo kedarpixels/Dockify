@@ -1,11 +1,6 @@
 /**
- * What Cloudflare says about a hostname, and the one record Dockify may write for it. Only zones the
- * owner switched on are read or written (managedZoneIds): a zone the token can see but nobody opted in
- * stays out of it. A record is created on an explicit press, and an existing one is removed only with
- * an explicit go-ahead naming it by id; if Cloudflare holds anything else by then, nothing changes.
- *
- * The token stays in the Authorization header. Everything that leaves here is record names, addresses
- * and settings, never a credential.
+ * Cloudflare's view of a hostname, and the one record Dockify may write for it. Only zones the owner opted in
+ * (managedZoneIds) are read or written. An existing record is removed only with an explicit go-ahead naming its id.
  */
 import type { dashboardDomain as D } from "@dockify/contracts";
 import { HttpError } from "../../errors.ts";
@@ -23,7 +18,6 @@ type SslMode = NonNullable<HostState["sslMode"]>;
 interface ApiZone { id: string; name: string; status: string }
 interface ApiRecord { id: string; type: string; name: string; content: string; proxied?: boolean }
 
-/** Where this server's records point. */
 export interface ServerTarget {
   ingress: "cloudflare_tunnel" | "direct_tls";
   ipv4: string | null;
@@ -34,9 +28,8 @@ export interface ServerTarget {
 export const serverTarget = (c: Ctx["config"]): ServerTarget => ({ ingress: c.ingress, ipv4: c.serverIpv4, ipv6: c.serverIpv6 ?? null, tunnelTarget: c.tunnelTarget });
 
 /**
- * The record a hostname needs: a proxied CNAME to the tunnel, or an A record to this server (AAAA only
- * on a server with no IPv4 address known). One record is all a name needs here: Cloudflare's proxy
- * answers on both families itself, and an IPv4 record reaches every client.
+ * A proxied CNAME to the tunnel, or an A record to this server (AAAA only when no IPv4 address is known).
+ * One record is enough: Cloudflare's proxy answers on both families, and IPv4 reaches every client.
  */
 export function expectedRecord(t: ServerTarget): HostState["expected"] {
   if (t.ingress === "cloudflare_tunnel") return t.tunnelTarget ? { type: "CNAME", content: t.tunnelTarget, proxied: true } : null;
@@ -65,19 +58,14 @@ export interface Judgement {
   alwaysUseHttps: boolean | null;
   /** This server holds a certificate for the name. */
   certActive: boolean;
-  /** The last DNS check (or asking the domain) says it leads here. */
+  /** The last DNS check says the name leads here. */
   dnsOk: boolean;
 }
 
 /**
- * Every combination that breaks, in words the page shows as they are. Pure. In a tunnel Cloudflare
- * reaches this server through the tunnel, so its SSL/TLS mode plays no part; in direct mode a proxied
- * record does depend on it:
- *
- *   Flexible, Off   Cloudflare talks http to this server, which redirects to https: a loop.
- *   Full (strict)   refuses any certificate but a real one: a 526 until this server holds it.
- *   Always Use HTTPS  answers Let's Encrypt's http challenge with a redirect, which can hold the
- *                   first certificate back.
+ * Pure. Findings are shown to the owner as written. Behind a tunnel the SSL/TLS mode plays no part; in direct mode a
+ * proxied record breaks on Flexible or Off (redirect loop) and on Full (strict) until this server holds a real
+ * certificate (526). Always Use HTTPS redirects the ACME http challenge, which can hold the first certificate back.
  */
 export function judgeHost(j: Judgement): { correct: boolean; findings: Finding[] } {
   const findings: Finding[] = [];
@@ -120,7 +108,7 @@ export function judgeHost(j: Judgement): { correct: boolean; findings: Finding[]
   return { correct, findings };
 }
 
-/** The zone that owns a host: the longest zone name it ends in. */
+/** The longest zone name the host ends in. */
 export function zoneFor<Z extends { name: string }>(zones: readonly Z[], host: string): Z | null {
   let best: Z | null = null;
   for (const z of zones) {
@@ -131,7 +119,7 @@ export function zoneFor<Z extends { name: string }>(zones: readonly Z[], host: s
 
 const denied = (e: unknown) => e instanceof HttpError && e.code === "CLOUDFLARE_TOKEN";
 
-/** A zone's two settings, read once per request however many hostnames share the zone. */
+/** Read once per request, however many hostnames share the zone. */
 interface ZoneSettings { sslMode: SslMode | null; alwaysUseHttps: boolean | null; sslDenied: boolean }
 const SSL_MODES = new Set<string>(["off", "flexible", "full", "strict"]);
 
@@ -153,7 +141,7 @@ export interface HostReadContext {
   zones: readonly ApiZone[];
   managed: ReadonlySet<string>;
   target: ServerTarget;
-  /** Per request: each zone's settings. */
+  /** Per-request cache of each zone's settings. */
   settings: Map<string, Promise<ZoneSettings>>;
 }
 
@@ -163,7 +151,7 @@ async function recordsAt(api: CloudflareApi, zoneId: string, host: string): Prom
   return r.result.filter((x) => bare(x.name) === host && (x.type === "A" || x.type === "AAAA" || x.type === "CNAME"));
 }
 
-/** What Cloudflare says about one hostname. A refused or failed read is a finding, never a thrown error. */
+/** A refused or failed read becomes a finding, never a thrown error. */
 export async function readHost(c: HostReadContext, host: string, o: { ownRecordId: string | null; certActive: boolean; dnsOk: boolean }): Promise<HostState> {
   const base: HostState = { hostname: host, zone: null, managed: false, records: [], expected: expectedRecord(c.target), correct: false, sslMode: null, alwaysUseHttps: null, findings: [] };
   const zone = zoneFor(c.zones, host);
@@ -192,7 +180,7 @@ export async function readHost(c: HostReadContext, host: string, o: { ownRecordI
   return { ...base, zone: z, managed: true, records, sslMode: s.sslMode, alwaysUseHttps: s.alwaysUseHttps, ...j };
 }
 
-/** Everything a read needs, or null when Cloudflare is not connected. Throws only for the zone list. */
+/** Null when Cloudflare is not connected. Throws only for the zone list. */
 export async function hostReadContext(ctx: Ctx, deps: IntegrationDeps): Promise<HostReadContext | null> {
   const row = await findIntegration(ctx.db, "cloudflare");
   if (!row || row.status === "disconnected") return null;
@@ -222,10 +210,8 @@ export interface PutRecord {
 }
 
 /**
- * Creates the record a hostname needs. With records already at the name it stops and says so, unless
- * `replace` names exactly those records. A create that fails after a removal puts the removed records
- * back. Returns the new record's id, or null when the record is already right and is left alone (a
- * record the owner made stays theirs).
+ * Stops when records already sit at the name unless `replace` names exactly those. A create that fails after a
+ * removal puts the removed records back. recordId is null when the record was already right and left alone.
  */
 export async function putRecord(p: PutRecord): Promise<{ zoneId: string; recordId: string | null; removed: ApiRecord[]; created: boolean }> {
   const zone = zoneFor(p.zones, p.host);

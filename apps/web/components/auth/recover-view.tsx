@@ -8,7 +8,6 @@ import { AuthHead } from "./auth-head";
 const DISABLE_MFA = "sudo dockify admin disable-mfa <email>";
 const RESET_PASSWORD = "sudo dockify admin reset-password <email>";
 
-/** One command in a copyable block: `$`, the command, its `<email>` placeholder muted. */
 export function Command({ command, what }: { command: string; what: string }) {
   const [head, tail] = command.split("<email>");
   return (
@@ -45,12 +44,7 @@ function Block({ id, icon, title, children, command, what }: { id: string; icon:
   );
 }
 
-/**
- * /recover: the way back in. Whoever runs the server resets the account over SSH with the host
- * CLI. Turning two-factor off comes first, since a lost authenticator is what most often brings
- * someone here; a new password second. Both end every session of the account. With email set
- * up, a forgotten password can also use the emailed link.
- */
+/** Two-factor comes first: a lost authenticator is what most often brings someone here. Both commands end every session. */
 export function RecoverView({ emailEnabled = false }: { emailEnabled?: boolean }) {
   return (
     <section className="auth-block">

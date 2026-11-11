@@ -1,16 +1,7 @@
 import type { OverviewSource } from "./types";
 
-/*
- * Security releases in the console: the shapes and rules the banner, the popup, the loader and the
- * tests share. Pure, so the server, the browser and node --test import the same values.
- *
- *   GET  /api/v1/server/updates/security          -> SecurityAlert (every member)
- *   POST /api/v1/server/updates/security/snooze   { version, days: 1 | 3 | 7 } -> SecurityAlert (Admins)
- *
- * The release comes from the signed release feed only (apps/api .../updates/release.ts), so the
- * dashboard never raises or drops an alert on its own. The API caps a reminder at 3 days for a
- * critical release and 7 for an important one, and a newer security release opens the popup again.
- */
+// Shapes and rules shared by the banner, the popup, the loader and the tests. The release comes only
+// from the signed feed, so the dashboard never raises or drops an alert on its own.
 
 export type SecurityLevel = "critical" | "important";
 
@@ -30,13 +21,11 @@ export interface SecurityRelease {
 
 export interface SecurityAlert {
   release: SecurityRelease | null;
-  /** The version this install runs. */
   current: string;
   /** The release Update now installs, or null when none can be installed straight away. */
   target: string | null;
   /** Until when this member put the popup off, or null. The banner stays either way. */
   snoozedUntil: string | null;
-  /** An update or rollback in flight. */
   updating: { kind: "update" | "rollback"; version: string } | null;
 }
 
@@ -45,7 +34,6 @@ export interface SecurityAlertResult {
   data: SecurityAlert | null;
 }
 
-/** The "Remind me in" choices, in days. */
 export const SNOOZE_DAYS = [1, 3, 7] as const;
 export type SnoozeDays = (typeof SNOOZE_DAYS)[number];
 
@@ -61,7 +49,6 @@ export function snoozeChoices(r: Pick<SecurityRelease, "level" | "maxSnoozeDays"
   return SNOOZE_DAYS.filter((d) => d <= cap);
 }
 
-/** True while this member's reminder runs. */
 export const isSnoozed = (a: Pick<SecurityAlert, "snoozedUntil">, now: number) => !!a.snoozedUntil && Date.parse(a.snoozedUntil) > now;
 
 /** The popup is due: an Admin, a pending security release, no reminder running, no update in flight. */
@@ -103,10 +90,7 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/**
- * What Update now does for this release: install it, install a newer release that includes it, or
- * install a stepping stone first (the release needs a newer minimum version than this server runs).
- */
+/** Install it, a newer release that includes it, or a stepping stone first when it needs a newer minimum version. */
 export function updatePlan(a: Pick<SecurityAlert, "target">, r: Pick<SecurityRelease, "version">): "exact" | "newer" | "step" | "none" {
   if (!a.target) return "none";
   const c = compareVersions(a.target, r.version);

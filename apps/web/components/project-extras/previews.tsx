@@ -30,11 +30,7 @@ import type { PreviewDeployment, PreviewSettings, PreviewState, PreviewStatus, P
 import { NO_ACCESS_TIP, useCan } from "@/lib/viewer";
 import { send } from "./api";
 
-/* Pull request previews. The settings card turns them on and holds every cost guardrail with its
-   default and a one-line reason, plus the resource ceiling those settings allow. The Previews tab
-   lists each preview (pr-<n>) with its PR, branch, author, status, URL, last commit, age and
-   resource use, with Wake and Delete. Everything after "on" is automatic: the GitHub webhook builds,
-   updates, sleeps and deletes previews by itself. A Viewer reads both; only an admin changes them. */
+/* Everything after "on" is automatic: the GitHub webhook builds, updates, sleeps and deletes previews by itself. */
 
 export const PREVIEW_SETTINGS_ID = "px-previews-settings";
 
@@ -173,8 +169,7 @@ export function PreviewSettingsCard({
 }) {
   const can = useCan();
   const ro = !can.manage;
-  // A project with one environment has one possible base, whatever is stored (the default names
-  // development, which a new project does not have), and nothing but its real data to share, so each
+  // A project with one environment has one possible base and only its real data to share, so each
   // preview always gets its own database. The API refuses anything else.
   const many = showsEnvironments(p.environments);
   const only = p.environments[0]?.name;
@@ -249,7 +244,6 @@ export function PreviewSettingsCard({
       onReload?.();
     };
     const defaultApps = (env: string) => p.apps.filter((a) => a.environment === env && DEFAULT_KINDS.has(a.kind) && !a.onVercel).map((a) => a.id);
-    // A new base environment starts from the default apps of that environment.
     const pickBase = (name: string) => set({ baseEnvironment: name, appIds: defaultApps(name) });
 
     return (

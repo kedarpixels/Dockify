@@ -8,13 +8,8 @@ export interface OtpHandle {
   focus: () => void;
 }
 
-/**
- * Six equal boxes for an authenticator code, backed by ONE real input laid over them. That one
- * input is what makes it dependable: typing, Backspace, paste, the phone number pad and the
- * one-time-code autofill all behave natively, and the boxes only draw its value. The caret is
- * pinned to the end, so digits always fill left to right with no gaps. `onComplete` fires once
- * per code, when the sixth digit lands.
- */
+// One real input laid over six drawn boxes, so typing, paste, the number pad and one-time-code
+// autofill all behave natively. `onComplete` fires once per code.
 export const OtpInput = forwardRef<
   OtpHandle,
   {
@@ -31,8 +26,7 @@ export const OtpInput = forwardRef<
 >(function OtpInput({ value, onChange, onComplete, invalid, disabled, autoFocus, describedBy, id, label = "6-digit code" }, ref) {
   const input = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
-  // The code last handed to onComplete: a repeated input event for the same six digits (some
-  // autofills send two) must not submit twice. Cleared once the value is no longer complete.
+  // Some autofills send the same six digits twice; this keeps a repeat from submitting twice.
   const fired = useRef<string | null>(null);
 
   useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }), []);
@@ -69,7 +63,6 @@ export const OtpInput = forwardRef<
     }
   };
 
-  // The box that would take the next digit; all six done keeps the last one lit.
   const active = Math.min(value.length, LEN - 1);
 
   return (
@@ -94,7 +87,6 @@ export const OtpInput = forwardRef<
         value={value}
         onChange={(e) => set(e.target.value)}
         onPaste={(e) => {
-          // A pasted code replaces what was there, whatever spaces or dashes it carries.
           e.preventDefault();
           const digits = e.clipboardData.getData("text").replace(/\D/g, "");
           if (digits) set(digits);

@@ -1,7 +1,6 @@
 /**
- * One-click templates: reviewed files that ship with the release (apps/api/src/modules/templates).
- * The list is what will run, shown before the press, so it never holds a value worth hiding: a
- * generated secret appears as its description, and only the server ever generates one.
+ * Reviewed files that ship with the release. The list is shown before the press, so it never holds a value
+ * worth hiding: a generated secret appears as its description, and only the server generates one.
  */
 import { z } from "zod";
 import { AppKind, EnvName, Hostname, Port } from "./common.ts";
@@ -18,7 +17,6 @@ export const TemplateEnvRow = z.object({
   secret: z.boolean(),
 });
 export const TemplateAppRow = z.object({
-  /** Its service key in the template; the app is named from it. */
   service: z.string(),
   kind: AppKind,
   /** Empty for a managed service. */

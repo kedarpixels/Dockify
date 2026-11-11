@@ -14,7 +14,6 @@ const KPIS: KpiData[] = [
   { icon: "alert", label: "Failure rate, 30 days", value: <Skel w={56} h={22} />, lead: <Skel w={120} /> },
 ];
 
-/** Route loading state for the Overview: the real head, KPI strip, project strip and heatmap card. */
 export default function Loading() {
   return (
     <>

@@ -2,13 +2,8 @@ import { createElement, type ReactNode } from "react";
 import { GLYPHS, type GlyphNode } from "./icon-glyphs";
 import { cx } from "./ui/cx";
 
-/*
- * Notification providers in their brand colours, so a webhook reads at a glance. Paths: Telegram, Google Chat,
- * Mattermost, Rocket.Chat and ntfy from simple-icons 16.36.0, Microsoft Teams from simple-icons
- * 9.21.0 (the last release that had it), all CC0; the Slack shapes are geist-icons LogoSlack (MIT),
- * one fill per brand colour. Two marks too dark for the dark theme get a lighter fill there
- * (.mk-mattermost, .mk-ntfy in activity-settings.css).
- */
+// Brand marks, all CC0 from simple-icons 16.36.0 (Microsoft Teams from 9.21.0, the last release that had it);
+// Slack is geist-icons LogoSlack (MIT). Mattermost and ntfy get a lighter fill in the dark theme (activity-settings.css).
 type MarkProps = React.SVGProps<SVGSVGElement> & { size?: number };
 
 function mark(name: string, d: string, fill: string, className?: string) {

@@ -11,10 +11,7 @@ import { useTimeFormat } from "@/lib/time-prefs";
 import { isMuteHours, MUTE_HOURS, type AlertApp, type MuteHours } from "@/lib/pages/alerts-shared";
 import { appName } from "./labels";
 
-/**
- * Mutes one app's alerts for 1, 8 or 24 hours. Rules keep evaluating and the history keeps
- * recording; only the channels stay quiet. Muting again replaces a running mute.
- */
+/** Rules keep evaluating and the history keeps recording; only the channels stay quiet. */
 export function MuteDialog({
   app,
   rules,
@@ -23,7 +20,6 @@ export function MuteDialog({
   onMute,
 }: {
   app: AlertApp;
-  /** How many rules the mute silences, for the note. */
   rules: number;
   now: number;
   onClose: () => void;

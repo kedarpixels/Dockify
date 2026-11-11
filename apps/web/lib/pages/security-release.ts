@@ -6,13 +6,7 @@ import { previewSecurityOn, previewSecurityRelease } from "@/lib/preview-securit
 import { readAlert, remindKey, SNOOZE_CAP, type SecurityAlert, type SecurityAlertResult, type SecurityRelease, type SnoozeDays } from "@/lib/security-release";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/*
- * Loader for the console's security release banner and popup (lib/security-release.ts).
- *
- * Read by the console layout on every page load and polled by the banner (app/api/server/updates/
- * security). Without DOCKIFY_API_URL the design preview serves its fixture (lib/preview-security.ts)
- * and keeps each browser's "Remind me in" in a cookie of its own.
- */
+// Loader for the console's security release banner and popup. The design preview keeps each browser's "Remind me in" in a cookie of its own.
 
 const DAY = 86_400_000;
 

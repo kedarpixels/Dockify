@@ -11,7 +11,6 @@ const esc = (s: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-/** GET /api/status/:slug/rss: the published incidents as RSS 2.0, newest first. */
 export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const result = await getStatusPage(slug);

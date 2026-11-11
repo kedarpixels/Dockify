@@ -28,8 +28,6 @@ import { liveResources, onServer, RESOURCES_POLL_MS } from "./live";
 import { usePageRefresh } from "./refresh";
 import { Stamp } from "./shared";
 
-/* -------------- Kinds and filters -------------- */
-
 type KindFilter = "all" | "apps" | "databases" | "caches" | "storage";
 
 const KIND_FILTERS: Array<{ id: KindFilter; label: string; match: (k: AppKind) => boolean }> = [
@@ -45,11 +43,7 @@ const isStateful = (k: AppKind): k is StatefulKind => k === "postgres" || k === 
 
 const ENGINE: Record<StatefulKind, string> = { postgres: "Postgres", redis: "Redis", s3: "MinIO" };
 
-/**
- * The image as two short lines. Services: "Postgres 16.4" over the image they run. Built apps: the
- * repository without the registry prefix over the commit the tag names. Null when the API reported
- * no image, and no sub line when the reference names no tag: neither is ever made up.
- */
+/** Null when the API reported no image, and no sub line when the reference names no tag: neither is ever made up. */
 function imageParts(r: ResourceRow): { main: string; sub: string | null } | null {
   const image = r.image.trim();
   if (r.version && isStateful(r.kind)) return { main: `${ENGINE[r.kind]} ${r.version}`, sub: image || null };
@@ -61,14 +55,11 @@ function imageParts(r: ResourceRow): { main: string; sub: string | null } | null
   return { main: repo.replace(/^dockify\//, ""), sub: tag === null ? null : /^[0-9a-f]{7,40}$/.test(tag) ? `Commit ${tag.slice(0, 7)}` : `Tag ${tag}` };
 }
 
-/** A size split for the KPI strip, the figure big and the unit small: "1.5" and "GB". */
 function sizeParts(n: number) {
   const s = bytes(n);
   const at = s.lastIndexOf(" ");
   return { value: s.slice(0, at), unit: s.slice(at + 1) };
 }
-
-/* -------------- Summary -------------- */
 
 function Summary({ items, hostMemory }: { items: ResourceRow[]; hostMemory?: number }) {
   const running = items.filter((r) => r.status === "running").length;
@@ -105,15 +96,10 @@ function Summary({ items, hostMemory }: { items: ResourceRow[]; hostMemory?: num
   return <KpiStrip label="Summary" cells={cells} />;
 }
 
-/* -------------- Rows and cells -------------- */
-
 /** Memory used as a share of the reservation, 0 when nothing is reserved. */
 const memPct = (r: ResourceRow) => (r.memory.reservedBytes ? (r.memory.usedBytes / r.memory.reservedBytes) * 100 : 0);
 
-/**
- * The link that opens the app: its name says project, app, kind and, when the project's apps sit in
- * several environments, the environment, so twin rows differ.
- */
+/** Names the environment too when the project's apps sit in several, so twin rows differ. */
 const coverName = (r: ResourceRow, shows: (project: string) => boolean) =>
   `${r.projectSlug} / ${appTitle(r)}, ${KIND_LABEL[r.kind]}${shows(r.projectSlug) ? `, ${envName(r.environment)}` : ""}`;
 
@@ -147,7 +133,6 @@ function Stats({ r }: { r: ResourceRow }) {
   );
 }
 
-/** Container uptime, "4m" at least, with the start in its tip. */
 function Uptime({ r, now }: { r: ResourceRow; now: number }) {
   const start = r.startedAt ? Date.parse(r.startedAt) : NaN;
   return r.startedAt && !Number.isNaN(start) ? (
@@ -257,8 +242,6 @@ function ResourceCell({ r, now, delay }: RowProps) {
   );
 }
 
-/* -------------- Page -------------- */
-
 type Layout = "grid" | "list";
 const LAYOUT_KEY = "resources-layout";
 const layoutListeners = new Set<() => void>();
@@ -283,7 +266,7 @@ function subscribeLayout(onChange: () => void) {
   };
 }
 
-/** The grid or list choice, kept in this browser. The server render and hydration read "list". */
+/** Kept in this browser. The server render and hydration read "list". */
 function useLayout(): [Layout, (v: Layout) => void] {
   const layout = useSyncExternalStore<Layout>(subscribeLayout, readLayout, () => "list");
   const set = (v: Layout) => {
@@ -308,9 +291,8 @@ export function ResourcesView({ overview, initial }: { overview: OverviewResult;
 
   const notices = useMemo(() => (o ? deriveNotices(o, now) : null), [o, now]);
 
-  // Statuses follow the polled overview, so a row flips to Running without a reload. The rest of a
-  // row (when it started, CPU, memory) comes from the list, which is read again on its own timer:
-  // without that a newly started app reads "Starting" at 0% for as long as the page stays open.
+  // Statuses follow the polled overview. The rest of a row comes from the list, read again on its
+  // own timer: without that a newly started app reads "Starting" at 0% while the page stays open.
   usePageRefresh(initial.source === "api", RESOURCES_POLL_MS);
   const items = useMemo(() => liveResources(initial.data ?? [], o?.resources), [initial.data, o]);
 
@@ -328,7 +310,6 @@ export function ResourcesView({ overview, initial }: { overview: OverviewResult;
   }, [items, query, filter]);
 
   const data = initial.data;
-  // The KPI strip under the head carries the counts, so the lead says what the page holds instead.
   const lead = "Every container on the server: apps, databases and caches.";
 
   const rowProps = (r: ResourceRow, i: number): RowProps => ({ r, now, delay: Math.min(i, 12) * 30 });

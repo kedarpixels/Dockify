@@ -22,19 +22,16 @@ export interface RuleActions {
   onToggle: (r: AlertRule, on: boolean) => void;
   onEdit: (r: AlertRule) => void;
   onDelete: (r: AlertRule) => void;
-  /** Opens the editor for a new rule, on this app when one is given. */
   onAdd: (appId: string | null) => void;
   onMute: (app: AlertApp) => void;
   onUnmute: (app: AlertApp) => void;
 }
 
-/** The mute that is still running for an app, if any. */
 const activeMute = (mutes: AlertMute[], appId: string, now: number) => mutes.find((m) => m.appId === appId && Date.parse(m.until) > now);
 
 /** A row shows this many channel tiles at most; past that the last tile counts the rest. */
 const MAX_TILES = 5;
 
-/** Where a rule sends, as tiles: its webhooks in the order they were added, then email and the bell. */
 function ChannelTiles({ r, webhooks }: { r: AlertRule; webhooks: WebhookRef[] }) {
   const tiles = [
     ...webhooks.filter((w) => r.webhooks.includes(w.id)).map((w) => ({ key: w.id, name: w.name, glyph: <WebhookMark webhook={w} size={14} /> })),
@@ -98,7 +95,6 @@ function RuleRow({ r, now, a, manage, webhooks }: { r: AlertRule; now: number; a
   );
 }
 
-/** The mute state and keys at the right of an app's group head. */
 function MuteKeys({ app, mute, now, a, pending }: { app: AlertApp; mute: AlertMute | undefined; now: number; a: RuleActions; pending: boolean }) {
   const time = useTimeFormat();
   const name = appName(app);
@@ -125,11 +121,7 @@ function MuteKeys({ app, mute, now, a, pending }: { app: AlertApp; mute: AlertMu
   );
 }
 
-/**
- * Every rule, grouped: the server's own rules first, then one group per app (firing apps on top,
- * then by name). Each app group carries its mute state and a New rule key for that app. A Viewer
- * reads the rules without the keys that change them.
- */
+/** Server rules first, then one group per app, firing apps on top. A Viewer gets no keys that change them. */
 export function RulesCard({
   rules,
   mutes,
@@ -140,11 +132,9 @@ export function RulesCard({
 }: {
   rules: AlertRule[];
   mutes: AlertMute[];
-  /** Names and marks for each rule's webhooks. */
   webhooks: WebhookRef[];
   now: number;
   a: RuleActions;
-  /** The app whose unmute is on its way. */
   unmuting: string | null;
 }) {
   const { manage } = useCan();

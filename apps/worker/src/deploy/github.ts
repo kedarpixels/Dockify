@@ -1,8 +1,4 @@
-/**
- * GitHub App installation tokens for private clones, minted in the worker. The App's private key
- * is sealed in the secrets table (Integration github_app "default"); it is opened only to sign one
- * short JWT. Tokens are cached in memory until five minutes before expiry and never stored or logged.
- */
+/** GitHub App installation tokens: cached in memory until five minutes before expiry, never stored or logged. */
 import { githubAppJwt } from "@dockify/crypto";
 import { readSecretValue, type Db, type SecretVault } from "@dockify/db";
 import type { CloneCredential } from "./git.ts";
@@ -17,7 +13,6 @@ export interface GitHubDeps {
   fetch?: typeof fetch;
 }
 
-/** The clone credential for a project's installation, or null for an anonymous clone. */
 export async function installationCredential(deps: GitHubDeps, installationId: bigint | null, repoHost: string | null): Promise<CloneCredential | null> {
   if (installationId === null || repoHost !== "github.com") return null;
   const key = installationId.toString();

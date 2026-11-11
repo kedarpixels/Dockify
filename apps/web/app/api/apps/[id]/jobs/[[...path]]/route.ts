@@ -2,16 +2,7 @@ import { readJobInput } from "@/lib/job-input";
 import { guardWrite, json, readJsonBody, refuse, type RouteAnswer } from "@/lib/http";
 import { createJob, deleteJob, getRun, listJobs, listRuns, runJob, updateJob } from "@/lib/pages/jobs";
 
-/*
- * /api/apps/:id/jobs           GET list, POST create
- * /api/apps/:id/jobs/:job      PATCH, DELETE
- * /api/apps/:id/jobs/:job/run  POST run now
- * /api/apps/:id/jobs/:job/runs GET history
- * /api/apps/:id/jobs/:job/runs/:run  GET one run with its output
- *
- * Every id is checked, so a request can never steer the upstream path. Same origin for everything:
- * a run's output is tenant data.
- */
+/* Every id is checked, so a request can never steer the upstream path. Same origin throughout: a run's output is tenant data. */
 /** Letters, digits, _ and - only: an id can never add a path segment. The api checks each is a UUID. */
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 type Ctx = { params: Promise<{ id: string; path?: string[] }> };

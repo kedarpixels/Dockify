@@ -1,14 +1,6 @@
 /**
- * Which image a managed service runs. A service stores the tag the owner picked (App.image, for
- * example "postgres:16-alpine"). Its first deploy pulls that tag once, or takes the copy of that tag
- * already on this server, and records the digest it resolved to (App.pinnedImage,
- * "postgres:16-alpine@sha256:..."); every later deploy, restore and
- * restore test runs that exact digest, so a moving tag never changes what runs under the data.
- * Only a change of App.image (the owner picking another version) resolves a new digest.
- *
- * No digest is written by hand anywhere: each one is what the registry served for the tag, read
- * back from the daemon after the pull (or from the copy a pull left here earlier). An owner who sets App.image to image@sha256:... chose the
- * digest themselves, and that is used as it is.
+ * The first deploy resolves the owner's tag (App.image) to a digest and records it (App.pinnedImage). Every later
+ * deploy, restore and restore test runs that digest, so a moving tag never changes what runs under the data.
  */
 import type { DockerPort } from "./docker-port.ts";
 
@@ -23,7 +15,6 @@ export class ImageResolveError extends Error {
   }
 }
 
-/** "postgres:16-alpine" is "postgres"; "ghcr.io/a/b:1@sha256:..." is "ghcr.io/a/b". */
 export function repositoryOf(ref: string): string {
   const bare = ref.trim().split("@")[0]!;
   const colon = bare.lastIndexOf(":");
@@ -41,7 +32,6 @@ export function repoDigestFor(repoDigests: readonly string[], ref: string): stri
   return repoDigests.map((d) => ({ repo: familiar(repositoryOf(d)), digest: digestOf(d) })).find((d) => d.repo === repo && d.digest)?.digest ?? null;
 }
 
-/** The pin recorded for a configured reference: the reference with the digest it resolved to. */
 export const pinOf = (configured: string, digest: string): string => `${configured.trim().split("@")[0]}@${digest}`;
 
 /** What is pulled and inspected for a pin: repository@digest, the form every registry serves. */
@@ -51,7 +41,6 @@ export function digestRef(pin: string): string {
   return `${repositoryOf(pin)}@${d}`;
 }
 
-/** A recorded pin still belongs to the configured reference: the same reference, a digest added. */
 export function pinFits(pin: string | null | undefined, configured: string): pin is string {
   if (!pin) return false;
   const d = digestOf(pin);
@@ -61,7 +50,6 @@ export function pinFits(pin: string | null | undefined, configured: string): pin
 /** What a registry answers when the image or tag does not exist, or is not ours to pull: retrying cannot help. */
 const NOT_THERE = /manifest unknown|not found|pull access denied|repository does not exist|unauthorized|denied|invalid reference format/i;
 
-/** The two daemon calls resolving needs; the data module's port has them, and the preview adapts the deploy client. */
 export type ImagePort = Pick<DockerPort, "inspectImage" | "pullImage">;
 
 async function pull(docker: ImagePort, ref: string, log: (line: string) => void): Promise<void> {
@@ -79,23 +67,14 @@ async function pull(docker: ImagePort, ref: string, log: (line: string) => void)
 }
 
 export interface ResolvedImage {
-  /** The local image id the container is created from. */
   imageId: string;
-  /** The reference with its digest, for App.pinnedImage. */
   pin: string;
-  /** False when the pinned digest was already on this server. */
   pulled: boolean;
 }
 
 /**
- * The image to run for a configured reference and its recorded pin. A managed service never asks a
- * registry for what is already on this server, so a registry limit (Docker Hub's) or outage cannot
- * fail a redeploy:
- *
- *   pin fits      run the pinned digest; pull by digest only when it is not on this server any more
- *   no pin yet    the exact tag already here is pinned as it is (its digest, read from the daemon);
- *                 only a tag that is not here is pulled. The owner picks a version, not "latest", so
- *                 the tag on this server is that version, and the pin then holds it the same way.
+ * A managed service never asks a registry for what is already on this server, so a registry limit or outage
+ * cannot fail a redeploy. With no pin yet, the tag already here is pinned as it is, else pulled once.
  */
 export async function resolveServiceImage(docker: ImagePort, configured: string, pin: string | null | undefined, log: (line: string) => void): Promise<ResolvedImage> {
   const ref = configured.trim();

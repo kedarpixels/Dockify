@@ -9,16 +9,7 @@ import { OFFLINE } from "@/lib/client-api";
 import { useAbsTip } from "@/lib/time-prefs";
 import type { Outcome } from "@/lib/pages/activity-settings";
 
-/*
- * The pieces Settings builds every section from on top of components/ui: a ruled block, its setting
- * rows, the sticky save bar, a time ahead with its moment on hover, how a time zone reads in a picker and the guard that turns a dropped server action into a
- * failed Outcome. A read-only value with a copy key is the shared CopyBox (components/ui).
- */
-
-/**
- * Sticky bar at the foot of a section, shown only while it has unsaved edits. The result of a save
- * is a toast; the bar itself only says what blocks a save (fields that need fixing).
- */
+/** Shown only while the section has unsaved edits. A save's result is a toast; the bar only says what blocks one. */
 export function SaveBar({
   dirty,
   saving,
@@ -34,9 +25,8 @@ export function SaveBar({
   onSave: () => void;
   label?: string;
 }) {
-  // Whether the focus is on a key of the bar. The bar goes the moment a save or discard leaves the
-  // form clean; with the focus on one of its keys, the focus moves to the open section's heading,
-  // never to the top of the page. A blur toward nothing (the key leaving) keeps the flag.
+  // When the bar goes with the focus on one of its keys, the focus moves to the section's heading,
+  // not the top of the page. A blur toward nothing (the key leaving) keeps the flag.
   const held = useRef(false);
   useLayoutEffect(() => {
     if (dirty || !held.current) return;
@@ -73,10 +63,7 @@ export function SaveBar({
   );
 }
 
-/**
- * Awaits a server action. A dropped connection or a server crash rejects instead of answering,
- * so it becomes a failed Outcome here and every caller handles one shape.
- */
+/** A dropped connection or server crash rejects, so it becomes a failed Outcome and callers handle one shape. */
 export async function settle<T>(call: Promise<Outcome<T>>): Promise<Outcome<T>> {
   try {
     return await call;
@@ -85,10 +72,6 @@ export async function settle<T>(call: Promise<Outcome<T>>): Promise<Outcome<T>> 
   }
 }
 
-/**
- * One ruled block inside a settings section: a CardTitle head with optional keys, then its rows.
- * `solo` drops the body, for a block that is only its head and keys.
- */
 export function Group({
   id,
   icon,
@@ -104,7 +87,7 @@ export function Group({
   sub?: string;
   actions?: React.ReactNode;
   children?: React.ReactNode;
-  /** A block that is only its head, one row with its key (Security, Password); dialogs ride along. */
+  /** Drops the body: a block that is only its head and keys. */
   solo?: boolean;
 }) {
   return (
@@ -118,12 +101,7 @@ export function Group({
   );
 }
 
-/**
- * One setting: its label over a one-line description on the left, the control on the right, on a
- * 56px ruled row. An error replaces the description and is announced. With a render prop the label
- * points at the control (inputs, dropdowns, switches); with plain keys the row is a labelled group.
- * `lead` sits before the text (a picture, a status tile). Narrow columns put the control under it.
- */
+/** With a render prop the label points at the control; with plain keys the row is a labelled group. */
 export function SettingRow({
   label,
   desc,
@@ -178,10 +156,8 @@ export function SettingRow({
 /** Both spellings of UTC. A zone picker lists it once. */
 export const isUtc = (zone: string) => zone === "UTC" || zone === "Etc/UTC";
 
-/** How a time zone reads in a picker: UTC in either spelling as "UTC", underscores as spaces. */
 export const zoneLabel = (zone: string) => (isUtc(zone) ? "UTC" : zone.replaceAll("_", " "));
 
-/** Time until an ISO moment, in words: "in 5 days", "in 3 hours", "expired". */
 function until(iso: string, now: number) {
   const ms = Date.parse(iso) - now;
   if (ms <= 0) return "expired";
@@ -191,10 +167,7 @@ function until(iso: string, now: number) {
   return `in ${d} ${d === 1 ? "day" : "days"}`;
 }
 
-/**
- * A time ahead, the counterpart of the shared `When`: "Expires in 5 days", or `expired` once it has
- * passed, with the absolute moment in its tip. The tip reads UTC until hydrated, like When.
- */
+/** The counterpart of `When` for a time ahead. The tip reads UTC until hydrated. */
 export function Until({
   iso,
   now,
@@ -205,7 +178,7 @@ export function Until({
 }: {
   iso: string;
   now: number;
-  /** Words before "in 5 days"; left off once the moment has passed. Without it the text starts "In". */
+  /** Words before "in 5 days"; without it the text starts "In". */
   prefix?: string;
   expired?: string;
   tipAlign?: "end";

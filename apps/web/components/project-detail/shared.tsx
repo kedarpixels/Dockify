@@ -17,8 +17,6 @@ import { useDayHeading } from "@/lib/time-prefs";
 import type { AppKind, AppStatus, RecentDeployment } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
 
-/* Pieces the project and app pages share, and the labels the project card and the app tabs use. */
-
 export const KIND_LABEL: Record<AppKind, string> = {
   frontend: "Frontend",
   backend: "Backend",
@@ -43,11 +41,7 @@ export const hostOf = (url: string) => url.replace(/^https?:\/\//, "").replace(/
 /** A CPU amount: "0.5 vCPU", "2 vCPU". The one unit for CPU everywhere an app's limit is named. */
 export const cores = (n: number) => `${n.toLocaleString("en-US")} vCPU`;
 
-/**
- * Tab state mirrored into `?tab=`; the first tab is the bare URL and an unknown value falls back
- * to it. A switch replaces the history entry. The URL stays the source of truth, so a link to
- * another tab of the same page, or back and forward between pages, lands on the right one.
- */
+/** The URL stays the source of truth; the first tab is the bare URL and an unknown value falls back to it. */
 export function useUrlTab<T extends string>(tabs: readonly T[]) {
   const param = useSearchParams().get("tab");
   const fromUrl = tabs.find((t) => t === param) ?? tabs[0]!;
@@ -73,11 +67,7 @@ export function useUrlTab<T extends string>(tabs: readonly T[]) {
   return [tab, change] as const;
 }
 
-/**
- * The lead under a project's or an app's title, in one order on both pages: the state, the
- * environments when the project shows them (lib/environments.ts; production named too, as detail
- * leads do), then the quiet facts (kind, repository or address) as children.
- */
+/** One order on both pages: the state, the environments when the project shows them, then the quiet facts as children. */
 export function DetailLead({ tone, state, envs, children }: { tone: Tone; state: string; envs: string[]; children?: React.ReactNode }) {
   return (
     <span className="pd-lead">
@@ -124,7 +114,6 @@ export function ResourcePips({ usage, status }: { usage?: AppUsage; status: AppS
   );
 }
 
-/** Deployments grouped by day as DeployRows, each day with its count, in a deployments card. */
 export function DeployCard({
   deployments,
   now,
@@ -176,7 +165,6 @@ export function DeployCard({
   );
 }
 
-/** A field label with the muted "Optional" mark after it. */
 export function Optional({ children }: { children: React.ReactNode }) {
   return (
     <>
@@ -186,11 +174,7 @@ export function Optional({ children }: { children: React.ReactNode }) {
   );
 }
 
-/**
- * Danger zone: a calm ruled box inside its card, one row per irreversible action. Only the action
- * key carries red, as red text; nothing else in the card is tinted. A Viewer can take none of
- * these actions, so for a Viewer there is no danger zone at all.
- */
+/** Only the action key carries red. A Viewer can take none of these actions, so gets no danger zone at all. */
 export function DangerZone({ rows }: { rows: Array<{ title: string; body: string; action: string; onAction: () => void }> }) {
   const can = useCan();
   if (!can.manage) return null;
@@ -218,12 +202,8 @@ export function DangerZone({ rows }: { rows: Array<{ title: string; body: string
   );
 }
 
-/**
- * Typed confirmation for a delete: the red key stays locked until the exact name is typed.
- * `onConfirm` toasts its own result and resolves to whether it worked. On success the dialog
- * stays open and pending while the page navigates away, so a second press cannot send a second
- * delete; on failure it stays open so the operator can retry.
- */
+// `onConfirm` toasts its own result and resolves to whether it worked. On success the dialog stays
+// open and pending while the page navigates away, so a second press cannot send a second delete.
 export function DeleteDialog({
   open,
   onClose,

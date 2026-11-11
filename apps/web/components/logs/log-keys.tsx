@@ -3,7 +3,7 @@
 import { Icon } from "@/components/icon";
 import { CopyButton } from "@/components/ui/copy-button";
 
-/** What both log toolbars end with: wrap, copy everything, download. Copy and download wait for a line. */
+/** Copy and download wait for a line. */
 export function LogKeys({ wrap, onWrap, allText, empty, download }: { wrap: boolean; onWrap: () => void; allText: () => Promise<string>; empty: boolean; download: () => void }) {
   return (
     <>

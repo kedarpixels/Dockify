@@ -1,8 +1,7 @@
 /**
- * Validates a tar stream before it is extracted into a volume (a tampered archive
- * could write anywhere in the container). Every entry must be a plain file or directory whose path
- * stays inside the archive root. Links, devices and FIFOs are refused, as are absolute paths and
- * any "..". Reads ustar, GNU long names (L) and pax headers (x, g); anything else is refused.
+ * Validates a tar stream before it is extracted into a volume: a tampered archive could write anywhere in
+ * the container. Every entry must be a plain file or directory inside the archive root. Links, devices,
+ * FIFOs, absolute paths and ".." are refused. Reads ustar, GNU long names and pax headers, nothing else.
  */
 import { Writable } from "node:stream";
 
@@ -36,7 +35,6 @@ export function checkEntryPath(name: string): void {
   if (n.split("/").some((p) => p === "..")) throw new TarGuardError(`tar entry ${name} leaves the volume`);
 }
 
-/** The records of a pax header that change what the next entry is: its path and its size. */
 function paxRecords(data: Buffer): { path: string | null; size: number | null } {
   let o = 0;
   let path: string | null = null;

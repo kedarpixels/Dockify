@@ -22,7 +22,6 @@ function Go({ a, primary }: { a: Action; primary?: boolean }) {
   );
 }
 
-/** Closing band of a page: one line in the pixel face, a primary action and a quiet one. */
 export function Closer({ title, primary, secondary }: { title: string; primary: Action; secondary?: Action }) {
   return (
     <section className="pg-closer">

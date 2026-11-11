@@ -4,15 +4,8 @@ import { createHttpClient, OutboundError, type HttpClient } from "@dockify/net-g
 import { parsePublicKey, SignatureError, verifyMinisign } from "./minisign.ts";
 
 /*
- * The signed release feed. One static file per channel, published to the GitHub Release and to the
- * `releases` branch (raw hosting), and optionally mirrored on dockify.sh:
- *
- *   <feed>/releases/stable.json          the manifest, every stable release, newest first
- *   <feed>/releases/stable.json.minisig  its minisign (Ed25519) signature
- *   <feed>/releases/beta.json(.minisig)  the same for the beta channel
- *
- * Nothing is dynamic: a mirror or a CDN can serve the bytes, and the signature makes every one of
- * them untrusted. scripts/release/make-manifest.mjs writes this exact shape.
+ * The signed release feed: one static <feed>/releases/<channel>.json plus its .minisig, newest first.
+ * Any mirror may serve the bytes; only the signature is trusted. make-manifest.mjs writes this shape.
  */
 
 export const DIGEST_REF = /^[a-z0-9]+(?:[._/-][a-z0-9]+)*(?::\d{1,5})?(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*@sha256:[a-f0-9]{64}$/;
@@ -30,46 +23,40 @@ const PerArch = z.strictObject({ amd64: Ref, arm64: Ref });
 export const SECURITY_LEVELS = ["critical", "important"] as const;
 export type SecurityLevel = (typeof SECURITY_LEVELS)[number];
 export const CVE_ID = /^CVE-\d{4}-\d{4,7}$/;
-/** The longest "Remind me in" each level allows, in days (security.ts). */
+/** The longest "Remind me in" each level allows, in days. */
 export const MAX_SNOOZE_DAYS: Record<SecurityLevel, number> = { critical: 3, important: 7 };
 
 /**
- * A security release's block: what the dashboard's red popup, banner and email say. It is part of
- * the signed bytes like every other field, so nobody can raise an alert or remove one without the
- * release key. make-manifest checks it strictly at release time; here a block that does not parse
- * (a level this version does not know, say) is dropped and the release itself kept, so an alert
- * this install cannot read never hides the update that fixes it.
+ * Signed like every other field. A block that does not parse here is dropped and its release kept,
+ * so an unreadable alert never hides the update that fixes it.
  */
 export const SecurityBlock = z.object({
   level: z.enum(SECURITY_LEVELS),
-  /** Plain text: what the fix closes and who is exposed. Shown escaped, never as markup. */
+  /** Plain text, shown escaped, never as markup. */
   summary: z.string().trim().min(1).max(600).regex(/^[^\u0000-\u0008\u000b-\u001f\u007f]*$/),
-  /** The advisory, https only. */
   advisory: z.url({ protocol: /^https$/ }).max(500).optional(),
   cves: z.array(z.string().regex(CVE_ID)).max(20).optional(),
 });
 export type SecurityBlock = z.infer<typeof SecurityBlock>;
 
-/** One release in the feed. Images are referenced by digest only, per architecture. */
 export const FeedRelease = z.strictObject({
   version: z.string().regex(SemVer),
-  /** The release day, YYYY-MM-DD, as the notes heading shows it. */
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   publishedAt: z.iso.datetime({ offset: true }),
   /** The oldest version that may upgrade straight to this one. Older installs step through it first. */
   minFrom: z.string().regex(SemVer),
-  /** The newest database migration this release ships (its folder name under prisma/migrations). */
+  /** The newest migration this release ships: its folder name under prisma/migrations. */
   migration: z.string().regex(/^[0-9a-z_]{1,100}$/),
   /** A security release: installs in the next window even under "security only". */
   critical: z.boolean(),
   notesUrl: z.url({ protocol: /^https$/ }).max(500),
-  /** The release notes, markdown (the same file the site changelog renders). Rendered escaped. */
+  /** Markdown, rendered escaped. */
   notes: z.string().max(20_000),
   images: z.strictObject({ control: PerArch, web: PerArch }),
   /** sha256 of the docker-compose.yml and socket-proxy/haproxy.cfg published with this release. */
   composeSha256: Sha.optional(),
   socketProxySha256: Sha.optional(),
-  /** Set on a security release (docs/RELEASING.md). An unreadable block counts as none. */
+  /** An unreadable block counts as none. */
   security: SecurityBlock.optional().catch(undefined),
 });
 export type FeedRelease = z.infer<typeof FeedRelease>;
@@ -88,7 +75,7 @@ export interface VerifiedFeed extends ReleaseFeed {
   sha256: string;
 }
 
-/** Compares two versions: negative when a < b. A prerelease sorts before its release. */
+/** Negative when a < b. A prerelease sorts before its release. */
 export function compareVersions(a: string, b: string): number {
   const pa = SemVer.exec(a);
   const pb = SemVer.exec(b);
@@ -121,9 +108,9 @@ export function compareVersions(a: string, b: string): number {
 export const bare = (v: string) => v.replace(/^v/, "");
 
 /**
- * Verifies the signature over the exact bytes with the pinned key FIRST, and only then parses
- * them: nothing unsigned reaches the JSON parser or the schema. The trusted comment (signed too)
- * must name the channel and the newest version, so a signature cannot be paired with another file.
+ * Verifies the signature over the exact bytes before parsing, so nothing unsigned reaches the JSON
+ * parser or the schema. The signed trusted comment must name the channel and the newest version, so
+ * a signature cannot be paired with another file.
  */
 export function verifyFeed(bytes: Buffer, sigText: string, publicKey: string, channel: Channel): VerifiedFeed {
   const sig = verifyMinisign(bytes, sigText, parsePublicKey(publicKey));
@@ -147,9 +134,6 @@ export function verifyFeed(bytes: Buffer, sigText: string, publicKey: string, ch
   return { ...feed, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
-// ------------------------------------------------------------------ choosing a release
-
-/** What the feed offers an install running `current`. */
 export interface Offer {
   /** The newest release this install may move to now (above current, minFrom satisfied). */
   target: FeedRelease | null;
@@ -159,13 +143,11 @@ export interface Offer {
   critical: boolean;
 }
 
-/** A security release: flagged critical, or carrying a security block (make-manifest sets both). */
 export const isSecurityRelease = (r: Pick<FeedRelease, "critical" | "security">) => r.critical || !!r.security;
 
 /**
- * Picks the upgrade target. Downgrades and same-version entries are never offered; a release whose
- * minFrom is above `current` is reported as blocked, and the newest release that does accept
- * `current` is offered instead, so an old install steps forward one supported hop at a time.
+ * Never offers a downgrade. A release whose minFrom is above `current` is reported as blocked and
+ * the newest one that accepts `current` is offered, so an old install moves one supported hop at a time.
  */
 export function chooseRelease(feed: Pick<ReleaseFeed, "releases">, current: string): Offer {
   const newer = feed.releases.filter((r) => compareVersions(r.version, current) > 0);
@@ -176,16 +158,13 @@ export function chooseRelease(feed: Pick<ReleaseFeed, "releases">, current: stri
   return { target, blocked, critical };
 }
 
-/** What an install running some version still needs from the signed security blocks above it. */
 export interface PendingSecurity {
-  /** The newest pending release that carries a block, without a leading v. */
+  /** Without a leading v. */
   version: string;
-  /** The highest level of every pending block: an older critical fix keeps a newer important one critical. */
+  /** The highest level among pending blocks: an older critical fix keeps a newer important one critical. */
   level: SecurityLevel;
-  /** That release's summary, on one line. */
   summary: string;
   advisory: string | null;
-  /** Every pending CVE id, newest release first, each once. */
   cves: string[];
   publishedAt: string;
 }
@@ -193,10 +172,8 @@ export interface PendingSecurity {
 const LEVEL_RANK: Record<SecurityLevel, number> = { important: 1, critical: 2 };
 
 /**
- * The security block the dashboard shows for an install running `current`: the newest release
- * above it that carries one. Several pending releases keep the alert as long as any one of them is
- * a security release, so a newer release without a block never hides an older pending fix. Blocked
- * releases (minFrom above `current`) count too: the install is exposed until it gets there.
+ * A newer release without a block never hides an older pending fix. Releases blocked by minFrom
+ * count too: the install is exposed until it gets there.
  */
 export function pendingSecurity(feed: Pick<ReleaseFeed, "releases">, current: string): PendingSecurity | null {
   const pending = feed.releases
@@ -215,17 +192,15 @@ export function pendingSecurity(feed: Pick<ReleaseFeed, "releases">, current: st
   };
 }
 
-/** The dashboard's view of a pending security block: the block and the longest reminder its level allows. */
 export const securityInfo = (s: PendingSecurity | null) => (s ? { ...s, maxSnoozeDays: MAX_SNOOZE_DAYS[s.level] } : null);
 
-/** Why a specific version cannot be installed over `current`, or null when it can. */
+/** The reason for refusal, or null when `rel` can be installed over `current`. */
 export function refuseTarget(rel: Pick<FeedRelease, "version" | "minFrom">, current: string): string | null {
   if (compareVersions(rel.version, current) <= 0) return `refusing a downgrade: ${rel.version} is not newer than ${current}`;
   if (compareVersions(current, rel.minFrom) < 0) return `${rel.version} upgrades only from ${rel.minFrom} or newer; this install runs ${current}`;
   return null;
 }
 
-/** The image pair this host runs. */
 export interface Images {
   control: string;
   web: string;
@@ -237,12 +212,9 @@ export const archOf = (nodeArch: string = process.arch): Arch => {
 };
 export const imagesFor = (rel: Pick<FeedRelease, "images">, arch: Arch): Images => ({ control: rel.images.control[arch], web: rel.images.web[arch] });
 
-// ------------------------------------------------------------------ fetching
-
 const MAX_MANIFEST = 512 * 1024;
 const MAX_SIG = 4096;
 
-/** The manifest URL for a feed base and a channel. */
 export function feedUrl(base: string, channel: Channel): string {
   const u = new URL(base);
   if (u.protocol !== "https:") throw new Error("the release feed must be https");
@@ -268,9 +240,8 @@ export async function fetchVerifiedFeed(base: string, channel: Channel, publicKe
 }
 
 /**
- * The trusted key: the one baked into the control image at release time (DOCKIFY_PINNED_PUBKEY,
- * deploy/Dockerfile), else the one the installer wrote to .env. The image key wins, so a key
- * rotation travels inside a release that the previous key signed (docs/RELEASING.md).
+ * The key baked into the control image wins over the one the installer wrote to .env, so a key
+ * rotation travels inside a release that the previous key signed.
  */
 export function trustedKey(env: NodeJS.ProcessEnv = process.env): string | null {
   const pinned = env.DOCKIFY_PINNED_PUBKEY?.trim();

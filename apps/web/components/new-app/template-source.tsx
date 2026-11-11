@@ -18,12 +18,8 @@ import type { ProjectEnvironment } from "@/lib/pages/project-detail";
 import { TEMPLATE_ICONS } from "./template-icons";
 import type { TemplateDraft, TemplateRow } from "./template-spec";
 
-/*
- * Step 2 and 3 for a template. Step 2 picks one: search, then one list of cards. Step 3 says exactly
- * what will run, every image, command, port, volume and variable, before the press. The list comes
- * from the release's own catalog through the API, so it holds no secret: a generated value reads
- * "generated secret" here, and only the server ever makes one.
- */
+// The list comes from the release's own catalog and holds no secret: a generated value reads
+// "generated secret" here, and only the server ever makes one.
 
 function TemplateIcon({ row, size }: { row: Pick<TemplateRow, "icon" | "name">; size: "md" | "lg" }) {
   const d = TEMPLATE_ICONS[row.icon];
@@ -138,7 +134,6 @@ export function TemplateReview({
   nameError?: string;
   hostError?: string;
   inputErrors: Record<string, string | undefined>;
-  /** The server can offer a free test domain. */
   testDomain: boolean;
 }) {
   const options = [

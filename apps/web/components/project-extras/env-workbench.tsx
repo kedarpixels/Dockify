@@ -38,16 +38,9 @@ import { ReviewDialog } from "./env-review";
 import { LinkResourceDialog, type LinkPick } from "./link-resource";
 import { RowMenu, type RowMenuItem } from "./row-menu";
 
-/* Environment variables, staged: edits to shared variables and app overrides collect into pending
-   changes, which Review applies as one new version. Secret values never arrive with the page; they
-   come through the audited reveal. Applying or rolling back asks "Confirm it is you" when the API
-   wants a fresh step-up (components/step-up, through `send`), and `?link=<appId>` opens Link a
-   service. The project Variables tab edits everything; an app Variables tab (`appId`) is the same
-   workbench on that app alone: its environment, the shared rows read only, and its own overrides
-   to edit. Only an admin may read variables (apps/api/src/policy.ts), so a Viewer gets one calm
-   line instead of a refusal. */
+// Edits collect into pending changes, which Review applies as one new version. Secret values never
+// arrive with the page; they come through the audited reveal. `?link=<appId>` opens Link a service.
 
-/** What the workbench reads of a project: the slug, the environment names and the apps. */
 export interface EnvProject {
   slug: string;
   environments: Array<{ name: string }>;
@@ -72,11 +65,7 @@ function lastKey(id: string): HTMLElement | null {
   return keys[keys.length - 1] ?? null;
 }
 
-/**
- * After a row's editor closes, or its menu stages a removal, the focus lands on that row, never on
- * the page. A row that goes away (a staged addition taken back) hands it to its neighbour, read
- * before the table changes, and failing that to the page's main region.
- */
+/** A row that goes away hands the focus to its neighbour, read before the table changes, else to the main region. */
 function focusRow(id: string) {
   const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
   const near = (row?.nextElementSibling ?? row?.previousElementSibling)?.getAttribute("data-row") ?? null;
@@ -90,10 +79,7 @@ function focusRow(id: string) {
 /** Keys only: matching on a value would give away what a masked row holds. */
 const matching = (rows: EnvRow[], q: string) => (q ? rows.filter((r) => r.key.toLowerCase().includes(q)) : rows);
 
-/**
- * One scope's items in a table: an optional add row, then its rows. With `app`, each carries the
- * app cell. With `readOnlyHref`, the rows only read and their edit key opens that page instead.
- */
+/** With `readOnlyHref`, the rows only read and their edit key opens that page instead. */
 function ScopeItems({
   scope,
   rows,
@@ -116,7 +102,6 @@ function ScopeItems({
   onBack,
 }: {
   scope: Scope;
-  /** The rows to draw, already filtered. */
   rows: EnvRow[];
   /** Keys already set in the scope, which the add row refuses. */
   taken: string[];
@@ -302,13 +287,12 @@ export function EnvWorkbench({
   onReload: () => Promise<void>;
   /** Set on an app page: the workbench narrows to that app. */
   appId?: string;
-  /** The environment the project page's switcher picked; the workbench then shows that one and no switcher of its own. */
+  /** Picked by the project page's switcher; the workbench then shows no switcher of its own. */
   environment?: string;
 }) {
   const router = useRouter();
   const viewer = useViewer();
   const can = useCan();
-  // Who a preview write is recorded as: the signed-in viewer the page already has.
   const actor: ActorRef = { name: viewer?.name ?? "You", avatarUrl: viewer?.avatarUrl ?? null, kind: "user" };
   const state = extras?.env ?? null;
   const self = appId ? (project.apps.find((a) => a.id === appId) ?? null) : null;
@@ -325,8 +309,7 @@ export function EnvWorkbench({
   const [applying, setApplying] = useState(false);
   /** The changes the last Discard dropped, so the bar in the page can bring them back. */
   const [discarded, setDiscarded] = useState<Staged | null>(null);
-  /** The toast that offers the same Undo. Once those changes are no longer the discarded ones (a new
-      edit, a restore, a dismiss), it goes too, so its Undo can never overwrite newer work. */
+  /** The toast that offers the same Undo. It goes once those changes are no longer the discarded ones, so its Undo never overwrites newer work. */
   const discardToast = useRef<{ id: string; before: Staged } | null>(null);
   useEffect(() => {
     const t = discardToast.current;
@@ -344,10 +327,7 @@ export function EnvWorkbench({
   /** A write the API answered "dangerous" to: the keys to confirm, and the settle of the waiting write. */
   const [hooks, setHooks] = useState<{ keys: string[]; settle: (confirmed: boolean) => void } | null>(null);
 
-  /**
-   * Runs one env write. The step-up is `send`'s (components/step-up). A hook-key refusal waits on
-   * the confirmation, so the caller sees the confirmed retry's answer and finishes as usual.
-   */
+  /** A hook-key refusal waits on the confirmation, so the caller sees the confirmed retry's answer. */
   const guarded = async <T extends { ok: boolean }>(run: (confirmDangerous: boolean) => Promise<T>, confirmDangerous = false): Promise<T | null> => {
     const r = await run(confirmDangerous);
     if (!r.ok && "code" in r && r.code === "dangerous") {
@@ -364,12 +344,9 @@ export function EnvWorkbench({
   const [unlinking, setUnlinking] = useState<{ scope: Scope; row: EnvRow } | null>(null);
   const linkFor = useSearchParams().get("link");
 
-  // An app page always shows the app's own environment.
   const picked = environment && envNames.includes(environment) ? environment : undefined;
   const env = self ? self.environment : (picked ?? (envNames.includes(chosenEnv) ? chosenEnv : (envNames[0] ?? "production")));
-  // The page's own switcher already says which environment this is.
   const ownSwitch = !self && many && !picked;
-  /** Where a line says the variables live: the environment, or just the project when it shows none. */
   const where = many ? envName(env) : "this project";
   const changes = useMemo(() => [...staged.values()], [staged]);
   const reach = useMemo(() => (state ? affectedApps(changes, state, project.apps) : []), [changes, state, project.apps]);
@@ -496,10 +473,7 @@ export function EnvWorkbench({
     return n;
   };
 
-  /**
-   * The stored value of a secret, or what a link resolves to, through the audited reveal. It needs
-   * no fresh code; the API logs and rate limits each call. Cached; null when it could not be read.
-   */
+  /** Needs no fresh code; the API logs and rate limits each call. Cached; null when it could not be read. */
   const fetchValue = async (scope: Scope, row: EnvRow, purpose: "view" | "copy"): Promise<string | null> => {
     const id = changeId(scope, row.key);
     const hit = cache.get(id);
@@ -523,7 +497,7 @@ export function EnvWorkbench({
     if ((await fetchValue(scope, row, "view")) !== null) setShown((s) => flip(s, id, true));
   };
 
-  /** Copies without unmasking: the row's own value, else one fetched through the reveal. Rejects so the key reads "Copy failed". */
+  /** Copies without unmasking. Rejects so the key reads "Copy failed". */
   const onCopy = async (scope: Scope, row: EnvRow): Promise<string> => {
     if (row.value !== null && !row.ref) return row.value;
     const value = await fetchValue(scope, row, "copy");
@@ -531,7 +505,7 @@ export function EnvWorkbench({
     return value;
   };
 
-  /** Stages the links the dialog picked. A key already set in the scope is replaced by its link. */
+  /** A key already set in the scope is replaced by its link. */
   const onLink = (scope: Scope, picks: LinkPick[]) => {
     setStaged((s) => {
       let out = new Map(s);
@@ -561,7 +535,6 @@ export function EnvWorkbench({
     toast.success("Variable unlinked", { description: `${row.key} in ${scopeName(scope, project.apps, many)} now holds its own value. Review to apply.` });
   };
 
-  /** Puts discarded changes back, from the bar in the page or from the toast. */
   const restore = (before: Staged) => {
     setStaged(before);
     setDiscarded(null);
@@ -725,7 +698,6 @@ export function EnvWorkbench({
   const sharedShown = matching(sharedRows, q);
   const takenIn = (rows: EnvRow[]) => rows.filter((r) => r.state !== "removed").map((r) => r.key);
 
-  // Overrides: one table, ordered by app name, then key.
   const byName = (a: AppSummary, b: AppSummary) => appTitle(a).localeCompare(appTitle(b));
   const overrides = [...overrideApps]
     .sort(byName)
@@ -745,7 +717,7 @@ export function EnvWorkbench({
     setAddingFor(id);
     startAdd({ environment: env, appId: id });
   };
-  // The head keys, always in the card head. On the project tab each opens the menu of apps first.
+  // On the project tab each head key opens the menu of apps first.
   const appItems = (run: (id: string) => void): RowMenuItem[] =>
     [...envApps].sort(byName).map((a) => ({ label: appTitle(a), glyph: <AppIcon id={a.id} kind={a.kind} />, onSelect: () => run(a.id) }));
   const overrideActs =

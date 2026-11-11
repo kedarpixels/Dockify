@@ -10,11 +10,7 @@ import { CooldownNotice, Notice, SubmitButton, useCooldown } from "./fields";
 import { OtpInput, type OtpHandle } from "./otp-input";
 import { localDestination, settle, withNext } from "./util";
 
-/**
- * /login/verify: the second factor after a correct password. Six boxes for the authenticator code,
- * sent as soon as the sixth digit lands. A lost authenticator is reset by whoever runs the server;
- * Reset two-factor shows the command (/recover).
- */
+/** The code is sent as soon as the sixth digit lands. */
 export function VerifyView({ next }: { next: string }) {
   const router = useRouter();
   const [code, setCode] = useState("");

@@ -1,5 +1,3 @@
-/* SEO constants: the site title, description and origin. */
-
 /** Public origin of the site. Set SITE_URL at build time; the domain is dockify.sh. */
 export const SITE_URL = (process.env.SITE_URL ?? "https://dockify.sh").replace(/\/+$/, "");
 
@@ -12,10 +10,7 @@ export const SITE_DESCRIPTION =
   "Deploy from GitHub, add domains, run databases and keep encrypted, tested backups on your own VPS. Health-checked deploys that roll back on their own.";
 export const SITE_TAGLINE = "Open-source control plane for one server.";
 
-/**
- * SITE_NOINDEX=1 at build time keeps a staging or pre-launch deploy out of search engines:
- * robots.txt disallows everything and every page carries noindex. The brief says the site must not
- * go live until each claim passes on a real server, so set it on every deploy until then.
- */
+/** SITE_NOINDEX=1 at build time keeps a staging or pre-launch deploy out of search engines: robots.txt
+ *  disallows everything and every page carries noindex. */
 export const NOINDEX = process.env.SITE_NOINDEX === "1" || process.env.SITE_NOINDEX === "true";
 

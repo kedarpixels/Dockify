@@ -1,6 +1,5 @@
 /**
- * The transactional templates. Each takes plain data and returns { subject, html, text }; none of
- * them reads a clock, the network or the environment, so the same input always renders the same
+ * No template reads a clock, the network or the environment, so the same input always renders the same
  * bytes (the preview fixture and its drift test rely on that).
  */
 import { EmailInputError, maskEmail, oneLine, plural, utcTime } from "./html.ts";
@@ -31,7 +30,6 @@ const placeOf = (where: AppRef | string): AppRef | string =>
         appIcon: where.appIcon ?? null,
       };
 
-/** Where a request came from, as its own fact rows: the device and the IP address, each when known. */
 const whereRows = (device?: string | null, ip?: string | null): FactRow[] => {
   const rows: FactRow[] = [];
   if (device) rows.push(["Device", oneLine(String(device), 80)]);
@@ -65,7 +63,6 @@ export function verifyEmail(input: CodeInput, theme: Theme = "auto"): EmailMessa
   );
 }
 
-/** A code sent to confirm something the account asked for, with where the request came from. */
 export interface DeviceCodeInput extends CodeInput {
   /** "Chrome on macOS", from the user agent. */
   device?: string | null;
@@ -232,7 +229,6 @@ export function securityNotice(input: SecurityNoticeInput, theme: Theme = "auto"
 }
 
 export interface DeployFailedInput extends Brand {
-  /** The app whose deploy failed: project, environment and app, with their icons when they have one. */
   where: AppRef;
   /** One line, already redacted by the caller. */
   error: string;
@@ -244,7 +240,6 @@ export interface DeployFailedInput extends Brand {
   url: string;
 }
 
-/** A deploy the reader started failed. */
 export function deployFailed(input: DeployFailedInput, theme: Theme = "auto"): EmailMessage {
   const where = placeOf(input.where);
   const rows: FactRow[] = [["App", where]];
@@ -278,10 +273,8 @@ export interface PreviewNoticeInput extends Brand {
   title: string;
   branch: string;
   commit: string | null;
-  /** The GitHub login of the pull request's author, when known. */
   author: string | null;
   fromFork: boolean;
-  /** True when the preview runs on its own temporary database. */
   isolatedDb: boolean;
   /** What it shares with its base environment: both its secrets and network, or neither. */
   isolation: "base" | "own" | "fork";
@@ -388,7 +381,6 @@ export function alert(input: AlertInput, theme: Theme = "auto"): EmailMessage {
 }
 
 export interface TestEmailInput extends Brand {
-  /** Who pressed Send test email. */
   sentBy: string;
   /** "Dockify <alerts@example.com>". */
   from: string;
@@ -414,12 +406,10 @@ export function testEmail(input: TestEmailInput, theme: Theme = "auto"): EmailMe
   );
 }
 
-/** A security release's block from the signed release feed, as the security notice shows it. */
 export interface SecurityReleaseInfo {
   level: "critical" | "important";
   /** Plain text: what the fix closes. */
   summary: string;
-  /** The advisory, an https URL. */
   advisory?: string | null;
   cves?: readonly string[];
 }
@@ -427,7 +417,6 @@ export interface SecurityReleaseInfo {
 export interface UpdateNoticeInput extends Brand {
   /** "security": a newly seen security release, sent to every admin once. */
   event: "available" | "updated" | "failed" | "rolled_back" | "security";
-  /** The release the event is about. */
   version: string;
   /** The version that was running before; for "security", the version this server runs. */
   from: string | null;
@@ -435,7 +424,6 @@ export interface UpdateNoticeInput extends Brand {
   error: string | null;
   /** The Server page of this dashboard. */
   url: string;
-  /** For "security": the release's signed security block. */
   security?: SecurityReleaseInfo | null;
 }
 
@@ -459,11 +447,6 @@ const SEVERITY: Record<SecurityReleaseInfo["level"], { name: string; urge: strin
   important: { name: "Important", urge: "It is rated important: update this server soon." },
 };
 
-/**
- * The security variant: the red tile, the release's own summary, the advisory as a secondary link,
- * the severity, versions and CVE ids as facts, and one button to the Server page, where Update now
- * runs the usual signed update.
- */
 function securityReleaseNotice(input: UpdateNoticeInput, theme: Theme): EmailMessage {
   const s = input.security;
   if (!s || !SEVERITY[s.level]) throw new EmailInputError("A security release email needs the release's security block");
@@ -496,7 +479,6 @@ function securityReleaseNotice(input: UpdateNoticeInput, theme: Theme): EmailMes
   );
 }
 
-/** Self-update notices: available, updated, failed, rolled back, and a security release. */
 export function updateNotice(input: UpdateNoticeInput, theme: Theme = "auto"): EmailMessage {
   if (input.event === "security") return securityReleaseNotice(input, theme);
   const rows: FactRow[] = [["Version", `v${oneLine(input.version, 40)}`]];

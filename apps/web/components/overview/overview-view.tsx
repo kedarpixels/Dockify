@@ -24,7 +24,6 @@ import { dayIn } from "./today";
 /** Newest first, the order every list of deployments uses (the Deployments page included). */
 const newestFirst = (list: RecentDeployment[]) => [...list].sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
 
-/* The overview reads like the portfolio home: a pixel head, then ruled blocks between dither bands. */
 export function OverviewView({ initial }: { initial: OverviewResult }) {
   const { result, refreshing } = useOverview(initial);
   const now = useNow(1000, initial.fetchedAt);

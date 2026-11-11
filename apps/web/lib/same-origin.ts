@@ -1,14 +1,5 @@
-/*
- * The same-origin rule every write route applies before it forwards anything to the API, so another
- * site cannot ride the session cookie through this dashboard (CSRF). Pure, so it tests without Next;
- * lib/http.ts turns it into the route guard.
- *
- * Sec-Fetch-Site is set by the browser itself and survives proxies that rewrite Host, so when it is
- * there it decides: only "same-origin" passes ("same-site" is a sibling subdomain, such as an app
- * this server hosts, and is refused). A browser that sends no Sec-Fetch-Site is checked by Origin
- * against the forwarded host, then Host. A write with neither header is not a browser request from
- * this dashboard, so it is refused too.
- */
+// Sec-Fetch-Site decides when present: only "same-origin" passes, since "same-site" is a sibling
+// subdomain such as a hosted app. Otherwise Origin must match the host. Neither header: refused.
 
 const CROSS_SITE = "Cross-site request refused";
 

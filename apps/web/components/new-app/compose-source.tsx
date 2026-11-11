@@ -11,11 +11,7 @@ import { COMPOSE_EXAMPLE, type ComposeResult } from "./compose";
 import type { ComposeDraft, Errors } from "./draft";
 import type { RunKind } from "./spec";
 
-/*
- * Step 2 for a Compose import: paste the file, then review what it maps to. Each importable
- * service is a checkbox row (image apps also pick their kind), skipped services say why, and every
- * refused or dropped setting is listed, so nothing is left out silently.
- */
+/* Every refused or dropped setting is listed, so nothing is left out silently. */
 
 const RUN_KINDS: RunKind[] = ["frontend", "backend", "bot"];
 
@@ -28,7 +24,7 @@ export function ComposeSource({
 }: {
   draft: ComposeDraft;
   set: (fn: (d: ComposeDraft) => ComposeDraft) => void;
-  /** The parsed plan for the current text, or null while typing settles. */
+  /** Null while typing settles. */
   plan: ComposeResult | null;
   errors: Errors;
   showErrors: boolean;

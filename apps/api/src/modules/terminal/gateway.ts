@@ -1,20 +1,6 @@
-/**
- * The web terminal's front door: a WebSocket on the api, bridged to the worker's control-network
- * channel. The api holds no Docker access and gains none; it only moves bytes to the one process that
- * has it, and that process repeats every check that matters.
- *
- * A socket opens in two steps, so nothing secret is ever in a URL:
- *   1. The upgrade: exact path with no query, a session cookie with the policy's role, an exact Origin
- *      (the cross-site check a WebSocket does not get from the browser), no Authorization header (API
- *      tokens never open a terminal), and the switch on. This runs outside Fastify's request hook, so
- *      it repeats that hook's parts itself, by calling the same functions.
- *   2. The first message, within 5 seconds: the single-use ticket, bound to this session, app and client.
- *
- * Bytes are not logged, stored or looked at. An open session ends when the session is revoked or
- * expires, the user is disabled or loses the role, the app is removed, the switch goes off, it sits
- * with no input past the idle limit, or it reaches the total limit. Audit rows say who opened and closed
- * what, and why it closed.
- */
+// The web terminal's WebSocket, bridged to the worker's control channel. The api holds no Docker access; the worker repeats every check that matters.
+// The upgrade runs outside Fastify's request hook, so it repeats that hook's checks by calling the same functions. Nothing secret is in the URL:
+// the single-use ticket arrives as the first message. Terminal bytes are never logged or stored.
 import { request } from "node:http";
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
@@ -44,7 +30,6 @@ export class WorkerRefused extends Error {
   }
 }
 
-/** How the api opens the worker's side. Tests pass a fake or a real local server. */
 export type WorkerDial = (appId: string, size: { cols: number; rows: number }) => Promise<{ socket: Duplex; head: Buffer }>;
 
 /** The worker's refusal codes (worker terminal/session.ts). Anything else reads as the worker being unavailable. */
@@ -113,7 +98,6 @@ export interface TerminalLimits {
 
 export interface TerminalHub {
   tickets: TerminalTickets;
-  /** Open sessions, for tests and the shutdown. */
   count(): number;
   close(): void;
 }
@@ -139,10 +123,7 @@ const WHY: Record<CloseName, string> = {
   unavailable: "the worker being unavailable",
 };
 
-/**
- * Wires the terminal to the http server. `upgrade` is the only listener for upgrades on this server,
- * so any other path is refused here rather than falling through to a route.
- */
+/** `upgrade` is the only upgrade listener on this server, so any other path is refused here rather than falling through to a route. */
 export function attachTerminalGateway(server: Server, ctx: Pick<Ctx, "db" | "web" | "limits">, resolveClient: ClientResolver, o: { dial: WorkerDial; tickets?: TerminalTickets; limits?: Partial<TerminalLimits>; log?: (msg: string, extra?: object) => void }): TerminalHub {
   const { db, web, limits } = ctx;
   const tickets = o.tickets ?? new TerminalTickets();
@@ -279,7 +260,6 @@ export function attachTerminalGateway(server: Server, ctx: Pick<Ctx, "db" | "web
     if (!s.ended && s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ t: "ready" }));
   };
 
-  /** The socket after the upgrade: exactly one ticket, then bytes and resizes. */
   const onConnection = (ws: WebSocket, actor: SessionActor, appId: string, ip: string, userAgent: string | null) => {
     let session: Session | null = null;
     const authTimer = setTimeout(() => ws.close(TERMINAL_CLOSE.ticketRefused, "ticketRefused"), cfg.authTimeoutMs);

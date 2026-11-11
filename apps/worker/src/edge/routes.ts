@@ -7,37 +7,11 @@ import type { EdgeMode } from "./ingress.ts";
 import { API_PATH_PREFIX, API_UPSTREAM, CLIENT_IP_MIDDLEWARE, WEB_UPSTREAM } from "./ingress.ts";
 
 /**
- * The proxy's routing table, written as files. Ported from the old worker's routes.ts.
- *
- * Traefik runs as a FILE provider and watches exactly one folder (deploy/docker-compose.yml sets
- * --providers.file.directory to it; its watcher does not see subfolders), which a RouteStore
- * holds. It routes only what this module writes there, so a tenant image's own traefik.* labels are inert.
- * Every routable app gets one file with a router (the OR of Host() over its domains) and a service.
- *
- * Load-bearing properties:
- *   - A backend is a DNS name, never a container address. Docker gives containers new
- *     addresses on a reboot, so an address in a file can land on another tenant's container. Each
- *     app container carries an alias only it holds, dk-route-<deployment id> (deploy/containers.ts),
- *     which Docker's DNS answers with the container's current address. The dk- prefix is reserved
- *     (contracts AppName), and system aliases are longer than any app name, so no tenant service on
- *     a network Traefik joins can answer for one. The name is written fully qualified (a trailing
- *     dot), so a stopped container is a plain DNS miss, never a lookup under the host's search
- *     domains. An address is still accepted: the deploy swap pins a route to the old container's
- *     address while it replaces a container made before route aliases existed.
- *   - Writes are atomic: the store stages a file outside the watched folder and renames it in, so
- *     Traefik never reads half a file (packages/engine/src/route-store.ts).
- *   - No empty map, empty list or null anywhere in a file: Traefik refuses a file holding one and
- *     then drops every file-provider route with it ("routers cannot be a standalone element").
- *     Empty sections are left out, and the serializer refuses a document that has one.
- *   - Rendering is byte-stable, and an unchanged file is never rewritten, so Traefik does not
- *     reload for nothing.
- *   - A host belongs to one app. Publishing a host strips it from any other app's file first.
- *   - The dashboard host is reserved: refused here even if a row somehow names it.
- *
- * Files carry .yml because Traefik's file provider reads YAML or TOML. JSON is valid YAML.
+ * Traefik's file provider watches one folder and routes only what is written here, so a tenant image's
+ * traefik.* labels are inert. A backend is a container DNS name, never an address: Docker reassigns
+ * addresses on reboot. No empty map, list or null in a file: Traefik then drops every file route.
  */
 
-/** Router, service and file key for an app id, limited to what a Traefik key allows. */
 export function ridFor(id: string): string {
   return id.replace(/[^a-zA-Z0-9_.-]/g, "-");
 }
@@ -46,9 +20,7 @@ export function ridFor(id: string): string {
 export const DASHBOARD_FILE = "__dashboard.yml";
 export const EDGE_FILE = "__edge.yml";
 export const isSystemRouteFile = (name: string): boolean => name.startsWith("__");
-/** The dashboard domain being set up: its check path, and in direct mode what asks for its certificate. */
 export const DASHBOARD_NEXT_FILE = "__dashboard-next.yml";
-/** The addresses the dashboard left: they keep answering and send everyone to the current one. */
 export const DASHBOARD_OLD_FILE = "__dashboard-old.yml";
 
 /** The dashboard router outranks every tenant router, whatever its rule length. */
@@ -56,9 +28,8 @@ export const DASHBOARD_PRIORITY = 100_000;
 /** The api's router on the dashboard host outranks the dashboard router, so its prefix never reaches the web. */
 export const DASHBOARD_API_PRIORITY = DASHBOARD_PRIORITY + 1;
 /**
- * The ownership probe's routers (renderEdgeFile): above every tenant router, whose priority is its
- * rule's length, so no tenant app ever answers the probe for a name, and below the dashboard's, so
- * the dashboard host keeps every path.
+ * Above every tenant router (whose priority is its rule's length), so no tenant app ever answers the
+ * probe for a name; below the dashboard's, so the dashboard host keeps every path.
  */
 export const CHECK_PRIORITY = DASHBOARD_PRIORITY - 1_000;
 /** A preview's password form: above its own app, whose router's priority is its rule's length, and below the probe. */
@@ -81,7 +52,6 @@ type Middleware =
   | { replacePath: { path: string } };
 type Service = { loadBalancer: { servers: { url: string }[]; passHostHeader?: boolean } };
 
-/** Every section is optional: one with nothing in it is left out, never written as {}. */
 export interface RouteFile {
   http: {
     routers?: Record<string, Router>;
@@ -96,9 +66,8 @@ export interface RoutableApp {
   /** In the order the caller loads them (createdAt), which keeps the render byte-stable. */
   hosts: string[];
   /**
-   * Direct mode only: issue one wildcard certificate for *.<wildcard> through this DNS-01
-   * resolver instead of one HTTP-01 certificate per host (previews, so Let's Encrypt's per-domain
-   * rate limit is never spent on short-lived hosts).
+   * Direct mode only: one wildcard certificate through this DNS-01 resolver, so short-lived preview
+   * hosts never spend Let's Encrypt's per-domain rate limit.
    */
   wildcard?: { domain: string; certResolver: string };
   /**
@@ -108,11 +77,13 @@ export interface RoutableApp {
   gateId?: string;
 }
 
-/** A backend name Dockify gave a container: dk- plus lowercase letters, digits and dashes, one DNS label. */
 const BACKEND_NAME = /^dk-[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
 export const isBackendName = (name: string): boolean => BACKEND_NAME.test(name);
 
-/** The service URL for a backend: a reserved container name (fully qualified) or an address. */
+/**
+ * A name is written fully qualified (trailing dot), so a stopped container is a plain DNS miss, never
+ * a lookup under the host's search domains. An address is still accepted, for the deploy swap.
+ */
 export function backendUrl(backend: string, port: number): string {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`Route backend port is out of range: ${port}`);
   if (isBackendName(backend)) return `http://${backend}.:${port}`;
@@ -121,10 +92,7 @@ export function backendUrl(backend: string, port: number): string {
   return family === 6 ? `http://[${backend}]:${port}` : `http://${backend}:${port}`;
 }
 
-/**
- * Throws on any empty object, empty array or null inside `value`. Traefik's file provider refuses
- * a whole file for one, and with it every route it would have loaded.
- */
+/** Throws on any empty object, empty array or null: Traefik's file provider refuses the whole file for one. */
 export function assertNoEmptyValues(value: unknown, path = "$"): void {
   if (value === null || value === undefined) throw new Error(`Route file has no value at ${path}`);
   if (Array.isArray(value)) {
@@ -139,7 +107,6 @@ export function assertNoEmptyValues(value: unknown, path = "$"): void {
   }
 }
 
-/** Drops empty sections from a file read back from disk, before it is written again. */
 function compact(file: RouteFile): RouteFile {
   const http: RouteFile["http"] = {};
   for (const key of ["routers", "services", "middlewares"] as const) {
@@ -149,11 +116,6 @@ function compact(file: RouteFile): RouteFile {
   return { http };
 }
 
-/**
- * The document for one app, or null when it is not routable. Tunnel mode: one plain router on
- * "web" (TLS ends at Cloudflare). Direct mode: a websecure router with the ACME resolver, a web
- * router that redirects to https, and the shared client-IP middleware on both.
- */
 export function routeFileFor(app: RoutableApp, backend: string, mode: EdgeMode, reserved: Set<string>): RouteFile | null {
   if (app.port === null || app.hosts.length === 0) return null;
   const hosts = [...new Set(app.hosts.map((h) => assertTenantHost(h, reserved)))];
@@ -191,15 +153,9 @@ export function routeFileFor(app: RoutableApp, backend: string, mode: EdgeMode, 
 }
 
 /**
- * A preview's gate. forwardAuth asks the api about every request before the app sees it: a 2xx lets
- * the request through, with the Cookie header the api hands back (it removes the gate's own cookie, so
- * a preview's code never sees it), and anything else goes straight to the visitor. The headers are
- * written by Traefik from the real request, because a forwarded header from the client is not trusted.
- * The form's router sends one path to the api with this preview's id fixed by replacePath.
- *
- * Why not Traefik's basicAuth: it spends a bcrypt on each request with a credential, in the process
- * that fronts every tenant and the dashboard, it has no notion of failed attempts to limit, and an
- * Authorization header belongs to the app, whose own tokens would be refused at the door.
+ * forwardAuth asks the api before the app sees a request; the api removes the gate's own cookie, so a
+ * preview's code never sees it. replacePath fixes this preview's id on the form's path. Not basicAuth:
+ * a bcrypt per request in the shared proxy, no attempt limit, and it takes the app's Authorization header.
  */
 function gateParts(rid: string, gateId: string, rule: string) {
   const service = `${rid}-gate`;
@@ -216,7 +172,6 @@ function gateParts(rid: string, gateId: string, rule: string) {
     service,
     upstream: { loadBalancer: { servers: [{ url: API_UPSTREAM }], passHostHeader: true } } satisfies Service,
     rule: `(${rule}) && Path(\`${PREVIEW_GATE_PATH}\`)`,
-    /** On the app's router: the header first, so a refusal carries it too. */
     guard: [noindex, auth],
     form: [noindex, path],
     middlewares,
@@ -224,10 +179,8 @@ function gateParts(rid: string, gateId: string, rule: string) {
 }
 
 /**
- * A sleeping preview's route: its host, its certificate, and one page from the api saying it sleeps,
- * where the alternative is the proxy's bare 404. Every path becomes that one path, so a visitor
- * reaches nothing else on the api. The service has its own name, which the idle clock's counter
- * (service pv-<id>) does not read.
+ * Every path becomes the api's one asleep page, so a visitor reaches nothing else on the api. The
+ * service has its own name, which the idle clock's counter (service pv-<id>) does not read.
  */
 export function renderAsleepRouteFile(app: RoutableApp, mode: EdgeMode, reserved: Set<string>): string | null {
   const file = routeFileFor(app, "dk-asleep", mode, reserved);
@@ -255,14 +208,10 @@ export function renderRouteFile(app: RoutableApp, backend: string, mode: EdgeMod
   return file ? serialize(file) : null;
 }
 
-/** An app's route file, by name in the store. */
+/** Files carry .yml but hold JSON: Traefik's file provider reads YAML or TOML, and JSON is valid YAML. */
 export const routeFileName = (appId: string): string => `${ridFor(appId)}.yml`;
 
-/**
- * What taking `hosts` out of every OTHER tenant file changes. A file whose routers keep other hosts is
- * rewritten with only the moved host taken out; a file left with no host at all is removed. A file
- * that is not our JSON is left alone, since it cannot be edited safely.
- */
+/** A file that is not our JSON is left alone, since it cannot be edited safely. */
 async function dedupHosts(routes: RouteStore, ownFile: string, hosts: string[]): Promise<Required<RouteChange>> {
   const change: Required<RouteChange> = { writes: {}, removes: [] };
   const rules = new Set(hosts.map(hostRule));
@@ -296,9 +245,8 @@ async function dedupHosts(routes: RouteStore, ownFile: string, hosts: string[]):
 export type WriteResult = "written" | "unchanged" | "removed";
 
 /**
- * Publishes (or refreshes) one app's route to `backend`. Not routable means the file is removed. The
- * hosts come out of any other app's file in the same change, and that file's rewrite lands first:
- * a short 404 for a moved host is fine, serving it from the wrong app is not.
+ * The hosts come out of any other app's file in the same change, and that rewrite lands first: a short
+ * 404 for a moved host is fine, serving it from the wrong app is not.
  */
 export async function writeRoute(routes: RouteStore, app: RoutableApp, backend: string, mode: EdgeMode, reserved: Set<string>): Promise<WriteResult> {
   const content = renderRouteFile(app, backend, mode, reserved);
@@ -313,19 +261,16 @@ export async function writeRoute(routes: RouteStore, app: RoutableApp, backend: 
   return "written";
 }
 
-/** Puts a sleeping preview's page on its hosts; removes the route when there is nothing to route. */
 export async function writeAsleepRoute(routes: RouteStore, app: RoutableApp, mode: EdgeMode, reserved: Set<string>): Promise<void> {
   const content = renderAsleepRouteFile(app, mode, reserved);
   if (content === null) return removeRoute(routes, app.id);
   await routes.apply({ writes: { [routeFileName(app.id)]: content } });
 }
 
-/** Idempotent. */
 export async function removeRoute(routes: RouteStore, appId: string): Promise<void> {
   await routes.apply({ removes: [routeFileName(appId)] });
 }
 
-/** What an app's current file routes: its hosts and the backend name or address, or null without one. */
 export async function readRoute(routes: RouteStore, appId: string): Promise<{ hosts: string[]; backend: string | null } | null> {
   const raw = await routes.read(routeFileName(appId));
   if (raw === null) return null;
@@ -343,11 +288,6 @@ export async function readRoute(routes: RouteStore, appId: string): Promise<{ ho
   }
 }
 
-/**
- * Moves one file's backend from an address to a container name, keeping every other byte: for a
- * preview route an older version wrote with the preview container's address. False when the file
- * is gone or does not name that address.
- */
 export async function rekeyRoute(routes: RouteStore, routeId: string, from: string, to: string): Promise<boolean> {
   if (!isBackendName(to) || !isIP(from)) throw new Error(`Cannot re-key a route from ${from} to ${to}`);
   const name = routeFileName(routeId);
@@ -362,9 +302,8 @@ export async function rekeyRoute(routes: RouteStore, routeId: string, from: stri
 }
 
 /**
- * Removes every tenant file whose app is not in `keep`. System files are never touched. Applied even
- * with nothing to remove: that is also when the store clears what a crash left in its staging.
- * Returns the removed names.
+ * System files are never touched. Applied even with nothing to remove: that is also when the store
+ * clears what a crash left in its staging.
  */
 export async function sweepRoutes(routes: RouteStore, keep: Iterable<string>): Promise<string[]> {
   const wanted = new Set([...keep].map(routeFileName));
@@ -373,21 +312,10 @@ export async function sweepRoutes(routes: RouteStore, keep: Iterable<string>): P
   return removed;
 }
 
-// ------------------------------------------------------------------ system files
-
 /**
- * The dashboard routes, direct mode only. In tunnel mode cloudflared splits the dashboard host
- * itself (installer/install.sh, render_tunnel_ingress) and Traefik never sees it. The worker is the
- * one owner of these routers: it writes them at every boot from DOCKIFY_PUBLIC_URL, so a changed
- * address follows on the next worker start, and the installer writes no dashboard file.
- *
- * Two routers on the dashboard host: API_PATH_PREFIX goes to the api (API tokens, GitHub's
- * webhook, GitHub's install and App return URLs), at a higher priority, and everything else goes
- * to the web. Both backends are the fixed compose addresses (see EDGE_ADDRESSES), so no tenant
- * network alias can stand in for them. The client-IP middleware strips every client-settable
- * identity header first; Traefik itself sets X-Forwarded-For from the TCP peer, which the api
- * trusts from Traefik's fixed address only. The api's internal routes are not under the prefix and
- * never become reachable from here.
+ * Direct mode only; in tunnel mode cloudflared splits the dashboard host and Traefik never sees it.
+ * API_PATH_PREFIX goes to the api at a higher priority, the rest to the web, both by fixed compose
+ * address so no tenant network alias can stand in. The api's internal routes are not under the prefix.
  */
 export function renderDashboardRoute(host: string, certResolver: string, upstreams: { web: string; api: string } = { web: WEB_UPSTREAM, api: API_UPSTREAM }): string {
   const h = normalizeHost(host);
@@ -431,20 +359,9 @@ export function renderDashboardRoute(host: string, certResolver: string, upstrea
 }
 
 /**
- * Direct mode's shared pieces: the client-IP middleware every direct-mode router uses, and the
- * ownership probe's routers.
- *
- * The middleware: Traefik removes a request header whose custom value is empty. X-Forwarded-For is
- * not listed: the entry point trusts no forwarded header (Traefik's default, which the compose file
- * keeps), so Traefik already replaces it with the TCP peer.
- *
- * The probe: exactly DOMAIN_CHECK_PREFIX, on every host and both entry points, goes to the api
- * (modules/domains/check-route.ts), which answers only a domain's own token. No Host rule, so a
- * domain that is not routed yet can answer it; CHECK_PRIORITY puts it above every tenant router and
- * below the dashboard's. Neither router names a certificate resolver, so the probe never asks Let's
- * Encrypt for anything: on websecure it is served with whatever certificate Traefik has for the
- * name, the default one before the domain passes (the compose file turns TLS on for every router on
- * websecure). On web, the compose file's entry point redirect sends it to https first.
+ * Traefik removes a request header whose custom value is empty; X-Forwarded-For is not listed because
+ * the entry point already replaces it with the TCP peer. The probe routers have no Host rule (an
+ * unrouted domain can answer) and no certificate resolver (the probe never asks Let's Encrypt).
  */
 export function renderEdgeFile(): string {
   const rule = `PathPrefix(\`${DOMAIN_CHECK_PREFIX}\`)`;
@@ -476,12 +393,9 @@ export function renderEdgeFile(): string {
 }
 
 /**
- * The dashboard domain being set up, before anything else is served on it: only the ownership probe's
- * path, to the api. In tunnel mode Traefik has no catch-all for that path, so this is what lets the
- * probe through; cloudflared sends the name here because it has no rule of its own yet. In direct
- * mode the catch-all answers the probe already, and this router exists for its certificate: a router
- * that names a resolver is what makes Traefik ask Let's Encrypt, so it is written only once the name
- * leads here. Everything else on the name finds no router, so nobody signs in on it before the switch.
+ * Serves only the ownership probe's path on the new name, so nobody signs in on it before the switch.
+ * Tunnel mode: this is what lets the probe through. Direct mode: it exists for the certificate, since
+ * a router that names a resolver is what makes Traefik ask Let's Encrypt.
  */
 export function renderDashboardNext(host: string, mode: EdgeMode): string {
   const h = normalizeHost(host);
@@ -499,13 +413,8 @@ export function renderDashboardNext(host: string, mode: EdgeMode): string {
 }
 
 /**
- * The addresses the dashboard left. Everything redirects to the current address, path and query kept,
- * with a temporary redirect so a browser never holds on to it if the owner switches back. The api's
- * prefix is served, not redirected: GitHub does not follow a redirect for a webhook delivery, and a
- * connected App keeps its old URLs until the owner changes them on GitHub. Null with no address left.
- *
- * In tunnel mode cloudflared keeps sending the old host's api path to the api itself and hands the
- * rest to this router (edge/cloudflare.ts syncDashboardTunnel).
+ * A temporary redirect, so a browser never holds on to it if the owner switches back. The api's prefix
+ * is served, not redirected: GitHub does not follow a redirect for a webhook delivery.
  */
 export function renderDashboardOld(previous: readonly string[], current: string, mode: EdgeMode): string | null {
   const to = normalizeHost(current);
@@ -536,14 +445,13 @@ export function renderDashboardOld(previous: readonly string[], current: string,
   });
 }
 
-/** The files in `want` that differ from what the store holds, in that order: an unchanged file is never rewritten. */
+/** An unchanged file is never rewritten, so Traefik does not reload for nothing. */
 async function changedFiles(routes: RouteStore, want: Record<string, string>): Promise<Record<string, string>> {
   const writes: Record<string, string> = {};
   for (const [name, content] of Object.entries(want)) if ((await routes.read(name)) !== content) writes[name] = content;
   return writes;
 }
 
-/** The two files above, from what the database says. A file with nothing to say is removed. */
 export async function writeDashboardFiles(routes: RouteStore, mode: EdgeMode, o: { current: string; next: string | null; previous: readonly string[] }): Promise<void> {
   const next = o.next ? renderDashboardNext(o.next, mode) : null;
   const old = renderDashboardOld(o.previous, o.current, mode);
@@ -554,10 +462,8 @@ export async function writeDashboardFiles(routes: RouteStore, mode: EdgeMode, o:
 }
 
 /**
- * Brings the system files in line with the ingress mode: written in direct mode, removed in tunnel
- * mode so a box switched away from direct TLS keeps no inert websecure router. Applied in either
- * case, so the watched folder exists for Traefik to watch. Runs at boot, before the first route
- * resync, and again on every reconcile.
+ * Removed in tunnel mode, so a box switched away from direct TLS keeps no inert websecure router.
+ * Applied in either case, so the watched folder exists for Traefik to watch.
  */
 export async function ensureSystemRoutes(routes: RouteStore, mode: EdgeMode, dashboardHost: string): Promise<void> {
   if (mode.ingress === "cloudflare_tunnel") {

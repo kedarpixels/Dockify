@@ -1,44 +1,37 @@
-/* ============== Tokens ============== */
+/* Tokens */
 
 :root {
   color-scheme: light;
 
-  /* Portfolio palette */
   --background: #ffffff;
   --foreground: #0a0a0a;
   --muted: #f4f4f4;
-  /* Muted text. 5.33:1 on the page and 4.72:1 on --mass, so small grey text passes on every grey
-     surface it sits on (hovered rows, fields, callouts, the log box). */
+  /* 5.33:1 on the page and 4.72:1 on --mass, so small grey text passes on every grey surface. */
   --muted-foreground: #6b6b6b;
   --popover: #ffffff;
   --border: #e8e8e8;
   --mass: #f1f1f1;
-  /* Field surfaces (inputs, selects, search). Dark dialogs re-point it below so a field never matches its surface. */
+  /* Dark dialogs re-point it so a field never matches its surface. */
   --field: var(--mass);
-  /* The right-hand column of split rows and of the deploy heatmap's stats, so both edges line up. */
+  /* Shared by split rows and the deploy heatmap's stats, so both right edges line up. */
   --side-col: 340px;
-  /* A hovered or selected row inside a popover or dialog. In dark, --mass is the popover's own
-     surface, so .dark lifts it to a white veil instead. */
+  /* Hovered or selected row in a popover. In dark, --mass is the popover's own surface, so .dark lifts it to a white veil. */
   --fill-popover: var(--mass);
-  /* A hovered row on the page itself. In dark it is a faint white veil, one step under --fill-popover. */
   --hover: var(--mass);
   --node: #d4d4d4;
   --cloud-core: #ececec;
 
-  /* Type */
   --font-sans: var(--font-geist), system-ui, sans-serif;
   --font-mono: var(--font-geist), system-ui, sans-serif;
   --font-pixel: var(--font-geist-pixel-square), var(--font-geist), system-ui, sans-serif;
 
-  /* Our names */
   --bg: var(--background);
   --panel: var(--background);
   --panel-2: #fafafa;
   --line: var(--border);
   --line-strong: #d4d4d4;
-  /* The edge of a control whose edge is the control: checkbox, radio, an off switch. 3.23:1 on the
-     page (3.72:1 in dark), the 3:1 a boundary needs to be seen. Fields, searches, selects and date
-     triggers keep the normal light hairline instead: --field-line is the frame's --line, --field-line-hover one step stronger. */
+  /* For controls whose edge is the control (checkbox, radio, off switch): 3.23:1 on the page, 3.72:1 in dark.
+     Fields keep the lighter --field-line. */
   --control-line: #8f8f8f;
   --field-line: var(--line);
   --field-line-hover: var(--line-strong);
@@ -50,39 +43,33 @@
   /* Small text on --mass or --popover; the same as --ink-3 in light, a step dimmer in dark. */
   --ink-muted: #6b6b6b;
   --active: #ebebeb;
-  /* White text and glyphs on the solid blue and red keys and counts, in both themes. */
   --on-solid: #ffffff;
-  /* The brand blue of the logo and the Dockify avatar (not a UI accent). */
+  /* The logo's blue, not a UI accent. */
   --brand: #2396ed;
 
-  /* Accent: primary, focus, live building and deploying */
   --blue: #0070f3;
   --blue-hover: #0060d1;
   --blue-ring: rgb(0 112 243 / 0.35);
-  /* Solid fills under white text: 4.55:1 with #fff in both themes. Keys with text on them step
-     darker on hover and press in both themes, so the text never drops under 4.5:1; controls with no
-     text (the switch, a ticked checkbox) take --blue-hover. */
+  /* 4.55:1 under white text in both themes. Keys with text darken on hover so the text never drops under 4.5:1. */
   --blue-solid: #0070f3;
   --blue-solid-hover: color-mix(in srgb, var(--blue-solid) 88%, #000000);
   --blue-solid-active: color-mix(in srgb, var(--blue-solid) 80%, #000000);
-  /* Blue text on a blue tint (a picked tag, a target mark): 5.58:1 on the 12% tint. */
+  /* 5.58:1 on the 12% blue tint. */
   --blue-ink: #0058c4;
 
-  /* Status */
   --ok: #16a34a;
   --ok-ink: #14753a;
   --warn: #f59e0b;
   --warn-ink: #ab4e08;
   --bad: #e5484d;
-  /* --bad is for dots, icons and rings; text in the error tone uses --bad-ink (5.6:1 on bg). */
+  /* --bad is for dots, icons and rings; error text uses --bad-ink (5.6:1 on bg). */
   --bad-ink: #c62a2f;
   --bad-solid: #c62a2f;
   --bad-solid-hover: color-mix(in srgb, var(--bad-solid) 88%, #000000);
   --bad-solid-active: color-mix(in srgb, var(--bad-solid) 80%, #000000);
-  /* Idle and stopped dots: 3.23:1 on the page, so the dot alone still reads. */
+  /* 3.23:1 on the page, so an idle dot alone still reads. */
   --idle: #8f8f8f;
 
-  /* Charts and heatmap */
   --chart: #3b91f7;
   --heat-0: #ededed;
   --heat-1: #cfe3fc;
@@ -90,20 +77,16 @@
   --heat-3: #6dabf8;
   --heat-4: #3b91f7;
 
-  /* Key material. --key-fill fills keys, chips, kbd chips and icon tiles; --key-hover is a secondary
-     key's hover fill. Both are the page's own on the page; popover surfaces re-point them (see
-     "Materials"), since in dark the page colour inside a popover reads as a punched-out hole. */
+  /* Popover surfaces re-point these (see Materials): in dark the page colour inside a popover reads as a hole. */
   --key-fill: var(--bg);
   --key-hover: var(--mass);
   --key-hover-shadow: inset 0 1px 0 #ffffff, 0 0 0 1px rgb(0 0 0 / 0.14), 0 1px 2px rgb(0 0 0 / 0.08);
   --key-picked-shadow: inset 0 1px 0 #ffffff, 0 0 0 1px rgb(0 0 0 / 0.6), 0 1px 2px rgb(0 0 0 / 0.1);
-  /* The segmented control's thumb and the theme switch's knob: flat fills, a ring and a soft shadow. */
   --seg-thumb: var(--bg);
   --seg-thumb-shadow: 0 0 0 1px var(--line-strong), 0 1px 2px rgb(0 0 0 / 0.06);
   --knob: #ffffff;
   --knob-shadow: 0 0 0 1px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.12);
 
-  /* Menu material (dropdown lists, row menus, the date picker): the line-strong ring and one soft shadow. */
   --shadow-menu: 0 0 0 1px var(--line-strong), 0 8px 24px -12px rgb(0 0 0 / 0.18);
   --shadow-dialog: 0 0 0 1px var(--line-strong), 0 24px 48px -16px rgb(0 0 0 / 0.18), 0 4px 12px -4px rgb(0 0 0 / 0.06);
   --shadow-toast: 0 0 0 1px var(--line-strong), 0 12px 32px -16px rgb(0 0 0 / 0.22);
@@ -111,31 +94,25 @@
 
   --rail: 1200px;
   --gutter: 32px;
-  /* The sticky top bar, and the sidebar's brand cell beside it. */
   --top-h: 56px;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-key: cubic-bezier(0.65, 0, 0.35, 1);
-  /* Sheets and toasts: a quick start that settles softly. */
   --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
-  /* The field focus ring and its invalid twin: a 1px ring and a soft 3px halo. */
   --ring-focus: inset 0 0 0 1px var(--blue), 0 0 0 3px color-mix(in srgb, var(--blue) 20%, transparent);
   --ring-focus-bad: inset 0 0 0 1px var(--bad), 0 0 0 3px color-mix(in srgb, var(--bad) 20%, transparent);
-  /* Anything that cannot be used right now. */
   --disabled-opacity: 0.45;
 
   /* Stacking, one scale. Every z-index in the app takes one of these.
-     Inside main.page, which is a layer of its own (so nothing in it climbs over the top bar):
-       raise 1     page blocks over the bands; a link or chip over a row's stretched link
-       line 2      a rule or band nested inside a block, over its content
-       node 3      nodes inside a block, a hovered metric cell
-       hover 5     a hovered card in a split column, sticky bars inside the page
-       lift 30     a page block holding an open tooltip or dropdown, over its neighbours
-       rail 31     rule and band nodes and the band's rail segments, over a lifted block too
-       dropdown 50 an open in-page dropdown;  tip 60 tooltip bubbles;  popover 70 a shell popover
-     On the root, in the order they stack:
-       top 10 (the sticky bar), side 40 (the sidebar while a tip or menu of it is open),
-       top-open 60 (the bar with its notifications open), command 90, dialog 100,
-       picker 110 (a Select list or date picker over a dialog), toast 120, session 200. */
+     Inside main.page (its own layer, so nothing in it climbs over the top bar):
+     raise 1     page blocks over the bands; a link or chip over a row's stretched link
+     line 2      a rule or band nested inside a block, over its content
+     node 3      nodes inside a block, a hovered metric cell
+     hover 5     a hovered card in a split column, sticky bars inside the page
+     lift 30     a page block holding an open tooltip or dropdown, over its neighbours
+     rail 31     rule and band nodes and the band's rail segments, over a lifted block too
+     dropdown 50 an open in-page dropdown;  tip 60 tooltip bubbles;  popover 70 a shell popover
+     On the root, in stacking order: top 10, side 40, top-open 60, command 90, dialog 100,
+     picker 110 (a Select list or date picker over a dialog), toast 120, session 200. */
   --z-raise: 1;
   --z-line: 2;
   --z-node: 3;
@@ -154,13 +131,11 @@
   --z-toast: 120;
   --z-session: 200;
 
-  /* Project folder tile */
   --folder-back-top: #3d86f0;
   --folder-back-bottom: #1f5fd0;
   --folder-front-top: #8cc2ff;
   --folder-front-bottom: #4a95f5;
 
-  /* The five app icons: back gradient per icon; the glyph mixes white into the top */
   --tile-web-top: #3d86f0;
   --tile-web-bottom: #1f5fd0;
   --tile-api-top: #8a6cf0;
@@ -176,8 +151,7 @@
   --tile-glyph-top: 92%;
   --tile-glyph-bottom: 72%;
 
-  /* Soft tints and their rings: the fill and edge of anything toned (a callout, a toned icon tile, a
-     delta). `.dark` sits on this same element, so each resolves against the theme in use. */
+  /* `.dark` sits on this same element, so each tint resolves against the theme in use. */
   --ok-soft: color-mix(in srgb, var(--ok) 12%, var(--bg));
   --warn-soft: color-mix(in srgb, var(--warn) 12%, var(--bg));
   --bad-soft: color-mix(in srgb, var(--bad) 12%, var(--bg));
@@ -266,11 +240,10 @@
   --tile-glyph-bottom: 66%;
 }
 
-/* ============== Base ============== */
+/* Base */
 
 /* overflow-x: clip keeps hidden tooltips at the right edge from widening the page; the stable
-   gutter stops the page shifting sideways when a scroll lock hides the scrollbar. Under the
-   sticky top bar, shell.css adds the scroll padding that keeps a focused control clear of it. */
+   gutter stops a sideways shift when a scroll lock hides the scrollbar. */
 
 html {
   margin: 0;
@@ -297,8 +270,6 @@ body {
   font-feature-settings: normal;
   font-variant-numeric: tabular-nums;
 }
-
-/* Emphasis is medium weight everywhere, never the browser's bold. */
 
 b,
 strong {
@@ -332,18 +303,11 @@ strong {
   background: transparent;
 }
 
-/* ============== Layout: the ruled frame ============== */
+/* Layout: the ruled frame */
 
-/* The column runs between two rails the full page height; rules and dither bands run full bleed
-   and cross the rails at 5px nodes.
-
-   Every rail and node lands on a whole pixel at any width. A column wider than --rail centres the
-   rail, the odd pixel going right; a narrower one (a laptop with the sidebar open) starts the rail
-   on the column's left edge and holds the right rail 4px inside the clip edge, so its nodes keep
-   all 5px. Blocks, rule nodes and band nodes share the same two numbers, M the left offset and B
-   the rail's outer width:
-     M = round(down, max(0px, (100% - var(--rail)) / 2), 1px)
-     B = min(var(--rail), 100% - 4px)
+/* Rails and nodes land on whole pixels at any width. Blocks, rule nodes and band nodes share
+   M = round(down, max(0px, (100% - var(--rail)) / 2), 1px) and B = min(var(--rail), 100% - 4px);
+   a narrow column holds the right rail 4px inside the clip edge so its nodes keep all 5px.
    Each round() declaration follows a plain one, which a browser without round() keeps. */
 
 main.page {
@@ -361,16 +325,11 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   z-index: var(--z-lift);
 }
 
-/* Panels: flat ruled blocks, no radius, no shadow. Titled heads start 20px from their rule. */
-
 .card {
   position: relative;
   min-width: 0;
   background: var(--panel);
 }
-
-/* A card nested in a split column lifts over its neighbours while in use. (A card that is itself a
-   block of main.page lifts with the block rule above, which outweighs these.) */
 
 .card:hover,
 .card:focus-within {
@@ -394,9 +353,6 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   min-height: 0;
   padding: 18px var(--gutter);
 }
-
-/* On a phone a head's button drops under the title, lined up with the text, rather than wrapping
-   the title to two lines and cutting its sub short. */
 
 @media (max-width: 520px) {
   .card-hd:has(.ctitle) {
@@ -424,7 +380,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   color: var(--ink-3);
 }
 
-/* A footer that is itself the link runs edge to edge, where an outside ring would be clipped. */
+/* An outside ring would be clipped on an edge-to-edge footer link. */
 
 .card-foot:is(a, button):focus-visible {
   outline-offset: -2px;
@@ -499,9 +455,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   border-top: 1px solid var(--line);
 }
 
-/* -------------- Materials -------------- */
-
-/* Flat: the key fill and a hairline ring. Picked is a soft blue tint, never a dark outline. */
+/* Materials */
 
 .surface-key {
   background-color: var(--key-fill);
@@ -516,16 +470,13 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   color: var(--ink);
 }
 
-/* Popover material (dialogs, menus, the date picker, toasts and the shell popovers). Keys, chips,
-   kbd chips and tiles inside take the popover's fill and hover with its veil: in dark the page
-   colour would read as a punched-out hole and --mass is the popover itself. Fields inside a dark
-   popover take the page colour, so a field never matches its surface. */
+/* Popover material. In dark the page colour reads as a punched-out hole and --mass is the popover
+   itself, so keys and chips take the popover's fill and fields take the page colour. */
 
 :is(.dlg, .dtp-pop, .sel-list, .toast, .cmd, .acct-pop, .ntf-panel, .px-menu-pop) {
   --key-fill: var(--popover);
   --key-hover: var(--fill-popover);
-  /* Status tints mix into the popover, not the page, so a toned tile or callout sits level with
-     its surface (in light the two are the same white; in dark the page tint read a step darker). */
+  /* Status tints mix into the popover, not the page, so a toned tile sits level with its surface. */
   --ok-soft: color-mix(in srgb, var(--ok) 12%, var(--popover));
   --warn-soft: color-mix(in srgb, var(--warn) 12%, var(--popover));
   --bad-soft: color-mix(in srgb, var(--bad) 12%, var(--popover));
@@ -536,9 +487,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   --field: var(--bg);
 }
 
-/* -------------- Soft rows -------------- */
-
-/* 10px radius, transparent until hover, no rules between. */
+/* Soft rows */
 
 .soft-list {
   display: grid;
@@ -565,19 +514,14 @@ button.soft-row:hover,
   background: var(--hover);
 }
 
-/* A toned tile (a failed event, a setting that is on) keeps its tone under the pointer. */
-
 .soft-row:hover .icon-tile:not([data-tone]),
 .tile-host:hover .icon-tile:not([data-tone]) {
   color: var(--ink);
 }
 
-/* -------------- Column rule -------------- */
+/* Column rule */
 
-/* Every repeating row is the same grid: fixed columns, and one flexible column that takes the spare
-   room, so columns line up down the page and an empty value keeps its cell. A row's own rule names
-   only its `--cols`, from these shared widths, and changes them at its breakpoints; a phone gets
-   its own stacked `--cols`. Cells never push a neighbour: they cut or wrap inside their column. */
+/* Every repeating row uses these shared column widths, so columns line up down the page. */
 
 :root {
   --col-gap: 12px;
@@ -600,11 +544,9 @@ button.soft-row:hover,
   min-width: 0;
 }
 
-/* -------------- Icon tile -------------- */
+/* Icon tile */
 
-/* A tone colours the glyph (an activity row that failed, a setting that is on). `data-soft` also
-   tints the tile, the look of toast and notification icons: the soft fill, its ring, the glyph in
-   the tone. Live and info share the accent blue. */
+/* `data-soft` also tints the tile. Live and info share the accent blue. */
 
 .icon-tile[data-tone="ok"] { color: var(--ok); }
 
@@ -622,9 +564,9 @@ button.soft-row:hover,
 
 .icon-tile[data-soft]:is([data-tone="info"], [data-tone="live"]) { background-color: var(--blue-soft); box-shadow: inset 0 0 0 1px var(--blue-ring-soft); }
 
-/* -------------- Chip -------------- */
+/* Chip */
 
-/* Its fill and ring come from .surface-key or .surface-key-picked, which chip.tsx always adds. */
+/* The fill and ring come from .surface-key, which chip.tsx always adds. */
 
 .chip {
   display: inline-flex;
@@ -659,15 +601,11 @@ button.soft-row:hover,
   padding: 0 9px;
 }
 
-/* A chip led by an app or project icon keeps the same inset on every side. */
-
 .chip[data-size="sm"]:has(> .chip-ic > .aicon) {
   padding-left: 4px;
 }
 
-/* Uptime: live and green, a soft pulse then the clock. --ok-ink on a 9% tint (lighter than the
-   12% --ok-soft of the status tiles) keeps the digits above 4.5:1 in both themes, the unit letters
-   too, at full strength. */
+/* --ok-ink on a 9% tint keeps the digits above 4.5:1 in both themes. */
 
 .chip.uptime-chip {
   flex: none;
@@ -688,8 +626,6 @@ button.soft-row:hover,
   animation: pulse 2s ease-out infinite;
 }
 
-/* Steady digits, quiet unit letters. */
-
 .uptime-chip .up-clock {
   display: inline-flex;
   gap: 4px;
@@ -704,8 +640,6 @@ button.soft-row:hover,
   margin-left: 1px;
   font-size: 12px;
 }
-
-/* The tag inside a row title: "You", "This device", a token scope. */
 
 .chip[data-size="xs"] {
   gap: 5px;
@@ -750,7 +684,7 @@ button.chip[data-picked]:hover {
   box-shadow: var(--key-picked-shadow);
 }
 
-/* -------------- Environment tag -------------- */
+/* Environment tag */
 
 .env-tag {
   justify-self: start;
@@ -777,7 +711,7 @@ button.chip[data-picked]:hover {
   color: var(--ink-3);
 }
 
-/* -------------- Commit hash chip -------------- */
+/* Commit hash chip */
 
 .hash-chip {
   position: relative;
@@ -811,10 +745,7 @@ button.chip[data-picked]:hover {
   color: var(--ink-muted);
 }
 
-/* -------------- Git links -------------- */
-
-/* Branch and repository links out to GitHub. They keep the text they replace, rise above a row's
-   stretched link, and take ink plus an underline on hover. */
+/* Git links */
 
 .git-ref {
   position: relative;
@@ -840,9 +771,7 @@ button.chip[data-picked]:hover {
   min-width: 0;
 }
 
-/* -------------- Chart tooltip -------------- */
-
-/* Inverted ink card with a caret toward the point. */
+/* Chart tooltip */
 
 .ctip {
   position: absolute;
@@ -909,7 +838,7 @@ button.chip[data-picked]:hover {
   color: var(--bg);
 }
 
-/* -------------- Hover tooltip -------------- */
+/* Hover tooltip */
 
 [data-tip]::after {
   content: attr(data-tip);
@@ -930,12 +859,10 @@ button.chip[data-picked]:hover {
   line-height: 16px;
   font-weight: 400;
   white-space: nowrap;
-  /* tip-guard.tsx slides a bubble that would leave the column or viewport by --tip-dx; the tail stays put. */
+  /* tip-guard.tsx sets --tip-dx to slide a bubble that would leave the viewport; the tail stays put. */
   margin-left: var(--tip-dx, 0px);
   margin-right: calc(var(--tip-dx, 0px) * -1);
 }
-
-/* The tail: a 10px square with 2px corners turned 45 degrees, centred 2px inside the bubble edge. */
 
 [data-tip]::before {
   content: "";
@@ -983,16 +910,13 @@ button.chip[data-picked]:hover {
   translate: 0 2px;
 }
 
-/* End-aligned tips keep the tail 12px in from the right edge, under the bubble. */
-
 [data-tip][data-tip-align="end"]::before {
   left: auto;
   right: 12px;
   translate: 0 2px;
 }
 
-/* Esc hides the tip of the hovered or focused control until the pointer or focus leaves it
-   (tip-guard.tsx sets and clears the attribute), so a tip never has to be moved away from. */
+/* tip-guard.tsx sets this attribute on Esc and clears it when the pointer or focus leaves. */
 
 [data-tip][data-tip-hidden]::after,
 [data-tip][data-tip-hidden]::before {
@@ -1000,9 +924,7 @@ button.chip[data-picked]:hover {
   transition: none;
 }
 
-/* -------------- Button -------------- */
-
-/* A toggle key that is on (Wrap, Regex, Follow): the soft blue picked tint. */
+/* Button */
 
 .btn[aria-pressed="true"] {
   background: color-mix(in srgb, var(--blue) 8%, var(--key-fill));
@@ -1017,9 +939,7 @@ button.chip[data-picked]:hover {
   pointer-events: none;
 }
 
-/* An icon key that is off for a reason its tip gives ("Viewers cannot change this", the last
-   environment) still takes the pointer, so the reason shows on hover. It neither lights up nor
-   presses: its handler ignores presses while it is aria-disabled. */
+/* Keeps pointer events so the tip can explain why the key is off; its handler ignores presses. */
 
 .btn.btn-icon[aria-disabled="true"][data-tip] {
   pointer-events: auto;
@@ -1034,8 +954,6 @@ button.chip[data-picked]:hover {
 .btn[aria-pressed="true"] .ic {
   color: var(--blue);
 }
-
-/* Destructive confirm: the primary key in solid red. */
 
 .btn-danger {
   background: var(--bad-solid);
@@ -1059,9 +977,6 @@ button.chip[data-picked]:hover {
 :is(.btn-primary, .btn-danger).btn-icon:hover .ic {
   color: var(--on-solid);
 }
-
-/* The quiet destructive key (Delete, Remove, Revoke) that opens a confirm: still the one secondary
-   key, red text and a soft red fill on hover. Its glyph, when it is an icon key, follows the text. */
 
 .btn.btn-quiet-danger {
   color: var(--bad-ink);
@@ -1092,22 +1007,17 @@ button.chip[data-picked]:hover {
   color: var(--ink-2);
 }
 
-/* A key that moves on to the next step ("Continue") carries its arrow after the label, in any tone
-   (PendingLabel's `trailing`). Leading glyphs stay for the keys that make or change something. */
-
 .btn:not(.btn-icon) > .ic.ic-trail {
   display: block;
   margin: 0 -2px 0 0;
 }
-
-/* Popup close keys never carry a tooltip. */
 
 :is([role="dialog"], dialog, .ntf-panel) .btn-icon:is([aria-label^="Close"], [aria-label^="close"])::after,
 :is([role="dialog"], dialog, .ntf-panel) .btn-icon:is([aria-label^="Close"], [aria-label^="close"])::before {
   display: none;
 }
 
-/* -------------- Segmented control -------------- */
+/* Segmented control */
 
 .seg2-opt {
   display: inline-flex;
@@ -1133,9 +1043,6 @@ button.chip[data-picked]:hover {
   color: var(--ink);
 }
 
-/* A filter option: a tone dot for a status, the label, and a count when the list is in memory
-   (filterOptions in segmented.tsx builds all three). Counts drop on phones, on every page. */
-
 .seg2-count {
   font-size: 12px;
   color: var(--ink-muted);
@@ -1145,9 +1052,7 @@ button.chip[data-picked]:hover {
   color: var(--ink-3);
 }
 
-/* -------------- Select (custom dropdown) -------------- */
-
-/* The trigger matches the 36px fields and shares their focus look; the list is popover material. */
+/* Select (custom dropdown) */
 
 .sel {
   position: relative;
@@ -1158,8 +1063,6 @@ button.chip[data-picked]:hover {
 .sel[data-open="true"] {
   z-index: var(--z-dropdown);
 }
-
-/* The Select and date picker triggers: one field-style key. */
 
 .sel-trigger,
 .dtp-trigger {
@@ -1227,8 +1130,7 @@ button.chip[data-picked]:hover {
   rotate: 180deg;
 }
 
-/* The list holds focus for the keys; the active row shows where it is, so no ring. Menu material:
-   popover fill, 10px radius, --shadow-menu. */
+/* No focus ring: the list holds focus and the active row shows where it is. */
 
 .sel-list {
   position: absolute;
@@ -1248,8 +1150,7 @@ button.chip[data-picked]:hover {
   animation: sel-in 120ms var(--ease) both;
 }
 
-/* The Select's open list is a layer of its own: select.tsx portals it to the body and sets its
-   place, width and height against the viewport. Over dialogs, under toasts (--z-picker). */
+/* select.tsx portals the open list to the body and positions it against the viewport. */
 
 .sel-float {
   position: fixed;
@@ -1263,8 +1164,6 @@ button.chip[data-picked]:hover {
 .sel-list[data-side="top"] {
   animation-name: sel-in-up;
 }
-
-/* A list in the page flow (the logs app picker) opens above its trigger by itself. */
 
 .sel-list:not(.sel-float)[data-side="top"] {
   top: auto;
@@ -1329,7 +1228,7 @@ button.chip[data-picked]:hover {
   cursor: default;
 }
 
-/* A fixed 16px glyph slot, so rows with and without a glyph line up. */
+/* A fixed slot, so rows with and without a glyph line up. */
 
 .sel-lead {
   display: grid;
@@ -1376,8 +1275,6 @@ button.chip[data-picked]:hover {
   width: 16px;
   color: var(--blue);
 }
-
-/* A long list with a filter field on top: the popover holds the field, the list scrolls under it. */
 
 .sel-pop {
   display: flex;
@@ -1436,13 +1333,10 @@ button.chip[data-picked]:hover {
   font-size: 14px;
 }
 
-/* -------------- Section tabs -------------- */
+/* Section tabs */
 
-/* Tabs (tabs.tsx): the Segmented track as a tab list, in a toolbar row of its own, one 36px row in
-   56px on the 4px grid. Measured on the strip itself, so a collapsed sidebar keeps the tabs longer;
-   where they do not fit the Select of the same sections takes over, so no label is ever cut off.
-   Six tabs need about 720px, ten about 900px. After the Segmented and Select sections, so the
-   hand-over wins their display. */
+/* Measured on the strip itself; where the tabs do not fit, the Select of the same sections takes over.
+   Stays after the Segmented and Select sections so the hand-over wins their display. */
 
 .tabs-wrap {
   container: tabs / inline-size;
@@ -1494,10 +1388,7 @@ button.chip[data-picked]:hover {
   }
 }
 
-/* -------------- Switch -------------- */
-
-/* 36 by 20. Off is a soft grey track inside a light --line-strong ring (owner: no dark border); on is
-   solid blue. The knob is white in both themes with a soft shadow and no ring of its own. */
+/* Switch */
 
 .switch {
   position: relative;
@@ -1528,8 +1419,6 @@ button.chip[data-picked]:hover {
   cursor: default;
 }
 
-/* Hover deepens the track a step, the way buttons fill on hover. */
-
 .switch:not(:disabled):not([aria-checked="true"]):hover {
   background: color-mix(in srgb, var(--ink) 18%, var(--bg));
 }
@@ -1554,12 +1443,9 @@ button.chip[data-picked]:hover {
   translate: 16px 0;
 }
 
-/* -------------- Checkbox and radio -------------- */
+/* Checkbox and radio */
 
-/* Every native checkbox: 16px, radius 4, a --control-line ring; ticked fills blue with a white
-   check. Plain element weight, so an area rule that places a checkbox (a 2px drop onto a first
-   line) wins by coming later. A radio opts in with .radio: the same ring, round, and a 5px blue
-   inset when chosen. */
+/* Plain element weight, so an area rule that places a checkbox wins by coming later. A radio opts in with .radio. */
 
 input[type="checkbox"],
 .radio {
@@ -1645,7 +1531,7 @@ input[type="checkbox"]:disabled,
   cursor: default;
 }
 
-/* -------------- Theme switch -------------- */
+/* Theme switch */
 
 .tswitch-tip::before {
   content: "";
@@ -1659,8 +1545,6 @@ input[type="checkbox"]:disabled,
   rotate: 45deg;
   translate: -50% 0;
 }
-
-/* The key chip inside a tip bubble (.tip-kbd): the inverted bubble's own colours, 12px. */
 
 .tswitch-tip kbd,
 .tip-kbd {
@@ -1678,11 +1562,9 @@ input[type="checkbox"]:disabled,
   line-height: 1;
 }
 
-/* -------------- Toasts -------------- */
+/* Toasts */
 
-/* Popover cards, bottom right, moved with translate from offsets toast.tsx measures. At most three;
-   tucked cards peek 10px, 5% smaller, content hidden; hover or focus fans them out 8px apart.
-   Rounded 12px like every floating layer (owner: the frame's square blocks stay on the page). */
+/* Positions come from offsets toast.tsx measures. */
 
 .toaster {
   position: fixed;
@@ -1734,17 +1616,14 @@ input[type="checkbox"]:disabled,
   scale: 1;
 }
 
-/* A new card rises from below by its own height, the mirror of a dismissed one, so it never fades
-   in over the card it pushes back. */
+/* Rises from below by its own height, so it never fades in over the card it pushes back. */
 
 .toast:not([data-mounted]) {
   translate: 0 calc(var(--y) * -1 + 100%);
   opacity: 0;
 }
 
-/* A dismissed card slides down by its own height as it fades, out of the way of the card moving
-   into its place, so the two never show their text over each other. A swipe carries on from
-   where the finger let go. */
+/* Slides down as it fades, so its text never overlaps the card moving into its place. */
 
 .toast[data-leaving="dismiss"] {
   translate: 0 calc(var(--y) * -1 + var(--swipe, 0px) + 100%);
@@ -1756,8 +1635,6 @@ input[type="checkbox"]:disabled,
     opacity 200ms ease-out;
 }
 
-/* A card sent out to make room keeps moving with the stack, one place further back, and fades. */
-
 .toast[data-leaving="overflow"] {
   opacity: 0;
   pointer-events: none;
@@ -1767,8 +1644,6 @@ input[type="checkbox"]:disabled,
   transition: opacity 200ms;
   user-select: none;
 }
-
-/* The 24px tile sits 16px in from the top and the left of a one-line card. */
 
 .toast-body {
   display: flex;
@@ -1813,9 +1688,6 @@ input[type="checkbox"]:disabled,
   align-self: center;
 }
 
-/* Close: always shown (owner), the dialog's key: 26px, a 14px cross, and the fill, ring and hover
-   of every secondary key from .btn, so it matches the action beside it. */
-
 .toast-close {
   width: 26px;
   height: 26px;
@@ -1830,8 +1702,7 @@ input[type="checkbox"]:disabled,
   color: var(--ink);
 }
 
-/* A 40px touch target around the 26px key, inside the card's 12px padding and the 12px gap. Touch
-   only: with a mouse the key's hover must start at its own edge (owner), not 8px out. */
+/* A 40px touch target. Touch only: with a mouse the hover must start at the key's own edge. */
 
 @media (pointer: coarse) {
   .toast-close::after {
@@ -1866,9 +1737,7 @@ input[type="checkbox"]:disabled,
   }
 }
 
-/* -------------- Spinner -------------- */
-
-/* The one spin: every loader glyph takes `.spin`. */
+/* Spinner */
 
 .spin {
   animation: spin 1s linear infinite;
@@ -1878,7 +1747,7 @@ input[type="checkbox"]:disabled,
   to { transform: rotate(360deg); }
 }
 
-/* -------------- Pending label -------------- */
+/* Pending label */
 
 /* A text-only button keeps its label's width while a loader sits centred over it. */
 
@@ -1897,7 +1766,7 @@ input[type="checkbox"]:disabled,
   color: inherit;
 }
 
-/* -------------- Copy -------------- */
+/* Copy */
 
 .copy-key[data-copied]::after,
 .copy-key[data-copied]::before {
@@ -1906,7 +1775,7 @@ input[type="checkbox"]:disabled,
   transition-delay: 0ms;
 }
 
-/* Labels that swap in place share one cell, so the key keeps the wider width. */
+/* Swapped labels share one grid cell, so the key keeps the wider width. */
 
 .swap {
   display: inline-grid;
@@ -1921,30 +1790,25 @@ input[type="checkbox"]:disabled,
   visibility: hidden;
 }
 
-/* -------------- Relative time -------------- */
+/* Relative time */
 
 .when {
   cursor: default;
   white-space: nowrap;
 }
 
-/* A time hugs its text, so its tip centres on the words even in a stretched cell. */
+/* Hugs its text, so the tip centres on the words even in a stretched cell. */
 
 time.when {
   width: fit-content;
   max-width: 100%;
 }
 
-/* The time-format provider's wrapper (lib/time-prefs.tsx) takes no box of its own. */
-
 .time-scope {
   display: contents;
 }
 
-/* -------------- Fields -------------- */
-
-/* One skin for every input: 36px (32px with data-size="sm"), radius 10, the mass fill inside a
-   --field-line ring, the shared blue focus, a red ring when invalid. */
+/* Fields */
 
 .fld {
   display: flex;
@@ -1957,13 +1821,11 @@ time.when {
   width: 100%;
 }
 
-/* A segmented control hugs its options; the field is a flex column, so stop it stretching full width. */
+/* The field is a flex column; stop the segmented control stretching full width. */
 
 .fld > .seg2 {
   align-self: flex-start;
 }
-
-/* On a phone a field's choices share its width, so long labels never run past the column. */
 
 @media (max-width: 480px) {
   .fld > .seg2 {
@@ -1983,8 +1845,7 @@ time.when {
   color: var(--ink-2);
 }
 
-/* A fieldset's legend wearing the label skin loses the browser's 2px side padding, so it lines up
-   with the labels above and below it. */
+/* Drops the browser's 2px legend padding so it lines up with the other labels. */
 
 legend.fld-label {
   padding: 0;
@@ -2018,8 +1879,6 @@ legend.fld-label {
   outline: 0;
   transition: box-shadow 150ms, background-color 150ms;
 }
-
-/* The compact field of an inline editor or a time row, at the 32px of the keys beside it. */
 
 .field[data-size="sm"] {
   height: 32px;
@@ -2059,8 +1918,6 @@ legend.fld-label {
   box-shadow: inset 0 0 0 1px var(--bad);
 }
 
-/* A focused search keeps the red ring while its query is invalid, with the red halo of a field. */
-
 .search:has(input[aria-invalid="true"]):focus-within {
   outline: 2px solid transparent;
   background-color: var(--bg);
@@ -2073,8 +1930,6 @@ legend.fld-label {
   background-color: var(--bg);
   box-shadow: var(--ring-focus-bad);
 }
-
-/* A Select or date trigger in a Field with an error takes the same red ring and red focus. */
 
 :is(.sel-trigger, .dtp-trigger)[aria-invalid="true"],
 :is(.sel-trigger, .dtp-trigger)[aria-invalid="true"]:hover {
@@ -2094,8 +1949,7 @@ legend.fld-label {
   cursor: default;
 }
 
-/* A number with its unit inside the box: <span class="field-unit"><input class="field">
-   <span class="field-unit-text">MB</span></span>. The unit is muted 13px text 12px from the edge. */
+/* Markup: <span class="field-unit"><input class="field"><span class="field-unit-text">MB</span></span> */
 
 .field-unit {
   position: relative;
@@ -2117,8 +1971,6 @@ legend.fld-label {
   pointer-events: none;
 }
 
-/* A numbered step of a how-to list: the number in a 20px round chip. */
-
 .step-n {
   display: inline-grid;
   flex: none;
@@ -2133,9 +1985,6 @@ legend.fld-label {
   font-weight: 500;
   color: var(--ink-2);
 }
-
-/* A read-only value with a copy key (CopyBox): setup keys, invite links, tokens, commands. The
-   value wraps, never an ellipsis; the 28px key stays top right on a 36px first line. */
 
 .copy-box {
   display: flex;
@@ -2162,14 +2011,12 @@ legend.fld-label {
   user-select: all;
 }
 
-/* Codes and keys typed by hand: tabular digits, a touch of tracking. */
-
 .copy-box[data-code] .copy-box-value {
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
 }
 
-/* Autofill keeps the theme instead of painting the field yellow or blue. */
+/* Autofill keeps the theme instead of the browser's yellow or blue. */
 
 .field:-webkit-autofill,
 .field:-webkit-autofill:hover,
@@ -2189,8 +2036,6 @@ legend.fld-label {
   margin: 0;
   appearance: none;
 }
-
-/* Search: the glyph, the input, then the "/" key or the clear key. */
 
 .search {
   display: flex;
@@ -2256,13 +2101,10 @@ legend.fld-label {
   color: var(--ink);
 }
 
-/* -------------- Field focus -------------- */
+/* Field focus */
 
-/* One look for every field, search, dropdown and date trigger: page white, a blue ring and a soft
-   3px halo, kept while a dropdown or calendar is open. The weight is on purpose: an :is() counts as
-   its strongest member (three classes), plus the :not(), so the shared look wins over any area
-   rule that restyles a field in its own context (an inline editor, a settings row) with no prefix.
-   The transparent outline is what forced colours mode draws in place of the box-shadow ring. */
+/* High specificity on purpose: the :is() counts as three classes, so this wins over any area rule
+   that restyles a field. The transparent outline is what forced colours mode draws instead of the ring. */
 
 :is(
     .field:focus,
@@ -2282,20 +2124,16 @@ legend.fld-label {
   transition: box-shadow 120ms, background-color 120ms;
 }
 
-/* -------------- Dialog -------------- */
+/* Dialog */
 
-/* Never two popups at once. A dialog opened from inside another one (a remove confirm
-   in a manage dialog, a secret shown after a save) takes the screen alone: the dialog under it steps
-   out of view, kept mounted so its fields keep what was typed, and comes back when the top one
-   closes. Dialogs portal to the body in the order they open, so the top one is the last scrim. */
+/* Never two popups at once. A dialog under a newer one hides but stays mounted, so its fields keep
+   their values. Dialogs portal to the body in open order, so the top one is the last scrim. */
 
 .dlg-scrim:has(~ .dlg-scrim) {
   visibility: hidden;
 }
 
-/* Step-up stands alone the same way. It mounts in a root of its own (step-up.tsx), so it is not a
-   sibling of the scrims above: while "Confirm it is you" is up, any dialog it interrupted steps out
-   of view and the check takes the full scrim. Both come back the moment the check is answered. */
+/* Step-up mounts in its own root (step-up.tsx), so it is not a sibling of the scrims above. */
 
 html.step-up-open .dlg-scrim:not(:has(> .dlg-stepup)) {
   visibility: hidden;
@@ -2322,9 +2160,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   display: contents;
 }
 
-/* Head: 20px above and below, 24px in from the left like the body. The 32px key tile centres on the
-   title plus the first line of the sub (20 + 2 + 18 = 40px); a title alone centres on the tile.
-   The right 56px stays clear for the close key. */
+/* The 32px tile centres on the title plus the first sub line (20 + 2 + 18 = 40px). The right 56px stays clear for the close key. */
 
 .dlg-hd {
   position: relative;
@@ -2348,10 +2184,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   padding-top: 6px;
 }
 
-/* Close: a 26px key with a 14px cross on the same fill and hairline ring as every secondary key
-   (owner: it keeps its background), centred on the title's line, so the key sits 17px in from the
-   top and the right edge. It takes its fill, ring and hover from .btn, so it matches Cancel. */
-
 .dlg-close {
   position: absolute;
   top: 17px;
@@ -2363,8 +2195,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   color: var(--ink-3);
 }
 
-/* A 40px touch target around the 26px key; the head keeps its right 56px clear, so it covers nothing.
-   Touch only: with a mouse the hover must start at the key's own edge (owner), not 8px out. */
+/* A 40px touch target. Touch only: with a mouse the hover must start at the key's own edge. */
 
 @media (pointer: coarse) {
   .dlg-hd > .dlg-close.btn-icon::after {
@@ -2380,10 +2211,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
 .dlg-hd:has(> .icon-tile):not(:has(.dlg-sub)) .dlg-close {
   top: 23px;
 }
-
-/* A toned head (Dialog `tone="bad"`, the security release popup): a soft red wash under the title,
-   its own red hairline, the glyph on the soft red tile. Calm: the title stays ink, the close key
-   keeps its own fill and ring. The wash keeps the panel's top corners. */
 
 .dlg[data-tone="bad"] .dlg-hd {
   border-radius: 12px 12px 0 0;
@@ -2429,14 +2256,13 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   overscroll-behavior: contain;
 }
 
-/* A confirm with only a title and sub (no body, no type-to-confirm) leaves this empty: collapse it
-   so the footer sits right under the sub instead of across a blank 24px gap. */
+/* A confirm with no body leaves this empty; collapse it so no blank 24px gap shows. */
 
 .dlg-body:empty {
   display: none;
 }
 
-/* With no body, the head's bottom rule would sit on the footer's top rule as a 2px line. */
+/* With no body, the head's bottom rule would double the footer's top rule into a 2px line. */
 
 .dlg-body:empty + .dlg-ft {
   border-top: 0;
@@ -2468,8 +2294,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   border-top: 1px solid var(--line);
 }
 
-/* Footer keys are the full 36px, matching the fields above them. */
-
 .dlg-ft .btn:not(.btn-icon) {
   height: 36px;
   padding: 0 14px;
@@ -2483,13 +2307,11 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   color: var(--ink-3);
 }
 
-/* The phone bottom sheets' rise: dialogs and the notifications panel. */
-
 @keyframes sheet-up {
   from { translate: 0 100%; }
 }
 
-/* -------------- Session notice -------------- */
+/* Session notice */
 
 .session-ended {
   position: fixed;
@@ -2508,9 +2330,9 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   width: min(400px, 100%);
 }
 
-/* -------------- Breadcrumb -------------- */
+/* Breadcrumb */
 
-/* 20px over the page title; `.crumbs + .shead` keeps the title where list pages put it. */
+/* `.crumbs + .shead` keeps the title where list pages put it. */
 
 .crumbs {
   display: flex;
@@ -2581,9 +2403,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   padding-top: 4px;
 }
 
-/* -------------- Secret -------------- */
-
-/* Masked value, eye key, copy key. Revealed values wrap. */
+/* Secret */
 
 .secret {
   display: inline-flex;
@@ -2601,7 +2421,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   overflow-wrap: anywhere;
 }
 
-/* Twelve 4px dots: one width whatever the value, so rows never shift. */
+/* A fixed twelve dots whatever the value, so rows never shift. */
 
 .mask {
   display: inline-flex;
@@ -2618,7 +2438,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   background: var(--ink-3);
 }
 
-/* -------------- Group head -------------- */
+/* Group head */
 
 .ghead {
   display: flex;
@@ -2662,9 +2482,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   gap: 4px;
 }
 
-/* -------------- Skeleton -------------- */
-
-/* Shapes only, never placeholder words; rows copy the real row's grid and height. */
+/* Skeleton */
 
 .skel {
   display: block;
@@ -2699,9 +2517,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   min-width: 0;
 }
 
-/* -------------- Meter -------------- */
-
-/* A small `.bar` and its reading. */
+/* Meter */
 
 .gauge {
   display: inline-flex;
@@ -2725,9 +2541,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
 .gauge[data-tone="warn"] .gauge-val { color: var(--warn-ink); }
 
 .gauge[data-tone="bad"] .gauge-val { color: var(--bad-ink); }
-
-/* A list of usage meters: a name, a detail and a reading over a bar or a sparkline, ruled between
-   (the Overview server card, the app overview's Usage card). */
 
 .meters {
   flex: 1;
@@ -2793,7 +2606,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   border-radius: 6px;
 }
 
-/* -------------- Avatar -------------- */
+/* Avatar */
 
 .avatar {
   display: grid;
@@ -2820,28 +2633,24 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   background: #ffffff;
 }
 
-/* Dockify itself: the white whale on the brand blue disc (the logo's #2396ED), no ring, in both themes. */
-
 .avatar-brand {
   background: var(--brand);
   box-shadow: none;
   color: var(--on-solid);
 }
 
-/* -------------- KPI strip -------------- */
+/* KPI strip */
 
-/* The grid is painted hairline, so its 1px gaps are the rules between cells at any column count.
-   Two named containers: `kpi` is the strip (column count, compact phone cells) and `kpi-cell` one
-   cell (the trend drops under the figures), so no query is ever read against the wrong box. */
+/* The grid is painted hairline, so its 1px gaps are the rules between cells. Two named containers
+   (`kpi` the strip, `kpi-cell` one cell) so no query reads against the wrong box. */
 
 .kpi {
   container: kpi / inline-size;
   background: var(--bg);
 }
 
-/* Equal cells on whole pixels: every cell but the last rounds down, and the last takes the leftover,
-   so no hairline or node ever lands between pixels. --kpi-tpl-N is N columns; --kpi-cols and
-   --kpi-tpl always change together. */
+/* Whole pixels: every cell but the last rounds down and the last takes the leftover.
+   --kpi-cols and --kpi-tpl always change together. */
 
 .kpi-grid {
   --kpi-tpl-1: minmax(0, 1fr);
@@ -2867,8 +2676,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
 
 .kpi-grid[data-cols="3"] { --kpi-cols: 3; --kpi-tpl: var(--kpi-tpl-3); }
 
-/* One look on every page: 16px from the head to the figure, a node on every cell corner. */
-
 .kpi-cell {
   container: kpi-cell / inline-size;
   position: relative;
@@ -2886,8 +2693,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   z-index: var(--z-node);
 }
 
-/* 32px for the tile; a head with a 36px key in `.kpi-actions` (a range picker) grows to it. */
-
 .kpi-head {
   display: flex;
   align-items: center;
@@ -2895,8 +2700,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   min-height: 32px;
   min-width: 0;
 }
-
-/* Keys in a cell's head (a range picker), at its right end. */
 
 .kpi-actions {
   display: flex;
@@ -2917,8 +2720,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   font-weight: 500;
   color: var(--ink-2);
 }
-
-/* Change delta: a borderless soft tint with coloured text. */
 
 .kpi-delta.chip {
   flex: none;
@@ -3012,8 +2813,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   color: var(--ink-3);
 }
 
-/* A figure still loading holds the height of the figure and the line it replaces. */
-
 .kpi-value:has(> .skel) {
   align-items: center;
   height: 40px;
@@ -3025,15 +2824,12 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   height: 18px;
 }
 
-/* The sparkline sits on the lead's bottom edge, so every cell ends on one line. */
-
 .kpi-cell .sparkarea {
   width: 112px;
   height: 40px;
 }
 
-/* 4 cells go 4, 2; 3 go 3, 1; 2 stay 2, so every row stays full; phones get compact cells. These
-   follow the base rules above, so they win over them. */
+/* 4 cells go 4, 2; 3 go 3, 1, so every row stays full. Must follow the base rules above to win. */
 
 @container kpi (max-width: 960px) {
   .kpi-grid[data-cols="4"] { --kpi-cols: 2; --kpi-tpl: var(--kpi-tpl-2); }
@@ -3048,7 +2844,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   .kpi-grid[data-cols="1"] { --kpi-cols: 1; --kpi-tpl: var(--kpi-tpl-1); }
   .kpi-grid[data-cols="4"],
   .kpi-grid[data-cols="2"] { --kpi-cols: 2; --kpi-tpl: var(--kpi-tpl-2); }
-  /* The page gutter on the strip's outer edges, so a cell's text starts under the page title. */
   .kpi-cell {
     gap: 8px;
     padding: 16px var(--gutter);
@@ -3062,7 +2857,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   .kpi-head .icon-tile {
     display: none;
   }
-  /* The change chip drops under the figure rather than off the cell's edge. */
   .kpi-value {
     flex-wrap: wrap;
     row-gap: 4px;
@@ -3070,8 +2864,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
     line-height: 32px;
   }
 }
-
-/* Narrow cells stack the trend under the figures at full width. */
 
 @container kpi-cell (max-width: 300px) {
   .kpi-body {
@@ -3083,9 +2875,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   }
 }
 
-/* -------------- Area sparkline -------------- */
-
-/* SparkArea (components/spark-area.tsx): the KPI strip, the server and app meters, app metrics. */
+/* Area sparkline */
 
 .sparkarea {
   position: relative;
@@ -3127,8 +2917,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   vector-effect: non-scaling-stroke;
 }
 
-/* The marker is a 6px round dot like every status dot, ringed in the page colour. */
-
 .sparkarea-dot {
   position: absolute;
   width: 6px;
@@ -3146,7 +2934,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   to { clip-path: inset(-8px -8px -8px -8px); }
 }
 
-/* -------------- Empty panel -------------- */
+/* Empty panel */
 
 .empty-panel {
   flex: 1;
@@ -3163,7 +2951,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   margin-bottom: 4px;
 }
 
-/* The title at one size whatever its heading level (h3 in a card, h1 alone on a page). */
+/* One size whatever the heading level (h3 in a card, h1 alone on a page). */
 
 .empty-panel .empty-title {
   margin: 0;
@@ -3181,17 +2969,11 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   color: var(--ink-3);
 }
 
-/* Compact: a small card or a dialog. */
-
 .empty-panel[data-size="sm"] {
   padding: 24px var(--gutter);
 }
 
-/* -------------- Not found -------------- */
-
-/* The one not-found block (not-found.tsx): the pixel code, the title, a line and the ways back.
-   The console frame centres it in the page; the public frame (status pages) sits it between the
-   bands with a smaller code. */
+/* Not found */
 
 .notfound {
   display: flex;
@@ -3265,9 +3047,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   margin-right: 4px;
 }
 
-/* -------------- Empty state action -------------- */
-
-/* With the Empty panel's own 8px gap, the key sits 16px under the line. */
+/* Empty state action */
 
 .empty-act {
   display: flex;
@@ -3277,10 +3057,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   margin-top: 8px;
 }
 
-/* -------------- Status -------------- */
-
-/* Status dots are 6px and round everywhere; pixel squares stay for heatmap cells and app pips.
-   A dot never stands alone for a state in a list: a label or a StatusChip sits beside it. */
+/* Status */
 
 .dot {
   flex: none;
@@ -3317,8 +3094,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   background: var(--idle);
 }
 
-/* The one pulse: a ring that grows out of a live dot and fades, in the dot's own tone. */
-
 .pulse {
   --pulse: var(--blue-ring);
   animation: pulse 2s ease-out infinite;
@@ -3332,10 +3107,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   0% { box-shadow: 0 0 0 0 var(--pulse, var(--blue-ring)); }
   80%, 100% { box-shadow: 0 0 0 5px transparent; }
 }
-
-/* "N new" over a live list (activity, a build log, runtime logs): a calm 28px pill in popover
-   material with a hairline and a live dot, that rises into place. Its place (sticky, or over a log
-   box's bottom edge) is the area's; the look is this. */
 
 .new-pill {
   display: inline-flex;
@@ -3353,14 +3124,14 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   animation: new-pill-in 160ms var(--ease) both;
 }
 
-/* The popover's veil, so the hover shows in dark too, where --mass is the pill's own fill. */
+/* The popover's veil, since in dark --mass is the pill's own fill. */
 
 .new-pill:hover {
   background: var(--fill-popover);
   color: var(--ink);
 }
 
-/* It rises with transform, so an area that centres it with `translate` keeps its place. */
+/* Animates transform, so an area that centres the pill with `translate` keeps its place. */
 
 @keyframes new-pill-in {
   from {
@@ -3368,8 +3139,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
     transform: translateY(4px);
   }
 }
-
-/* A page that polls says so beside its head keys: "Updating" with the turning loader. */
 
 .updating {
   display: inline-flex;
@@ -3410,11 +3179,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
 .pips i[data-tone="bad"] {
   background: var(--bad);
 }
-
-/* StatusMark (components/ui/status-mark.tsx): deployments, backups, update steps, previews. */
-
-/* A 24px soft tile tinted by tone, holding the mark: check, cross, slash, or a turning loader. The
-   tints are the shared soft and ring tokens, as on toasts and notification tiles. */
 
 .st-app {
   position: relative;
@@ -3462,13 +3226,11 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   place-items: center;
 }
 
-/* Queued turns slower than building and deploying. */
-
 .st-app[data-tone="pending"] .spin {
   animation-duration: 2.4s;
 }
 
-/* -------------- Bars and tracks -------------- */
+/* Bars and tracks */
 
 .bar {
   height: 6px;
@@ -3497,9 +3259,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
 @keyframes grow {
   from { transform: scaleX(0); }
 }
-
-/* A progress track: 4px, a blue fill over its 14% tint; queued shows the bare line; indeterminate
-   slides a third of a fill across. */
 
 .track {
   position: relative;
@@ -3535,11 +3294,10 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   to { transform: translateX(280%); }
 }
 
-/* -------------- Date and time picker -------------- */
+/* Date and time picker */
 
-/* The picker is a field-style trigger (it shares .sel-trigger's skin and the field focus) and a
-   calendar in a layer of its own: datetime-picker.tsx portals the open calendar to the body and
-   fixes it to the viewport beside the trigger, so the scrolling body of a dialog never clips it. */
+/* datetime-picker.tsx portals the open calendar to the body and fixes it to the viewport, so a
+   dialog's scrolling body never clips it. */
 
 .dtp {
   min-width: 0;
@@ -3567,9 +3325,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   rotate: 180deg;
 }
 
-/* The calendar is popover material: popover fill, 12px radius, the shared line-strong ring and the
-   dropdown's soft shadow. It sits over dialogs and under toasts and the session notice
-   (--z-picker). Its type is set here because it hangs off the body, which reads 15px. */
+/* Type is set here because the calendar hangs off the body, which reads 15px. */
 
 .dtp-pop {
   position: fixed;
@@ -3622,7 +3378,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   transition: background-color 100ms, color 100ms;
 }
 
-/* Hovered keys and days take --fill-popover: in dark, --mass is the popover itself and would not show. */
+/* --fill-popover, since in dark --mass is the popover itself and would not show. */
 
 .dtp-nav:hover:not([aria-disabled="true"]) {
   background: var(--fill-popover);
@@ -3675,9 +3431,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   background: var(--fill-popover);
 }
 
-/* The chosen day gets the same fill plus the shared ring and medium weight, so a hovered day never
-   reads as the chosen one. */
-
 .dtp-cell[aria-selected="true"] > .dtp-day {
   background: var(--fill-popover);
   box-shadow: inset 0 0 0 1px var(--line-strong);
@@ -3689,7 +3442,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   cursor: default;
 }
 
-/* The focus ring is inset, so it stays inside the 2px gaps between days. */
+/* Inset, so the ring stays inside the 2px gaps between days. */
 
 .dtp-day:focus-visible {
   border-radius: 8px;
@@ -3711,9 +3464,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   color: var(--ink-3);
 }
 
-/* Hours and minutes wear the .field skin (fill, ring, shared blue focus, 16px type on phones) at the
-   compact 32px of the time row. */
-
 .dtp-num {
   flex: none;
   width: 44px;
@@ -3728,9 +3478,6 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   color: var(--ink-3);
   font-weight: 500;
 }
-
-/* AM and PM use the shared segmented control at the row's 32px, with its track in the field fill so it
-   matches the fields beside it. */
 
 .dtp-time .seg2 {
   height: 32px;
@@ -3752,10 +3499,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   border-radius: 6px;
 }
 
-/* -------------- Callout -------------- */
-
-/* The one boxed note: icon, text, and an optional button on the right. Tones tint it; "info" keeps
-   the neutral box and only blues the glyph (a hint, not a state). */
+/* Callout */
 
 .callout {
   display: flex;
@@ -3822,15 +3566,13 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   background: var(--fill-popover);
 }
 
-/* Emphasis inside a callout is medium weight, as everywhere else, not the browser's bold. */
-
 .callout b,
 .callout strong {
   font-weight: 500;
   color: var(--ink);
 }
 
-/* -------------- Markdown (components/ui/markdown.tsx) -------------- */
+/* Markdown (components/ui/markdown.tsx) */
 
 .md {
   display: flex;
@@ -3881,10 +3623,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   text-decoration-color: currentColor;
 }
 
-/* -------------- External link -------------- */
-
-/* ExternalLink (external-link.tsx): muted ink, a quiet underline that turns ink on hover, the
-   external glyph after the text. It takes the size of the text around it. */
+/* External link */
 
 .ext-link {
   display: inline-flex;
@@ -3902,9 +3641,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   text-decoration-color: currentColor;
 }
 
-/* -------------- Inline code -------------- */
-
-/* Inline code in prose (env names in a note): the mono face on a small framed chip. */
+/* Inline code */
 
 .md-code {
   padding: 1px 4px;
@@ -3915,7 +3652,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
-/* ============== Utilities ============== */
+/* Utilities */
 
 .ellipsis {
   overflow: hidden;
@@ -3923,7 +3660,7 @@ html.step-up-open .dlg-scrim:has(> .dlg-stepup) {
   white-space: nowrap;
 }
 
-/* Tabular figures in the surrounding size: it never forces its own font size. */
+/* Never forces its own font size. */
 
 .mono {
   font-family: var(--font-sans);
@@ -3938,7 +3675,7 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
-/* Pixel display face: 18px and up only. */
+/* 18px and up only. */
 
 .pixel {
   font-family: var(--font-pixel);
@@ -3956,13 +3693,9 @@ kbd {
   animation: reveal 0.5s var(--ease) both;
 }
 
-/* A cell popping in: the heatmap and the sign-in art. */
-
 @keyframes pop {
   from { opacity: 0; transform: scale(0.6); }
 }
-
-/* A popover dropping in from 4px above: the notifications panel, the row menus. */
 
 @keyframes drop-in {
   from {
@@ -3974,8 +3707,6 @@ kbd {
 @keyframes reveal {
   from { opacity: 0; transform: translateY(4px); }
 }
-
-/* Two-line cell: 20px over 18px with a 2px gap. */
 
 .two {
   display: flex;
@@ -4004,8 +3735,6 @@ kbd {
   line-height: 18px;
 }
 
-/* Label over value: 13/18, 4px, then 14/20. Works on <div> or <dl> pairs. */
-
 .kv {
   display: flex;
   flex-direction: column;
@@ -4029,8 +3758,6 @@ kbd {
   overflow-wrap: anywhere;
 }
 
-/* 56px for one row of 36px controls (8px above and below a 40px line); wraps cleanly. */
-
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -4040,9 +3767,8 @@ kbd {
   padding: 8px var(--gutter);
 }
 
-/* Text tones use the 4.5:1 -ink shades. The class is doubled on purpose: two classes outweigh an
-   area's own one-class colour (a row's muted sub line), while an area rule that means to recolour a
-   toned element names both classes and wins by loading later. */
+/* The class is doubled on purpose: two classes outweigh an area's one-class colour. An area rule
+   that recolours a toned element names both classes and loads later. */
 
 .tone-ok.tone-ok { color: var(--ok-ink); }
 
@@ -4054,13 +3780,9 @@ kbd {
 
 .tone-pending.tone-pending { color: var(--warn-ink); }
 
-/* A missing or zero value that still says so: "None yet", "Never". */
-
 .none {
   color: var(--ink-3);
 }
-
-/* The one word for a missing branch or commit in a narrow cell: muted, and it never truncates. */
 
 .none-mark {
   flex: none;
@@ -4068,9 +3790,7 @@ kbd {
   color: var(--ink-muted);
 }
 
-/* ============== Responsive ============== */
-
-/* The breakpoint scale is in the file header. */
+/* Responsive */
 
 @media (max-width: 1100px) {
   .split,
@@ -4087,10 +3807,8 @@ kbd {
   :root {
     --gutter: 24px;
   }
-  /* The console on a phone draws no rails and no nodes, the grammar of the phone bar above it (its
-     cells end in plain T joins): the column runs edge to edge, so a rule or band has no rail to
-     cross, and a cell's corner node would be a 2px stub on the screen edge. Hairlines and bands
-     stay. The signed-out and status pages keep their rails and nodes, 16px in from the edges. */
+  /* The phone console draws no rails or nodes: the column runs edge to edge, so a corner node would
+     be a 2px stub on the screen edge. Signed-out and status pages keep theirs. */
   .shell-main > main.page > * {
     max-width: none;
     margin-inline: 0;
@@ -4103,7 +3821,7 @@ kbd {
   .shell-main > main.page > :not(.rule, .sep) .rule {
     margin-inline: 0;
   }
-  /* Phones zoom into any field under 16px. */
+  /* iOS zooms into any field under 16px. */
   .field {
     font-size: 16px;
   }
@@ -4121,7 +3839,6 @@ kbd {
     width: auto;
     max-width: none;
   }
-  /* Dialogs become a bottom sheet with a grab bar, clear of the home indicator. */
   .dlg-scrim {
     place-items: end stretch;
     padding: 0;
@@ -4136,7 +3853,6 @@ kbd {
     border-radius: 12px 12px 0 0;
     animation: sheet-up 240ms var(--ease-sheet) both;
   }
-  /* The grab bar of every phone sheet (the notifications panel is one too, shell.css). */
   :is(.dlg, .ntf-panel)::before {
     content: "";
     position: absolute;
@@ -4151,8 +3867,6 @@ kbd {
   .dlg-hd {
     padding-left: var(--gutter);
   }
-  /* A toned head runs up under the grab bar to the sheet's top edge; its title and close key stay
-     where the sheet puts them, and the bar stays on top of the wash. */
   .dlg[data-tone="bad"] .dlg-hd {
     margin-top: -8px;
     padding-top: 28px;
@@ -4169,8 +3883,6 @@ kbd {
   .dlg-ft {
     padding: 12px var(--gutter) calc(12px + env(safe-area-inset-bottom));
   }
-  /* A footer note takes its own row, so the keys stay together on the row under it instead of the
-     primary wrapping away from Cancel. */
   .dlg-note {
     flex-basis: 100%;
     margin-right: 0;
@@ -4178,15 +3890,12 @@ kbd {
   .dlg-body:last-child {
     padding-bottom: calc(24px + env(safe-area-inset-bottom));
   }
-  /* Crumbs keep the phone title where list pages put it. */
   .crumbs {
     padding-top: 12px;
   }
   .crumbs + .shead {
     padding-top: 0;
   }
-  /* A callout's button drops under the text, lined up with it, instead of squeezing the text into
-     a thin column. */
   .callout:has(> .btn) {
     flex-wrap: wrap;
     align-items: flex-start;
@@ -4201,14 +3910,12 @@ kbd {
   .callout:has(> .btn) > .btn {
     margin-left: 28px;
   }
-  /* Phones have no keyboard shortcut to offer. */
   .notfound-hint {
     display: none;
   }
 }
 
 @media (max-width: 520px) {
-  /* Filter counts give way on phones, on every page, so a status filter keeps one row. */
   .seg2-count {
     display: none;
   }
@@ -4220,11 +3927,9 @@ kbd {
   }
 }
 
-/* ============== Reduced motion ============== */
+/* Reduced motion */
 
-/* Everything holds still; toasts and dialogs appear in place, and toasts lose their timer line.
-   Progress still says so: a loader turns slowly instead of stopping (so building and stuck never
-   look alike), and an indeterminate track shows a still striped fill. */
+/* Progress still shows: a loader turns slowly instead of stopping, so building and stuck never look alike. */
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -4249,10 +3954,10 @@ kbd {
   }
 }
 
-/* ============== Forced colours ============== */
+/* Forced colours */
 
-/* High contrast modes drop every box-shadow, which is how keys, fields, chips and popovers draw
-   their edges and how fields show focus. Real borders and outlines take their place. */
+/* Forced colours drops every box-shadow, which is how edges and focus are drawn here. Real borders
+   and outlines take their place. */
 
 @media (forced-colors: active) {
   :is(.btn, .field, .search, .sel-trigger, .dtp-trigger, .chip, .seg2, .seg2-thumb, .switch, .kbd, .hash-chip, .icon-tile, .callout, .copy-box, .dlg, .sel-list, .dtp-pop, .toast, .cmd, .acct-pop, .ntf-panel, .px-menu-pop) {
@@ -4268,7 +3973,7 @@ kbd {
     outline: 2px solid Highlight !important;
     outline-offset: 2px;
   }
-  /* The frame is drawing, not information: it keeps its own greys. */
+  /* The frame is decoration, so it keeps its own greys. */
   .node,
   .rule,
   .rule::after,
@@ -4278,10 +3983,9 @@ kbd {
   }
 }
 
-/* ============== Print ============== */
+/* Print */
 
-/* Paper gets the content: no shell, no floating layers, no dither, and the light palette's text
-   and lines even from the dark theme, so nothing prints light grey on white. */
+/* Prints the light palette even from the dark theme, so nothing is light grey on white. */
 
 @media print {
   :root.dark {

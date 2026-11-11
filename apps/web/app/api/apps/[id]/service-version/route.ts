@@ -7,7 +7,6 @@ import { isPreviewMode } from "@/lib/preview-mode";
 type Ctx = { params: Promise<{ id: string }> };
 const VERSION = /^[\w.-]{1,20}$/;
 
-/** GET /api/apps/:id/service-version: what a managed service runs and may move to. */
 export async function GET(_request: Request, { params }: Ctx) {
   const { id } = await params;
   if (!isId(id)) return refuse(400, "Invalid app");
@@ -18,7 +17,7 @@ export async function GET(_request: Request, { params }: Ctx) {
   return isPreviewMode() ? json(previewServiceVersion(id)) : refuse(503, "The API is not configured");
 }
 
-/** POST /api/apps/:id/service-version: starts a change. Typed name in the body, step-up at the API. */
+/** Starts a change. Typed name in the body, step-up at the API. */
 export async function POST(request: Request, { params }: Ctx) {
   const refused = guardWrite(request);
   if (refused) return refused;

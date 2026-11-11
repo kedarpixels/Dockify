@@ -1,8 +1,6 @@
 /**
- * One HTTP request over a connection that is already open, whatever carries it. Never through an
- * agent: `agent: false` would make a new agent, which ignores createConnection. The connection closes
- * with the request. A stream from a dialer need not be a socket, and so has no socket timeout for
- * node:http to set, so the time limit here is a plain timer over the whole request.
+ * One HTTP request over an already open connection. Never `agent: false`: that makes a new agent, which
+ * ignores createConnection. A dialer's stream has no socket timeout, so the limit is a plain timer.
  */
 import { request, type ClientRequest, type IncomingMessage, type RequestOptions } from "node:http";
 import type { Duplex } from "node:stream";

@@ -1,9 +1,7 @@
 /**
- * Getting source onto disk. Ported from the old worker's git.ts and tightened: execFile argv only,
- * the credential as an http.extraHeader set through git's environment config, so the token lives only in the git child's environment and is sent only to the repo's host, HOME set to the
- * throwaway dir, https only, redirects off, and resolution pinned to the address that passed the
- * public-address check (closes DNS rebinding between check and connect). A ref is fetched exactly
- * (a pinned commit sha on retries, so attempt 2 never ships a newer HEAD).
+ * Getting source onto disk: execFile argv only, https only, redirects off, HOME set to the throwaway dir.
+ * The credential is an http.extraHeader in git's environment config, so the token lives only in the git
+ * child's environment. Resolution is pinned to the address that passed the public-address check (DNS rebinding).
  */
 import { execFile } from "node:child_process";
 import { lookup } from "node:dns/promises";
@@ -20,14 +18,12 @@ export interface CloneCredential {
 export interface CheckoutOptions {
   url: string;
   branch: string;
-  /** When set, exactly this commit is fetched instead of the branch head. */
   commit: string | null;
   root: string;
   credential: CloneCredential | null;
   timeoutMs: number;
   maxBytes: number;
   signal: AbortSignal;
-  /** Overridable for tests. */
   resolve?: (host: string) => Promise<string[]>;
 }
 
@@ -184,12 +180,8 @@ export async function checkout(o: CheckoutOptions): Promise<Checkout> {
 }
 
 /**
- * `.git` stays in the build context so a build can read it, and BuildKit hashes every file's bytes. So
- * one commit must give the same bytes in every clone, or a `COPY . .` and all that follows rebuilds on
- * each deploy. Three things differ per clone: the index's stat fields, which the caller's `git read-tree
- * HEAD` writes as zeros, and these two: the reflog's times, and FETCH_HEAD, which also names the ref that
- * was fetched. `rev-parse`, `log`, `describe` and `status` do not need them, and git refreshes zeroed
- * stat fields from the files.
+ * BuildKit hashes every file of the context, `.git` included, so one commit must give the same bytes in every
+ * clone or `COPY . .` rebuilds on each deploy. The reflog and FETCH_HEAD differ per clone, and no build needs them.
  */
 export async function dropCloneOnlyGitFiles(dir: string): Promise<void> {
   await rm(join(dir, ".git", "logs"), { recursive: true, force: true });
@@ -200,11 +192,7 @@ export async function discard(root: string): Promise<void> {
   await rm(root, { recursive: true, force: true, maxRetries: 3 }).catch(() => {});
 }
 
-/**
- * Removes the checkouts a crash left behind. The build root is on a volume now, so nothing else ever
- * clears them. Only at worker boot, when no build of this worker can be running; the worker is one
- * container with a fixed name, so no other can be either. Answers how many went.
- */
+/** Removes checkouts a crash left behind. Only at worker boot, when no build of this worker can be running. */
 export async function sweepCheckouts(root: string): Promise<number> {
   const names = await readdir(root).catch(() => [] as string[]);
   const stale = names.filter((n) => n.startsWith(CHECKOUT_PREFIX));

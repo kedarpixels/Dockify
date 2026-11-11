@@ -1,6 +1,4 @@
-/* Maintenance and Updates on /server. The markdown of the release notes is in foundation.css. */
-
-/* -------------- Maintenance -------------- */
+/* Maintenance */
 .srv-mt {
   display: flex;
   flex-direction: column;
@@ -44,7 +42,6 @@
   gap: 12px;
 }
 
-/* A full-width card would leave a wide gap between each label and its reading: pair the rows. */
 @container srv-mt (min-width: 1000px) {
   .srv-mt-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -68,7 +65,7 @@
   }
 }
 
-/* -------------- Updates -------------- */
+/* Updates */
 .srv-up {
   display: flex;
   flex-direction: column;
@@ -127,7 +124,6 @@
   gap: 4px;
 }
 
-/* Release notes: the summary, the rest folded behind Show notes. No inner scroller. */
 .srv-up-notes {
   display: flex;
   flex-direction: column;
@@ -139,7 +135,6 @@
   align-self: stretch;
 }
 
-/* The release and its actions beside the policy rows, then the history across the full width. */
 .srv-up-cols {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -155,7 +150,6 @@
   min-width: 0;
 }
 
-/* The side rows are ruled against each other, so they stack with no gap between them. */
 .srv-up-side {
   gap: 0;
 }
@@ -177,7 +171,6 @@
   gap: 8px;
 }
 
-/* Side rows share the History rhythm: the sub line wraps before the key drops below it. */
 .srv-up-row {
   display: flex;
   align-items: center;
@@ -202,7 +195,6 @@
   flex: none;
 }
 
-/* The settings pointer sits 12px under the last row. */
 .srv-up-row + .srv-up-foot {
   margin-top: 12px;
 }
@@ -230,7 +222,6 @@
   color: var(--ink-4);
 }
 
-/* Release notes and advisory links (the shared ExternalLink): note size, at the start of the column. */
 .srv-up-link {
   align-self: flex-start;
   font-size: 13px;
@@ -248,7 +239,6 @@
   color: var(--ink);
 }
 
-/* History: one ruled row per update, the result chip on the right. */
 .srv-up-hist {
   display: flex;
   flex-direction: column;
@@ -310,7 +300,6 @@
   color: var(--ink-3);
 }
 
-/* The failure reason: muted, two lines at most; its title holds the full text. */
 .srv-up-hist-err {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -339,7 +328,6 @@
   color: var(--ok);
 }
 
-/* The update's phases as deploy status tiles, one 32px row each. */
 .srv-up-steps {
   display: flex;
   flex-direction: column;
@@ -387,7 +375,6 @@
   color: var(--bad-ink);
 }
 
-/* The confirm dialog's plan reuses the prune list, numbered. */
 .srv-up-plan {
   counter-reset: srv-step;
 }

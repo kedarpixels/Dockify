@@ -1,17 +1,7 @@
 /**
- * Builds run in the rootless BuildKit daemon through buildctl, never through the Docker socket and
- * never in a process holding the master key. The result is exported as a docker tarball, loaded
- * into the daemon, and pinned by its image id. BuildKit keeps its own persistent cache (the janitor
- * caps it by size), and Dockify never injects a build arg that changes per build, so layer caching
- * holds across deploys.
- *
- * Tenant isolation inside the one shared daemon: RUN steps run in BuildKit's process sandbox (the
- * compose file never disables it), RUN --mount=type=cache directories are namespaced per app so one
- * app cannot seed another's package cache, a Dockerfile's frontend directive may only name the
- * official docker/dockerfile frontend (checked here, and enforced by the daemon itself through
- * allowedRepositories in the compose file's buildkitd.toml), and tenant variables can never set a
- * BUILDKIT_* build arg. A repository with no Dockerfile builds through railpack.ts, under the same
- * limits and the same variable rules.
+ * Builds run in the rootless BuildKit daemon through buildctl, never through the Docker socket and never in a
+ * process holding the master key. Tenant isolation in the shared daemon: cache mounts are namespaced per app,
+ * only the official docker/dockerfile frontend may be named, and tenant variables never set BUILDKIT_* args.
  */
 import { isPublicBuildKey } from "@dockify/contracts";
 import { spawn } from "node:child_process";
@@ -53,8 +43,7 @@ const refuseFrontend = (ref: string): never => {
 };
 
 /**
- * BuildKit's third form of the directive: a file that is one JSON object with a "syntax" key
- * (frontend/dockerfile/parser/directives.go, after dropping a byte order mark and a #! first line).
+ * BuildKit's third form of the directive: a file that is one JSON object with a "syntax" key.
  * Any casing of the key is refused here, whatever BuildKit does with it, and a non-string value too.
  */
 function checkJsonDirective(dockerfile: string): void {
@@ -74,10 +63,8 @@ function checkJsonDirective(dockerfile: string): void {
 }
 
 /**
- * Finds a frontend directive where BuildKit looks for one, in the leading comment block or as a JSON
- * document, and refuses any image but docker/dockerfile. A custom frontend is an arbitrary image
- * that the daemon runs with full control over the build graph. This check gives the clear message;
- * the daemon's own allowedRepositories is the gate no parser difference can get past.
+ * Refuses any frontend but docker/dockerfile: a custom frontend is an arbitrary image with full control over
+ * the build graph. This check gives the clear message; the daemon's allowedRepositories is the real gate.
  */
 export function checkSyntaxDirective(dockerfile: string): void {
   checkJsonDirective(dockerfile);
@@ -94,12 +81,9 @@ export function checkSyntaxDirective(dockerfile: string): void {
 }
 
 /**
- * Which build-time variables become ARGs and which become secret mounts. A non-secret variable
- * marked build or both is an ARG. A secret is never an ARG, whatever its target: ARG values persist
- * in the image config history and in BuildKit's cache keys, and images are kept for rollbacks, so a
- * secret passed that way would outlive its rotation. A Dockerfile reads a secret with
- * RUN --mount=type=secret,id=KEY (or env=KEY); every build-visible variable is offered that way.
- * An owner who really wants a plain ARG marks the variable not secret.
+ * A secret is never an ARG, whatever its target: ARG values persist in the image config history and in
+ * BuildKit's cache keys, and images are kept for rollbacks. A Dockerfile reads a secret with
+ * RUN --mount=type=secret,id=KEY; every build-visible variable is offered that way.
  */
 export function planBuild(input: {
   buildkitAddr: string;
@@ -127,14 +111,11 @@ export function planBuild(input: {
     "--opt", `label:dockify.app=${input.appId}`,
     // RUN --mount=type=cache directories live in the shared daemon; key them by app.
     "--opt", `build-arg:BUILDKIT_CACHE_MOUNT_NS=${scope}`,
-    // The namespace covers cache mounts, not layers, and the daemon is shared. A RUN step's hostname is
-    // part of its cache key, so a preview's RUN layers can never be a production build's cache hit.
-    // Steps before the first RUN stay shared: their keys are the content they produce.
+    // The namespace covers cache mounts, not layers. A RUN step's hostname is part of its cache key, so a
+    // preview's RUN layers can never be a production build's cache hit.
     ...(scope === appScope ? [] : ["--opt", `build-arg:BUILDKIT_SANDBOX_HOSTNAME=${scope}`]),
-    // OCI archive, not the legacy docker-archive (type=docker): Docker's containerd image store,
-    // the default on Docker 28+, rejects a docker-archive with "unrecognized image format". OCI
-    // loads into both the classic and the containerd store, and Docker 25+ (the installer minimum)
-    // accepts it.
+    // OCI archive, not type=docker: Docker's containerd image store (the default on Docker 28+) rejects a
+    // docker-archive. OCI loads into both stores on Docker 25+, the installer minimum.
     "--output", `type=oci,name=${input.imageName}`,
   ];
   const env: Record<string, string> = {};
@@ -157,10 +138,8 @@ export function planBuild(input: {
 export const imageNameFor = (appId: string, deploymentId: string) => `dockify/app-${appId}:${deploymentId.slice(0, 8)}`;
 
 /**
- * What the deploy log says about a plan's build-time variables. Key names stay readable through the
- * redactor: the lists are comma separated and no name is followed by "=" or ":", so the key=value
- * rule (which hides the value after any key naming a secret) has nothing to take. The earlier
- * "...--mount=type=secret: KEY" read as the pair secret=KEY and was logged as secret=[REDACTED].
+ * Key names must stay readable through the redactor: the lists are comma separated and no name is followed
+ * by "=" or ":", so the key=value rule has nothing to take.
  */
 export function planLogLines(plan: Pick<BuildPlan, "buildArgKeys" | "secretKeys">): string[] {
   const out: string[] = [];
@@ -198,9 +177,8 @@ export class OutputTail {
 const DAEMON_UNREACHABLE = /code = Unavailable|connection error|error while dialing|failed to dial|dial unix|connect: connection refused|error reading from server/i;
 
 /**
- * The error for a buildctl that exited non-zero. A failed solve (a RUN step, a COPY of a missing
- * file, a Dockerfile syntax error) fails the same way every time, so it is permanent and quotes the
- * last lines of output; only a daemon that could not be reached is worth another attempt.
+ * A failed solve fails the same way every time, so it is permanent and quotes the last lines of output;
+ * only a daemon that could not be reached is worth another attempt.
  */
 export function buildFailure(code: number, tail: string): Error {
   if (DAEMON_UNREACHABLE.test(tail)) {
@@ -219,18 +197,13 @@ export interface BuildEnd {
   code: number;
   /** True when buildctl was killed here because the load had already failed. */
   killed: boolean;
-  /** Why the image load failed, or null when it succeeded. */
   loadError: unknown;
 }
 
 /**
- * Waits for both halves of a build: buildctl, and the docker load reading its stdout. buildctl's exit
- * decides first. A failed solve writes nothing to stdout, so the load fails too ("unrecognized image
- * format"), usually before the exit is seen; judging the load first reported that instead of the
- * build error, and retried a build that can only fail again. When the load fails first, buildctl's
- * output is drained (a full pipe would block it) and its exit awaited for `graceMs`; a build still
- * running after that is killed, and the load error stands on its own. A rejected `exited` (spawn
- * failure, cancel, timeout) rejects this.
+ * buildctl's exit decides first: a failed solve writes nothing to stdout, so the load fails too and would
+ * mask the build error. When the load fails first, buildctl's output is drained and its exit awaited for
+ * `graceMs`; a build still running after that is killed and the load error stands.
  */
 export async function settleBuild(p: {
   exited: Promise<number>;
@@ -293,7 +266,6 @@ export interface BuildInput {
   planTimeoutMs?: number;
 }
 
-/** The part of the deploy log a build writes to. The rest of it stays with the worker. */
 export interface BuildLog {
   redactor: { conceal(values: string[]): void };
   system(text: string): void;
@@ -308,7 +280,6 @@ export interface BuildResult {
   port?: number | null;
 }
 
-/** The server's side of a build: its Docker to load the image into, its BuildKit daemon to build with. */
 export interface BuildServer {
   docker: Pick<DockerApi, "loadImage" | "inspectImage">;
   buildkitAddr: string;
@@ -326,7 +297,7 @@ export function pruneArgs(addr: string, keepBytes: number): string[] {
   return ["--addr", addr, "prune", "--keep-storage", String(Math.floor(keepBytes / 1024 ** 2))];
 }
 
-/** Builds and loads the image; returns the pinned image id and the tag it was loaded under. */
+/** Returns the pinned image id and the tag it was loaded under. */
 export async function buildImage(server: BuildServer, b: BuildInput, log: BuildLog, signal: AbortSignal): Promise<BuildResult> {
   const builder = b.builder ?? "auto";
   log.redactor.conceal(b.vars.filter((v) => v.isSecret).map((v) => v.value));
@@ -391,14 +362,12 @@ async function buildWithRailpack(server: BuildServer, b: BuildInput, log: BuildL
   return { ...(await runBuild(server.docker, plan, b, log, signal)), port: plannedPort(planned) };
 }
 
-/** Runs buildctl with a plan, loads what it streams into the daemon, and reads back the image's id. */
 async function runBuild(docker: BuildServer["docker"], plan: BuildPlan, b: BuildInput, log: BuildLog, signal: AbortSignal): Promise<BuildResult> {
   const timeout = AbortSignal.timeout(b.timeoutMs);
   const both = AbortSignal.any([signal, timeout]);
   const child = spawn("buildctl", plan.args, {
-    // A minimal env, so no inherited variable leaks into the build. DOCKER_CONFIG and HOME point at
-    // the writable tmpfs: buildctl creates a Docker config dir for registry metadata, and the
-    // read-only rootfs refuses its default /home/node/.docker, which fails every build.
+    // A minimal env, so no inherited variable leaks into the build. DOCKER_CONFIG and HOME point at the writable
+    // tmpfs: buildctl creates a Docker config dir, and the read-only rootfs refuses its default.
     env: {
       PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
       DOCKER_CONFIG: process.env.DOCKER_CONFIG ?? "/tmp/.docker",
@@ -410,8 +379,7 @@ async function runBuild(docker: BuildServer["docker"], plan: BuildPlan, b: Build
     killSignal: "SIGKILL",
     windowsHide: true,
   });
-  // buildctl's progress goes to stderr: every line into the deploy log, the last few kept for the
-  // reason a failed build gives.
+  // buildctl's progress goes to stderr.
   const tail = new OutputTail();
   const err = new LineSplitter((t) => tail.push(log.add("stderr", t)));
   child.stderr.setEncoding("utf8").on("data", (c: string) => err.push(c));

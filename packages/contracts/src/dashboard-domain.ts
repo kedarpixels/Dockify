@@ -3,17 +3,11 @@ import { Hostname, Iso, TlsStatus } from "./common.ts";
 import { DnsStatus, DomainProbeStatus, IngressMode } from "./resources.ts";
 
 /**
- * The dashboard's own address, and what Cloudflare says about a hostname.
- *
  * DOCKIFY_PUBLIC_URL in .env is the one source of the current address. A new domain waits in
- * instance.dashboardDomain while the worker checks it; once it answers and has its certificate the
- * updater rewrites .env and recreates the control services. The address it left keeps answering: its
- * /api/v1/ path is still served (GitHub does not follow a redirect), the rest redirects.
+ * instance.dashboardDomain until it answers with a certificate; then the updater rewrites .env. The old
+ * address keeps serving /api/v1/ (GitHub does not follow a redirect) and redirects the rest.
  */
 
-// ------------------------------------------------------------------ Cloudflare, per hostname
-
-/** Cloudflare's own zone and record ids: 32 hex characters. */
 export const CfId = z.string().regex(/^[0-9a-f]{32}$/);
 export const CfSslMode = z.enum(["off", "flexible", "full", "strict"]);
 export const CfRecord = z.object({
@@ -29,7 +23,6 @@ export const CfFindingCode = z.enum([
   "not_managed", "no_zone", "zone_pending", "no_record", "wrong_target", "needs_proxy", "extra_record",
   "ssl_flexible", "ssl_off", "ssl_strict_no_cert", "always_https", "dns_denied", "ssl_denied",
 ]);
-/** One thing to know about a hostname, in words the page shows as they are. */
 export const CfFinding = z.object({ code: CfFindingCode, tone: z.enum(["bad", "warn", "info"]), text: z.string() });
 export const CfHostState = z.object({
   hostname: z.string(),
@@ -41,7 +34,6 @@ export const CfHostState = z.object({
   records: z.array(CfRecord),
   /** The record this hostname needs in this server's mode; null when the server's address is unknown. */
   expected: z.object({ type: z.string(), content: z.string(), proxied: z.boolean().nullable() }).nullable(),
-  /** The records there are exactly what the hostname needs. */
   correct: z.boolean(),
   /** null when the zone is not managed, or the token cannot read it. */
   sslMode: CfSslMode.nullable(),
@@ -67,8 +59,6 @@ export const CfRecordBody = z.strictObject({
 });
 export const CfRecordResult = z.object({ state: CfHostState });
 
-// ------------------------------------------------------------------ the dashboard's address
-
 export const DashboardDomainPhase = z.enum(["waiting", "ready", "switching", "failed"]);
 export const PendingDashboardDomain = z.object({
   host: z.string(),
@@ -83,9 +73,8 @@ export const PendingDashboardDomain = z.object({
   /** The record Dockify made for this domain, so a cancel can offer to remove it. */
   cfRecord: z.object({ zoneId: z.string(), recordId: z.string() }).nullable(),
   /**
-   * The name is on a Cloudflare zone Dockify manages and has no record there yet: no lookup runs until
-   * Dockify has made the record (or the owner presses Check now), so no resolver caches the name as
-   * missing first. Older rows have no such field.
+   * On a managed Cloudflare zone with no record yet, no lookup runs until Dockify has made the record, so no
+   * resolver caches the name as missing first.
    */
   recordFirst: z.boolean().optional(),
 });
@@ -100,7 +89,6 @@ export const DashboardLastChange = z.object({
 /** What the owner has to change on GitHub by hand: the API has no way to set the first three. */
 export const DashboardGitHubSteps = z.object({
   slug: z.string(),
-  /** The App's settings page on github.com. */
   settingsUrl: z.string(),
   homepageUrl: z.string(),
   callbackUrl: z.string(),
@@ -142,7 +130,6 @@ export type HostState = z.infer<typeof CfHostState>;
 /** Stands in for a domain row's id in the check token of the dashboard's pending domain. */
 export const DASHBOARD_CHECK_ID = "dashboard-domain";
 
-/** A fresh pending record: nothing checked yet. */
 export function freshPendingDomain(host: string, requestedBy: string | null, now: Date): PendingDomain {
   return {
     host,

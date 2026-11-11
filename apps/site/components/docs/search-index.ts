@@ -7,7 +7,6 @@ import { DOC_PAGES } from "@/lib/docs-nav";
 export type SearchEntry = {
   /** Where the result goes: the page, or the page plus a heading anchor. */
   href: string;
-  /** The page title. */
   page: string;
   /** The heading text, absent for the page entry itself. */
   heading?: string;

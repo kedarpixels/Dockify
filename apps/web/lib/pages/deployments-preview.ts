@@ -6,12 +6,8 @@ import type { AppKind, RecentDeployment } from "@/lib/types";
 import type { DeploymentDetail, DeploymentPage, DeploymentQuery, DeploymentStats, DeploymentStep, LogLine, StepId, StepStatus } from "./deployments";
 import { hex, seeded } from "@/lib/preview-random";
 
-/*
- * Design preview fixture for the deployments pages, used only when DOCKIFY_PREVIEW=1 and no API
- * is set. Derived from buildPreviewOverview so every row on the Overview opens a working page
- * here: the recent rows keep their ids (dpl_0 up), and older days come from buildPreviewDay
- * (dpl_YYYYMMDD_i).
- */
+// Design preview fixture for the deployments pages. Recent rows keep their overview ids (dpl_0 up);
+// older days come from buildPreviewDay (dpl_YYYYMMDD_i).
 
 const STEPS: StepId[] = ["queued", "clone", "build", "push", "release", "deploy", "health"];
 const PAGE = 25;
@@ -258,10 +254,8 @@ const FAILURE_LINE: Record<Failure, string> = {
   timeout: "Health check timed out after 60s",
 };
 
-/*
- * Script lines: "!" first marks stderr. "@N " marks a BuildKit RUN output line of step #N; it is
- * printed as "#N <seconds since that step's first line> text", the way `--progress=plain` does.
- */
+// Script lines: "!" first marks stderr. "@N " marks a BuildKit RUN output line of step #N, printed
+// as "#N <seconds since that step's first line> text", the way `--progress=plain` does.
 function toLine(raw: string, seq: number, at: number, groups: Map<string, number>): LogLine {
   let text = raw;
   let stream: LogLine["stream"] = "stdout";

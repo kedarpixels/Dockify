@@ -10,11 +10,7 @@ import type { GitRepo } from "@/lib/pages/git";
 /** The row grid, shared with the skeleton so nothing moves when the list lands. */
 const TEMPLATE = "32px minmax(0,1fr) 96px 72px";
 
-/**
- * One repository in the import list, 52px: a GitHub or lock tile, owner/name over the push time
- * (the full moment on hover), the framework or language, and Import. `active` is the row the
- * arrow keys reached in the search field; Enter there imports it.
- */
+/** `active` is the row the arrow keys reached in the search field; Enter there imports it. */
 export function RepoRow({
   repo,
   now,
@@ -51,7 +47,6 @@ export function RepoRow({
   );
 }
 
-/** Placeholder rows in the exact row geometry. */
 export function RepoSkeleton({ rows = 5 }: { rows?: number }) {
   return <SkelRows rows={rows} height={52} template={TEMPLATE} cols={[24, { w: "50%", lines: 2 }, 64, 72]} label="Loading repositories" className="git-skel" />;
 }

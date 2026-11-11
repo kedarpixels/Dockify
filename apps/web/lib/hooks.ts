@@ -4,8 +4,6 @@ import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type
 import { publishOverview } from "./live-overview";
 import type { OverviewResult } from "./types";
 
-/* -------------- Session expiry -------------- */
-
 /* Flips once per page load: after the first 401 the console stays behind the notice until the
    operator signs in again, which is a full navigation and starts a fresh page. */
 let sessionEnded = false;
@@ -34,11 +32,7 @@ export function useSessionEnded() {
   );
 }
 
-/**
- * `fetch` for same-origin console calls. A 401, or an answer that a server loader redirected to
- * /login (fetch follows redirects, so it ends there), ends the session. Errors and other statuses
- * pass through untouched, so callers keep their own handling.
- */
+/** `fetch` for same-origin console calls. A 401, or a followed redirect that lands on /login, ends the session. */
 export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, init);
   if (res.status === 401 || (res.redirected && landedOnLogin(res.url))) endSession();
@@ -54,10 +48,7 @@ function landedOnLogin(url: string) {
   }
 }
 
-/**
- * A clock that re-renders its caller every `ms`, so relative times and timers stay current.
- * Pass `start` (the snapshot time) so the server and the first client render agree.
- */
+/** Re-renders its caller every `ms`. Pass `start` (the snapshot time) so server and first client render agree. */
 export function useNow(ms: number, start?: string) {
   const [now, setNow] = useState(() => {
     const t = start ? Date.parse(start) : NaN;
@@ -77,12 +68,8 @@ const stamp = (r: OverviewResult) => Date.parse(r.fetchedAt) || 0;
 /** How long a refresh runs before the page says it is updating. */
 const SLOW_MS = 600;
 
-/**
- * Refetches the overview on an interval and when the tab comes back, pausing while it is hidden.
- * Only the newest snapshot wins, a failed refresh keeps the last good data, and a fresher `initial`
- * from the server (after router.refresh) replaces what the poll holds. `refreshing` turns on only
- * once a refresh has taken 600ms, so a quick one never flashes an "Updating" note.
- */
+/** Polls the overview, pausing while the tab is hidden. The newest snapshot wins, a failed refresh
+ * keeps the last good data, and a fresher `initial` from the server replaces what the poll holds. */
 export function useOverview(initial: OverviewResult, ms = 15_000) {
   const [result, setResult] = useState(initial);
   const [refreshing, setRefreshing] = useState(false);
@@ -144,17 +131,12 @@ export function useOverview(initial: OverviewResult, ms = 15_000) {
   return { result, refreshing };
 }
 
-/* Keys that already counted up in this page load. Coming back to a page, or a poll that changes a
-   value, shows the number straight away instead of counting from zero again. Only effects write
-   it, so the server render always starts from 0, the same as the first client render. */
+/* Keys that already counted up in this page load, so a revisit shows the number at once.
+   Only effects write it, so the server and first client render both start from 0. */
 const counted = new Set<string>();
 
-/**
- * Eases a number from 0 to `target` (900ms, ease out), then follows it without animating. A target
- * that changes while the first count runs is eased toward from where the count is.
- * Without `key` it counts once per mount; with `key` once per page load, so a figure that remounts
- * (a tab switch, a page revisit) shows straight away. Reduced motion shows the target at once.
- */
+/** Eases from 0 to `target`, then follows it without animating. With `key` it counts once per page
+ * load, not once per mount. Reduced motion shows the target at once. */
 export function useCountUp(target: number, ms = 900, key?: string) {
   const [value, setValue] = useState(() => (key !== undefined && counted.has(key) ? target : 0));
   const current = useRef(value);
@@ -183,10 +165,8 @@ export function useCountUp(target: number, ms = 900, key?: string) {
   return value;
 }
 
-/**
- * Every popover's "a press outside closes me". While `active`, a pointer press outside all of
- * `inside` calls `onOutside`. `capture` hears the press before anything inside the page can stop it.
- */
+/** While `active`, a pointer press outside all of `inside` calls `onOutside`. `capture` hears the
+ * press before anything inside the page can stop it. */
 export function useOutsidePress(active: boolean, inside: ReadonlyArray<RefObject<Element | null>>, onOutside: () => void, capture = false) {
   const press = useEffectEvent((e: PointerEvent) => {
     if (!inside.some((r) => r.current?.contains(e.target as Node))) onOutside();
@@ -199,12 +179,8 @@ export function useOutsidePress(active: boolean, inside: ReadonlyArray<RefObject
   }, [active, capture]);
 }
 
-/**
- * Whether a popover of `height` should open above `anchor`: the room below ends first, at the
- * viewport or at a scrolling ancestor of `from`, and there is more room above. `height` includes
- * its gap. From the anchor and a measured height, not the popover's own rect: an entry animation
- * shifts that by a few pixels, which is exactly enough to hide a small overflow.
- */
+/** Whether a popover of `height` (gap included) should open above `anchor`. Uses the anchor and a
+ * measured height, not the popover's rect: an entry animation shifts that enough to hide an overflow. */
 export function opensUp(anchor: DOMRect, height: number, from: Element | null) {
   let top = 0;
   let bottom = window.innerHeight;
@@ -220,10 +196,7 @@ export function opensUp(anchor: DOMRect, height: number, from: Element | null) {
 
 const noop = () => () => {};
 
-/**
- * False during the server render and hydration, true right after. Use it for output that differs
- * between the server and the browser (local times), so hydration never mismatches.
- */
+/** False during the server render and hydration, true right after. For output that differs between the two. */
 export function useHydrated() {
   return useSyncExternalStore(
     noop,
@@ -232,11 +205,8 @@ export function useHydrated() {
   );
 }
 
-/**
- * "/" focuses `ref` from anywhere on the page. It stays out of the way while the operator types in
- * a field, holds a modifier, or works in a dialog the field is not inside. When several fields
- * listen, the first one registered wins.
- */
+/** "/" focuses `ref`, except while the operator types in a field, holds a modifier, or works in a
+ * dialog the field is not inside. With several listeners, the first registered wins. */
 export function useSlashFocus(ref: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>, enabled = true) {
   useEffect(() => {
     if (!enabled) return;

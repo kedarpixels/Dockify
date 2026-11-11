@@ -1,20 +1,9 @@
-/**
- * The control plane's own containers, as the worker sees them. The api has no Docker access,
- * so its server page could only list itself and Postgres. Once a minute the worker finds this server's
- * agent by its fixed name, reads the compose project from its labels, lists that project's containers
- * through the agent, and stores one row per service on the instance row. The api
- * reads it back (modules/platform/server.ts) next to its own probes and the worker's heartbeat.
- *
- * Read-only: a name filter, a label filter and one inspect per container, all calls the socket
- * proxy already allows the sampler.
- */
+/** The api has no Docker access, so the worker stores the control plane's containers on the instance row. */
 import type { Db, Prisma } from "@dockify/db";
 import type { DockerReader } from "./docker.ts";
 
 export interface ServiceState {
-  /** The compose service: api, worker, web, proxy, buildkit, socket-proxy, updater, cloudflared, postgres. */
   service: string;
-  /** Docker's state: running, restarting, exited, dead, created, paused. */
   state: string;
   health: string | null;
   startedAt: string | null;
@@ -50,7 +39,6 @@ export async function readControlPlane(docker: DockerReader, selfName: string): 
   return out.sort((a, b) => a.service.localeCompare(b.service));
 }
 
-/** One pass: read the control plane and store it with the time it was read. */
 export async function recordControlPlane(db: Db, docker: DockerReader, selfName: string, now = new Date()): Promise<number> {
   const services = await readControlPlane(docker, selfName);
   if (!services) return 0;

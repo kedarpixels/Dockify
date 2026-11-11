@@ -24,21 +24,8 @@ import {
 import { onUpdateJob, updateStarted } from "@/lib/update-events";
 import { useCan } from "@/lib/viewer";
 
-/*
- * "Important security release": when the signed release feed has a security release this server
- * does not run yet (lib/security-release.ts), every console page shows
- *
- *   - Admins a popup at once: the red alert tile, what the release fixes, Update now, and Remind me
- *     in 1, 3 or 7 days (the close key, Esc and a click outside count as 1 day). It never stacks: while
- *     another dialog, the command menu or a menu is up it waits, and "Confirm it is you" hides it
- *     while it asks (step-up.tsx). It comes back when the reminder ends or a newer one comes out.
- *   - every member a slim red banner under the top bar (SecurityBanner, from the Topbar), with
- *     Update now for Admins and "Ask an admin to update" for Viewers. It stays while the popup is
- *     put off, until the update is in.
- *
- * Update now runs the Server page's own update: the API asks for the step-up first when it wants
- * one, then the job goes to the Server page's Updates card, which shows its steps.
- */
+// The popup never stacks: it waits while another dialog or menu is up, and "Confirm it is you"
+// hides it while it asks. Closing it any way counts as a 1 day reminder; the banner stays.
 
 const DAY = 86_400_000;
 /** Checked every 5 minutes, every 30 seconds while an update runs. */
@@ -158,7 +145,7 @@ export function SecurityReleaseProvider({ initial, children }: { initial: Securi
     [],
   );
 
-  /** "Remind me in": put the popup off for this member. The banner stays. */
+  /** Puts the popup off for this member. The banner stays. */
   const snooze = useCallback(
     async (days: SnoozeDays, chosen: boolean) => {
       const rel = alertRef.current?.release;
@@ -181,7 +168,6 @@ export function SecurityReleaseProvider({ initial, children }: { initial: Securi
     [preview],
   );
 
-  /** Update now: the Server page's update, step-up first when the API asks for it, then its progress. */
   const updateNow = useCallback(async () => {
     const a = alertRef.current;
     if (startLock.current || !a?.target) return;
@@ -220,7 +206,6 @@ export function SecurityReleaseProvider({ initial, children }: { initial: Securi
   );
 }
 
-/** What Update now will install, in one sentence, from the target the API offers. */
 function planLine(alert: SecurityAlert, release: SecurityRelease): string {
   switch (updatePlan(alert, release)) {
     case "exact":
@@ -311,11 +296,6 @@ function SecurityPopup({
   );
 }
 
-/**
- * The slim red banner under the top bar while a security release is pending, for every member. It
- * rides the page's rails like a band: full bleed, the two rails redrawn across it and a node where
- * each meets its bottom rule.
- */
 export function SecurityBanner() {
   const s = useContext(SecurityContext);
   const alert = s?.alert;

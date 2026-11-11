@@ -1,7 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { CopyButton } from "@/components/ui/copy-button";
 
-/** A fenced code block: a ruled head with the language and a copy key, then the code. */
 export function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const text = code.replace(/\n$/, "");
   return (
@@ -38,11 +37,8 @@ function breakableUrl(word: string, key: number): ReactNode {
   );
 }
 
-/**
- * The command's words. A flag never breaks at its own hyphens, and a pipe stays on one line with the
- * word after it, so a wrapped command never leaves "sh" or "dry-run" alone on a line. The spaces
- * stay plain spaces and a break opportunity adds no character, so a selection copies as typed.
- */
+/** A flag never breaks at its own hyphens and a pipe stays with the word after it. A break opportunity adds
+ *  no character, so a selection copies as typed. */
 function commandWords(command: string): ReactNode[] {
   const words = command.split(" ");
   const out: ReactNode[] = [];
@@ -68,7 +64,7 @@ function commandWords(command: string): ReactNode[] {
   return out;
 }
 
-/** A single copyable command line, for the hero and the install page. `what` names it for screen readers. */
+/** `what` names the command for screen readers. */
 export function CommandLine({ command, what = "install command" }: { command: string; what?: string }) {
   return (
     <div className="cmdline">

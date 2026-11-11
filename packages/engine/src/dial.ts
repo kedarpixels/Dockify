@@ -1,8 +1,6 @@
 /**
- * A connection to something on one server's own networks, made from a process on that server. A
- * container is dialled at its address on the network asked for, which is why the process joins that
- * network for as long as a connection needs it. The proxy is dialled by its reserved alias, on the
- * network every Dockify service shares with it. Depends on a Docker client and nothing else.
+ * A container is dialled at its address on the network asked for, so this process joins that network for as
+ * long as a connection needs it. The proxy is dialled by its reserved alias on the shared deploy network.
  */
 import { connect as netConnect, type Socket } from "node:net";
 import type { ContainerInfo } from "./docker.ts";

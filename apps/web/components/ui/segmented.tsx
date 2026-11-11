@@ -12,7 +12,6 @@ export interface SegmentOption<T extends string> {
   tip?: string;
 }
 
-/** One option of a list filter: what filterOptions turns into a Segmented option. */
 export interface SegmentFilter<T extends string> {
   value: T;
   label: string;
@@ -23,15 +22,7 @@ export interface SegmentFilter<T extends string> {
   tip?: string;
 }
 
-/**
- * The one way to build a list filter's options, so every toolbar reads alike: a tone dot for a
- * status, the label, then the count when the list is local. Counts give way on phones.
- *
- *   <Segmented label="Filter by status" value={f} onChange={setF} options={filterOptions([
- *     { value: "all", label: "All", count: rows.length },
- *     { value: "failed", label: "Failed", tone: "bad", count: failed },
- *   ])} />
- */
+/** The one way to build a list filter's options, so every toolbar reads alike. */
 export function filterOptions<T extends string>(filters: SegmentFilter<T>[]): SegmentOption<T>[] {
   return filters.map((f) => ({
     value: f.value,
@@ -51,20 +42,12 @@ export function filterOptions<T extends string>(filters: SegmentFilter<T>[]): Se
   }));
 }
 
-/** The option of a `.seg2` track that carries `value`. */
 export const segOption = (track: HTMLElement | null, value: string) => track?.querySelector<HTMLElement>(`[data-value="${CSS.escape(value)}"]`) ?? null;
 
 type ThumbPlace = { x: number; w: number; instant: boolean } | null;
 
-/**
- * Where a `.seg2` track's thumb sits: under the option that carries `value`. `values` keys the
- * options (callers build them inline, so the effect keys on the values, not the array).
- *
- * The track is observed too: a sibling growing (a count ticking up) moves the chosen option
- * without resizing it. A new value slides; a resize, or the control first showing, puts the thumb
- * straight in place (`instant`). Hidden (display: none, as in a settings tab not yet opened)
- * measures 0, so there is no thumb until it shows; otherwise it would slide in from the left edge.
- */
+// The track is observed too: a sibling growing moves the chosen option without resizing it. Hidden
+// (display: none) measures 0, so there is no thumb until it shows instead of one sliding in from the left.
 export function useSegThumb(trackRef: React.RefObject<HTMLDivElement | null>, value: string, values: string): ThumbPlace {
   const [thumb, setThumb] = useState<ThumbPlace>(null);
   useLayoutEffect(() => {
@@ -90,7 +73,6 @@ export function useSegThumb(trackRef: React.RefObject<HTMLDivElement | null>, va
   return thumb;
 }
 
-/** The thumb itself, placed by useSegThumb. */
 export function SegThumb({ thumb }: { thumb: ThumbPlace }) {
   if (!thumb) return null;
   return (
@@ -102,12 +84,7 @@ export function SegThumb({ thumb }: { thumb: ThumbPlace }) {
   );
 }
 
-/**
- * One track, one thumb: the thumb slides to the chosen option the way the theme switch knob
- * slides. Arrow keys move the choice; the track keeps its width so nothing around it jumps.
- * Inside a Field pass `ids`: the visible label names the group and the hint or error is read with it.
- * For a page's sections (content that swaps), use Tabs (components/ui/tabs), which looks the same.
- */
+/** For a page's sections (content that swaps), use Tabs, which looks the same. Inside a Field pass `ids`. */
 export function Segmented<T extends string>({
   value,
   options,
@@ -121,7 +98,6 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
   label: string;
   iconOnly?: boolean;
-  /** From a Field: the visible label, the hint or error, the invalid flag. */
   ids?: FieldIds;
 }) {
   const track = useRef<HTMLDivElement>(null);

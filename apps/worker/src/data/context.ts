@@ -1,8 +1,4 @@
-/**
- * What every data job needs, resolved from the database: the backup key, the store for a
- * destination, and a service's sealed credentials. Kept apart from the pipelines so those can be
- * tested with plain fakes.
- */
+/** What every data job needs, kept apart from the pipelines so those can be tested with plain fakes. */
 import { join } from "node:path";
 import { openServiceCredentials, readSecretValue, ServiceCredentialsError, storeSecret, type Db, type SecretAccess, type SecretVault } from "@dockify/db";
 import type { DockerPort } from "./docker-port.ts";
@@ -11,11 +7,9 @@ import type { ServiceCredentials } from "./services.ts";
 import { LOCAL_FLAG, LocalStore, S3Store, localBackupsAllowed, type FetchLike, type ObjectStore, type OutboundGuard } from "./store.ts";
 
 export interface BackupKeys {
-  /** The secrets row the key lives in: what the escrow call names. */
   secretId: string;
   active: Buffer;
   fingerprint: string;
-  /** Every key that can open a backup, by fingerprint. */
   all: Map<string, Buffer>;
 }
 
@@ -35,17 +29,14 @@ export interface DataDeps {
   backupKeys(): Promise<BackupKeys>;
   storeFor(destinationId: string | null): Promise<ResolvedStore>;
   credentials(appId: string): Promise<ServiceCredentials>;
-  /** Where the updater left a pre-update control-plane dump (the shared backups volume). */
   controlDumpPath?: (dumpId: string) => string;
   now?: () => Date;
   log?: (msg: string, extra?: object) => void;
 }
 
-/** What needs no server: the database, the backup key, the stores and a service's credentials. */
 export type DataStores = Omit<DataDeps, "docker">;
 
 export class DataError extends Error {
-  /** True when retrying cannot help (missing config, bad input). */
   readonly permanent: boolean;
   constructor(message: string, permanent = false) {
     super(message);
@@ -62,10 +53,7 @@ export class DeadlineError extends DataError {
   }
 }
 
-/**
- * The instance backup key, created on first use. Separate from the master key and from every
- * storage credential (security rule 19); sealed in the secrets table like any other value.
- */
+/** The instance backup key, created on first use. Separate from the master key and from every storage credential. */
 export async function loadBackupKeys(db: Db, vault: SecretAccess): Promise<BackupKeys> {
   const secretId = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('dockify.backup-key'))`;
@@ -96,11 +84,7 @@ export interface StoreOptions {
   env?: NodeJS.ProcessEnv;
 }
 
-/**
- * The store behind a destination. A null destination means "the default": the default S3
- * destination when there is one, else this server's disk unless the owner turned that off. One
- * rule for manual, scheduled and pre-deploy runs alike.
- */
+/** Null means the default: the default S3 destination, else this server's disk unless the owner turned that off. */
 export async function resolveStore(db: Db, vault: SecretAccess, destinationId: string | null, opts: StoreOptions): Promise<ResolvedStore> {
   const dest = destinationId
     ? await db.backupDestination.findUnique({ where: { id: destinationId }, include: { integration: true } })
@@ -128,7 +112,6 @@ export async function resolveStore(db: Db, vault: SecretAccess, destinationId: s
   return { store, prefix: dest.prefix, destinationId: dest.id, type: "s3" };
 }
 
-/** A service's credentials through the shared reader (@dockify/db), either stored shape. */
 export async function readCredentials(db: Db, vault: SecretAccess, appId: string): Promise<ServiceCredentials> {
   const app = await db.app.findUnique({ where: { id: appId }, select: { id: true, name: true, kind: true, passwordSecretId: true } });
   if (!app) throw new DataError("That app no longer exists", true);

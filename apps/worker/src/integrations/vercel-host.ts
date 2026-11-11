@@ -1,5 +1,3 @@
-/** Addresses Vercel sends that end up as links in the dashboard: each is checked before it is stored. */
-
 /** The deployment's own address: only a bare hostname from Vercel becomes a link. */
 export function httpsOfHost(host: string | null | undefined): string | null {
   if (typeof host !== "string") return null;

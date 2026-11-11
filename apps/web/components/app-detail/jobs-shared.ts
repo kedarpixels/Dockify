@@ -1,5 +1,4 @@
-﻿/* The shapes of the Jobs tab and the checks its form makes before asking. Safe for both sides of the
-   route; the api checks every value again and holds the limits. */
+﻿/* Safe for both sides of the route; the api checks every value again and holds the limits. */
 
 export type JobRunStatus = "queued" | "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "skipped" | "missed";
 export type JobOverlap = "skip" | "replace";

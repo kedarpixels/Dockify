@@ -1,10 +1,7 @@
 import type { InstanceSettings, NotifyEvent } from "@/lib/pages/activity-settings";
 
-/*
- * What a settings section sends: only its own fields, and of those only the ones that changed. A
- * whole-object save would write the shown preview domain back as a custom one, and put back values
- * another admin changed since this page loaded.
- */
+// Only the fields that changed are sent: a whole-object save would store the shown preview domain
+// as a custom one and put back values another admin changed since.
 
 export type SettingsPatch = Partial<Pick<InstanceSettings, "instanceName" | "defaultBranch" | "logRetentionDays" | "previewDomain" | "terminalEnabled">> & {
   notifications?: { events: Partial<Record<NotifyEvent, boolean>> };

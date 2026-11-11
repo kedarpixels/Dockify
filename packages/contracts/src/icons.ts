@@ -1,9 +1,6 @@
 /**
- * App, project and webhook icons: what the api answers about an icon, the write body, and the image
- * checks the api (uploads, logo links) and the worker (favicons) both run. The checks read magic
- * bytes and the header's own dimensions; nothing here decodes pixels. SVG is accepted as a fetched
- * favicon or a webhook logo, never as an upload, and only as the document sanitizeSvg rebuilds
- * (svg.ts).
+ * Image checks read magic bytes and the header's own dimensions; nothing here decodes pixels. SVG is accepted
+ * as a fetched favicon or a webhook logo, never as an upload, and only as sanitizeSvg's rebuild (svg.ts).
  */
 import { z } from "zod";
 import { Iso, Slug, Uuid } from "./common.ts";
@@ -38,7 +35,6 @@ export const FaviconFacts = z.object({
   error: z.string().nullable(),
 });
 
-/** A frontend a project can show the favicon of: its display name and the host the favicon came from. */
 export const FaviconApp = z.object({
   id: Uuid,
   name: z.string(),
@@ -47,14 +43,11 @@ export const FaviconApp = z.object({
 });
 export type FaviconApp = z.infer<typeof FaviconApp>;
 
-/** What a project's icon is: the folder (the default), the favicon of an app the owner chose, or an upload. */
 export const ProjectIconMode = z.enum(["folder", "app", "upload"]);
 export type ProjectIconMode = z.infer<typeof ProjectIconMode>;
 
-/** Projects only: the icon's mode, the app chosen, and the frontends the owner can choose from. */
 export const ProjectFavicon = z.object({
   mode: ProjectIconMode,
-  /** The app the owner chose, or null. */
   pick: Uuid.nullable(),
   /** The app the shown favicon comes from: the chosen one while it has a favicon, else null (the folder shows). */
   from: Uuid.nullable(),
@@ -72,7 +65,6 @@ export const IconState = z.object({
   image: IconImageRef.nullable(),
   /** A frontend's last favicon fetch, or for a project the chosen app's favicon. */
   favicon: FaviconFacts.nullable(),
-  /** Projects only: the mode, the chosen app and the frontends to choose from. */
   borrow: ProjectFavicon.optional(),
 });
 export type IconState = z.infer<typeof IconState>;
@@ -93,7 +85,6 @@ export const SetIconBody = z.discriminatedUnion("choice", [
 ]);
 export type SetIconBody = z.infer<typeof SetIconBody>;
 
-/** A project's icon write: the folder, the favicon of one of its frontends, or an upload. */
 export const SetProjectIconBody = z.discriminatedUnion("choice", [
   z.strictObject({ choice: z.literal("folder") }),
   z.strictObject({ choice: z.literal("app"), appId: Uuid }),
@@ -105,13 +96,10 @@ export const IconQuery = z.strictObject({ v: z.string().regex(/^[a-f0-9]{12}$/).
 export const AppIconParams = z.strictObject({ id: Uuid });
 export const ProjectIconParams = z.strictObject({ slug: Slug });
 /**
- * A signed mail icon link's token (the api mints and checks it: crypto's signMailIcon). Loose on
- * purpose: anything that is not a token this instance signed answers 404 from the handler, never
- * a 400 that would tell a guesser how close it got.
+ * Loose on purpose: anything this instance did not sign answers 404 from the handler, never a 400 that
+ * would tell a guesser how close it got.
  */
 export const MailIconParams = z.strictObject({ token: z.string().min(1).max(128) });
-
-// ------------------------------------------------------------------ sniffing
 
 export interface SniffedImage {
   mime: IconMime;
@@ -214,9 +202,8 @@ export function checkIconUpload(bytes: Uint8Array): ImageCheck {
 }
 
 /**
- * A fetched favicon: png, ico, webp, jpg or svg, at most 64 KB as it arrived, at least 16px for a
- * raster. Many sites declare only an SVG icon. Like a logo's, an SVG is stored only as sanitizeSvg's
- * rebuild, never as it arrived: `bytes` is what to store.
+ * png, ico, webp, jpg or svg, at most 64 KB as it arrived, at least 16px for a raster. An SVG is stored only
+ * as sanitizeSvg's rebuild: `bytes` is what to store.
  */
 export function checkFavicon(bytes: Uint8Array): LogoCheck {
   if (bytes.length === 0) return { ok: false, reason: "The favicon is empty" };
@@ -234,15 +221,12 @@ export function checkFavicon(bytes: Uint8Array): LogoCheck {
   return { ok: false, reason: "The favicon is not a PNG, ICO, WebP, JPG or SVG image" };
 }
 
-// ------------------------------------------------------------------ webhook logos
-
 export const LOGO_MAX_BYTES = 128 * 1024;
 export const LogoMime = z.enum(["image/png", "image/jpeg", "image/webp", "image/x-icon", "image/gif", "image/svg+xml"]);
 export type LogoMime = z.infer<typeof LogoMime>;
 /** The one stored type an email or a GitHub comment cannot be trusted to draw, so those never link to it. */
 export const SVG_MIME = "image/svg+xml" satisfies LogoMime;
 
-/** A GIF's logical screen size, from the header. */
 function gif(b: Uint8Array): SniffedLogo | null {
   if (b.length < 13 || (ascii(b, 0, 6) !== "GIF87a" && ascii(b, 0, 6) !== "GIF89a")) return null;
   const width = u16le(b, 6);
@@ -260,9 +244,8 @@ export interface SniffedLogo {
 export type LogoCheck = { ok: true; image: SniffedLogo; bytes: Uint8Array } | { ok: false; reason: string };
 
 /**
- * A webhook's logo, uploaded or downloaded from the owner's link: PNG, JPEG, WebP, GIF, ICO or SVG,
- * at most 128 KB, at least 16 pixels a side for a raster. Any aspect ratio: the dashboard fits it
- * into its tile. An SVG is stored only as sanitizeSvg's rebuild, never as it arrived.
+ * PNG, JPEG, WebP, GIF, ICO or SVG, at most 128 KB, at least 16px a side for a raster, any aspect ratio.
+ * An SVG is stored only as sanitizeSvg's rebuild, never as it arrived.
  */
 export function checkLogo(bytes: Uint8Array): LogoCheck {
   if (bytes.length === 0) return { ok: false, reason: "The logo is empty" };

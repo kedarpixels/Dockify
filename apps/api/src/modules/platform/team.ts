@@ -10,7 +10,7 @@ import type { Ctx, Handlers } from "../../app.ts";
 import { actorAudit, lockArea, reqMeta, requireActor } from "./shared.ts";
 
 export const INVITE_TTL_MS = 7 * 24 * 3600_000;
-/** Pending invites at once; a runaway script cannot fill the table. */
+/** Caps pending invites so a runaway script cannot fill the table. */
 export const MAX_PENDING_INVITES = 50;
 
 export interface MemberRef {
@@ -33,9 +33,8 @@ export interface TeamPlan {
 }
 
 /**
- * Validates a batch of team changes against the current members, as one unit:
- * ids are user ids, each at most once; nobody removes themselves; and at least one admin remains, so the last admin can be neither
- * removed nor demoted (themselves included). Only admins reach this (team.change is elevated:admin).
+ * Validates a batch as one unit: each user at most once, nobody removes themselves, and at least
+ * one admin remains, so the last admin can be neither removed nor demoted.
  */
 export function planTeamChanges(members: MemberRef[], changes: TeamChange[], actorUserId: string): TeamPlan {
   const byId = new Map(members.map((m) => [m.userId, m]));
@@ -68,7 +67,7 @@ export function planTeamChanges(members: MemberRef[], changes: TeamChange[], act
   return plan;
 }
 
-/** Whether an actor of `actorRole` may hand out `role` in an invite: never above their own. */
+/** Nobody hands out a role above their own. */
 export function canInvite(actorRole: Role, role: Role): boolean {
   return ROLE_RANK[role] <= ROLE_RANK[actorRole];
 }
@@ -106,9 +105,8 @@ async function loadTeam(ctx: Ctx, now = new Date()) {
 }
 
 /**
- * Queues the invite email when email is set. Best effort: the copy link is already in the answer,
- * so a missing integration, a busy recipient or a queue failure only turns `emailed` false. True
- * means queued, not delivered: the worker writes what became of it on the invite row.
+ * Best effort: the copy link is already in the response, so any failure only returns false.
+ * True means queued, not delivered; the worker records the outcome on the invite row.
  */
 async function sendInvite(ctx: Ctx, inviteId: string, to: string, v: { invitedBy: string; role: string; url: string }): Promise<boolean> {
   if (!(await emailEnabled(ctx.db)) || !allowRecipient(ctx.limits, to)) return false;
@@ -125,9 +123,8 @@ async function sendInvite(ctx: Ctx, inviteId: string, to: string, v: { invitedBy
 }
 
 /**
- * Ends the open invites someone made, when they lose the power to make them. An invite outlives its
- * maker (invitedById goes null with the user), so a removed admin could otherwise come back through a
- * link they kept. Runs before the user row goes, while the rows still name them.
+ * An invite outlives its maker, so a removed admin could come back through a link they kept.
+ * Must run before the user row is deleted, while the invites still name them.
  */
 async function revokeInvitesFrom(tx: Tx, userId: string, name: string, a: ReturnType<typeof requireActor>, req: Parameters<typeof reqMeta>[0]): Promise<void> {
   const { count } = await tx.invite.updateMany({ where: { invitedById: userId, usedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });

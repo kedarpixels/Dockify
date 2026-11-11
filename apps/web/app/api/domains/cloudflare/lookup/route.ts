@@ -4,7 +4,6 @@ import { json, refuse, upstreamStatus } from "@/lib/http";
 import { previewCfLookup } from "@/lib/pages/dashboard-domain";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/** GET /api/domains/cloudflare/lookup?hostname=: one hostname, before it is added. */
 export async function GET(request: Request) {
   const hostname = new URL(request.url).searchParams.get("hostname") ?? "";
   if (!HOST_RE.test(hostname)) return refuse(400, "Use a hostname such as app.example.com");

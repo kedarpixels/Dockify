@@ -51,9 +51,6 @@ const TAB_LABEL: Record<ProjectTab, string> = {
   settings: "Settings",
 };
 
-/* -------------- Apps -------------- */
-
-/** One app as the project card's cell: its head and state, its address, its last deployment, its usage. */
 function AppCard({ a, now, multiEnv, delay, repoUrl }: { a: AppSummary; now: number; multiEnv: boolean; delay: number; repoUrl: string | null }) {
   // A deployment read without a repository takes the project's, so its branch and hash still link.
   const d = a.lastDeployment ? withRepo([a.lastDeployment], repoUrl)[0] : undefined;
@@ -143,10 +140,7 @@ function AppsTab({ p, env, now, onNew }: { p: ProjectDetail; env: string; now: n
   );
 }
 
-/**
- * Which environment the project page shows, kept in `?env=` as the tab is in `?tab=`: every
- * environment is the bare URL. A switch replaces the history entry.
- */
+/** Kept in `?env=`; every environment is the bare URL. A switch replaces the history entry. */
 function useEnvFilter() {
   const param = useSearchParams().get("env") ?? ALL;
   const [value, setValue] = useState(param);
@@ -164,8 +158,6 @@ function useEnvFilter() {
   }, []);
   return [value, change] as const;
 }
-
-/* -------------- Domains -------------- */
 
 /* The domains page row, without the DNS column (the project read has no lookup) or the project,
    which this page already is. Adding and removing happen on an app or on the Domains page. */
@@ -211,8 +203,6 @@ function DomainsTab({ p, env, now, manage }: { p: ProjectDetail; env: string; no
   );
 }
 
-/* -------------- Page -------------- */
-
 export function ProjectView({ overview, page, slug }: { overview: OverviewResult; page: PageResult<ProjectPage>; slug: string }) {
   const router = useRouter();
   const { result } = useOverview(overview);
@@ -222,7 +212,6 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
   const notices = useMemo(() => (o ? deriveNotices(o, now) : null), [o, now]);
   const [tab, setTab] = useUrlTab(PROJECT_TABS);
   const [envFilter, setEnvFilter] = useEnvFilter();
-  // Switching away from Settings with unsaved edits asks first.
   const tabGuard = useTabSwitchGuard(tab, "settings", setTab);
   const [saved, setSaved] = useState<ProjectDetail | null>(null);
   // What a save put here holds only until the server sends the page again (router.refresh).
@@ -236,9 +225,8 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
   const extrasLoading = load.state === "loading";
   const extrasError = load.state === "error" ? load.error : load.state === "ready" ? load.result.error : undefined;
 
-  // New app is a popup over the page. `?new=service` (from Variables, "Link a service") opens it
-  // straight on the Database or service step, and `&for=<app id>` names the app it was opened
-  // from, which the new service starts linked to. Closing drops both, so a reload stays put.
+  // `?new=service` opens New app on the Database or service step and `&for=<app id>` names the app
+  // the new service starts linked to. Closing drops both, so a reload stays put.
   const search = useSearchParams();
   const asked = search.get("new") === "service";
   const askedFor = asked ? (search.get("for") ?? undefined) : undefined;
@@ -266,8 +254,7 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
     return { ...base, apps: base.apps.map((a) => ({ ...a, status: live.get(a.id) ?? a.status })) };
   }, [saved, page.data, o]);
 
-  // The page's own snapshot holds the deployments and their counts: read it again when a polled
-  // status moves, as the app page does.
+  // The page's own snapshot holds the deployments and their counts: read it again when a polled status moves.
   const polled = project ? statusKey(project.apps) : null;
   const lastPolled = useRef(polled);
   useEffect(() => {
@@ -287,8 +274,7 @@ export function ProjectView({ overview, page, slug }: { overview: OverviewResult
     if (moving) void reload();
   }, [tick, moving, reload]);
 
-  // A project with one environment shows none: no switcher, nothing narrowed. With several, the
-  // header's switcher narrows the apps, deployments, domains and variables to one, or shows them all.
+  // A project with one environment shows none: no switcher, nothing narrowed.
   const multi = project ? showsEnvironments(project.environments) : false;
   const env = multi && project?.environments.some((e) => e.name === envFilter) ? envFilter : ALL;
   const inEnv = useCallback((x: { environment: string }) => env === ALL || x.environment === env, [env]);

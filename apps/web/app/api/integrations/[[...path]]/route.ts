@@ -30,15 +30,8 @@ import {
 } from "@/lib/pages/integrations";
 import { emailFormErrors, type EmailTlsMode } from "@/components/activity-settings/integrations/email-rules";
 
-/*
- * Same-origin proxy for /api/v1/integrations (contract in lib/pages/integrations.ts). Every body
- * is checked for shape here and rebuilt from the checked fields only, so a crafted call can neither
- * crash the route nor smuggle extra keys to the API. Secrets pass through to the API once and are
- * never answered back: the preview builds its answers from hints. Nothing here logs. A write that
- * stores or drops a credential is elevated: without a fresh step-up it answers the shared refusal
- * (lib/step-up.ts), in the preview too (lib/preview-step-up.ts). The GitHub App's creation and
- * removal ride here too (github/app/...), since they store and drop the App's keys.
- */
+// Every body is rebuilt from its checked fields, so a crafted call cannot smuggle extra keys to the API.
+// Secrets pass through once and are never answered back, and nothing here may log.
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 type Reply = { status: number; body: IntegrationsAnswer<unknown> };
@@ -74,11 +67,7 @@ const refuse = (status: number, error: string) => reply(status, null, error);
 const ok = (data: unknown) => reply(200, data);
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * Through the API, else the preview answer, else no API at all. A 204 answers `{ ok: true }`. The
- * API's own 4xx pass through with their code; `elevated` writes are refused in the preview outside
- * its step-up window, as the API refuses them.
- */
+/** Through the API, else the preview answer, else no API. `elevated` writes need a fresh step-up, in the preview too. */
 async function forward(method: Method, path: string, body: unknown, demo: () => Reply | Promise<Reply>, elevated = false): Promise<Reply> {
   return forwardTo(method, `/api/v1/integrations${path}`, body, demo, elevated);
 }
@@ -95,7 +84,7 @@ async function forwardTo(method: Method, apiPath: string, body: unknown, demo: (
   return refuse(503, NO_API);
 }
 
-/* ---------- Body checks: each returns the clean value or the first problem, as a string ---------- */
+// Body checks: each returns the clean value, or the first problem as a string.
 
 function cleanSecret(v: unknown, what: string, required: boolean): string | undefined | Error {
   if (v === undefined || v === "") return required ? new Error(`Enter the ${what}`) : undefined;
@@ -139,8 +128,6 @@ function cleanStorage(b: Body, create: boolean): StorageInput | string {
   };
 }
 
-/* ---------- Webhooks ---------- */
-
 function cleanLogo(v: unknown): WebhookLogo | string {
   if (!isRecord(v)) return "Pick how the webhook’s logo is set";
   if (v.choice === "auto") return { choice: "auto" };
@@ -155,11 +142,7 @@ function cleanLogo(v: unknown): WebhookLogo | string {
   return "Pick how the webhook’s logo is set";
 }
 
-/**
- * A webhook body, rebuilt from the fields this route knows. The checks are the shape the add form
- * already holds to (the same detection module the API uses); the API checks every value again,
- * including the address rule, before it stores anything.
- */
+/** A webhook body rebuilt from the fields this route knows. The API checks every value again before it stores anything. */
 function cleanWebhook(b: Body, create: boolean, draft = false): WebhookInput | string {
   const out: WebhookInput = {};
   if (b.name !== undefined) {
@@ -303,8 +286,6 @@ const previewBase = (id: string, now: Date): Webhook => ({
   status: "never", error: null, lastSentAt: null, lastFailedAt: null, rules: 0, icon: { choice: "auto", image: null, logoUrl: null, favicon: null }, createdAt: now.toISOString(),
 });
 
-/* ---------- The GitHub App ---------- */
-
 async function handleGithub(method: Method, id: string | undefined, leaf: string | undefined, body: Body, origin: string | null): Promise<Reply> {
   if (id !== "app") return refuse(404, "Not found");
   if (leaf === "manifest" && method === "POST") {
@@ -322,8 +303,6 @@ async function handleGithub(method: Method, id: string | undefined, leaf: string
   if (leaf === undefined && method === "DELETE") return forwardTo("DELETE", "/api/v1/git/app", undefined, () => ok({ ok: true }), true);
   return refuse(404, "Not found");
 }
-
-/* ---------- Routes ---------- */
 
 /** The form's values, cleaned, or the first problem. The API has the last word on the password. */
 function cleanEmail(b: Body): EmailInput | string {
@@ -353,8 +332,6 @@ const previewRefusal = (input: EmailInput): { status: number; error: string; cod
   if (input.host === "badtls.example.com") return { status: 502, code: "EMAIL_TLS", error: `Could not make a secure connection to ${input.host} on port ${input.port}, so nothing was sent. Check that the TLS mode fits this port and that the server has a valid certificate.` };
   return null;
 };
-
-/* ---------- Email (SMTP) ---------- */
 
 async function handleEmail(method: Method, leaf: string | undefined, body: Body, now: Date): Promise<Reply> {
   const base = previewEmail(now);
@@ -535,8 +512,6 @@ function previewStorage(id: string, input: StorageInput, old?: { accessKeyHint: 
     error: null,
   };
 }
-
-/* ---------- Entry ---------- */
 
 async function serve(method: Method, request: Request, params: Promise<{ path?: string[] }>) {
   const send = ({ status, body }: Reply) => json(body, status);

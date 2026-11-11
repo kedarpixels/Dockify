@@ -50,7 +50,6 @@ function IncidentItem({ incident: i }: { incident: Incident }) {
   );
 }
 
-/** The incident history of the last 90 days, newest first, or a calm empty state. */
 export function Incidents({ incidents }: { incidents: Incident[] }) {
   if (!incidents.length) {
     return <Empty icon="checkCircle" title="No incidents" body="Nothing has been reported in the last 90 days." />;

@@ -15,11 +15,8 @@ import { describeClose, TERMINAL_IDLE_MINUTES, TERMINAL_TOTAL_MINUTES, type Term
 import { TabCard } from "./states";
 import type { TerminalHandle, ViewEvent } from "./terminal-view";
 
-/*
- * The app's Terminal tab, for an admin on an app that runs on this server. Viewers never get the tab
- * (app-view.tsx). Opening asks for a ticket, which needs a fresh step-up, so "Confirm it is you"
- * shows first and alone. xterm.js loads only from here, and only once a session starts.
- */
+// Opening asks for a ticket, which needs a fresh step-up, so "Confirm it is you" shows first and
+// alone. xterm.js loads only from here, and only once a session starts.
 
 const TerminalView = dynamic(() => import("./terminal-view").then((m) => m.TerminalView), {
   ssr: false,
@@ -40,7 +37,6 @@ export function TerminalTab({ app }: { app: AppDetail }) {
   const open = useCallback(async () => {
     setState({ at: "asking" });
     const r = await mutate({ type: "app.terminalTicket", id: app.id });
-    // Closing "Confirm it is you" opened nothing and is nothing to report.
     if (isStepUpCancel(r)) return setState({ at: "idle" });
     const ticket = (r.data as { ticket?: unknown } | undefined)?.ticket;
     if (!r.ok || typeof ticket !== "string") {

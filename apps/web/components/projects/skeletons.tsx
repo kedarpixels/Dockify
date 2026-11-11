@@ -1,11 +1,7 @@
 import { Skel, SkelRows } from "@/components/ui/skeleton";
 
-/*
- * Loading shapes for the project card pages (the routes' loading.tsx): bars at the loaded parts'
- * real sizes, never placeholder words, so nothing jumps when the data lands.
- */
+/* Bars at the loaded parts' real sizes, so nothing jumps when the data lands. */
 
-/** One project or app card as bars: the head, the last deployment, the foot. */
 export function CardBars({ apps = false }: { apps?: boolean }) {
   return (
     <div className="pj-cell" aria-hidden="true">
@@ -40,7 +36,6 @@ export function CardBars({ apps = false }: { apps?: boolean }) {
   );
 }
 
-/** A detail page's head lead and section strip, as bars. */
 export function DetailHeadBars() {
   return (
     <span className="pd-lead" aria-hidden="true">
@@ -51,7 +46,6 @@ export function DetailHeadBars() {
   );
 }
 
-/** The section strip of a detail page, as one bar the width of its tabs. */
 export function TabStripBars({ width }: { width: number }) {
   return (
     <div className="tabs-wrap" aria-hidden="true">

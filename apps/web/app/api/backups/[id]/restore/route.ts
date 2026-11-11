@@ -2,11 +2,8 @@ import { guardWrite, json, readJsonObject, refuse } from "@/lib/http";
 import { NEW_DB_NAME, restoreBackup } from "@/lib/pages/server-backups";
 import { hasReservedPrefix, isReservedServiceName, RESERVED_NAME_MESSAGE, RESERVED_SERVICE_MESSAGE } from "@/lib/validation";
 
-/**
- * POST { mode: "new", name } restores into a new database beside the live one.
- * POST { mode: "replace", confirm } replaces the live database; `confirm` is the typed database.
- * Both are elevated on the API.
- */
+/** { mode: "new", name } restores into a new database; { mode: "replace", confirm } replaces the live one,
+ *  with `confirm` the typed database name. Both are elevated on the API. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const refused = guardWrite(req);
   if (refused) return refused;

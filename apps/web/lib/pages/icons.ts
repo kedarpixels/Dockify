@@ -96,11 +96,7 @@ export async function proxyIcon(t: IconTarget, v: string | null, ifNoneMatch: st
 /** The shape of a signed mail icon token (crypto's signMailIcon): the owner, the icon version and the MAC. */
 const MAIL_TOKEN = /^[ap][0-9a-f]{44}[A-Za-z0-9_-]{43}$/;
 
-/**
- * Streams one signed mail icon from the API, without the visitor's cookie: the email's reader has
- * no session here, and the token is the whole credential, which the API checks. The API answers
- * with public, immutable caching, relayed as it is.
- */
+/** Sent without the visitor's cookie: the email's reader has no session here, and the token is the whole credential, which the API checks. */
 export async function proxyMailIcon(token: string, ifNoneMatch: string | null): Promise<Response> {
   if (!MAIL_TOKEN.test(token)) return notFound();
   if (!process.env.DOCKIFY_API_URL) return notFound();

@@ -1,13 +1,6 @@
 /**
- * App.status as the daemon reports it. Before this, only a deploy or a power action wrote
- * the status, so a stopped container read "running", a crash loop read "running", and the status
- * page said Operational while the app answered 502. Now every sampler tick re-derives each app's
- * status from what the listing and the inspect saw, and the deploy pipeline and power actions use
- * the same rule for the write they make right after acting.
- *
- * The rule (observedStatus) is pure. The writer only changes a row whose status is still the one it
- * read (a compare-and-set), so a deploy that sets "deploying" between the read and the write is
- * never overwritten, and a blind or stale tick writes nothing.
+ * App.status re-derived from the daemon on every sampler tick. The write is a compare-and-set on the
+ * status it read, so a deploy's "deploying" is never overwritten and a blind or stale tick writes nothing.
  */
 import type { AppStatus, Db } from "@dockify/db";
 import { appsHere } from "../server/apps-here.ts";
@@ -19,15 +12,10 @@ const IN_FLIGHT = ["queued", "building", "deploying", "cancelling"] as const;
 
 export interface StatusInput {
   desiredState: "running" | "stopped";
-  /** The app has had a deployment go live (it has a current deployment). */
   deployed: boolean;
-  /** The status of its newest deployment, if any: tells a failed first deploy from a never-deployed app. */
   lastDeployment: string | null;
-  /** A deployment of the app (not a preview) is queued or running. */
   inFlight: boolean;
-  /** The app's container as the daemon reports it, or null when it has none. */
   container: { state: string; health: string | null } | null;
-  /** Restarts of the current container within CRASH_LOOP.windowMs. */
   recentRestarts: number;
 }
 
@@ -38,7 +26,6 @@ export function observedStatus(i: StatusInput): AppStatus {
   if (c) {
     if (c.state === "restarting" || i.recentRestarts >= CRASH_LOOP.restarts) return "restarting";
     if (c.state === "running") return c.health === "unhealthy" ? "degraded" : "running";
-    // created, exited, dead, paused, removing: nothing is serving.
     return i.desiredState === "stopped" ? "stopped" : "exited";
   }
   if (i.desiredState === "stopped") return "stopped";
@@ -55,7 +42,6 @@ export function startedAtOf(raw: string | null | undefined): Date | null {
 
 const recent = (times: number[] | undefined, now: number): number => (times ?? []).filter((t) => t > now - CRASH_LOOP.windowMs).length;
 
-/** What the writers need of each app: its desired state, whether it went live, its newest deployment. */
 const APP_FIELDS = {
   id: true, status: true, desiredState: true, currentDeploymentId: true, containerStartedAt: true,
   deployments: { where: { previewId: null }, orderBy: { createdAt: "desc" as const }, take: 1, select: { status: true, finishedAt: true } },
@@ -69,11 +55,8 @@ async function writeIfUnchanged(db: Db, id: string, read: AppStatus, next: AppSt
 }
 
 /**
- * One pass over every app on this server from the sampler's latest reading. Skips a blind start,
- * a listing older than `maxAgeMs`, an app whose inspect failed this tick, an app a restore has
- * stopped on purpose (its job owns the container), and an app whose deploy settled after the listing
- * was taken: the listing shows the container that deploy has since replaced or scrapped, and
- * the deploy already wrote what it saw. Returns how many rows it changed.
+ * Skips a blind start, a stale listing, an app whose inspect failed, one a restore stopped on purpose,
+ * and one whose deploy settled after the listing: it shows the container that deploy has replaced.
  */
 export async function reconcileAppStatus(db: Db, serverId: string, state: SamplerState, opts: { maxAgeMs: number; now?: number }): Promise<number> {
   const now = opts.now ?? Date.now();
@@ -105,12 +88,7 @@ export async function reconcileAppStatus(db: Db, serverId: string, state: Sample
   return changed;
 }
 
-/**
- * The status right after the worker acted on one app (a deploy settled, a power action ran), from
- * one inspect of its container: `container` null when the daemon has none. Writes the container id
- * with it, over the status it read only (a deploy queued meanwhile keeps its "deploying"). Best
- * effort, like the observe pass that follows it.
- */
+/** Written only over the status it read, so a deploy queued meanwhile keeps its "deploying". Best effort. */
 export async function writeObservedStatus(
   db: Db,
   appId: string,

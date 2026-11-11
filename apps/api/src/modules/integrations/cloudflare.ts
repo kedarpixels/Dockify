@@ -1,10 +1,4 @@
-/**
- * Cloudflare: token check, zones, and the per-zone "Dockify manages DNS here" toggle. Only zones
- * switched on are ever touched by the domains module (readable through managedZoneIds below).
- *
- * Row: integrations kind cloudflare, name "default". config { account: {id,name}, zones: number,
- * managedZoneIds: string[] }, secretId the token (integration_token).
- */
+/** Cloudflare token, zones and the per-zone opt-in. The domains module only ever touches zones in managedZoneIds. */
 import type { Keyring } from "@dockify/crypto";
 import type { Tx } from "@dockify/db";
 import type { Handlers } from "../../app.ts";
@@ -19,7 +13,7 @@ export const CF_API = "https://api.cloudflare.com/client/v4";
 
 interface CfConfig {
   account: { id: string; name: string };
-  /** Flat account id and tunnel id the worker's edge jobs read (worker/src/edge/integration.ts). */
+  /** Flat ids the worker's edge jobs read (worker/src/edge/integration.ts). */
   accountId: string;
   tunnelId: string | null;
   zones: number;
@@ -41,7 +35,7 @@ export class CloudflareApi {
     this.token = token;
   }
 
-  /** A write: a refusal names the permission, and the token never appears in what is thrown. */
+  /** A refusal names the missing permission; the token never appears in what is thrown. */
   async send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
     const res = await this.http({
       method,
