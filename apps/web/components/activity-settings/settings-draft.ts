@@ -5,6 +5,7 @@ import { saveSettings } from "@/app/(console)/settings/actions";
 import { report } from "@/lib/feedback";
 import type { InstanceSettings } from "@/lib/pages/activity-settings";
 import { settle } from "./form";
+import { applyPatch, type SettingsPatch } from "./settings-patch";
 import type { SectionProps } from "./settings-view";
 
 /* A draft of the instance settings object, shared by Notifications and Instance. */
@@ -13,9 +14,10 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 /**
  * Both sections edit one settings object, so a save in either changes the other's saved copy;
- * a draft without edits follows it, a draft with edits keeps them.
+ * a draft without edits follows it, a draft with edits keeps them. Each sends only its own
+ * changed fields (settings-patch.ts).
  */
-export function useSettingsDraft<T>(pick: (s: InstanceSettings) => T, merge: (s: InstanceSettings, d: T) => InstanceSettings, { data, update, onDirty, preview, elevate }: SectionProps) {
+export function useSettingsDraft<T>(pick: (s: InstanceSettings) => T, patch: (s: InstanceSettings, d: T) => SettingsPatch, { data, update, onDirty, preview, elevate }: SectionProps) {
   const saved = pick(data.settings);
   const [base, setBase] = useState<T>(saved);
   const [draft, setDraft] = useState<T>(saved);
@@ -34,12 +36,15 @@ export function useSettingsDraft<T>(pick: (s: InstanceSettings) => T, merge: (s:
     setError(null);
     setSaving(true);
     const sent = draft;
-    const res = report(await settle(elevate(() => saveSettings(merge(data.settings, sent)), { what: "Changing settings" })), { success: okText, error: "Could not save", what, preview });
+    const change = patch(data.settings, sent);
+    const res = report(await settle(elevate(() => saveSettings(change), { what: "Changing settings" })), { success: okText, error: "Could not save", what, preview });
     setSaving(false);
     if (!res.ok) return;
-    update({ settings: res.data });
+    // The API answers with the stored row; the preview stores nothing, so the patch is applied here.
+    const stored = res.data ?? applyPatch(data.settings, change);
+    update({ settings: stored });
     // Edits typed while the save ran stay; otherwise the draft takes the stored values.
-    setDraft((d) => (same(d, sent) ? pick(res.data) : d));
+    setDraft((d) => (same(d, sent) ? pick(stored) : d));
   };
   const discard = () => {
     setDraft(saved);

@@ -176,6 +176,14 @@ export function ActivityView({ overview, initial }: { overview: OverviewResult; 
     if (status === "error") {
       setStatus("idle");
       setError(undefined);
+      // A failed first page emptied the list and dropped its cursor, so this answer is page one
+      // whole: rows, cursor and actors. Rows alone would end the list at "That is everything".
+      if (!items.length) {
+        setItems(page.items);
+        setCursor(page.nextCursor);
+        if (page.actors.length) setActors(page.actors);
+        return;
+      }
     }
     const have = new Set(items.map((e) => e.id));
     const top = items[0] ? Date.parse(items[0].at) : 0;

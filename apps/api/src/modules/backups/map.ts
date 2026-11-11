@@ -111,6 +111,21 @@ export function toRun(b: BackupRowIn): BackupRun {
   };
 }
 
+/**
+ * What a Viewer (and a read token) gets: that the backup exists, when, where in kind and how it
+ * went. Destination names, buckets, the key fingerprint and error text are an admin's.
+ */
+const limitedRef = (s: StorageRef | null): StorageRef | null => (s ? { id: s.id, name: "Offsite storage", provider: "custom", bucket: "" } : null);
+
+export function limitRun(r: BackupRun): BackupRun {
+  return { ...r, storage: limitedRef(r.storage), encryption: { ...r.encryption, fingerprint: null }, restoreTest: { ...r.restoreTest, error: null }, error: null };
+}
+
+export function limitSchedule(s: BackupSchedule): BackupSchedule {
+  const tier = (t: BackupTierSchedule): BackupTierSchedule => ({ ...t, storage: limitedRef(t.storage) });
+  return { ...s, storage: limitedRef(s.storage), encryption: { ...s.encryption, fingerprint: null }, tiers: { local: tier(s.tiers.local), offsite: tier(s.tiers.offsite) } };
+}
+
 export interface ScheduleAppIn {
   id: string;
   name: string;

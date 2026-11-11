@@ -14,11 +14,12 @@ import { Rule } from "@/components/ui/rule";
 import { Segmented, filterOptions } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { When } from "@/components/ui/when";
-import { bytes, duration, plural } from "@/lib/format";
-import { useDayHeading, useUtcAt } from "@/lib/time-prefs";
+import { bytes, dayHeading, duration, plural } from "@/lib/format";
+import { useUtcAt } from "@/lib/time-prefs";
 import type { BackupRun, BackupSchedule } from "@/lib/pages/server-backups";
 import { useCan } from "@/lib/viewer";
 import { testLine } from "./backup-dialogs";
+import { byDay } from "./history";
 import { KIND_LABEL, dbLabel, dbName, placeName } from "./util";
 
 /** Starts a file download from a same-origin link without leaving the page. */
@@ -93,6 +94,7 @@ function TestCell({ r }: { r: BackupRun }) {
 
 /** Kind and place, then a lock that says whether the backup is encrypted with the instance key. */
 function RunDetail({ r }: { r: BackupRun }) {
+  const { manage } = useCan();
   // A failed run's reason wraps in full, so it needs no tip.
   if (r.status === "failed") return <span className="sb-run-detail tone-bad">{r.error ?? "Backup failed"}</span>;
   if (r.status === "running") return <span className="sb-run-detail ellipsis tone-live">Running, {KIND_LABEL[r.kind].toLowerCase()}</span>;
@@ -105,7 +107,8 @@ function RunDetail({ r }: { r: BackupRun }) {
       <span
         className="bk-lock"
         data-plain={sealed ? undefined : true}
-        data-tip={sealed ? `Encrypted, key ${r.encryption.fingerprint ?? "unknown"}` : "Not encrypted"}
+        // The fingerprint is an admin's; a Viewer reads that it is encrypted.
+        data-tip={sealed ? (manage ? `Encrypted, key ${r.encryption.fingerprint ?? "unknown"}` : "Encrypted") : "Not encrypted"}
         aria-label={sealed ? "Encrypted" : "Not encrypted"}
         role="img"
       >
@@ -182,7 +185,6 @@ function RunRow({ r, now, actions }: { r: BackupRun; now: number; actions: RunAc
 
 /** Runs of live databases, grouped by UTC day, filterable by database. */
 export function History({ runs, schedules, now, actions }: { runs: BackupRun[]; schedules: BackupSchedule[]; now: number; actions: RunActions }) {
-  const heading = useDayHeading();
   const [pickedDb, setDb] = useState("all");
   // A database that left the list since it was picked falls back to all.
   const db = pickedDb === "all" || schedules.some((s) => s.resourceId === pickedDb) ? pickedDb : "all";
@@ -210,12 +212,8 @@ export function History({ runs, schedules, now, actions }: { runs: BackupRun[]; 
   const picked = db === "all" ? runs : runs.filter((r) => r.resourceId === db);
   const visible = picked.slice(0, shown);
 
-  const groups: Array<{ label: string; rows: BackupRun[] }> = [];
-  for (const r of visible) {
-    const label = heading(r.createdAt, now);
-    if (groups.at(-1)?.label === label) groups.at(-1)!.rows.push(r);
-    else groups.push({ label, rows: [r] });
-  }
+  // UTC days, as the card says: without prefs dayHeading reads the UTC calendar.
+  const groups = byDay(visible, (iso) => dayHeading(iso, now));
 
   return (
     <section id="sb-hist" className="card sb-hist" aria-labelledby="sb-hist-title">

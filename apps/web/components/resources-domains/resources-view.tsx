@@ -24,6 +24,8 @@ import { useNow, useOverview } from "@/lib/hooks";
 import type { PageResult, ResourceRow, StatefulKind } from "@/lib/pages/resources-domains";
 import type { AppKind, OverviewResult } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
+import { liveResources, onServer, RESOURCES_POLL_MS } from "./live";
+import { usePageRefresh } from "./refresh";
 import { Stamp } from "./shared";
 
 /* -------------- Kinds and filters -------------- */
@@ -73,8 +75,10 @@ function Summary({ items, hostMemory }: { items: ResourceRow[]; hostMemory?: num
   const deploying = items.filter((r) => r.status === "deploying").length;
   // The projects page rule: an app in the bad or warn tone (broken, stopped, or not deployed) needs a look.
   const attention = items.filter((r) => APP_TONE[r.status] === "bad" || APP_TONE[r.status] === "warn");
-  const reserved = items.reduce((n, r) => n + r.memory.reservedBytes, 0);
-  const used = items.reduce((n, r) => n + r.memory.usedBytes, 0);
+  // Memory is this server's: an app on Vercel reserves none of it.
+  const here = onServer(items);
+  const reserved = here.reduce((n, r) => n + r.memory.reservedBytes, 0);
+  const used = here.reduce((n, r) => n + r.memory.usedBytes, 0);
   const volumes = items.filter((r) => r.volume);
   const volumeBytes = volumes.reduce((n, r) => n + (r.volume?.sizeBytes ?? 0), 0);
   const memory = sizeParts(reserved);
@@ -127,13 +131,17 @@ function Where({ r }: { r: ResourceRow }) {
   );
 }
 
+/** What stands in for a meter: an app on Vercel has no container here, a stopped one uses nothing. Null while it runs here. */
+const noMeter = (r: ResourceRow) => (r.onVercel ? ON_VERCEL : notRunning(r.status) ? "Idle" : null);
+const ON_VERCEL = "On Vercel";
+
 function Stats({ r }: { r: ResourceRow }) {
-  const stopped = notRunning(r.status);
+  const quiet = noMeter(r);
   return (
     <>
-      <span className="rs-col-cpu">{stopped ? <span className="none">Idle</span> : <Meter label="CPU" pct={r.cpu.usedPct} />}</span>
+      <span className="rs-col-cpu">{quiet ? <span className="none">{quiet}</span> : <Meter label="CPU" pct={r.cpu.usedPct} />}</span>
       <span className="rs-col-mem">
-        {stopped ? <span className="none">Idle</span> : <Meter label="Memory" pct={memPct(r)} text={bytes(r.memory.usedBytes)} />}
+        {quiet ? <span className="none">{quiet}</span> : <Meter label="Memory" pct={memPct(r)} text={bytes(r.memory.usedBytes)} />}
       </span>
     </>
   );
@@ -145,7 +153,7 @@ function Uptime({ r, now }: { r: ResourceRow; now: number }) {
   return r.startedAt && !Number.isNaN(start) ? (
     <Stamp iso={r.startedAt} tip="Since">{uptime(Math.max(60, (now - start) / 1000))}</Stamp>
   ) : (
-    <span className="none">{notRunning(r.status) ? APP_STATUS_LABEL[r.status] : "Starting"}</span>
+    <span className="none">{r.onVercel ? ON_VERCEL : notRunning(r.status) ? APP_STATUS_LABEL[r.status] : "Starting"}</span>
   );
 }
 
@@ -216,13 +224,13 @@ function ResourceCell({ r, now, delay }: RowProps) {
           </div>
           <div>
             <dt>CPU</dt>
-            <dd>{notRunning(r.status) ? <span className="none">Idle</span> : <Meter label="CPU" pct={r.cpu.usedPct} />}</dd>
+            <dd>{noMeter(r) ? <span className="none">{noMeter(r)}</span> : <Meter label="CPU" pct={r.cpu.usedPct} />}</dd>
           </div>
           <div>
             <dt>Memory</dt>
             <dd>
-              {notRunning(r.status) ? (
-                <span className="none">Idle</span>
+              {noMeter(r) ? (
+                <span className="none">{noMeter(r)}</span>
               ) : (
                 <Meter label="Memory" pct={memPct(r)} text={bytes(r.memory.usedBytes)} />
               )}
@@ -300,11 +308,11 @@ export function ResourcesView({ overview, initial }: { overview: OverviewResult;
 
   const notices = useMemo(() => (o ? deriveNotices(o, now) : null), [o, now]);
 
-  // Statuses follow the polled overview, so a row flips to Running without a reload.
-  const items = useMemo(() => {
-    const live = new Map(o?.resources.map((r) => [r.id, r.status]) ?? []);
-    return (initial.data ?? []).map((r) => ({ ...r, status: live.get(r.id) ?? r.status }));
-  }, [initial.data, o]);
+  // Statuses follow the polled overview, so a row flips to Running without a reload. The rest of a
+  // row (when it started, CPU, memory) comes from the list, which is read again on its own timer:
+  // without that a newly started app reads "Starting" at 0% for as long as the page stays open.
+  usePageRefresh(initial.source === "api", RESOURCES_POLL_MS);
+  const items = useMemo(() => liveResources(initial.data ?? [], o?.resources), [initial.data, o]);
 
   const counts = useMemo(
     () => Object.fromEntries(KIND_FILTERS.map((f) => [f.id, items.filter((r) => f.match(r.kind)).length])) as Record<KindFilter, number>,

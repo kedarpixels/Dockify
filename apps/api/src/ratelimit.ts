@@ -241,6 +241,19 @@ export class SubjectGuard {
   }
 }
 
+/** Wrong authenticator codes one user gets before a lockout, on every route that checks one together. */
+export const TOTP_MAX_FAILS = 10;
+export const TOTP_LOCK_MS = 15 * 60_000;
+export const TOTP_LOCK_MAX_MS = 24 * 3_600_000;
+
+/**
+ * How long a lockout lasts after `lockouts` earlier ones in a row: 15 minutes, doubling each time,
+ * a day at most. The count itself is kept on the user row (mfa.ts), so a restart cannot clear it.
+ */
+export function totpLockMs(lockouts: number): number {
+  return Math.min(TOTP_LOCK_MAX_MS, TOTP_LOCK_MS * 2 ** Math.min(Math.max(0, lockouts), 20));
+}
+
 /** Every limiter one api process holds. One instance per app, so tests never share state. */
 export class RateLimits {
   /** Anything that runs argon2 or checks a code. */
@@ -264,9 +277,10 @@ export class RateLimits {
   readonly terminalTicket = new Limiter({ perMinute: 10, burst: 10 });
   /** Sign in: failures per account and client network, with a per-account ceiling (LoginGuard). */
   readonly login = new LoginGuard();
-  readonly verify = new SubjectGuard();
+  /** Step-up by password, keyed on the session. A code goes through the per-user lockout in mfa.ts. */
   readonly stepUp = new SubjectGuard();
   readonly password = new SubjectGuard();
+  /** Confirming a new authenticator during setup, keyed on the session. */
   readonly totp = new SubjectGuard();
   /** Forgot password, keyed on the (attacker-known) email: rate only, never a lockout. */
   readonly forgot = new SubjectGuard({ perMinute: 3, burst: 5 });
@@ -284,6 +298,6 @@ export class RateLimits {
     this.anon.sweep(now);
     this.reveal.sweep(now);
     this.recipient.sweep(now);
-    for (const g of [this.login, this.verify, this.stepUp, this.password, this.totp, this.forgot, this.emailCode, this.emailConfirm]) g.sweep(now);
+    for (const g of [this.login, this.stepUp, this.password, this.totp, this.forgot, this.emailCode, this.emailConfirm]) g.sweep(now);
   }
 }

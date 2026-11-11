@@ -27,6 +27,7 @@ import { FormKeys, Hint, IntegrationCard, ListDialog, RemoveDialog, Unavailable,
 import { ExternalLink } from "@/components/ui/external-link";
 import { intFetch, upsert, type Setter } from "./client";
 import { WebhookMark } from "./webhook-mark";
+import { afterTest } from "./webhook-test";
 
 /*
  * Webhooks: where alerts and update notices go. Each webhook has a name, a type that decides the
@@ -522,8 +523,9 @@ export function WebhooksCard({ value, onChange, now, preview }: { value: Webhook
     const r = await intFetch<WebhookTestResult>("/webhooks/test", { method: "POST", body: { id: w.id } });
     setTesting(null);
     report(r, { success: "Test message sent", error: "Could not send the test message", what: r.ok ? `${w.name}: ${providerLabel(w.provider)} answered ${r.data.status} in ${r.data.latencyMs} ms` : w.name, preview });
-    const at = new Date().toISOString();
-    put(r.ok ? { ...w, status: "ok", error: null, lastSentAt: at } : { ...w, status: "failing", error: r.error, lastFailedAt: at });
+    // A test that never left says nothing about the endpoint: the row keeps its state (webhook-test.ts).
+    const next = afterTest(w, r, new Date().toISOString());
+    if (next !== w) put(next);
   };
 
   const remove = async (w: Webhook) => {

@@ -7,7 +7,7 @@ import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { jobs as J } from "@dockify/contracts";
 import { createDb, defaultServerId, enqueue, tcpProbe, waitUntilReachable, type JobLane } from "@dockify/db";
-import { jsonLogger } from "./boot.ts";
+import { guardProcess, jsonLogger } from "./boot.ts";
 import { isNotFound } from "@dockify/engine";
 import { DASHBOARD_JOB_KEY } from "./edge/dashboard.ts";
 import { resyncRoutes } from "./edge/jobs.ts";
@@ -36,6 +36,7 @@ const SERVER_LANES: JobLane[] = ["deploy", "data", "maintenance"];
 const GLOBAL_LANES: JobLane[] = ["maintenance", "detect"];
 
 const logger = jsonLogger();
+guardProcess(logger);
 /** What the modules log through: warnings, as before. */
 const log = (msg: string, extra?: object): void => logger.warn(msg, extra);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));

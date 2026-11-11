@@ -134,12 +134,13 @@ export function guardReadOnlySql(sql: string): GuardedSql {
   return { text: sql.slice(0, trimmed.length), cursor: CURSOR_WORDS.has(first) && !/^\s*\(/.test(trimmed) };
 }
 
+export const quoteIdent = (s: string): string => `"${s.replace(/"/g, '""')}"`;
+
 /** "schema.table" as two quoted identifiers. The contract regex already limits the characters. */
 export function quoteQualified(table: string): { schema: string; name: string; sql: string } {
   const dot = table.indexOf(".");
   if (dot <= 0) throw new SqlGuardError("Name the table as schema.table");
   const schema = table.slice(0, dot);
   const name = table.slice(dot + 1);
-  const q = (s: string) => `"${s.replace(/"/g, '""')}"`;
-  return { schema, name, sql: `${q(schema)}.${q(name)}` };
+  return { schema, name, sql: `${quoteIdent(schema)}.${quoteIdent(name)}` };
 }

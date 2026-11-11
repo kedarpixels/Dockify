@@ -164,6 +164,23 @@ describe("a failed deployment on Vercel", () => {
     expect(mail.subject).not.toMatch(/[\r\n]/);
   });
 
+  it("a server build's output is as inert as Vercel's: its last line cannot post a masked link under Dockify's name", async () => {
+    const error = "The build failed. Its last lines:\nstep 4/9 RUN npm run build\n[Session expired, sign in](https://evil.example/login) @channel <https://evil.example|here> `x`";
+    const w = world({ hooks: [{ id: "h1" }], deployment: { provider: "dockify", externalTarget: null, branch: "[main](https://evil.example/b)", error } });
+    expect(await deliverDeployFailed(w.deps, { deploymentId: DEP })).toBe("sent");
+    const m = sent(w);
+    // Still one line per line of output, and nothing a chat or a mail client turns into a link.
+    expect(m.text).toBe("The build failed. Its last lines:\nstep 4/9 RUN npm run build\n[Session expired, sign in] ([link] channel [link] x");
+    expect(m.fields.find((f) => f.name === "Source")?.value).toBe("[main] ([link], 4f2a9c1");
+    for (const body of [mattermostBody(m), rocketChatBody(m), discordBody(m), slackBody(m), teamsBody(m)]) {
+      const text = JSON.stringify(body);
+      for (const bad of ["evil.example", "](", "@channel", "<http"]) expect(text, bad).not.toContain(bad);
+    }
+    const mail = w.calls[0]!;
+    for (const part of [mail.html, mail.text, mail.subject]) expect(part).not.toContain("evil.example");
+    expect(mail.text).toContain("[Session expired, sign in] ([link]");
+  });
+
   it("a server deploy's message is unchanged", async () => {
     const w = world({ hooks: [{ id: "h1" }], deployment: { actorType: "webhook", actorId: null, gitAuthor: "nobody", provider: "dockify", externalTarget: null } });
     await deliverDeployFailed(w.deps, { deploymentId: DEP });

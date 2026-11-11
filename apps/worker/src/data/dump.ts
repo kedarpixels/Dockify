@@ -17,11 +17,18 @@ export interface Command {
   env: Record<string, string>;
 }
 
+/**
+ * How long pg_dump waits for its table locks. Only an ACCESS EXCLUSIVE lock (a migration, a
+ * TRUNCATE) makes it wait at all; one held longer than this fails the run, which is retried.
+ */
+export const DUMP_LOCK_WAIT_MS = 5 * 60_000;
+
 export function pgDumpCommand(c: ServiceCredentials): Command {
   return {
     cmd: [
       "pg_dump", "-h", "127.0.0.1", "-U", c.user, "-d", c.database ?? "postgres",
       "--format=plain", "--no-owner", "--no-privileges", "--clean", "--if-exists", "--quote-all-identifiers",
+      `--lock-wait-timeout=${DUMP_LOCK_WAIT_MS}`,
     ],
     env: { PGPASSWORD: c.password, PGAPPNAME: "dockify-backup" },
   };
@@ -29,7 +36,8 @@ export function pgDumpCommand(c: ServiceCredentials): Command {
 
 export function psqlCommand(c: ServiceCredentials, appName = "dockify-restore"): Command {
   return {
-    cmd: ["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-U", c.user, "-d", c.database ?? "postgres"],
+    // Terse, no context: an error names what failed without the failing row's values.
+    cmd: ["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=terse", "-v", "SHOW_CONTEXT=never", "-h", "127.0.0.1", "-U", c.user, "-d", c.database ?? "postgres"],
     env: { PGPASSWORD: c.password, PGAPPNAME: appName },
   };
 }
@@ -38,7 +46,13 @@ export function psqlCommand(c: ServiceCredentials, appName = "dockify-restore"):
 export const TERMINATE_OTHERS_SQL =
   "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid();\n";
 
-export const RESTORE_PREAMBLE = "\\set ON_ERROR_STOP on\nSET lock_timeout = '30s';\nBEGIN;\n";
+/**
+ * One statement of a replay: the COPY of the largest table or its biggest index build. Four hours
+ * is over 100 GB of one table at 10 MB/s, the slow end for a VPS disk. What it stops is a statement
+ * that never ends (an index or a materialized view over a function that loops).
+ */
+export const RESTORE_STATEMENT_TIMEOUT = "4h";
+export const RESTORE_PREAMBLE = `\\set ON_ERROR_STOP on\nSET lock_timeout = '30s';\nSET statement_timeout = '${RESTORE_STATEMENT_TIMEOUT}';\nBEGIN;\n`;
 export const RESTORE_COMMIT = "\nCOMMIT;\n";
 
 /**
@@ -51,6 +65,26 @@ export const REPLACE_SCHEMAS_SQL =
   "DO $dockify$ DECLARE s text; BEGIN FOR s IN SELECT nspname FROM pg_namespace WHERE nspname <> 'information_schema' AND nspname NOT LIKE 'pg\\_%' LOOP EXECUTE format('DROP SCHEMA %I CASCADE', s); END LOOP; END $dockify$;\n" +
   "CREATE SCHEMA public;\nGRANT USAGE ON SCHEMA public TO PUBLIC;\n";
 
+const HEAD_BYTES = 8 * 1024;
+const HEAD_LINE = /^(--|\\restrict |SET |SELECT pg_catalog\.set_config\()/;
+
+/**
+ * pg_dump opens its output with SET statement_timeout = 0 and SET lock_timeout = 0, which would undo
+ * the preamble's. Those two lines are dropped, and only from the dump's own header: the search stops
+ * at the first line that is not a comment or a setting, so no data line can match.
+ */
+export function keepTimeouts(head: Buffer): Buffer {
+  const lines = head.toString("latin1").split("\n");
+  const kept: string[] = [];
+  let i = 0;
+  for (; i < lines.length; i++) {
+    const line = lines[i]!.replace(/\r$/, "");
+    if (line !== "" && !HEAD_LINE.test(line)) break;
+    if (!/^SET (statement_timeout|lock_timeout) = 0;$/.test(line)) kept.push(lines[i]!);
+  }
+  return Buffer.from([...kept, ...lines.slice(i)].join("\n"), "latin1");
+}
+
 /**
  * Frames a plain SQL dump as one explicit transaction. COMMIT is written only from _flush, which
  * runs only when the upstream ended without error. An upstream error destroys this stream instead,
@@ -59,6 +93,9 @@ export const REPLACE_SCHEMAS_SQL =
 export class RestoreFramer extends Transform {
   #started = false;
   #replace: boolean;
+  /** The dump's first bytes, held until its header can be read whole. Null once passed on. */
+  #head: Buffer[] | null = [];
+  #headBytes = 0;
 
   /** `replace`: over a live database, so other sessions are cut and what is in it goes first. */
   constructor(opts: { replace?: boolean } = {}) {
@@ -70,11 +107,17 @@ export class RestoreFramer extends Transform {
     if (this.#started) return;
     this.#started = true;
     this.push(this.#replace ? TERMINATE_OTHERS_SQL + RESTORE_PREAMBLE + REPLACE_SCHEMAS_SQL : RESTORE_PREAMBLE);
+    const head = Buffer.concat(this.#head ?? []);
+    this.#head = null;
+    if (head.length) this.push(keepTimeouts(head));
   }
 
   override _transform(chunk: Buffer, _e: BufferEncoding, cb: TransformCallback): void {
-    this.#start();
-    cb(null, chunk);
+    if (!this.#head) return cb(null, chunk);
+    this.#head.push(chunk);
+    this.#headBytes += chunk.length;
+    if (this.#headBytes >= HEAD_BYTES) this.#start();
+    cb();
   }
 
   override _flush(cb: TransformCallback): void {

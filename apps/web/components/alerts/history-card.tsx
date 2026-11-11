@@ -104,7 +104,7 @@ export function HistoryCard({ events, rules, now }: { events: AlertEvent[]; rule
   return (
     <section className="card al-hist" aria-labelledby="al-hist-title">
       <div className="card-hd">
-        <CardTitle id="al-hist-title" icon="history" title="History" sub="Last 7 days, newest first" />
+        <CardTitle id="al-hist-title" icon="history" title="History" sub="Last 90 days, newest first" />
         {events.length ? (
           <Segmented
             label="Filter events"
@@ -124,7 +124,7 @@ export function HistoryCard({ events, rules, now }: { events: AlertEvent[]; rule
         <Empty
           icon="checkCircle"
           title="No events match"
-          body={filter === "firing" ? "Nothing is firing. Every rule is quiet right now." : "Nothing has resolved in the last 7 days."}
+          body={filter === "firing" ? "Nothing is firing. Every rule is quiet right now." : "Nothing has resolved in the last 90 days."}
           action={
             <button type="button" className="btn btn-sm" onClick={() => setFilter("all")}>
               Clear filters

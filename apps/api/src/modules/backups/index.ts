@@ -8,14 +8,14 @@
 import { randomUUID } from "node:crypto";
 import { pipeline } from "node:stream";
 import { defaultServerId, enqueue, generateServiceCredentials, readSecretValue, sealServiceCredentials, type Db, type Prisma, type Tx } from "@dockify/db";
-import { assertProjectScope, meta, tokenProjectLimit, type Actor } from "../../actor.ts";
+import { assertProjectScope, meta, roleAtLeast, tokenProjectLimit, type Actor } from "../../actor.ts";
 import type { EndpointId } from "@dockify/contracts";
 import type { Ctx, Handler, Handlers } from "../../app.ts";
 import { audit } from "../../audit.ts";
 import { HttpError, isUniqueViolation } from "../../errors.ts";
 import { nameShownElsewhere } from "../apps/display-name.ts";
 import { WORKER_SILENT_MS } from "../platform/server.ts";
-import { toRun, toSchedule, type BackupRowIn, type DestinationRow, type ScheduleAppIn, type ScheduleContext } from "./map.ts";
+import { limitRun, limitSchedule, toRun, toSchedule, type BackupRowIn, type DestinationRow, type ScheduleAppIn, type ScheduleContext } from "./map.ts";
 import {
   ALGORITHM, backupKeyFingerprint, bothTiers, CronError, DataError, DecryptStream, DEFAULT_CRON, dataPathFor, enabledTiers, isRetentionDecrease,
   isServiceKind, loadTiers, LOCAL_FLAG, localBackupsAllowed, nextRun, parseBackupKey, parseCron, primaryTier, publicOnlyGuard, RequestError, requestBackup,
@@ -53,6 +53,13 @@ function fromRequestError(e: unknown): never {
   if (e instanceof DataError) throw new HttpError(409, e.message, "BACKUP_UNAVAILABLE");
   throw e;
 }
+
+/** How far back the Backups page's history reads, and the most runs of that window one answer carries. */
+const HISTORY_MS = 30 * 86_400_000;
+const HISTORY_CAP = 1000;
+
+/** Destination names, buckets, provider errors and the key fingerprint are an admin's (a read token acts as a Viewer). */
+const readsStorage = (a: Actor | null): boolean => !!a && roleAtLeast(a.role, "admin");
 
 /** A token limited to projects sees only those projects' backups. */
 function projectFilter(actor: Actor | null): string[] | null {
@@ -96,7 +103,8 @@ async function loadServiceApp(ctx: Ctx, actor: Actor | null, id: string) {
 
 async function loadBackup(ctx: Ctx, actor: Actor | null, id: string) {
   const b = await ctx.db.backup.findUnique({ where: { id }, include: { ...BACKUP_INCLUDE, app: { select: { environment: { select: { projectId: true } } } } } });
-  if (!b) throw new HttpError(404, "That backup does not exist", "NOT_FOUND");
+  // Dockify's own dump is the updater's: never restored, tested or downloaded as an app's backup.
+  if (!b || b.kind === "control_plane") throw new HttpError(404, "That backup does not exist", "NOT_FOUND");
   if (actor && b.app) assertProjectScope(actor, b.app.environment.projectId);
   return b;
 }
@@ -106,8 +114,8 @@ function assertRestorable(b: { status: string; objectKey: string | null; expired
   if (b.expiredAt) throw new HttpError(409, "This backup has expired and its file was removed", "EXPIRED");
 }
 
-async function configPayload(ctx: Ctx, fingerprint: { fingerprint: string | null; createdAt: Date | null }) {
-  const dests = await ctx.db.backupDestination.findMany({ where: { type: "s3" }, include: { integration: true }, orderBy: { createdAt: "asc" } });
+async function configPayload(ctx: Ctx, fingerprint: { fingerprint: string | null; createdAt: Date | null }, full: boolean) {
+  const dests = full ? await ctx.db.backupDestination.findMany({ where: { type: "s3" }, include: { integration: true }, orderBy: { createdAt: "asc" } }) : [];
   const inst = await ctx.db.instance.findUnique({ where: { id: 1 }, select: { restoreTestCron: true } });
   let nextRunAt: string | null = null;
   try {
@@ -129,7 +137,7 @@ async function configPayload(ctx: Ctx, fingerprint: { fingerprint: string | null
         error: d.integration?.error ?? null,
       };
     }),
-    encryption: { enabled: true, algorithm: ALGORITHM, fingerprint: fingerprint.fingerprint, createdAt: fingerprint.createdAt?.toISOString() ?? null },
+    encryption: { enabled: true, algorithm: ALGORITHM, fingerprint: full ? fingerprint.fingerprint : null, createdAt: fingerprint.createdAt?.toISOString() ?? null },
     restoreTests: { cron: inst?.restoreTestCron ?? "0 4 * * 0", nextRunAt },
   };
 }
@@ -223,14 +231,46 @@ async function restoreOutcome(ctx: Ctx, snap: Partial<AppSnapshot>, targetAppId:
 export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptions()): Handlers {
   const storeOpts = { localRoot: opts.localRoot, guard: opts.guard, env: opts.env };
 
-  const listRuns = async (ctx: Ctx, where: Prisma.BackupWhereInput, take = 200) =>
-    // The control plane's own pre-update dumps belong to the Server page, not to a database's runs.
-    (await ctx.db.backup.findMany({ where: { AND: [where, { kind: { not: "control_plane" } }] }, include: BACKUP_INCLUDE, orderBy: { createdAt: "desc" }, take })).map((b) => toRun(b as unknown as BackupRowIn));
+  // The control plane's own pre-update dumps belong to the Server page, not to a database's runs.
+  const NOT_OWN: Prisma.BackupWhereInput = { kind: { not: "control_plane" } };
+  /** `take` null reads every match. */
+  const listRuns = async (ctx: Ctx, where: Prisma.BackupWhereInput, take: number | null = 200) =>
+    (await ctx.db.backup.findMany({ where: { AND: [where, NOT_OWN] }, include: BACKUP_INCLUDE, orderBy: { createdAt: "desc" }, take: take ?? undefined })).map((b) => toRun(b as unknown as BackupRowIn));
 
   const handlers: { [K in EndpointId]?: Handler<K> } = {
     "backups.list": async ({ ctx, actor }) => {
       const projects = projectFilter(actor);
-      return listRuns(ctx, projects ? { app: { environment: { projectId: { in: projects } } } } : {}, 500);
+      const scope: Prisma.BackupWhereInput = projects ? { app: { environment: { projectId: { in: projects } } } } : {};
+      const since = new Date(Date.now() - HISTORY_MS);
+      // The newest finished run of each database on each destination, however old: a weekly one must not read "No backup yet".
+      const newest = await ctx.db.backup.groupBy({
+        by: ["appId", "destinationId"],
+        where: { AND: [scope, NOT_OWN, { appId: { not: null }, status: { not: "running" }, createdAt: { lt: since } }] },
+        _max: { createdAt: true },
+      });
+      const [recent, rest] = await Promise.all([
+        listRuns(ctx, { AND: [scope, { createdAt: { gte: since } }] }, HISTORY_CAP),
+        // Outside the window, or past its cap: every file still kept (the size total), every orphan, and those newest runs.
+        listRuns(
+          ctx,
+          {
+            AND: [
+              scope,
+              {
+                OR: [
+                  { status: "ready", expiredAt: null },
+                  { appId: null },
+                  ...newest.flatMap((n) => (n._max.createdAt ? [{ appId: n.appId, destinationId: n.destinationId, createdAt: n._max.createdAt }] : [])),
+                ],
+              },
+            ],
+          },
+          null,
+        ),
+      ]);
+      const seen = new Set(recent.map((r) => r.id));
+      const runs = [...recent, ...rest.filter((r) => !seen.has(r.id))].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return readsStorage(actor) ? runs : runs.map(limitRun);
     },
 
     "backups.schedules": async ({ ctx, actor }) => {
@@ -241,10 +281,11 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
         orderBy: { name: "asc" },
       });
       const c = await scheduleContext(ctx, opts.env);
-      return apps.map((a) => toSchedule(a as unknown as ScheduleAppIn, c));
+      const schedules = apps.map((a) => toSchedule(a as unknown as ScheduleAppIn, c));
+      return readsStorage(actor) ? schedules : schedules.map(limitSchedule);
     },
 
-    "backups.config": async ({ ctx }) => configPayload(ctx, await instanceFingerprint(ctx)),
+    "backups.config": async ({ ctx, actor }) => configPayload(ctx, await instanceFingerprint(ctx), readsStorage(actor)),
 
     "backups.schedules.patch": async ({ ctx, actor, params, body, req }) => {
       const app = await loadServiceApp(ctx, actor, params.id);
@@ -331,27 +372,39 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
 
     "backups.run": async ({ ctx, actor, body, req }) => {
       let ids: string[];
+      // Databases of a bulk run that did not start, each with why.
+      const skipped: string[] = [];
+      const label = new Map<string, string>();
       if (body.resourceId) {
         ids = [(await loadServiceApp(ctx, actor, body.resourceId)).id];
       } else {
         const projects = projectFilter(actor);
-        ids = (
-          await ctx.db.app.findMany({
-            where: { kind: { in: [...SERVICE_KINDS] }, desiredState: "running", ...(projects ? { environment: { projectId: { in: projects } } } : {}) },
-            select: { id: true },
-          })
-        ).map((a) => a.id);
+        // "Every enabled database" is every one with a tier turned on, as the dialog counts them.
+        const apps = await ctx.db.app.findMany({
+          where: { kind: { in: [...SERVICE_KINDS] }, backupSchedules: { some: { enabled: true } }, ...(projects ? { environment: { projectId: { in: projects } } } : {}) },
+          select: { id: true, name: true, displayName: true, desiredState: true, environment: { select: { project: { select: { slug: true } } } } },
+          orderBy: { name: "asc" },
+        });
+        if (!apps.length) throw new HttpError(409, "No database has a backup schedule turned on", "NOTHING_TO_BACK_UP");
+        for (const a of apps) label.set(a.id, `${a.environment.project.slug} / ${a.displayName || a.name}`);
+        ids = apps.filter((a) => a.desiredState === "running").map((a) => a.id);
+        skipped.push(...apps.filter((a) => a.desiredState !== "running").map((a) => `${label.get(a.id)} (it is stopped)`));
       }
       const backupIds: string[] = [];
+      let started = 0;
       for (const id of ids) {
         try {
           // One dump per database, a copy to each tier it runs for.
           backupIds.push(...(await requestBackup(ctx.db, id, "manual", { tiers: await tiersToRun(ctx.db, id, body.tier) })).backupIds);
+          started++;
         } catch (e) {
-          if (ids.length === 1) fromRequestError(e);
+          if (body.resourceId) fromRequestError(e);
+          skipped.push(`${label.get(id)} (${e instanceof RequestError || e instanceof DataError ? e.message : "it could not be started"})`);
         }
       }
-      await audit(ctx.db, { category: "system", action: "backup.run", verb: "started a backup of", ...actorFields(actor), targetType: "backup", targetLabel: body.resourceId ? `1 database` : `${backupIds.length} databases`, ...meta(req) });
+      // A bulk run that started nothing is a failure, not "0 backups started".
+      if (!started) throw new HttpError(409, `No backup was started. ${skipped.join("; ")}`, "NOTHING_STARTED");
+      await audit(ctx.db, { category: "system", action: "backup.run", verb: "started a backup of", ...actorFields(actor), targetType: "backup", targetLabel: body.resourceId ? `1 database` : `${started} databases`, ...(skipped.length ? { suffix: `${skipped.length} not started` } : {}), ...meta(req) });
       return { runs: await listRuns(ctx, { id: { in: backupIds } }) };
     },
 
@@ -413,7 +466,7 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
     "backups.orphans.delete": async ({ ctx, actor, params, req }) => {
       const live = await ctx.db.app.findUnique({ where: { id: params.resourceId }, select: { id: true } });
       if (live) throw new HttpError(409, "That app still exists; its backups are not orphaned", "NOT_ORPHANED");
-      const rows = await ctx.db.backup.count({ where: { sourceAppId: params.resourceId, appId: null } });
+      const rows = await ctx.db.backup.count({ where: { sourceAppId: params.resourceId, appId: null, ...NOT_OWN } });
       if (!rows) throw new HttpError(404, "There are no orphaned backups for that app", "NOT_FOUND");
       // The worker deletes: this process mounts the backups volume read-only (worker data/orphans.ts).
       const seen = await ctx.db.instance.findUnique({ where: { id: 1 }, select: { workerSeenAt: true } });
@@ -461,11 +514,10 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
       if (actor) assertProjectScope(actor, app.environment.projectId);
       if (!isServiceKind(app.kind)) return { schedule: null, runs: [], config: null };
       const fp = await instanceFingerprint(ctx);
-      return {
-        schedule: toSchedule(app as unknown as ScheduleAppIn, await scheduleContext(ctx, opts.env, fp.fingerprint)),
-        runs: await listRuns(ctx, { sourceAppId: app.id }, 100),
-        config: await configPayload(ctx, fp),
-      };
+      const full = readsStorage(actor);
+      const schedule = toSchedule(app as unknown as ScheduleAppIn, await scheduleContext(ctx, opts.env, fp.fingerprint));
+      const runs = await listRuns(ctx, { sourceAppId: app.id }, 100);
+      return { schedule: full ? schedule : limitSchedule(schedule), runs: full ? runs : runs.map(limitRun), config: await configPayload(ctx, fp, full) };
     },
   };
   return handlers as Handlers;

@@ -13,6 +13,8 @@ import type { ContainerListing, ContainerState, DockerPort, ExecHandle, ExecResu
 const API = "/v1.43";
 const STDERR_TAIL = 4 * 1024;
 const EXEC_POLL_MS = 200;
+/** What a killed exec reports when its process has not exited: the code of a SIGKILL. */
+const KILLED_EXIT = 137;
 /** A managed service image is a few tens of MB; a pull that runs this long is stuck. */
 const PULL_TIMEOUT_MS = 15 * 60_000;
 
@@ -37,10 +39,21 @@ export function wireDemux(source: NodeJS.ReadableStream, head: Buffer | null): {
   const stdout = new PassThrough();
   const stderr = new Tail();
   const demux = new Demuxer();
+  let waiting = false;
   const emit = (stream: "stdout" | "stderr", data: Buffer) => {
-    if (stream === "stdout") stdout.write(data);
-    else stderr.push(data);
+    if (stream === "stderr") return stderr.push(data);
+    // A reader that is gone takes nothing; a full one pauses the source, so a dump is never held
+    // in memory faster than it is written out.
+    if (stdout.destroyed || stdout.write(data) || waiting) return;
+    waiting = true;
+    source.pause();
+    stdout.once("drain", () => {
+      waiting = false;
+      source.resume();
+    });
   };
+  // A reader destroyed while the source is paused would leave it paused for good.
+  stdout.once("close", () => source.resume());
   if (head?.length) demux.push(head, emit);
   const ended = new Promise<void>((resolve) => {
     source.on("data", (c: Buffer) => demux.push(c, emit));
@@ -187,19 +200,26 @@ export class EngineDataPort implements DockerPort {
     const execId = encodeURIComponent(created.Id);
     const h = await this.hijack(`/exec/${execId}/start`, { Detach: false, Tty: false });
     const io = wireDemux(h.socket, h.head);
+    let killed = false;
     const done = (async (): Promise<ExecResult> => {
       await io.ended;
       for (;;) {
         const s = await this.client.call<{ Running: boolean; ExitCode: number | null }>("GET", `/exec/${execId}/json`);
         if (!s.Running && s.ExitCode !== null) return { exitCode: s.ExitCode, stderr: io.stderr.text() };
+        // Docker leaves the process running when its stream closes (it ends at its next read or
+        // write), so a killed exec is not waited for: one blocked on a lock would never report.
+        if (killed) return { exitCode: KILLED_EXIT, stderr: io.stderr.text() };
         await new Promise((r) => setTimeout(r, EXEC_POLL_MS));
       }
     })();
+    // Every caller awaits it; this only keeps a failure after a caller gave up from being unhandled.
+    done.catch(() => {});
     return {
       stdout: io.stdout,
       stdin: opts.stdin && h.writable ? (h.socket as Socket as Writable) : null,
       done,
       kill: async () => {
+        killed = true;
         h.socket.destroy();
       },
     };

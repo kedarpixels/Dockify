@@ -52,12 +52,13 @@ describe("caps and eviction", () => {
 
 const SHA = "a".repeat(40);
 const repo = { id: 99, clone_url: "https://github.com/acme/shop.git", full_name: "acme/shop" };
-const event = (action: string, o: { number?: number; fork?: boolean; merged?: boolean; sha?: string } = {}) => parsePullRequestEvent({
-  action, number: o.number ?? 7, repository: repo,
+type Repo = typeof repo;
+const event = (action: string, o: { number?: number; fork?: boolean; merged?: boolean; sha?: string; base?: Repo } = {}, base: Repo = o.base ?? repo) => parsePullRequestEvent({
+  action, number: o.number ?? 7, repository: base,
   pull_request: {
     title: "Add cart", merged: o.merged ?? false, user: { login: "dev" },
-    head: { ref: "feat/cart", sha: o.sha ?? SHA, repo: o.fork ? { id: 5, clone_url: "https://github.com/mallory/shop.git", full_name: "mallory/shop" } : repo },
-    base: { repo },
+    head: { ref: "feat/cart", sha: o.sha ?? SHA, repo: o.fork ? { id: 5, clone_url: "https://github.com/mallory/shop.git", full_name: "mallory/shop" } : base },
+    base: { repo: base },
   },
 })!;
 
@@ -98,9 +99,10 @@ function world(o: { disk?: number; dns?: string; fromForks?: boolean; cap?: numb
   const tx = {
     $executeRaw: async () => 0,
     previewEnv: {
-      findUnique: async ({ where }: { where: { id?: string; projectId_prNumber?: { projectId: string; prNumber: number } } }) => {
+      findUnique: async ({ where }: { where: { id?: string; projectId_repoKey_prNumber?: { projectId: string; repoKey: string; prNumber: number } } }) => {
         if (where.id) return envs.get(where.id) ?? null;
-        return [...envs.values()].find((e) => e.projectId === where.projectId_prNumber!.projectId && e.prNumber === where.projectId_prNumber!.prNumber) ?? null;
+        const k = where.projectId_repoKey_prNumber!;
+        return [...envs.values()].find((e) => e.projectId === k.projectId && e.repoKey === k.repoKey && e.prNumber === k.prNumber) ?? null;
       },
       findMany: async ({ where }: { where: { status: { in: string[] } } }) => [...envs.values()].filter((e) => where.status.in.includes(String(e.status))),
       create: async ({ data }: { data: Record<string, unknown> }) => {
@@ -322,6 +324,45 @@ describe("pull_request webhook", () => {
     await onPullRequest(w.db, event("opened"), NOW);
     expect(w.envs.get("x")).toMatchObject({ status: "closing", reason: "evicted" });
     expect(only(w)).toMatchObject({ status: "building" });
+  });
+});
+
+describe("two repositories in one project, the same pull request number", () => {
+  // The project builds web from acme/shop (public) and api from acme/api. Both have a PR #7.
+  const API = { id: 100, clone_url: "https://github.com/acme/api.git", full_name: "acme/api" };
+  const two = (o: { fromForks?: boolean } = {}) => world({ ...o, appOver: { "dev-api": { gitRepository: "https://github.com/acme/api" } } });
+  const of = (w: World, key: string) => [...w.envs.values()].find((e) => e.repoKey === key)!;
+
+  it("each pull request gets a preview of its own, built from its own repository's apps only", async () => {
+    const w = two();
+    await onPullRequest(w.db, event("opened", { base: API }), NOW);
+    await onPullRequest(w.db, event("opened"), NOW);
+    expect(w.envs.size).toBe(2);
+    expect(w.members.filter((m) => m.envId === of(w, "github.com/acme/api").id).map((m) => m.appId)).toEqual(["dev-api"]);
+    expect(w.members.filter((m) => m.envId === of(w, "github.com/acme/shop").id).map((m) => m.appId)).toEqual(["dev-web"]);
+  });
+
+  it("closing #7 on one repository never retires the other's #7, fork previews off", async () => {
+    const w = two();
+    await onPullRequest(w.db, event("opened", { base: API }), NOW);
+    await onPullRequest(w.db, event("opened", { fork: true }), NOW);
+    const out = await onPullRequest(w.db, event("closed", { fork: true }), NOW);
+    expect(of(w, "github.com/acme/api")).toMatchObject({ status: "building", reason: null });
+    expect(kinds(w)).not.toContain("preview_cleanup:preview_cleanup");
+    expect(out.summary).not.toContain("deleting");
+  });
+
+  it("a fork's build stays a fork's when the other repository's #7 is pushed while it waits", async () => {
+    const w = two({ fromForks: true });
+    const forkSha = "f".repeat(40);
+    await onPullRequest(w.db, event("opened", { fork: true, sha: forkSha }), NOW);
+    await onPullRequest(w.db, event("opened", { base: API }), NOW);
+    await onPullRequest(w.db, event("synchronize", { base: API, sha: "b".repeat(40) }), NOW);
+    expect(of(w, "github.com/acme/shop")).toMatchObject({ fromFork: true, commitSha: forkSha });
+    expect(of(w, "github.com/acme/api")).toMatchObject({ fromFork: false });
+    // The mark travels on the deployment, and the fork's commit is queued for no app of the other repository.
+    expect(w.deployments.filter((d) => d.commitSha === forkSha).map((d) => [d.appId, d.fromFork])).toEqual([["dev-web", true]]);
+    expect(w.deployments.filter((d) => d.appId === "dev-api").every((d) => d.fromFork === false)).toBe(true);
   });
 });
 

@@ -138,9 +138,9 @@ export interface RegisteredRoute {
 }
 
 /**
- * Endpoints that run argon2 or check a code: the strict per-IP bucket. auth.stepUp is not here: it
- * needs a session, and its guard is keyed on that session (limits.stepUp in the handler), so one
- * signed-in user cannot exhaust a bucket other users share and lock them out of step-up.
+ * Endpoints that run argon2 or check a code: the strict per-IP bucket. auth.stepUp is not here: its
+ * password guard is keyed on the session and its code guard on the user (checkTotp), so one user
+ * cannot drain a bucket others share.
  */
 export const AUTH_LIMITED = new Set<string>([
   "auth.setup", "auth.login", "auth.verify", "auth.invite.accept", "auth.forgot", "auth.reset", "me.email.confirm",

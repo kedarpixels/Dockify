@@ -83,6 +83,8 @@ export async function loadPreviewContext(db: Db, pdId: string): Promise<PreviewC
     where: { id: pdId },
     select: {
       id: true, hostname: true,
+      // Only one deployment of a preview app is open at a time: the one this context is for.
+      deployments: { where: { status: { in: ["queued", "building", "deploying", "cancelling"] } }, select: { fromFork: true } },
       env: {
         select: {
           id: true, prNumber: true, fromFork: true, isolatedDb: true, status: true, baseEnvironmentId: true,
@@ -94,9 +96,11 @@ export async function loadPreviewContext(db: Db, pdId: string): Promise<PreviewC
   });
   if (!pd) return null;
   const e = pd.env;
-  const isolation = P.previewIsolation(e);
+  // The deployment's own mark, fixed when it was queued, so a row edited since cannot hand a fork commit the secrets.
+  const fromFork = e.fromFork || pd.deployments.some((d) => d.fromFork);
+  const isolation = P.previewIsolation({ ...e, fromFork });
   return {
-    pdId: pd.id, envId: e.id, projectId: e.project.id, prNumber: e.prNumber, hostname: pd.hostname, fromFork: e.fromFork, isolatedDb: e.isolatedDb, isolation,
+    pdId: pd.id, envId: e.id, projectId: e.project.id, prNumber: e.prNumber, hostname: pd.hostname, fromFork, isolatedDb: e.isolatedDb, isolation,
     network: networkOf(isolation, e.id, e.baseEnvironmentId),
     limits: { cpu: e.project.previewCpuLimit, memoryMb: e.project.previewMemoryMb, pids: e.project.previewPidsLimit },
   };
@@ -445,7 +449,7 @@ export async function promotePreview(db: Db, pdId: string): Promise<string | nul
       select: {
         appId: true,
         app: { select: { serverId: true } },
-        env: { select: { id: true, status: true, commitSha: true, branch: true, title: true } },
+        env: { select: { id: true, status: true, commitSha: true, branch: true, title: true, fromFork: true } },
         deployments: { orderBy: { createdAt: "desc" }, take: 1, select: { commitSha: true, status: true } },
       },
     });
@@ -456,7 +460,7 @@ export async function promotePreview(db: Db, pdId: string): Promise<string | nul
     const now = new Date().toISOString();
     const dep = await tx.deployment.create({
       data: {
-        appId: pd.appId, serverId: pd.app.serverId, previewId: pdId, trigger: "preview", branch: pd.env.branch, commitSha: pd.env.commitSha, message: pd.env.title,
+        appId: pd.appId, serverId: pd.app.serverId, previewId: pdId, trigger: "preview", branch: pd.env.branch, commitSha: pd.env.commitSha, message: pd.env.title, fromFork: pd.env.fromFork,
         actorType: "system", actorName: "Dockify", steps: [{ id: "queued", status: "done", startedAt: now, finishedAt: now }],
       },
       select: { id: true },

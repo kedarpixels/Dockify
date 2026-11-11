@@ -196,6 +196,17 @@ describe("apps.vercel.project", () => {
     ]);
   });
 
+  it("blanks the build and install commands for a viewer and a read token, as a Dockify app's are", async () => {
+    const token = { kind: "token", tokenId: "t1", userId: "u1", name: "ci", role: "viewer", scope: "read", allProjects: true, projectIds: [], grants: [], elevated: false };
+    for (const actor of [VIEWER, token]) {
+      const v = await (await harness()).read("apps.vercel.project", actor);
+      expect([v.buildCommand, v.installCommand]).toEqual([null, null]);
+      expect(JSON.stringify(v)).not.toContain("pnpm");
+      expect(v).toMatchObject({ name: "inkwell-web", framework: "nextjs", rootDirectory: "apps/web" });
+      clearVercelReadCache();
+    }
+  });
+
   it("only ever reads Vercel, in the linked team, with the stored token", async () => {
     const h = await harness();
     await h.read("apps.vercel.project");

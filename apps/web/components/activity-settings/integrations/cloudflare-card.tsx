@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Empty } from "@/components/ui/empty";
 import { GroupHead } from "@/components/ui/group-head";
@@ -63,7 +64,7 @@ function ConnectForm({ onDone, onCancel, preview }: { onDone: (v: CloudflareInte
   );
 }
 
-function ZoneRow({ zone, onToggle }: { zone: CloudflareZone; onToggle: (next: boolean) => void }) {
+function ZoneRow({ zone, busy, onToggle }: { zone: CloudflareZone; busy: boolean; onToggle: (next: boolean) => void }) {
   const id = `int-zone-${zone.id}`;
   return (
     <li className="soft-row int-row int-toggle" data-hover="true">
@@ -73,7 +74,7 @@ function ZoneRow({ zone, onToggle }: { zone: CloudflareZone; onToggle: (next: bo
         </label>
         <span className="two-sub">{zone.status === "pending" ? "Nameservers pending. " : ""}Manage DNS for domains in this zone</span>
       </span>
-      <Switch id={id} checked={zone.managed} onChange={onToggle} />
+      <Switch id={id} checked={zone.managed} disabled={busy} onChange={onToggle} />
     </li>
   );
 }
@@ -83,6 +84,16 @@ export function CloudflareCard({ value, onChange, now, preview }: { value: Cloud
   // The list is the truth; the card's counts follow it.
   const { open, setOpen, leaving, setLeaving, list: zones, setList: setZones, load, openManage } = useProviderCard<CloudflareZone>(value !== null, "/cloudflare/zones", (list) => onChange((v) => v && { ...v, zones: list.length, managed: list.filter((z) => z.managed).length }));
 
+  // Zones with a switch in flight. Two writes for one zone can land out of order and leave the
+  // switch showing the opposite of what Cloudflare holds, so a zone waits for its answer. The ref
+  // is read synchronously: a second click can come before the state has rendered.
+  const inFlight = useRef(new Set<string>());
+  const [switching, setSwitching] = useState<ReadonlySet<string>>(() => new Set());
+  const mark = (id: string, on: boolean) => {
+    if (on) inFlight.current.add(id);
+    else inFlight.current.delete(id);
+    setSwitching(new Set(inFlight.current));
+  };
 
   // Flips one zone here and moves the card's managed count with it.
   const flip = (id: string, managed: boolean) => {
@@ -91,8 +102,11 @@ export function CloudflareCard({ value, onChange, now, preview }: { value: Cloud
   };
 
   const toggle = async (zone: CloudflareZone, managed: boolean) => {
+    if (inFlight.current.has(zone.id)) return;
+    mark(zone.id, true);
     flip(zone.id, managed);
     const r = await elevate(() => intFetch<CloudflareZone>(`/cloudflare/zones/${encodeURIComponent(zone.id)}`, { method: "PATCH", body: { managed } }), { what: "Changing who manages this zone's DNS" });
+    mark(zone.id, false);
     if (r.ok) {
       toast.success(managed ? "DNS managed by Dockify" : "DNS left to you", { description: describe(zone.name, { preview }) });
     } else {
@@ -158,7 +172,7 @@ export function CloudflareCard({ value, onChange, now, preview }: { value: Cloud
             ) : (
               <ul className="soft-list int-list">
                 {zones.list.map((z) => (
-                  <ZoneRow key={z.id} zone={z} onToggle={(v) => void toggle(z, v)} />
+                  <ZoneRow key={z.id} zone={z} busy={switching.has(z.id)} onToggle={(v) => void toggle(z, v)} />
                 ))}
               </ul>
             )}

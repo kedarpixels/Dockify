@@ -9,7 +9,7 @@ import { actorFields, meta } from "../../actor.ts";
 import { requireActor } from "../../actor.ts";
 import { createHash } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { checkIconUpload, projects as P, type EndpointId, type IconState, type ProjectFavicon, type ProjectIconMode, type SetIconBody, type SetProjectIconBody } from "@dockify/contracts";
+import { checkIconUpload, projects as P, SVG_MIME, type EndpointId, type IconState, type ProjectFavicon, type ProjectIconMode, type SetIconBody, type SetProjectIconBody } from "@dockify/contracts";
 import { internalChannelToken, mailIconKey, verifyMailIcon } from "@dockify/crypto";
 import {
   enqueue, iconVersion, projectFavicon, projectFaviconApp, rankFaviconApps, shownAppIcon, shownProjectIcon, SHOWN_APP_ICON, SHOWN_PROJECT_ICON,
@@ -134,8 +134,8 @@ async function sendRow(row: { mime: string; data: Uint8Array; sha256: string }, 
 /**
  * Sends the shown image, or 404 so the web falls back to the tile, folder or mark. Only with the
  * type the upload check found, inline, sandboxed, never sniffed (the api sets nosniff on every
- * answer), and cached for good only under the version the bytes have now. A webhook's SVG logo
- * goes out this way too, as the document sanitizeSvg rebuilt.
+ * answer), and cached for good only under the version the bytes have now. An SVG, a frontend's
+ * favicon or a webhook's logo, goes out this way too, as the document sanitizeSvg rebuilt.
  */
 export async function sendImage(ctx: Ctx, shown: ImageRow | null, v: string | undefined, req: FastifyRequest, reply: FastifyReply) {
   const row = shown ? await ctx.db.iconImage.findUnique({ where: { id: shown.id }, select: { mime: true, data: true, sha256: true } }) : null;
@@ -150,7 +150,9 @@ const gone = () => new HttpError(404, "Not found", "NOT_FOUND");
  * crypto's signMailIcon). Anything but a token this instance signed is a plain 404, never a hint;
  * a good token serves the owner's shown image only while it is still the one the token names, so
  * a link dies the moment the icon changes. Public caching is right here: the URL is unguessable
- * and versioned, so a mail provider's image proxy may keep it for good.
+ * and versioned, so a mail provider's image proxy may keep it for good. An SVG is never served
+ * here: the worker mints no link to one (mail clients do not draw SVG), and this is the one icon
+ * route a stranger's mail client opens, so it keeps to rasters.
  */
 async function sendMailIcon(ctx: Ctx, token: string, req: FastifyRequest, reply: FastifyReply) {
   const ref = verifyMailIcon(mailIconKey(internalChannelToken(ctx.ring)), token);
@@ -158,7 +160,7 @@ async function sendMailIcon(ctx: Ctx, token: string, req: FastifyRequest, reply:
   const shown = ref.target === "app"
     ? await ctx.db.app.findUnique({ where: { id: ref.id }, select: SHOWN_APP_ICON }).then((a) => (a ? appImage(a) : null))
     : await ctx.db.project.findUnique({ where: { id: ref.id }, select: SHOWN_PROJECT_ICON }).then((p) => (p ? projectImage(p) : null));
-  if (!shown || version(shown.sha256) !== ref.version) throw gone();
+  if (!shown || version(shown.sha256) !== ref.version || shown.mime === SVG_MIME) throw gone();
   const row = await ctx.db.iconImage.findUnique({ where: { id: shown.id }, select: { mime: true, data: true, sha256: true } });
   if (!row) throw gone();
   return sendRow(row, "public, max-age=31536000, immutable", req, reply);

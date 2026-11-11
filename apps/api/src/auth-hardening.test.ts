@@ -17,6 +17,7 @@ import { RateLimits } from "./ratelimit.ts";
 import { accountHandlers, describeDevice } from "./routes/account.ts";
 import { authHandlers, expireOldChallenges, MAX_OPEN_CHALLENGES } from "./routes/auth.ts";
 import { noDb, testConfig, testRing } from "./test-helpers.ts";
+import { totpUserTable } from "./mfa.fake.ts";
 import { createDataHandlers } from "./modules/data/index.ts";
 import { MAX_PAGE_BYTES, readLines, withLogReadSlot } from "./modules/deployments/handlers.ts";
 import { decodeChunk } from "./modules/deployments/mapping.ts";
@@ -87,6 +88,7 @@ describe("TOTP guesses are bounded per user, not per challenge", () => {
     let n = 0;
     const consumed: string[] = [];
     const db = {
+      user: totpUserTable(),
       loginChallenge: {
         findUnique: async () => ({
           id: `c${++n}`, userId: "u1", consumedAt: null, expiresAt: new Date(Date.now() + 60_000),
@@ -162,7 +164,7 @@ describe("account handlers exist and re-prove what they need", () => {
   it("refuses to disable MFA without a valid TOTP code", async () => {
     const remove = vi.fn();
     const db = {
-      user: { findUniqueOrThrow: async () => ({ id: "u1", totpSecretId: null, totpConfirmedAt: new Date() }) },
+      user: totpUserTable(),
       $transaction: remove,
     };
     const e = await rejects(call(accountHandlers["me.2fa.disable"], { body: { code: "123456" }, actor: session(true), req: fakeReq(), reply: fakeReply(), ctx: ctxOf(db) }));

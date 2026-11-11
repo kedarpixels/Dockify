@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cronText } from "@/components/server-backups/util";
 import { elevate, wasCancelled } from "@/components/step-up/step-up";
 import { RowMenu } from "@/components/project-extras/row-menu";
@@ -285,9 +285,14 @@ export function JobsTab({ appId }: { appId: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // The newest read wins. A poll that left before a write can answer after the read that follows
+  // the write, and would put the old list back until the next poll.
+  const asked = useRef(0);
   const load = useCallback(
     async (signal?: AbortSignal) => {
+      const id = ++asked.current;
       const r = await callJson<AppJobs>(base(appId), { signal });
+      if (id !== asked.current) return;
       if (r.ok && r.data) setState({ data: r.data });
       else if (!r.ok && !r.aborted) setState((s) => (s && "data" in s ? s : { error: r.error }));
     },

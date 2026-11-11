@@ -82,4 +82,15 @@ describe("deleteOrphanedBackups", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("never selects Dockify's own update dumps, which share one fixed source id", async () => {
+    let where: unknown;
+    const db = {
+      app: { findUnique: async () => null },
+      backup: { findMany: async (a: { where: unknown }) => ((where = a.where), []), deleteMany: async () => ({ count: 0 }) },
+      job: { update: async () => undefined },
+    } as unknown as Db;
+    await deleteOrphanedBackups({ db, storeFor: async () => { throw new Error("no store needed"); } }, "job", { sourceAppId: APP });
+    expect(where).toMatchObject({ kind: { not: "control_plane" } });
+  });
 });

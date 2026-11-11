@@ -246,6 +246,7 @@ export async function runPreviewFeedback(deps: FeedbackDeps, payload: unknown): 
   const live = ["building", "ready", "failed"].includes(env.status);
   const failedBuild = env.apps.map((a) => a.deployments[0]).find((d) => d?.status === "failed");
   // A row shows what the dashboard shows: the app's icon, else its project's, else the Dockify mark.
+  // An SVG icon has no link (mailIconLinks), so the row falls through to the next of those.
   // Only over https: GitHub's image proxy fetches nothing else.
   const origin = deps.publicUrl && /^https:\/\//.test(deps.publicUrl) ? deps.publicUrl.replace(/\/+$/, "") : undefined;
   const signer = mailIconSigner(deps.internalToken);

@@ -8,7 +8,7 @@
  */
 import type { IconChoice, Prisma } from "../generated/client/index.js";
 
-export const ICON_IMAGE = { id: true, source: true, sha256: true, width: true, height: true, origin: true, updatedAt: true } as const satisfies Prisma.IconImageSelect;
+export const ICON_IMAGE = { id: true, source: true, mime: true, sha256: true, width: true, height: true, origin: true, updatedAt: true } as const satisfies Prisma.IconImageSelect;
 export type IconImageRow = Prisma.IconImageGetPayload<{ select: typeof ICON_IMAGE }>;
 
 /** What decides an app's shown icon. */

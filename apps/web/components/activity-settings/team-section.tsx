@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-import { createInvite, revokeInvite, saveTeam, type TeamChange, type TeamRole } from "@/app/(console)/settings/actions";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
+import { createInvite, readTeam, readTokens, revokeInvite, saveTeam, type TeamChange, type TeamRole } from "@/app/(console)/settings/actions";
 import { Icon } from "@/components/icon";
 import { RowMenu, type RowMenuItem } from "@/components/project-extras/row-menu";
 import { Avatar } from "@/components/ui/avatar";
@@ -33,6 +33,9 @@ import type { Elevate } from "@/components/step-up/step-up";
  */
 
 const ROLE_LABEL: Record<Role, string> = { admin: "Admin", viewer: "Viewer" };
+/** A queued invite email is followed this often, for about two minutes: the worker sends within seconds. */
+const INVITE_POLL_MS = 4_000;
+const INVITE_POLLS = 30;
 const ROLE_OPTIONS: Array<{ value: TeamRole; label: string }> = [
   { value: "admin", label: "Admin" },
   { value: "viewer", label: "Viewer" },
@@ -358,7 +361,32 @@ export function TeamSection({ data, update, onDirty, now, preview, emailEnabled,
   // Everything here acts at once: never mark the section dirty.
   useEffect(() => onDirty(false), [onDirty]);
 
-  const setTeam = (team: SettingsData["team"]) => update({ team });
+  // Counts the writes shown here, so a team read that left before one is not applied over it.
+  const writes = useRef(0);
+  const setTeam = (team: SettingsData["team"]) => {
+    writes.current += 1;
+    update({ team });
+  };
+
+  // An emailed invite reads Pending while its email is queued. The worker settles it to sent or
+  // failed, so the list is read again until none is queued.
+  const queued = invites.filter((i) => i.emailStatus === "queued").map((i) => i.id).join(",");
+  const follow = useEffectEvent(async () => {
+    if (document.hidden || busy) return;
+    const at = writes.current;
+    const fresh = await settle(readTeam());
+    if (fresh.ok && fresh.data && at === writes.current) update({ team: fresh.data });
+  });
+  useEffect(() => {
+    if (!queued || preview) return;
+    let polls = 0;
+    const t = setInterval(() => {
+      polls += 1;
+      if (polls > INVITE_POLLS) return clearInterval(t);
+      void follow();
+    }, INVITE_POLL_MS);
+    return () => clearInterval(t);
+  }, [queued, preview]);
 
   // Optimistic: the pick shows at once and rolls back with an error toast if the API refuses.
   const changeRole = async (m: TeamMember, role: TeamRole) => {
@@ -378,6 +406,9 @@ export function TeamSection({ data, update, onDirty, now, preview, emailEnabled,
     const res = report(await settle(elevate(() => saveTeam([{ id: m.id, remove: true }]), { what: "Removing a member" })), { success: "Member removed", error: "Could not remove the member", what: m.name, preview });
     if (!res.ok) throw new Error(res.error);
     setTeam(res.data);
+    // The member's API tokens were deleted with the account: the Tokens section reads its list again.
+    const tokens = await settle(readTokens());
+    if (tokens.ok && tokens.data) update({ tokens: tokens.data });
   };
 
   const approve = async (m: TeamMember) => {

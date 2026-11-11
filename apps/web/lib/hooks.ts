@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { publishOverview } from "./live-overview";
 import type { OverviewResult } from "./types";
 
 /* -------------- Session expiry -------------- */
@@ -91,6 +92,8 @@ export function useOverview(initial: OverviewResult, ms = 15_000) {
     setSeen(initial);
     if (stamp(initial) >= stamp(result)) setResult(initial);
   }
+
+  useEffect(() => publishOverview(result), [result]);
 
   useEffect(() => {
     if (initial.source === "none") return;

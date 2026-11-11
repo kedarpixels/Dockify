@@ -68,7 +68,7 @@ const TABLE: Case[] = [
 const dbFor = (c: Pick<Case, "fork" | "base" | "envs" | "allowed">, isolatedDb = false): Db => ({
   previewDeployment: {
     findUnique: async () => ({
-      id: "pd", hostname: "pr-7-web.preview.example.com",
+      id: "pd", hostname: "pr-7-web.preview.example.com", deployments: [],
       env: {
         id: ENV, prNumber: 7, fromFork: c.fork, isolatedDb, status: "building",
         baseEnvironmentId: c.base === "production" || c.base === "prod" ? PROD : DEV,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { revokeOtherSessions, revokeSession } from "@/app/(console)/settings/actions";
+import { readSessions, revokeOtherSessions, revokeSession } from "@/app/(console)/settings/actions";
 import { Icon, type IconName } from "@/components/icon";
 import { RowMenu } from "@/components/project-extras/row-menu";
 import { Chip } from "@/components/ui/chip";
@@ -19,7 +19,7 @@ import { TwoFactorGroup } from "./two-factor";
 /* ---------- Password ---------- */
 
 /** One row: what the password is for, and the key that opens the change dialog. */
-function PasswordGroup({ emailEnabled, preview, email }: { emailEnabled: boolean; preview: boolean; email: string }) {
+function PasswordGroup({ emailEnabled, preview, email, onChanged }: { emailEnabled: boolean; preview: boolean; email: string; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <Group
@@ -34,7 +34,7 @@ function PasswordGroup({ emailEnabled, preview, email }: { emailEnabled: boolean
         </button>
       }
     >
-      {open ? <PasswordDialog onClose={() => setOpen(false)} emailEnabled={emailEnabled} preview={preview} email={email} /> : null}
+      {open ? <PasswordDialog onClose={() => setOpen(false)} onChanged={onChanged} emailEnabled={emailEnabled} preview={preview} email={email} /> : null}
     </Group>
   );
 }
@@ -109,7 +109,12 @@ function SessionsGroup({ data, update, now, preview }: Pick<SectionProps, "data"
       preview,
     });
     setBusy(null);
-    if (!res.ok) return;
+    if (!res.ok) {
+      // It may already be gone, signed out from elsewhere: the list is read again.
+      const fresh = await settle(readSessions());
+      if (fresh.ok && fresh.data) update({ sessions: fresh.data });
+      return;
+    }
     update({ sessions: data.sessions.filter((x) => x.id !== id) });
     // The row and its key are gone: the focus goes on to the next session's key, else the heading,
     // never to the top of the page.
@@ -176,13 +181,19 @@ function SessionsGroup({ data, update, now, preview }: Pick<SectionProps, "data"
 /* ---------- Section ---------- */
 
 export function SecuritySection({ data, update, now, preview, emailEnabled, elevate, tab, onTab }: SectionProps) {
+  // A password change signs every other browser out. The list is read again; without an answer
+  // (the preview, a dropped call) it keeps this browser alone, which is what the API now holds.
+  const afterPassword = async () => {
+    const fresh = await settle(readSessions());
+    update({ sessions: fresh.ok && fresh.data ? fresh.data : data.sessions.filter((s) => s.current) });
+  };
   return (
     <SectionTabs section="security" tab={tab} onTab={onTab} counts={{ sessions: data.sessions.length }}>
       <Segment value="two-factor" tab={tab}>
         <TwoFactorGroup data={data} update={update} preview={preview} elevate={elevate} />
       </Segment>
       <Segment value="password" tab={tab}>
-        <PasswordGroup emailEnabled={emailEnabled} preview={preview} email={data.me.email} />
+        <PasswordGroup emailEnabled={emailEnabled} preview={preview} email={data.me.email} onChanged={() => void afterPassword()} />
       </Segment>
       <Segment value="sessions" tab={tab}>
         <SessionsGroup data={data} update={update} now={now} preview={preview} />

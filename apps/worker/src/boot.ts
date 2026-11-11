@@ -26,6 +26,39 @@ export function jsonLogger(write: (line: string) => void = (l) => void process.s
   return { info: at("info"), warn: at("warn"), error: at("error") };
 }
 
+/** A connection that dropped, as Node and node-postgres (57P0x: the server ended the session) report it. */
+const DROPPED = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT", "ECONNREFUSED", "ECONNABORTED", "EHOSTUNREACH", "ENETUNREACH", "ERR_STREAM_PREMATURE_CLOSE", "57P01", "57P02", "57P03"]);
+
+/**
+ * True for an error the process is sound after: a connection lost with nobody listening for it. The
+ * operation that owned it has failed and nothing else is touched. Anything else is a bug whose
+ * damage is unknown.
+ */
+export function survivable(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && DROPPED.has(code)) return true;
+  return e instanceof Error && /^Connection terminated/.test(e.message);
+}
+
+interface Proc {
+  on(event: "uncaughtException", listener: (e: unknown, origin: string) => void): unknown;
+  exit(code: number): unknown;
+}
+
+/**
+ * The last word on an error nothing caught (an unhandled rejection arrives here too). A dropped
+ * connection is logged and survived: exiting would take every running deploy, backup and restore
+ * with it. Anything else stops the worker as before, with the cause as the last line logged.
+ */
+export function guardProcess(log: Logger, proc: Proc = process): void {
+  proc.on("uncaughtException", (e, origin) => {
+    const detail = { origin, error: reason(e), stack: e instanceof Error ? e.stack : undefined };
+    if (survivable(e)) return log.error("a connection dropped with nothing listening for it; the worker carries on", detail);
+    log.error(`worker stopping on an uncaught error: ${reason(e)}`, detail);
+    proc.exit(1);
+  });
+}
+
 const reason = (e: unknown): string => {
   const code = typeof e === "object" && e && "code" in e ? String((e as { code: unknown }).code) : "";
   const msg = e instanceof Error ? e.message : String(e);

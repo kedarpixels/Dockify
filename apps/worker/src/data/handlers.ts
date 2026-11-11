@@ -10,7 +10,8 @@
 import type { Db, JobKind } from "@dockify/db";
 import { isPermanentError } from "../errors.ts";
 import type { ClaimedJob } from "../queue.ts";
-import { DataError, type DataDeps } from "./context.ts";
+import { DataError, DeadlineError, type DataDeps } from "./context.ts";
+import type { DockerPort, ExecHandle } from "./docker-port.ts";
 import { runBackup, runRestore, runRestoreTest } from "./pipeline.ts";
 import type { RestorePayload } from "./requests.ts";
 import { parseUpgradePayload, runServiceUpgrade } from "./upgrade.ts";
@@ -62,14 +63,71 @@ export function parseRestorePayload(payload: unknown): RestorePayload {
   };
 }
 
+const HOUR_MS = 60 * 60_000;
+/**
+ * The wall clock limit of each data job. A server has one data lane, so a job that never ends (a
+ * dump waiting on a lock its tenant holds) would hold up every other project's backups. A dump
+ * through gzip moves 10 MB/s at the slow end, so six hours is over 200 GB of SQL. A replay rebuilds
+ * indexes and is slower than its dump, and a restore or a version change takes a dump first:
+ * twelve hours.
+ */
+export const DATA_JOB_LIMITS_MS = { backup: 6 * HOUR_MS, restore: 12 * HOUR_MS, restore_test: 12 * HOUR_MS, service_upgrade: 12 * HOUR_MS };
+export type DataJobKind = keyof typeof DATA_JOB_LIMITS_MS;
+
+const JOB_NAMES: Record<DataJobKind, string> = { backup: "backup", restore: "restore", restore_test: "restore test", service_upgrade: "version change" };
+
+/**
+ * The same Docker, with every exec and attach stopped once `signal` fires: the process is killed
+ * and its `done` rejects with `late()`, so the job fails with the limit as its reason.
+ */
+export function limitedDocker(docker: DockerPort, signal: AbortSignal, late: () => Error): DockerPort {
+  const limited = async (open: () => Promise<ExecHandle>): Promise<ExecHandle> => {
+    if (signal.aborted) throw late();
+    const h = await open();
+    const expired = new Promise<never>((_, reject) => {
+      const stop = () => {
+        void h.kill().catch(() => {});
+        reject(late());
+      };
+      if (signal.aborted) stop();
+      else signal.addEventListener("abort", stop, { once: true });
+    });
+    const done = Promise.race([h.done, expired]);
+    // A caller that already failed on the cut stream never awaits this.
+    done.catch(() => {});
+    return { stdout: h.stdout, stdin: h.stdin, done, kill: () => h.kill() };
+  };
+  return new Proxy(docker, {
+    get(target, key) {
+      if (key === "exec") return (id: string, opts: Parameters<DockerPort["exec"]>[1]) => limited(() => target.exec(id, opts));
+      if (key === "attach") return (id: string, opts: Parameters<DockerPort["attach"]>[1]) => limited(() => target.attach(id, opts));
+      const value = Reflect.get(target, key) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
 /**
  * Each handler settles its own row on the way out when the job is over, whatever failed: the
  * pipeline marks the row itself, and this catches an error that came before it could, so
  * a row never waits for the next sweep to stop reading "running".
  */
-export function dataJobHandlers(deps: DataDeps): Partial<Record<JobKind, DataJobHandler>> {
+export function dataJobHandlers(base: DataDeps, limits: Record<DataJobKind, number> = DATA_JOB_LIMITS_MS): Partial<Record<JobKind, DataJobHandler>> {
+  /** Runs one job with its own clock: its deps reach Docker through limitedDocker. */
+  const timed = (kind: DataJobKind, run: (deps: DataDeps, job: ClaimedJob) => Promise<void>): DataJobHandler => async (job) => {
+    const clock = new AbortController();
+    const ms = limits[kind];
+    const hours = Math.round((ms / HOUR_MS) * 10) / 10;
+    const late = () => new DeadlineError(`The ${JOB_NAMES[kind]} ran past its limit of ${hours} hours and was stopped, so the other data jobs of this server are not held up.`);
+    const timer = setTimeout(() => clock.abort(), ms);
+    try {
+      await run({ ...base, docker: limitedDocker(base.docker, clock.signal, late) }, job);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   return {
-    backup: async (job) => {
+    backup: timed("backup", async (deps, job) => {
       const backupId = field(job.payload, "backupId");
       const copies = copiesOf(job.payload);
       const final = job.attempts >= job.maxAttempts;
@@ -79,10 +137,10 @@ export function dataJobHandlers(deps: DataDeps): Partial<Record<JobKind, DataJob
         if (final || isPermanentError(e)) for (const id of [backupId, ...copies]) await settleBackupRow(deps.db, id, e).catch(() => {});
         throw e;
       }
-    },
-    restore: async (job) => runRestore(deps, job.id, parseRestorePayload(job.payload)),
-    service_upgrade: async (job) => runServiceUpgrade(deps, job.id, parseUpgradePayload(job.payload)),
-    restore_test: async (job) => {
+    }),
+    restore: timed("restore", (deps, job) => runRestore(deps, job.id, parseRestorePayload(job.payload))),
+    service_upgrade: timed("service_upgrade", (deps, job) => runServiceUpgrade(deps, job.id, parseUpgradePayload(job.payload))),
+    restore_test: timed("restore_test", async (deps, job) => {
       const backupId = field(job.payload, "backupId");
       try {
         await runRestoreTest(deps, backupId);
@@ -91,6 +149,6 @@ export function dataJobHandlers(deps: DataDeps): Partial<Record<JobKind, DataJob
         await settleRestoreTest(deps.db, backupId, e).catch(() => {});
         throw e;
       }
-    },
+    }),
   };
 }

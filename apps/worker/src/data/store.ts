@@ -19,7 +19,8 @@ import { pipeline } from "node:stream/promises";
 export interface ObjectStore {
   readonly kind: "s3" | "local";
   put(key: string, body: Readable, length: number): Promise<void>;
-  get(key: string): Promise<Readable>;
+  /** maxBytes: refuse an object that says up front it is larger. The caller still counts what arrives. */
+  get(key: string, maxBytes?: number): Promise<Readable>;
   /** Idempotent: an object already gone is success. */
   delete(key: string): Promise<void>;
   /** What a delete of this key would really free, when the store can tell without a round trip. */
@@ -36,6 +37,8 @@ export class StoreError extends Error {
     this.status = status;
   }
 }
+
+const tooLarge = (size: number, max: number): string => `the stored object is ${size} bytes, more than the ${max} recorded for this backup`;
 
 /** Object keys: what Dockify generates, nothing a caller could turn into a path escape. */
 const KEY = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,500}$/;
@@ -163,9 +166,14 @@ export class S3Store implements ObjectStore {
     await res.body?.cancel().catch(() => {});
   }
 
-  async get(key: string): Promise<Readable> {
+  async get(key: string, maxBytes?: number): Promise<Readable> {
     const res = await this.#send("GET", key, { hash: EMPTY_SHA256, timeoutMs: TRANSFER_TIMEOUT_MS });
     if (!res.ok || !res.body) throw new StoreError(s3Message(res.status, await res.text().catch(() => "")), res.status);
+    const length = Number(res.headers.get("content-length") ?? NaN);
+    if (maxBytes !== undefined && length > maxBytes) {
+      await res.body.cancel().catch(() => {});
+      throw new StoreError(tooLarge(length, maxBytes), 0);
+    }
     return Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]);
   }
 
@@ -243,11 +251,12 @@ export class LocalStore implements ObjectStore {
     }
   }
 
-  async get(key: string): Promise<Readable> {
+  async get(key: string, maxBytes?: number): Promise<Readable> {
     const p = this.#path(key);
-    await stat(p).catch(() => {
+    const { size } = await stat(p).catch(() => {
       throw new StoreError("the backup file is missing from local storage", 404);
     });
+    if (maxBytes !== undefined && size > maxBytes) throw new StoreError(tooLarge(size, maxBytes), 0);
     return createReadStream(p);
   }
 

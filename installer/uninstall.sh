@@ -12,7 +12,7 @@
 # the dashboard domain (or "uninstall" when there is none):
 #   1. a backup of the master key, secrets/, .env and release.env in /root/dockify-backup-<ts>/
 #   2. the Dockify stack (compose project "dockify"), then every dockify.managed=true container
-#   3. dockify-firewall.service, /usr/local/sbin/dockify-firewall and its live iptables rules
+#   3. dockify-firewall.service, dockify-firewall-early.service, /usr/local/sbin/dockify-firewall and its live iptables rules
 #   4. the `dockify` wrapper in /usr/local/bin, /etc/apt/apt.conf.d/52dockify-docker and the AppArmor
 #      profile /etc/apparmor.d/dockify-buildkit (Ubuntu 24.04), unloaded first
 #   5. tunnel mode: the Cloudflare tunnel dockify-<host>-<id> and every CNAME pointing at it,
@@ -55,6 +55,7 @@ DIR="" PURGE=0 YES=0 DRY=0 REBOOT=0 BACKUP=1 CF_TOKEN_FILE=""
 W_WRAPPER="$ROOT/usr/local/bin/dockify"
 W_FWBIN="$ROOT/usr/local/sbin/dockify-firewall"
 W_UNIT="$ROOT/etc/systemd/system/dockify-firewall.service"
+W_UNIT_EARLY="$ROOT/etc/systemd/system/dockify-firewall-early.service"
 W_APT="$ROOT/etc/apt/apt.conf.d/52dockify-docker"
 W_AA="$ROOT/etc/apparmor.d/dockify-buildkit"
 DAEMON_JSON="$ROOT/etc/docker/daemon.json"
@@ -154,7 +155,7 @@ if [ "$DOCKER" = 1 ]; then
   item "${#STACK[@]}" "the Dockify stack: ${#STACK[@]} container(s) of compose project $PROJECT"
   item "${#APPS[@]}" "app containers Dockify deployed: ${#APPS[@]}"; list "${APPS[@]}"
 fi
-item "$(exists "$W_UNIT" "$W_FWBIN")" "dockify-firewall.service, /usr/local/sbin/dockify-firewall and their iptables rules"
+item "$(exists "$W_UNIT" "$W_UNIT_EARLY" "$W_FWBIN")" "dockify-firewall.service, dockify-firewall-early.service, /usr/local/sbin/dockify-firewall and their iptables rules"
 item "$(exists "$W_WRAPPER")" "/usr/local/bin/dockify"
 item "$(exists "$W_APT")" "/etc/apt/apt.conf.d/52dockify-docker"
 item "$(exists "$W_AA")" "the AppArmor profile /etc/apparmor.d/dockify-buildkit"
@@ -255,11 +256,12 @@ fi
 # ------------------------------------------------------------------ 3. firewall
 
 say "Removing the container firewall"
-if [ -e "$W_UNIT" ] || [ -e "$W_FWBIN" ]; then
+if [ -e "$W_UNIT" ] || [ -e "$W_UNIT_EARLY" ] || [ -e "$W_FWBIN" ]; then
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl disable --now dockify-firewall.service >/dev/null 2>&1 || true
+    systemctl disable --now dockify-firewall.service dockify-firewall-early.service >/dev/null 2>&1 || true
   fi
   try "$W_UNIT" rm -f "$W_UNIT"
+  try "$W_UNIT_EARLY" rm -f "$W_UNIT_EARLY"
   try "$W_FWBIN" rm -f "$W_FWBIN"
   if command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload >/dev/null 2>&1 || true; fi
   note "service and script removed"

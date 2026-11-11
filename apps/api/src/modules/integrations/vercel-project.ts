@@ -12,7 +12,7 @@
 import type { Keyring } from "@dockify/crypto";
 import type { Db } from "@dockify/db";
 import type { HttpClient } from "@dockify/net-guard";
-import { assertProjectScope, type Actor } from "../../actor.ts";
+import { assertProjectScope, readsCommands, type Actor } from "../../actor.ts";
 import type { Handlers } from "../../app.ts";
 import { HttpError } from "../../errors.ts";
 import { requireActor, type IntegrationDeps } from "./deps.ts";
@@ -342,8 +342,9 @@ export async function readVercelProject(db: Db, ring: Keyring, http: HttpClient,
     framework: plain(project.framework, 64),
     nodeVersion: plain(project.nodeVersion, 16),
     rootDirectory: plain(project.rootDirectory, 255),
-    buildCommand: plain(project.buildCommand, 500),
-    installCommand: plain(project.installCommand, 500),
+    // A command can hold a token someone pasted inline: blank for a Viewer, as a Dockify app's are.
+    buildCommand: readsCommands(actor) ? plain(project.buildCommand, 500) : null,
+    installCommand: readsCommands(actor) ? plain(project.installCommand, 500) : null,
     outputDirectory: plain(project.outputDirectory, 255),
     repo,
     links,

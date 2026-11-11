@@ -112,6 +112,8 @@ export interface HostSnapshot {
 export interface Overview {
   /** The signed-in operator, when the API sends one. */
   viewer?: { name: string; role: string; email?: string; avatarUrl?: string; time?: TimePrefs };
+  /** The zone the trend counts days in: the viewer's saved zone, else UTC. */
+  trendZone?: string;
   counts: {
     projects: { total: number; active: number; archived: number };
     environments: number;

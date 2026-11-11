@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { Db } from "@dockify/db";
 import { createHttpClient, OutboundError, type HttpClient, type HttpRequest } from "@dockify/net-guard";
@@ -39,10 +40,12 @@ function fakeHttp(routes: Record<string, Route>) {
   return { http, asked };
 }
 
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" onload="alert(1)"><script>alert(2)</script><rect width="32" height="32" rx="6" fill="#2396ED"/></svg>';
+
 const page = (head: string) => ({ status: 200, body: `<!doctype html><html><head>${head}</head><body></body></html>` });
 
 describe("parseIconLinks and rankIconLinks", () => {
-  it("reads rel, sizes and type in any attribute order and quoting, and ranks rasters 64px and up first", () => {
+  it("reads rel, sizes and type in any attribute order and quoting, and ranks rasters 64px and up first and SVG last", () => {
     const links = parseIconLinks(`
       <link rel="icon" type="image/svg+xml" href="/icon.svg">
       <link href='/favicon-32.png' rel='icon' sizes='32x32' type='image/png'>
@@ -51,7 +54,7 @@ describe("parseIconLinks and rankIconLinks", () => {
       <link rel="icon" sizes="96x96 192x192" href="/icon-192.png">
       <link rel="stylesheet" href="/app.css">`);
     expect(links.map((l) => l.href)).toEqual(["/icon.svg", "/favicon-32.png", "/favicon.ico", "/apple.png?v=1&x=2", "/icon-192.png"]);
-    expect(rankIconLinks(links).map((l) => l.href)).toEqual(["/apple.png?v=1&x=2", "/icon-192.png", "/favicon-32.png", "/favicon.ico"]);
+    expect(rankIconLinks(links).map((l) => l.href)).toEqual(["/apple.png?v=1&x=2", "/icon-192.png", "/favicon-32.png", "/favicon.ico", "/icon.svg"]);
   });
 });
 
@@ -67,9 +70,66 @@ describe("findFavicon", () => {
     expect(asked).toEqual(["https://shop.example.com/", "https://shop.example.com/icon-192.png"]);
   });
 
+  it("takes a site's only icon when it is an SVG, as the rebuilt document and never the bytes it sent", async () => {
+    // What a Next app with app/icon.svg serves: one SVG link, and a 404 page far over 64 KB at /favicon.ico.
+    const { http, asked } = fakeHttp({
+      "https://shop.example.com/": page('<link rel="icon" href="/icon.svg?icon.2ukgdh3dhslft.svg" sizes="any" type="image/svg+xml"/>'),
+      "https://shop.example.com/icon.svg?icon.2ukgdh3dhslft.svg": { status: 200, body: SVG, headers: { "content-type": "image/svg+xml" } },
+      "https://shop.example.com/favicon.ico": { status: 404, body: `<!doctype html>${"x".repeat(97 * 1024)}`, headers: { "content-type": "text/html" } },
+    });
+    const r = await findFavicon(http, ["shop.example.com"]);
+    expect(r).toMatchObject({ ok: true, url: "https://shop.example.com/icon.svg?icon.2ukgdh3dhslft.svg", image: { mime: "image/svg+xml", width: 32, height: 32 } });
+    const stored = r.ok ? r.bytes.toString("utf8") : "";
+    expect(stored).toContain("<rect");
+    expect(stored).not.toMatch(/onload|script|alert/);
+    expect(asked).toEqual(["https://shop.example.com/", "https://shop.example.com/icon.svg?icon.2ukgdh3dhslft.svg"]);
+
+    // A raster the site also declares still wins: an email can only show a raster.
+    const both = fakeHttp({
+      "https://shop.example.com/": page('<link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="icon" href="/icon.png" sizes="32x32">'),
+      "https://shop.example.com/icon.svg": { status: 200, body: SVG },
+      "https://shop.example.com/icon.png": { status: 200, body: png(32, 32) },
+    });
+    expect(await findFavicon(both.http, ["shop.example.com"])).toMatchObject({ ok: true, url: "https://shop.example.com/icon.png" });
+  });
+
+  it("treats an error status, a redirect to a page and an HTML body as no favicon there, and says what each answered", async () => {
+    // A 404 page of 97 KB is a 404, not a favicon that is too large.
+    const missing = fakeHttp({
+      "https://shop.example.com/": page(""),
+      "https://shop.example.com/favicon.ico": { status: 404, body: `<!doctype html>${"x".repeat(97 * 1024)}`, headers: { "content-type": "text/html" } },
+    });
+    expect(await findFavicon(missing.http, ["shop.example.com"])).toEqual({ ok: false, reason: "/favicon.ico answered 404" });
+
+    // A redirect to the sign-in page is a page, not an image of the wrong format.
+    const gated = fakeHttp({
+      "https://shop.example.com/": page('<link rel="icon" href="/missing.png">'),
+      "https://shop.example.com/favicon.ico": { status: 307, headers: { location: "/login?next=%2Ffavicon.ico" } },
+      "https://shop.example.com/login?next=%2Ffavicon.ico": { status: 200, body: "<!DOCTYPE html><html><body>Sign in</body></html>", headers: { "content-type": "text/html; charset=utf-8" } },
+    });
+    expect(await findFavicon(gated.http, ["shop.example.com"])).toEqual({
+      ok: false, reason: "/missing.png answered 404. /favicon.ico (redirected to /login) is a web page, not an image",
+    });
+
+    // A page with no doctype is still a page by its content type, and the next candidate is tried after it.
+    const soft = fakeHttp({
+      "https://shop.example.com/": page('<link rel="icon" href="/a.png"><link rel="icon" href="/b.png">'),
+      "https://shop.example.com/a.png": { status: 200, body: '<div><svg viewBox="0 0 8 8"><path d="M0 0h8v8z"/></svg>Not found</div>', headers: { "content-type": "text/html" } },
+      "https://shop.example.com/b.png": { status: 200, body: png(48, 48), headers: { "content-type": "text/html" } },
+    });
+    expect(await findFavicon(soft.http, ["shop.example.com"])).toMatchObject({ ok: true, url: "https://shop.example.com/b.png", image: { width: 48 } });
+
+    // An SVG the rebuild refuses is reported as that, beside what the fallback answered.
+    const broken = fakeHttp({
+      "https://shop.example.com/": page('<link rel="icon" href="/icon.svg">'),
+      "https://shop.example.com/icon.svg": { status: 200, body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><script>alert(1)</script></svg>' },
+    });
+    expect(await findFavicon(broken.http, ["shop.example.com"])).toEqual({ ok: false, reason: "/icon.svg: The SVG has nothing Dockify can draw. /favicon.ico answered 404" });
+  });
+
   it("falls back to /favicon.ico when the page has no usable link or is down", async () => {
     const { http } = fakeHttp({
-      "https://shop.example.com/": page('<link rel="icon" href="/icon.svg">'),
+      "https://shop.example.com/": page('<link rel="icon" href="data:image/png;base64,AAAA">'),
       "https://shop.example.com/favicon.ico": { status: 200, body: ico(32) },
     });
     expect(await findFavicon(http, ["shop.example.com"])).toMatchObject({ ok: true, url: "https://shop.example.com/favicon.ico", image: { mime: "image/x-icon" } });
@@ -84,7 +144,7 @@ describe("findFavicon", () => {
       "https://shop.example.com/favicon.ico": { status: 302, headers: { location: "https://evil.test/favicon.ico" } },
     });
     const r = await findFavicon(http, ["shop.example.com"]);
-    expect(r).toEqual({ ok: false, reason: "A redirect left the app's domains" });
+    expect(r).toEqual({ ok: false, reason: "/favicon.ico: A redirect left the app's domains" });
     expect(asked.every((u) => u.startsWith("https://shop.example.com/"))).toBe(true);
   });
 
@@ -97,20 +157,24 @@ describe("findFavicon", () => {
     expect(await findFavicon(http, ["shop.example.com", "www.shop.example.com"])).toMatchObject({ ok: true, url: "https://www.shop.example.com/f.png" });
   });
 
-  it("refuses an icon over 64 KB and bytes that are not a raster image, whatever the extension says", async () => {
+  it("refuses an icon over 64 KB and bytes that are no image, whatever the extension says", async () => {
     const big = fakeHttp({
       "https://shop.example.com/": page('<link rel="icon" href="/big.png">'),
       "https://shop.example.com/big.png": { status: 200, body: png(64, 64, 70 * 1024) },
       "https://shop.example.com/favicon.ico": { status: 200, body: png(64, 64, 64 * 1024) },
     });
-    expect(await findFavicon(big.http, ["shop.example.com"])).toEqual({ ok: false, reason: "The favicon is larger than 64 KB" });
+    expect(await findFavicon(big.http, ["shop.example.com"])).toEqual({ ok: false, reason: "/big.png: The favicon is larger than 64 KB. /favicon.ico: The favicon is larger than 64 KB" });
+    const huge = fakeHttp({ "https://shop.example.com/": page(""), "https://shop.example.com/favicon.ico": { status: 200, body: png(64, 64, 600 * 1024) } });
+    expect(await findFavicon(huge.http, ["shop.example.com"])).toEqual({ ok: false, reason: "/favicon.ico is too large to read" });
 
     const lying = fakeHttp({
       "https://shop.example.com/": page('<link rel="icon" href="/f.png">'),
-      "https://shop.example.com/f.png": { status: 200, body: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>' },
+      "https://shop.example.com/f.png": { status: 200, body: "GIF89a, or so it says" },
       "https://shop.example.com/favicon.ico": { status: 200, body: "<!doctype html><title>Not found</title>" },
     });
-    expect(await findFavicon(lying.http, ["shop.example.com"])).toEqual({ ok: false, reason: "The favicon is not a PNG, ICO, WebP or JPG image" });
+    expect(await findFavicon(lying.http, ["shop.example.com"])).toEqual({
+      ok: false, reason: "/f.png: The favicon is not a PNG, ICO, WebP, JPG or SVG image. /favicon.ico is a web page, not an image",
+    });
   });
 
   it("refuses at connect time a domain that resolves to a private address (net-guard)", async () => {
@@ -149,10 +213,25 @@ describe("icon_fetch job", () => {
     expect(writes.find((w) => w.op === "app")?.data).toMatchObject({ faviconError: null });
   });
 
+  it("stores an SVG favicon as the rebuilt document, hashed as stored", async () => {
+    const { db, writes } = fakeDb();
+    const { http } = fakeHttp({
+      "https://www.shop.example.com/": page('<link rel="icon" href="/icon.svg" type="image/svg+xml">'),
+      "https://www.shop.example.com/icon.svg": { status: 200, body: SVG },
+    });
+    await runIconFetch({ db, http }, { appId: APP });
+    const row = writes.find((w) => w.op === "icon")?.data as { mime: string; data: Uint8Array; sha256: string };
+    expect(row).toMatchObject({ appId: APP, source: "favicon", mime: "image/svg+xml", width: 32, origin: "https://www.shop.example.com/icon.svg" });
+    const stored = Buffer.from(row.data).toString("utf8");
+    expect(stored).not.toBe(SVG);
+    expect(stored).not.toMatch(/onload|script/);
+    expect(row.sha256).toBe(createHash("sha256").update(row.data).digest("hex"));
+  });
+
   it("records why on failure and stores nothing, so the app keeps its tile", async () => {
     const { db, writes } = fakeDb();
     await runIconFetch({ db, http: fakeHttp({}).http }, { appId: APP });
-    expect(writes).toEqual([{ op: "app", data: expect.objectContaining({ faviconError: "/favicon.ico answered 404" }) }]);
+    expect(writes).toEqual([{ op: "app", data: expect.objectContaining({ faviconError: "The home page answered 404. /favicon.ico answered 404" }) }]);
   });
 
   it("ignores a bad payload and a non-frontend app", async () => {

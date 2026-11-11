@@ -24,6 +24,7 @@ import type { OverviewResult } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
 import { DeleteOrphansDialog, RestoreDialog, RunDialog, testLine } from "./backup-dialogs";
 import { History, Orphans, type RunActions } from "./backup-runs";
+import { inHistory, notStarted } from "./history";
 import { Schedules, StorageCard } from "./backup-schedules";
 import { track, useSecond, useTween } from "./live";
 import { followRestore } from "./restore-follow";
@@ -138,6 +139,8 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
 
   const notices = useMemo(() => (ov.data ? deriveNotices(ov.data, now) : null), [ov.data, now]);
   const liveRuns = useMemo(() => d?.runs.filter((r) => !isOrphan(r)) ?? [], [d]);
+  // The history is 30 days; the older rows the API adds feed the schedules and the totals only.
+  const recentRuns = useMemo(() => liveRuns.filter((r) => inHistory(r, now)), [liveRuns, now]);
   const orphans = useMemo(() => d?.runs.filter(isOrphan) ?? [], [d]);
   const backingUp = d?.runs.some((r) => r.status === "running") ?? false;
   const testRunning = d?.runs.some((r) => r.restoreTest.status === "running") ?? false;
@@ -224,15 +227,26 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
     setStarting(false);
     setLaunching(true);
     const one = d.schedules.find((s) => s.resourceId === pick);
-    await track(send<{ runs: BackupRun[] }>("/api/backups/run", "POST", pick === "all" ? {} : { resourceId: pick }), {
+    const asked = pick === "all" ? d.schedules.filter((s) => s.enabled) : [];
+    const started = send<{ runs: BackupRun[] }>("/api/backups/run", "POST", pick === "all" ? {} : { resourceId: pick }).then((r) => {
+      // Nothing started is a failure, whatever the status said.
+      if (!r.runs.length) throw new Error("No backup was started");
+      return r;
+    });
+    await track(started, {
       preview,
       loading: "Starting backup",
       description: one ? dbLabel(one.database) : "Every enabled database",
       success: (r) => {
         setResult((prev) => (prev.data ? { ...prev, data: { ...prev.data, runs: [...r.runs, ...prev.data.runs] } } : prev));
+        const missed = notStarted(asked, r.runs);
         return {
           title: r.runs.length === 1 ? "Backup started" : `${r.runs.length.toLocaleString("en-US")} backups started`,
-          description: [firstNames(r.runs.map((x) => dbLabel(x.database))), "Each shows in the history as it runs"],
+          description: [
+            firstNames(r.runs.map((x) => dbLabel(x.database))),
+            ...(missed.length ? [`Not started: ${firstNames(missed.map((s) => dbLabel(s.database)))}`] : []),
+            "Each shows in the history as it runs",
+          ],
           action: { label: "View", onClick: showHistory },
         };
       },
@@ -330,7 +344,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
   const hasDbs = (d?.schedules.length ?? 0) > 0;
   const lead = d
     ? hasDbs
-      ? `${plural(d.schedules.length, "database")}, ${d.schedules.filter((s) => s.enabled).length} on a schedule, ${plural(liveRuns.length, "run")} in 30 days.`
+      ? `${plural(d.schedules.length, "database")}, ${d.schedules.filter((s) => s.enabled).length} on a schedule, ${plural(recentRuns.length, "run")} in 30 days.`
       : "No databases to back up yet."
     : "Encrypted database dumps on a schedule, kept off this server.";
 
@@ -398,7 +412,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
                 <Spacer />
               </>
             ) : null}
-            {hasDbs ? <History runs={liveRuns} schedules={d.schedules} now={now} actions={actions} /> : null}
+            {hasDbs ? <History runs={recentRuns} schedules={d.schedules} now={now} actions={actions} /> : null}
             {orphans.length ? (
               <>
                 {hasDbs ? <Spacer /> : null}

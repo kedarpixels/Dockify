@@ -132,7 +132,8 @@ export async function overview(db: Db, actor: Actor | null, now = Date.now(), op
   for (const r of byStatusRows) byStatus[r.status] = r._count._all;
 
   return {
-    ...(viewer && actor
+    // For the signed-in person's own dashboard. A token is not its owner: it never learns their name or email.
+    ...(viewer && actor?.kind === "session"
       ? {
           viewer: {
             name: viewer.name,

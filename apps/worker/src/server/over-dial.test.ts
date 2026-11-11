@@ -261,9 +261,11 @@ describe("the Docker client and reader over createConnection", () => {
     const docker = new DockerClient(endpointTo(port, made), { cpuCores: 4 });
     expect(await docker.call("GET", "/containers/c1/json")).toEqual({ Id: "c1" });
     expect(await docker.createContainer("dk-a", { name: "dk-a", image: "alpine:3", network: "dockify-env-a" })).toBe("new");
-    expect(made.n).toBe(2);
+    // The create reads the image's labels first, so three requests, each on its own stream.
+    expect(made.n).toBe(3);
     expect(seen[0]).toMatchObject({ method: "GET", url: "/v1.43/containers/c1/json" });
-    expect(JSON.parse(seen[1]!.body).HostConfig.NanoCpus).toBe(3e9);
+    expect(seen[1]).toMatchObject({ method: "GET", url: "/v1.43/images/alpine%3A3/json" });
+    expect(JSON.parse(seen[2]!.body).HostConfig.NanoCpus).toBe(3e9);
   });
 
   it("refuses a create with no limit of its own and no known count, and allows one with its own", async () => {

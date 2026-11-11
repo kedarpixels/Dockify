@@ -12,12 +12,13 @@ import type { Db, Tx } from "@dockify/db";
 import type { SessionActor } from "../actor.ts";
 import { audit } from "../audit.ts";
 import { HttpError, isUniqueViolation, rateLimited, stepUpRequired } from "../errors.ts";
-import { consumeTotp, totpSecretOf } from "../mfa.ts";
+import { checkTotp, type TotpUser } from "../mfa.ts";
 import { revokeSessions, voidResetLinks } from "../sessions.ts";
 import { emailEnabled } from "../mailer.ts";
 import { checkPasswordCode, proveCurrentPassword } from "./email-auth.ts";
 import { sendSecurityNotice } from "../security-notice.ts";
 import type { Ctx, Handlers } from "../app.ts";
+import type { FastifyRequest } from "fastify";
 
 
 export async function meView(db: Db, userId: string, role: SessionActor["role"]) {
@@ -64,23 +65,35 @@ export function describeDevice(ua: string | null): { device: string; kind: "desk
   return { device, kind };
 }
 
+const span = (seconds: number) => {
+  const m = Math.ceil(seconds / 60);
+  return m < 60 ? `${m} minutes` : m < 120 ? "1 hour" : `${Math.round(m / 60)} hours`;
+};
+
 /**
- * Checks a fresh TOTP code for a user with MFA on and spends its step. Rate limited per user with a
- * hard lockout: only the session holder can try, and the code is the proof being asked for.
+ * Checks an authenticator code under the one per-user lockout every code check shares (mfa.ts).
+ * False for a wrong code. Throws while the user is locked out, and on the guess that locks: that
+ * one ends every open sign in, leaves a row the activity log flags, and mails the owner when it is
+ * the first lockout in a row.
  */
-async function requireTotp(ctx: Ctx, userId: string, code: string, reply: Parameters<typeof rateLimited>[0]) {
-  const { db, ring, limits } = ctx;
-  const wait = limits.totp.check(userId);
-  if (wait !== null) throw rateLimited(reply, wait);
-  const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
+export async function proveTotp(ctx: Ctx, user: TotpUser & { name: string }, code: string, req: FastifyRequest, reply: Parameters<typeof rateLimited>[0]): Promise<boolean> {
+  const { db } = ctx;
+  const r = await checkTotp(db, ctx.ring, user, code);
+  if (r.ok) return true;
+  if (r.wait === null) return false;
+  if (!r.engaged) throw rateLimited(reply, r.wait);
+  await db.loginChallenge.updateMany({ where: { userId: user.id, consumedAt: null }, data: { consumedAt: new Date() } });
+  await audit(db, { category: "access", action: "auth.mfa.locked", verb: "was locked out after repeated wrong codes", suffix: `for ${span(r.wait)}`, actorType: "user", actorId: user.id, actorName: user.name, failed: true, ...meta(req) });
+  if (r.first) await sendSecurityNotice(ctx, user.id, "mfaLocked", req);
+  reply.header("Retry-After", String(r.wait));
+  throw new HttpError(429, `Too many incorrect codes. Try again in ${span(r.wait)}.`, "MFA_LOCKED", { field: "code", retryAfter: r.wait });
+}
+
+/** A fresh code from a user with MFA on: the proof asked for before two-factor is turned off. */
+async function requireTotp(ctx: Ctx, userId: string, code: string, req: FastifyRequest, reply: Parameters<typeof rateLimited>[0]) {
+  const user = await ctx.db.user.findUniqueOrThrow({ where: { id: userId } });
   if (!user.totpConfirmedAt) throw new HttpError(409, "Two-factor sign in is not on", "MFA_DISABLED");
-  const secret = await totpSecretOf(db, ring, user);
-  const ok = !!secret && (await consumeTotp(db, secret, user.id, code)) !== null;
-  if (!ok) {
-    limits.totp.failed(userId);
-    throw new HttpError(401, "That code didn't match", "INVALID_CODE", { field: "code" });
-  }
-  limits.totp.succeeded(userId);
+  if (!(await proveTotp(ctx, user, code, req, reply))) throw new HttpError(401, "That code didn't match", "INVALID_CODE", { field: "code" });
   return user;
 }
 
@@ -227,7 +240,7 @@ export const accountHandlers: Handlers = {
 
   "me.2fa.disable": async ({ body, actor, req, reply, ctx }) => {
     const a = requireSession(actor);
-    const user = await requireTotp(ctx, a.userId, body.code, reply);
+    const user = await requireTotp(ctx, a.userId, body.code, req, reply);
     await ctx.db.$transaction(async (tx) => {
       await tx.user.update({ where: { id: user.id }, data: { totpSecretId: null, totpConfirmedAt: null, totpLastUsedStep: null } });
       if (user.totpSecretId) await tx.secret.delete({ where: { id: user.totpSecretId } });

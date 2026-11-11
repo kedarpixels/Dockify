@@ -18,6 +18,7 @@ import { useNow, useOverview } from "@/lib/hooks";
 import type { OverviewResult } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
 import { ProjectGrid, ProjectRows } from "./project-list";
+import { matchesProject } from "./search";
 
 type Filter = "all" | "ok" | "live" | "attention";
 
@@ -68,9 +69,7 @@ export function ProjectsView({ initial }: { initial: OverviewResult }) {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const match = FILTERS.find((f) => f.id === filter)!.match;
-    return projects.filter(
-      (p) => match(p.tone) && (!q || p.slug.toLowerCase().includes(q) || p.apps.some((a) => a.name.toLowerCase().includes(q) || !!a.displayName?.toLowerCase().includes(q))),
-    );
+    return projects.filter((p) => match(p.tone) && matchesProject(p, q));
   }, [projects, query, filter]);
 
   const q = query.trim();

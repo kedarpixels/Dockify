@@ -2,7 +2,7 @@
  * One message, shaped for each provider in its own native format. Every piece of text is escaped
  * for the markup the provider renders, so nothing in a message can format, link or mention by
  * accident: Discord markdown and mentions, Slack's <...> controls, Teams and Google Chat markup,
- * Telegram HTML, and @mentions in Mattermost and Rocket.Chat.
+ * Telegram HTML, and Markdown links and @mentions in Mattermost and Rocket.Chat.
  *
  * The generic webhook's JSON (genericBody) is the documented one:
  *
@@ -149,9 +149,12 @@ export function telegramBody(m: NotifyMessage, chatId: string): object {
 
 /**
  * Both render Markdown and notify on @all, @channel, @here and @name. A zero-width space after
- * each @ keeps the text as it reads while no mention can form.
+ * each @ keeps the text as it reads while no mention can form. What could make a link, an image,
+ * HTML or a code span is escaped; < also gets the space, for a parser that reads <url|text> and
+ * knows no backslash.
  */
-export const chatSafe = (s: string): string => plain(s).replace(/@/g, "@​");
+export const chatSafe = (s: string): string =>
+  plain(s).replace(/[\\`[\]()!>]/g, (c) => `\\${c}`).replace(/</g, "\\<​").replace(/@/g, "@​");
 
 export function mattermostBody(m: NotifyMessage): object {
   return {

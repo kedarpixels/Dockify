@@ -556,13 +556,14 @@ tunnel_add_api_rule() {
       end'
 }
 
-# The container firewall, re-applied by dockify-firewall.service after every Docker start.
+# The container firewall, applied before every Docker start and again after it.
 # Idempotent: each rule is inserted only when missing. A rule inserted later lands above the earlier
-# ones, so the deploy bridge's 80 and 443 come before the tenant-bridge drop.
+# ones, so the deploy bridge's 80 and 443 come before the tenant-bridge drop. It needs nothing of
+# Docker's: it makes DOCKER-USER itself, and Docker keeps a chain of that name it finds.
 render_firewall() {
   cat <<'EOF'
 #!/bin/sh
-# Dockify host rules, re-applied after every Docker start. Idempotent.
+# Dockify host rules, applied before and after every Docker start. Idempotent.
 set -eu
 ins() { t="$1"; shift; c="$1"; shift; "$t" -C "$c" "$@" 2>/dev/null || "$t" -I "$c" "$@"; }
 iptables -N DOCKER-USER 2>/dev/null || true
@@ -673,7 +674,25 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target docker.service
 EOF
+    # Docker starts restart-policy containers before it reports started, so after a reboot the unit
+    # above is late for them. This one holds Docker back until the rules are in. Not RemainAfterExit:
+    # it runs again on each Docker start. After any service that reloads the tables at boot.
+    cat > /etc/systemd/system/dockify-firewall-early.service <<'EOF'
+[Unit]
+Description=Dockify container firewall rules, before Docker starts
+Before=docker.service
+After=ufw.service firewalld.service netfilter-persistent.service nftables.service
+ConditionPathExists=/usr/local/sbin/dockify-firewall
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dockify-firewall
+
+[Install]
+WantedBy=docker.service
+EOF
     systemctl daemon-reload
+    systemctl enable dockify-firewall-early.service >/dev/null
     systemctl enable --now dockify-firewall.service >/dev/null
     systemctl restart dockify-firewall.service
   fi

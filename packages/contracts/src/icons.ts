@@ -1,8 +1,9 @@
 /**
  * App, project and webhook icons: what the api answers about an icon, the write body, and the image
  * checks the api (uploads, logo links) and the worker (favicons) both run. The checks read magic
- * bytes and the header's own dimensions; nothing here decodes pixels. SVG is accepted only as a
- * webhook logo, and only as the document sanitizeSvg rebuilds (svg.ts).
+ * bytes and the header's own dimensions; nothing here decodes pixels. SVG is accepted as a fetched
+ * favicon or a webhook logo, never as an upload, and only as the document sanitizeSvg rebuilds
+ * (svg.ts).
  */
 import { z } from "zod";
 import { Iso, Slug, Uuid } from "./common.ts";
@@ -212,14 +213,25 @@ export function checkIconUpload(bytes: Uint8Array): ImageCheck {
   return { ok: true, image };
 }
 
-/** A fetched favicon: png, ico, webp or jpg, at most 64 KB, at least 16px. */
-export function checkFavicon(bytes: Uint8Array): ImageCheck {
+/**
+ * A fetched favicon: png, ico, webp, jpg or svg, at most 64 KB as it arrived, at least 16px for a
+ * raster. Many sites declare only an SVG icon. Like a logo's, an SVG is stored only as sanitizeSvg's
+ * rebuild, never as it arrived: `bytes` is what to store.
+ */
+export function checkFavicon(bytes: Uint8Array): LogoCheck {
   if (bytes.length === 0) return { ok: false, reason: "The favicon is empty" };
   if (bytes.length > FAVICON_MAX_BYTES) return { ok: false, reason: "The favicon is larger than 64 KB" };
   const image = sniffImage(bytes);
-  if (!image) return { ok: false, reason: "The favicon is not a PNG, ICO, WebP or JPG image" };
-  if (image.width < 16 || image.height < 16) return { ok: false, reason: "The favicon is smaller than 16 pixels" };
-  return { ok: true, image };
+  if (image) {
+    if (image.width < 16 || image.height < 16) return { ok: false, reason: "The favicon is smaller than 16 pixels" };
+    return { ok: true, image, bytes };
+  }
+  if (looksLikeSvg(bytes)) {
+    const svg = sanitizeSvg(bytes);
+    if (!svg.ok) return svg;
+    return { ok: true, image: { mime: SVG_MIME, width: svg.width, height: svg.height }, bytes: new TextEncoder().encode(svg.svg) };
+  }
+  return { ok: false, reason: "The favicon is not a PNG, ICO, WebP, JPG or SVG image" };
 }
 
 // ------------------------------------------------------------------ webhook logos
@@ -227,6 +239,8 @@ export function checkFavicon(bytes: Uint8Array): ImageCheck {
 export const LOGO_MAX_BYTES = 128 * 1024;
 export const LogoMime = z.enum(["image/png", "image/jpeg", "image/webp", "image/x-icon", "image/gif", "image/svg+xml"]);
 export type LogoMime = z.infer<typeof LogoMime>;
+/** The one stored type an email or a GitHub comment cannot be trusted to draw, so those never link to it. */
+export const SVG_MIME = "image/svg+xml" satisfies LogoMime;
 
 /** A GIF's logical screen size, from the header. */
 function gif(b: Uint8Array): SniffedLogo | null {
@@ -261,7 +275,7 @@ export function checkLogo(bytes: Uint8Array): LogoCheck {
   if (looksLikeSvg(bytes)) {
     const svg = sanitizeSvg(bytes);
     if (!svg.ok) return svg;
-    return { ok: true, image: { mime: "image/svg+xml", width: svg.width, height: svg.height }, bytes: new TextEncoder().encode(svg.svg) };
+    return { ok: true, image: { mime: SVG_MIME, width: svg.width, height: svg.height }, bytes: new TextEncoder().encode(svg.svg) };
   }
   return { ok: false, reason: "Use a PNG, JPEG, WebP, GIF, ICO or SVG image" };
 }

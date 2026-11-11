@@ -320,13 +320,13 @@ export async function sleepPreview(deps: PreviewRuntimeDeps, id: string): Promis
 }
 
 /** Builds one preview app again from the preview's commit. */
-async function queueMemberBuild(tx: Tx, m: { id: string; appId: string; app: { serverId: string } }, env: { commitSha: string | null; branch: string; title: string }, at: Date): Promise<void> {
+async function queueMemberBuild(tx: Tx, m: { id: string; appId: string; app: { serverId: string } }, env: { commitSha: string | null; branch: string; title: string; fromFork: boolean }, at: Date): Promise<void> {
   const now = at.toISOString();
   const key = `deploy:preview:${m.id}`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
   const dep = await tx.deployment.create({
     data: {
-      appId: m.appId, serverId: m.app.serverId, previewId: m.id, trigger: "preview", branch: env.branch, commitSha: env.commitSha, message: env.title,
+      appId: m.appId, serverId: m.app.serverId, previewId: m.id, trigger: "preview", branch: env.branch, commitSha: env.commitSha, message: env.title, fromFork: env.fromFork,
       actorType: "system", actorName: "Dockify", steps: [{ id: "queued", status: "done", startedAt: now, finishedAt: now }],
     },
     select: { id: true },
@@ -348,7 +348,7 @@ export async function correctIsolation(deps: PreviewRuntimeDeps, containers: Con
   });
   const plan = planIsolationDrift(containers, rows.map((r) => ({ id: r.id, status: r.status, network: networkOf(P.previewIsolation(r), r.id, r.baseEnvironmentId) })));
   for (const id of plan.rebuild) {
-    const env = await db.previewEnv.findUnique({ where: { id }, select: { commitSha: true, branch: true, title: true, apps: { select: { id: true, appId: true, app: { select: { serverId: true } } } } } });
+    const env = await db.previewEnv.findUnique({ where: { id }, select: { commitSha: true, branch: true, title: true, fromFork: true, apps: { select: { id: true, appId: true, app: { select: { serverId: true } } } } } });
     if (!env) continue;
     // A route left behind answers 502 until the new one replaces it, so it never stops the rest.
     for (const m of env.apps) await removeRoute(deps.routes, previewRouteId(m.id)).catch(() => {});

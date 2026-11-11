@@ -9,11 +9,11 @@ import { audit } from "../audit.ts";
 import { clearCookie, readCookie, setCookie } from "../cookies.ts";
 import { LOGIN_KNOWN_NETWORK_MS, networkKey } from "../ratelimit.ts";
 import { HttpError, rateLimited } from "../errors.ts";
-import { consumeTotp, totpSecretOf, verifySecondFactor } from "../mfa.ts";
+import { totpSecretOf } from "../mfa.ts";
 import { revokeSessions, startSession } from "../sessions.ts";
 import { generateTotpSecret, otpauthUri, totpMatchedCounter } from "../totp.ts";
 import type { Ctx, Handlers } from "../app.ts";
-import { accountHandlers, meView } from "./account.ts";
+import { accountHandlers, meView, proveTotp } from "./account.ts";
 import { emailAuthHandlers } from "./email-auth.ts";
 import { emailEnabled } from "../mailer.ts";
 import { isNewDevice, sendSecurityNotice } from "../security-notice.ts";
@@ -162,7 +162,7 @@ export const authHandlers: Handlers = {
   },
 
   "auth.verify": async ({ body, req, reply, ctx }) => {
-    const { db, ring, web, limits } = ctx;
+    const { db, web } = ctx;
     const raw = readCookie(req, web, "pending");
     const expired = () => {
       clearCookie(reply, web, "pending");
@@ -172,27 +172,19 @@ export const authHandlers: Handlers = {
     const challenge = await db.loginChallenge.findUnique({ where: { tokenHash: hashToken(raw) }, include: { user: true } });
     if (!challenge || challenge.consumedAt || challenge.expiresAt <= new Date()) throw expired();
 
-    // Keyed on the user, with a hard lockout: only someone who already holds the password gets
-    // here, and a fresh challenge per sign in must not reset the count.
-    const wait = limits.verify.check(challenge.userId);
-    if (wait !== null) throw rateLimited(reply, wait);
-
-    const accepted = await verifySecondFactor(db, ring, challenge.user, body.code);
+    // One lockout per user for every code check (mfa.ts), so a fresh challenge per sign in does
+    // not reset the count. The guess that locks ends every open challenge, this one included.
+    const accepted = await proveTotp(ctx, challenge.user, body.code, req, reply).catch((e: unknown) => {
+      if (e instanceof HttpError && e.code === "MFA_LOCKED") clearCookie(reply, web, "pending");
+      throw e;
+    });
     if (!accepted) {
-      limits.verify.failed(challenge.userId);
       const { failedAttempts } = await db.loginChallenge.update({
         where: { id: challenge.id },
         data: { failedAttempts: { increment: 1 } },
         select: { failedAttempts: true },
       });
       await audit(db, { category: "access", action: "auth.mfa.denied", verb: "entered a wrong code", actorType: "user", actorId: challenge.userId, actorName: challenge.user.name, failed: true, ...meta(req) });
-      if (limits.verify.locked(challenge.userId)) {
-        // The lockout just engaged: end every open challenge and leave a row the activity log flags.
-        await db.loginChallenge.updateMany({ where: { userId: challenge.userId, consumedAt: null }, data: { consumedAt: new Date() } });
-        await audit(db, { category: "access", action: "auth.mfa.locked", verb: "was locked out after repeated wrong codes", actorType: "user", actorId: challenge.userId, actorName: challenge.user.name, failed: true, ...meta(req) });
-        clearCookie(reply, web, "pending");
-        throw new HttpError(429, "Too many incorrect codes. Try again in 15 minutes.", "MFA_LOCKED", { field: "code" });
-      }
       if (failedAttempts >= MAX_CODE_ATTEMPTS) {
         await db.loginChallenge.update({ where: { id: challenge.id }, data: { consumedAt: new Date() } });
         clearCookie(reply, web, "pending");
@@ -207,7 +199,6 @@ export const authHandlers: Handlers = {
       data: { consumedAt: new Date() },
     });
     if (spent.count !== 1) throw expired();
-    limits.verify.succeeded(challenge.userId);
 
     clearCookie(reply, web, "pending");
     const sessionId = await startSession(db, reply, req, web, challenge.userId);
@@ -273,27 +264,26 @@ export const authHandlers: Handlers = {
   },
 
   "auth.stepUp": async ({ body, actor, req, reply, ctx }) => {
-    const { db, ring, limits } = ctx;
+    const { db, limits } = ctx;
     const a = requireSession(actor);
-    const wait = limits.stepUp.check(a.sessionId);
-    if (wait !== null) throw rateLimited(reply, wait);
-
     const user = await db.user.findUniqueOrThrow({ where: { id: a.userId } });
     let ok: boolean;
     if (user.totpConfirmedAt) {
       if (!body.code) throw new HttpError(400, "Enter the code from your authenticator app", "CODE_REQUIRED", { field: "code" });
-      const secret = await totpSecretOf(db, ring, user);
-      ok = !!secret && (await consumeTotp(db, secret, user.id, body.code)) !== null;
+      // The same per-user lockout as sign in and two-factor off, not one more budget per session.
+      ok = await proveTotp(ctx, user, body.code, req, reply);
     } else {
+      const wait = limits.stepUp.check(a.sessionId);
+      if (wait !== null) throw rateLimited(reply, wait);
       if (!body.password) throw new HttpError(400, "Enter your password", "PASSWORD_REQUIRED", { field: "password" });
       ok = await passwordMatches(user.passwordHash, body.password);
+      if (ok) limits.stepUp.succeeded(a.sessionId);
+      else limits.stepUp.failed(a.sessionId);
     }
     if (!ok) {
-      limits.stepUp.failed(a.sessionId);
       await audit(db, { category: "access", action: "auth.stepUp.denied", verb: "failed to confirm their identity", actorType: "user", actorId: a.userId, actorName: a.name, failed: true, ...meta(req) });
       throw new HttpError(401, user.totpConfirmedAt ? "That code didn't match" : "Incorrect password", "INVALID_CREDENTIALS", { field: user.totpConfirmedAt ? "code" : "password" });
     }
-    limits.stepUp.succeeded(a.sessionId);
     const expiresAt = new Date(Date.now() + ELEVATION_MS);
     await db.session.update({ where: { id: a.sessionId }, data: { elevatedUntil: expiresAt } });
     await audit(db, { category: "access", action: "auth.stepUp", verb: "confirmed their identity", actorType: "user", actorId: a.userId, actorName: a.name, ...meta(req) });
@@ -332,7 +322,8 @@ export const authHandlers: Handlers = {
     }
     limits.totp.succeeded(a.sessionId);
     await db.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: user.id }, data: { totpConfirmedAt: new Date(), totpLastUsedStep: counter } });
+      // A new authenticator starts unlocked: turning the old one off on the host leaves its lockout behind.
+      await tx.user.update({ where: { id: user.id }, data: { totpConfirmedAt: new Date(), totpLastUsedStep: counter, totpFailedCount: 0, totpLockouts: 0, totpLockedUntil: null } });
       // Turning MFA on ends every other session. The route is elevated, so
       // the password was proven in this window before anyone else can be signed out.
       await revokeSessions(tx, user.id, a.sessionId);

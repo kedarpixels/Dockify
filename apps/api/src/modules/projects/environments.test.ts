@@ -136,7 +136,7 @@ describe.skipIf(!url)("environments (postgres)", () => {
       });
       expect(applied.statusCode).toBe(200);
       await db.project.update({ where: { id: p.id }, data: { previewEnabled: true, previewBaseEnv: "staging" } });
-      const preview = await db.previewEnv.create({ data: { projectId: p.id, baseEnvironmentId: staging.id, prNumber: 7, title: "t", branch: "feat", repo: "a/b", domain: "preview.shop.test" } });
+      const preview = await db.previewEnv.create({ data: { projectId: p.id, baseEnvironmentId: staging.id, prNumber: 7, title: "t", branch: "feat", repo: "a/b", repoKey: "github.com/a/b", domain: "preview.shop.test" } });
       return { admin, p, prod, staging, keep, web, pg, preview };
     };
 

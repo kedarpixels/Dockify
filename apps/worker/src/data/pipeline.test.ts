@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PassThrough, Writable } from "node:stream";
+import { PassThrough, Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,12 +10,13 @@ import type { Db, SecretVault } from "@dockify/db";
 import { openBackupKeyEscrow, sealBackupKeyEscrow } from "@dockify/crypto";
 import { assertSafeSpec, type ContainerSpec } from "@dockify/engine";
 import { listTables, runQuery, scanKeys, tableRows, type PgSession } from "./browser.ts";
+import { isPermanentError } from "../errors.ts";
 import type { DataDeps } from "./context.ts";
 import type { ContainerState, DockerPort, ExecHandle } from "./docker-port.ts";
 import { backupKeyFingerprint, DecryptStream } from "./envelope.ts";
 import { escrowObjectKey } from "./key-escrow.ts";
-import { dataJobHandlers } from "./handlers.ts";
-import { runBackup, runRestore, runRestoreTest } from "./pipeline.ts";
+import { DATA_JOB_LIMITS_MS, dataJobHandlers } from "./handlers.ts";
+import { HashCount, runBackup, runRestore, runRestoreTest } from "./pipeline.ts";
 import type { RedisConn, RespValue } from "./resp.ts";
 import { applyRetention, recoverQuiesced } from "./scheduler.ts";
 import { settleAbandonedUpgrades } from "./upgrade.ts";
@@ -85,6 +86,8 @@ function fakeDb(seed: { apps: Row[]; backups?: Row[]; jobs?: Row[] }) {
 }
 
 interface ExecPlan {
+  /** Never exits and prints nothing until it is killed, like a dump waiting on a lock. */
+  hang?: boolean;
   stdout?: string | Buffer;
   exitCode?: number;
   onStdin?: (data: string) => void;
@@ -106,7 +109,16 @@ function fakeDocker(plan: (cmd: string[], id: string) => ExecPlan, log: string[]
     const done = new Promise<{ exitCode: number; stderr: string }>((r) => (resolveDone = r));
     const finish = () => resolveDone({ exitCode: p.exitCode ?? 0, stderr: "" });
     let sink: Writable | null = null;
-    if (stdin) {
+    let kill = async () => {};
+    if (p.hang) {
+      // Takes what it is sent and never finishes with it; a kill closes both ways, as the socket does.
+      if (stdin) sink = new Writable({ write: () => {} });
+      kill = async () => {
+        log.push("kill");
+        sink?.destroy();
+        stdout.end();
+      };
+    } else if (stdin) {
       sink = new Writable({ write: (c, _e, cb) => ((input += String(c)), cb()), final: (cb) => (p.onStdin?.(input), stdout.end(), finish(), cb()) });
       sink.on("close", () => (sink!.writableFinished ? null : (p.onStdin?.(`ABORTED:${input}`), finish())));
     } else {
@@ -115,7 +127,7 @@ function fakeDocker(plan: (cmd: string[], id: string) => ExecPlan, log: string[]
         finish();
       });
     }
-    return { stdout, stdin: sink, done, kill: async () => {} };
+    return { stdout, stdin: sink, done, kill: () => kill() };
   };
   const docker: DockerPort = {
     cpuCores: 4,
@@ -513,6 +525,83 @@ describe("backup pipeline", () => {
   });
 });
 
+describe("a data job's wall clock limit", () => {
+  it("stops a dump that never ends, fails the backup with the limit as its reason, and does not retry it", async () => {
+    const s = setup((cmd) => (cmd[0] === "pg_dump" ? { hang: true } : undefined));
+    const b = await s.db.backup.create({ data: { appId: DB_APP, sourceAppId: DB_APP, appSnapshot: {}, kind: "postgres", trigger: "manual", destinationId: null } });
+    const handlers = dataJobHandlers(s.deps, { ...DATA_JOB_LIMITS_MS, backup: 40 });
+    const job = { id: "j1", kind: "backup" as const, lane: "data" as const, payload: { backupId: b.id }, attempts: 1, maxAttempts: 2 };
+    const err = await handlers.backup!(job, new AbortController().signal).then(() => null, (e: unknown) => e);
+    expect((err as Error).message).toMatch(/^The backup ran past its limit of [\d.]+ hours and was stopped/);
+    expect(isPermanentError(err)).toBe(true);
+    expect(s.log).toContain("kill");
+    // Not the last attempt, and failed all the same: a second run would hold the lane as long again.
+    expect(s.backups.get(b.id)).toMatchObject({ status: "failed", error: (err as Error).message });
+  });
+
+  it("a replay past the limit rolls back and says so, and a job inside its limit is untouched", async () => {
+    const s = setup();
+    const b = await backedUp(s);
+    const quick = dataJobHandlers(s.deps);
+    await quick.restore!({ id: "job-1", kind: "restore", lane: "data", payload: { backupId: b.id, targetAppId: DB_APP, mode: "replace" }, attempts: 1, maxAttempts: 1 }, new AbortController().signal);
+    expect(s.restored.at(-1)).toContain("COMMIT;");
+
+    const stuck = setup((cmd) => (cmd[0] === "psql" && !cmd.includes("-c") ? { hang: true } : undefined));
+    const b2 = await backedUp(stuck);
+    const slow = dataJobHandlers(stuck.deps, { ...DATA_JOB_LIMITS_MS, restore: 150 });
+    const job = { id: "job-1", kind: "restore" as const, lane: "data" as const, payload: { backupId: b2.id, targetAppId: DB_APP, mode: "replace" }, attempts: 1, maxAttempts: 1 };
+    await expect(slow.restore!(job, new AbortController().signal)).rejects.toThrow(/The restore ran past its limit/);
+    expect(stuck.log).toContain("kill");
+    // The apps the restore stopped are running again.
+    expect(stuck.containers.get(`dk-${WEB_APP}`)!.running).toBe(true);
+  });
+});
+
+describe("a stored backup larger than its row says", () => {
+  it("is refused while it downloads, before the disk fills and before anything is stopped", async () => {
+    const s = setup();
+    const b = await backedUp(s);
+    const p = join(dir, "store", b.objectKey);
+    await writeFile(p, Buffer.concat([await readFile(p), Buffer.alloc(64)]));
+    s.log.length = 0;
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: DB_APP })).rejects.toThrow(/more than the \d+ recorded for this backup/);
+    expect(s.log.some((l) => l.startsWith("stop:") || l.startsWith("exec:"))).toBe(false);
+  });
+
+  it("a body that runs past the size is cut at the size, whatever length the store claimed", async () => {
+    const s = setup();
+    const b = await backedUp(s);
+    const size = Number(b.sizeBytes);
+    let served = 0;
+    const endless = new Readable({
+      read() {
+        served += 4096;
+        this.push(Buffer.alloc(4096));
+      },
+    });
+    s.deps.storeFor = async () => ({ store: { ...s.store, kind: "local", get: async () => endless } as never, prefix: "dockify/", destinationId: null, type: "local" });
+    const out = await runRestoreTest(s.deps, b.id);
+    expect(out).toMatchObject({ status: "failed", error: `The stored backup is larger than the ${size} bytes recorded for it` });
+    expect(endless.destroyed).toBe(true);
+    expect(served).toBeLessThan(size + 1024 * 1024);
+    const cap = new HashCount(3);
+    await expect(pipeline(Readable.from([Buffer.from("ab"), Buffer.from("cd")]), cap, new Writable({ write: (_c, _e, cb) => cb() }))).rejects.toThrow(/larger than the 3 bytes/);
+  });
+
+  it("the bucket's own Content-Length is refused up front when it is larger", async () => {
+    const cfg: S3Config = { endpoint: "https://s3.example.test", region: "auto", bucket: "b", accessKeyId: "k", secretAccessKey: "s" };
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({ cancel: () => void (cancelled = true) });
+    const store = new S3Store(cfg, { guard: async () => {}, fetch: async () => new Response(body, { headers: { "content-length": "5000" } }) });
+    await expect(store.get("dockify/a.dkbk", 4999)).rejects.toThrow(/5000 bytes, more than the 4999/);
+    expect(cancelled).toBe(true);
+    const ok = new S3Store(cfg, { guard: async () => {}, fetch: async () => new Response("12345", { headers: { "content-length": "5" } }) });
+    const parts: Buffer[] = [];
+    for await (const c of await ok.get("dockify/a.dkbk", 5)) parts.push(c as Buffer);
+    expect(Buffer.concat(parts).toString()).toBe("12345");
+  });
+});
+
 describe("control-plane dump offsite copy", () => {
   const ID = "11111111-1111-4111-8111-111111111111";
   const seed = async (s: ReturnType<typeof setup>, sha: string) => {
@@ -772,15 +861,18 @@ describe("restore test", () => {
 
 function fakePg(answers: (text: string, values?: unknown[]) => { fields?: Array<{ name: string; dataTypeID: number }>; rows?: unknown[][] }) {
   const seen: string[] = [];
+  /** The texts sent with a value list, so over the extended protocol. */
+  const prepared: string[] = [];
   const pg: PgSession = {
     query: async (text, values) => {
       seen.push(text);
+      if (values) prepared.push(text);
       const a = answers(text, values);
       return { fields: a.fields ?? [], rows: a.rows ?? [] };
     },
     close: async () => {},
   };
-  return { pg, seen };
+  return { pg, seen, prepared };
 }
 
 describe("postgres browser", () => {
@@ -810,6 +902,25 @@ describe("postgres browser", () => {
     expect(seen.at(-1)).toBe("ROLLBACK");
   });
 
+  it("sends the user's SQL as one prepared statement, and the setup over the simple protocol", async () => {
+    const cursor = fakePg(() => ({}));
+    await runQuery(cursor.pg, "select 1");
+    expect(cursor.prepared).toEqual(["DECLARE dockify_browse NO SCROLL CURSOR FOR select 1"]);
+    const plain = fakePg(() => ({}));
+    await runQuery(plain.pg, "show server_version");
+    expect(plain.prepared).toEqual(["show server_version"]);
+    expect(plain.seen.slice(0, 2)).toEqual([expect.stringContaining("CREATE ROLE dockify_browser"), "BEGIN TRANSACTION READ ONLY"]);
+  });
+
+  it("stops reading a cursor of wide rows long before the row cap", async () => {
+    const wide = "x".repeat(1024 * 1024);
+    const { pg, seen } = fakePg((t) => (t.startsWith("FETCH") ? { fields: [{ name: "doc", dataTypeID: 25 }], rows: Array.from({ length: 100 }, () => [wide]) } : {}));
+    const r = await runQuery(pg, "select doc from t");
+    expect(seen.filter((t) => t.startsWith("FETCH"))).toEqual(["FETCH FORWARD 100 FROM dockify_browse"]);
+    expect(r.truncated).toBe(true);
+    expect(r.rows[0]![0]).toHaveLength(16_384);
+  });
+
   it("refuses writes before connecting a transaction", async () => {
     const { pg, seen } = fakePg(() => ({}));
     await expect(runQuery(pg, "DELETE FROM users")).rejects.toThrow(/read-only/);
@@ -818,8 +929,9 @@ describe("postgres browser", () => {
 
   it("reads table rows with columns and an exact count for small tables", async () => {
     const { pg } = fakePg((t) => {
-      if (t.startsWith("SELECT a.attname")) return { rows: [["id", "integer", false, true, "3"], ["name", "text", true, false, "3"]] };
-      if (t.startsWith('SELECT * FROM "public"."users" LIMIT 50')) return { fields: [{ name: "id", dataTypeID: 23 }, { name: "name", dataTypeID: 25 }], rows: [["1", "a"]] };
+      if (t.startsWith("SELECT a.attname")) return { rows: [["id", "integer", false, true, "3", "4"], ["na\"me", "text", true, false, "3", "-1"]] };
+      // A wide column is clipped by the server; a fixed width one keeps its type.
+      if (t === 'SELECT "id", left("na""me"::text, 16385) AS "na""me" FROM "public"."users" LIMIT 50') return { fields: [{ name: "id", dataTypeID: 23 }, { name: "name", dataTypeID: 25 }], rows: [["1", "a"]] };
       if (t.startsWith("SELECT count(*)")) return { rows: [["3"]] };
       return {};
     });

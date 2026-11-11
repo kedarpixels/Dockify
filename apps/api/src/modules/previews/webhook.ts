@@ -75,16 +75,26 @@ export async function retirePreview(tx: Tx, id: string, reason: string, error: s
 type Project = Awaited<ReturnType<typeof loadProjects>>[number];
 const loadProjects = (db: Db) => db.project.findMany({ where: { archivedAt: null, previewEnabled: true }, select: PROJECT_SELECT });
 
+type ProjectApp = Project["environments"][number]["apps"][number];
+
+/** Whether this app builds from the pull request's base repository: by id when both sides have one, else by URL. */
+export function appBuildsRepo(a: Pick<ProjectApp, "gitRepository" | "gitRepoId">, pr: Pick<PullRequestEvent, "repoId" | "identity">): boolean {
+  return !!a.gitRepository && (a.gitRepoId && pr.repoId ? a.gitRepoId === pr.repoId : repoIdentity(a.gitRepository) === pr.identity);
+}
+
 function repoMatches(p: Project, pr: PullRequestEvent): boolean {
   // Each app's own repository first: the dashboard stores the id on the app, and the project's may name another.
-  const byApp = p.environments.some((e) => e.apps.some((a) => a.gitRepository && (a.gitRepoId && pr.repoId ? a.gitRepoId === pr.repoId : repoIdentity(a.gitRepository) === pr.identity)));
+  const byApp = p.environments.some((e) => e.apps.some((a) => appBuildsRepo(a, pr)));
   return byApp || (!!p.gitRepoId && p.gitRepoId === pr.repoId);
 }
+
+/** PR numbers are per repository, so a preview is found by its base repository too, never by the number alone. */
+const keyOf = (p: Project, pr: PullRequestEvent) => ({ projectId_repoKey_prNumber: { projectId: p.id, repoKey: pr.identity, prNumber: pr.number } });
 
 async function onClose(db: Db, p: Project, pr: PullRequestEvent): Promise<string | null> {
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${SERVER_LOCK}))`;
-    const row = await tx.previewEnv.findUnique({ where: { projectId_prNumber: { projectId: p.id, prNumber: pr.number } }, select: { id: true, status: true } });
+    const row = await tx.previewEnv.findUnique({ where: keyOf(p, pr), select: { id: true, status: true } });
     if (!row || row.status === "closed" || row.status === "closing") return null;
     await retirePreview(tx, row.id, pr.merged ? "merged" : "closed");
     return `PR #${pr.number} ${pr.merged ? "merged" : "closed"}, deleting preview ${previewName(pr.number)}`;
@@ -95,7 +105,8 @@ async function onOpen(db: Db, p: Project, pr: PullRequestEvent, now: Date): Prom
   const base = pickBaseEnvironment(p.environments, p.previewBaseEnv);
   const inst = await instancePreview(db);
   const domain = P.effectivePreviewDomain(p.previewDomain, inst.domain, inst.publicUrl).domain;
-  const apps = (base?.apps ?? []).filter(includedInPreviews);
+  // Only the apps that build this repository: another repository's app has no such commit and no such PR.
+  const apps = (base?.apps ?? []).filter(includedInPreviews).filter((a) => appBuildsRepo(a, pr));
   const disk = await latestDiskPct(db, now.getTime());
   const cap = inst.cap;
   const dns = domain ? await domainResolves(db, domain) : { ok: false, detail: null };
@@ -106,14 +117,13 @@ async function onOpen(db: Db, p: Project, pr: PullRequestEvent, now: Date): Prom
 
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${SERVER_LOCK}))`;
-    const key = { projectId_prNumber: { projectId: p.id, prNumber: pr.number } };
-    const existing = await tx.previewEnv.findUnique({ where: key, select: { id: true, status: true } });
+    const existing = await tx.previewEnv.findUnique({ where: keyOf(p, pr), select: { id: true, status: true } });
 
     const block = async (reason: string, error: string) => {
       const data = { ...fields, domain: domain ?? "", status: "blocked" as PreviewStatus, reason, error, closedAt: null };
       const row = existing
         ? await tx.previewEnv.update({ where: { id: existing.id }, data, select: { id: true } })
-        : await tx.previewEnv.create({ data: { ...data, projectId: p.id, prNumber: pr.number, baseEnvironmentId: base!.id, isolatedDb: previewNeedsOwnDb(p) }, select: { id: true } });
+        : await tx.previewEnv.create({ data: { ...data, projectId: p.id, repoKey: pr.identity, prNumber: pr.number, baseEnvironmentId: base!.id, isolatedDb: previewNeedsOwnDb(p) }, select: { id: true } });
       await enqueuePreviewTx(tx, "preview_feedback", row.id);
       return `PR #${pr.number}: ${error}`;
     };
@@ -150,7 +160,7 @@ async function onOpen(db: Db, p: Project, pr: PullRequestEvent, now: Date): Prom
     const data = { ...fields, status: "building" as PreviewStatus, reason: null, error: null, closedAt: null, sleptAt: null };
     const row = existing
       ? await tx.previewEnv.update({ where: { id: existing.id }, data: { ...data, ...(live ? {} : { baseEnvironmentId: base.id, isolatedDb: previewNeedsOwnDb(p), domain }) }, select: { id: true } })
-      : await tx.previewEnv.create({ data: { ...data, domain, projectId: p.id, prNumber: pr.number, baseEnvironmentId: base.id, isolatedDb: previewNeedsOwnDb(p) }, select: { id: true } });
+      : await tx.previewEnv.create({ data: { ...data, domain, projectId: p.id, repoKey: pr.identity, prNumber: pr.number, baseEnvironmentId: base.id, isolatedDb: previewNeedsOwnDb(p) }, select: { id: true } });
 
     const skipped: string[] = [];
     let queued = 0;
@@ -177,7 +187,7 @@ async function onOpen(db: Db, p: Project, pr: PullRequestEvent, now: Date): Prom
         pdId = (await tx.previewDeployment.create({ data: { envId: row.id, appId: a.id, hostname }, select: { id: true } })).id;
       }
       const out = await requestDeployTx(tx, a.id, {
-        trigger: "preview", actorType: "webhook", actorName: "GitHub", branch: pr.branch, commitSha: pr.commitSha, message: pr.title, previewId: pdId,
+        trigger: "preview", actorType: "webhook", actorName: "GitHub", branch: pr.branch, commitSha: pr.commitSha, message: pr.title, previewId: pdId, fromFork: pr.fromFork,
       }, "coalesce");
       if (out.kind === "queued") queued++;
     }

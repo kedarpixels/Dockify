@@ -31,6 +31,8 @@ const MAX_BODY = 8 * 1024 * 1024;
 /** Every body being read at once. The agent's mem_limit is 512m and a link holds up to 256 streams. */
 const MAX_BUFFERED = 128 * 1024 * 1024;
 const INSPECT_CACHE_MS = 60_000;
+/** How much of an answer too large to hold is read: enough for its first key, a container's id. */
+const HEAD_BYTES = 256;
 /** A response's headers, in front of a tunnel. */
 const MAX_ANSWER_HEAD = 64 * 1024;
 
@@ -419,18 +421,52 @@ export function createDockerGate(upstream: GateUpstream, opts: { now?: () => num
   const managedById = new Map<string, { managed: boolean; at: number }>();
   let buffered = 0;
 
-  /** Reads one container's labels through the socket proxy. Null when there is no such container. */
-  const inspect = (ref: string): Promise<{ status: number; text: string }> =>
+  /** Reads one container's inspect through the socket proxy. Past the cap, `text` is only its start and `whole` is false. */
+  const inspect = (ref: string): Promise<{ status: number; text: string; whole: boolean }> =>
     new Promise((resolve, reject) => {
       const req = request({ ...upstream, agent: false, method: "GET", path: `/v1.43/containers/${encodeURIComponent(ref)}/json` }, (res) => {
+        const status = res.statusCode ?? 500;
         const chunks: Buffer[] = [];
         let size = 0;
         res.on("data", (c: Buffer) => {
+          if (size > MAX_BODY) return;
           size += c.length;
-          if (size > MAX_BODY) req.destroy(new Error("an inspect answer was too large"));
-          else chunks.push(c);
+          chunks.push(c);
+          if (size <= MAX_BODY) return;
+          resolve({ status, text: Buffer.concat(chunks).subarray(0, HEAD_BYTES).toString("latin1"), whole: false });
+          req.destroy();
         });
-        res.on("end", () => resolve({ status: res.statusCode ?? 500, text: Buffer.concat(chunks).toString("utf8") }));
+        res.on("end", () => resolve({ status, text: Buffer.concat(chunks).toString("utf8"), whole: true }));
+        res.on("error", reject);
+      });
+      req.on("error", reject);
+      req.end();
+    });
+
+  /**
+   * Whether Docker lists this exact container under dockify.managed=true. Only the start of the answer
+   * is read: [] when the filter leaves nothing, and the id first when it leaves the container.
+   */
+  const listedAsManaged = (id: string): Promise<boolean> =>
+    new Promise((resolve, reject) => {
+      const filters = encodeURIComponent(JSON.stringify({ id: [id], label: ["dockify.managed=true"] }));
+      const req = request({ ...upstream, agent: false, method: "GET", path: `/v1.43/containers/json?all=true&filters=${filters}` }, (res) => {
+        let head = "";
+        const settle = (ended: boolean): void => {
+          const text = head.trimStart();
+          if (!ended && text.length < HEAD_BYTES) return;
+          res.removeAllListeners("data");
+          req.destroy();
+          if ((res.statusCode ?? 500) !== 200) reject(new Error(`Docker answered ${res.statusCode} to a list`));
+          else if (/^\[\s*\]\s*$/.test(text)) resolve(false);
+          else if (/^\[\s*\{\s*"Id"\s*:\s*"([a-f0-9]{64})"/.exec(text)?.[1] === id) resolve(true);
+          else reject(new Error("a list answer could not be read"));
+        };
+        res.on("data", (c: Buffer) => {
+          head += c.toString("latin1");
+          settle(false);
+        });
+        res.on("end", () => settle(true));
         res.on("error", reject);
       });
       req.on("error", reject);
@@ -441,12 +477,23 @@ export function createDockerGate(upstream: GateUpstream, opts: { now?: () => num
   const isManaged = async (ref: string): Promise<boolean | null> => {
     const hit = FULL_ID.test(ref) ? managedById.get(ref) : undefined;
     if (hit && now() - hit.at < INSPECT_CACHE_MS) return hit.managed;
-    const { status, text } = await inspect(ref);
+    const { status, text, whole } = await inspect(ref);
     if (status === 404) return null;
     if (status >= 400) throw new Error(`Docker answered ${status} to an inspect`);
-    const info = JSON.parse(text) as { Id?: string; Config?: { Labels?: Record<string, string> | null } };
-    const managed = info.Config?.Labels?.["dockify.managed"] === "true";
-    if (info.Id && FULL_ID.test(info.Id)) managedById.set(info.Id, { managed, at: now() });
+    let id: string | undefined;
+    let managed: boolean;
+    if (whole) {
+      const info = JSON.parse(text) as { Id?: string; Config?: { Labels?: Record<string, string> | null } };
+      id = info.Id;
+      managed = info.Config?.Labels?.["dockify.managed"] === "true";
+    } else {
+      // An image's labels can make an inspect too large to read, and the container must still be
+      // removable. Docker writes the id it resolved first, and the label is then asked of that id.
+      id = /^\{\s*"Id"\s*:\s*"([a-f0-9]{64})"/.exec(text)?.[1];
+      if (!id) throw new Error("an inspect answer was too large");
+      managed = await listedAsManaged(id);
+    }
+    if (id && FULL_ID.test(id)) managedById.set(id, { managed, at: now() });
     if (managedById.size > 4096) managedById.clear();
     return managed;
   };

@@ -7,7 +7,7 @@ import type { Ctx, Handler } from "../../app.ts";
 import { testConfig, testRing } from "../../test-helpers.ts";
 import { createDataHandlers, type DataChannel } from "../data/index.ts";
 import { createBackupsHandlers, defaultBackupsOptions } from "./index.ts";
-import { toRun, toSchedule, type BackupRowIn, type DestinationRow, type ScheduleAppIn, type ScheduleContext } from "./map.ts";
+import { limitRun, limitSchedule, toRun, toSchedule, type BackupRowIn, type DestinationRow, type ScheduleAppIn, type ScheduleContext } from "./map.ts";
 import type { TierRow } from "./shared.ts";
 
 const run = toRun;
@@ -368,6 +368,116 @@ describe("backup handlers", () => {
     it("answers 404 for a job that is not there", async () => {
       await expect(statusOf(null)).rejects.toMatchObject({ status: 404 });
     });
+  });
+
+  describe("the Backups page's runs", () => {
+    const at = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000);
+    const stored = (id: string, daysAgo: number, over: AnyRow = {}) => ({ ...row({ id, createdAt: at(daysAgo), finishedAt: at(daysAgo) }), destinationId: "d1", ...over });
+
+    it("reads 30 days by date, plus each database's newest run, every kept file and every orphan", async () => {
+      const finds: AnyRow[] = [];
+      const groups: AnyRow[] = [];
+      const weekly = stored("weekly", 40, { status: "failed" });
+      const ctx = ctxWith(baseDb({
+        backup: {
+          groupBy: async (args: AnyRow) => (groups.push(args), [{ appId: APP, destinationId: "d1", _max: { createdAt: weekly.createdAt } }]),
+          findMany: async (args: AnyRow) => {
+            finds.push(args);
+            // The window answers its newest rows; the second read answers what lies outside it, one row twice.
+            return args.take ? [stored("new", 1), stored("kept", 3)] : [stored("kept", 3), weekly, stored("orphan", 90, { appId: null })];
+          },
+        },
+      }));
+      const runs = await call(h["backups.list"], { ctx });
+      expect(runs.map((r: AnyRow) => r.id)).toEqual(["new", "kept", "weekly", "orphan"]);
+      const [windowed, outside] = finds;
+      const since = windowed!.where.AND[0].AND[1].createdAt.gte as Date;
+      expect(Math.abs(Date.now() - 30 * 86_400_000 - since.getTime())).toBeLessThan(5_000);
+      expect(windowed!.take).toBe(1000);
+      expect(outside!.take).toBeUndefined();
+      expect(outside!.where.AND[0].AND[1].OR).toEqual([{ status: "ready", expiredAt: null }, { appId: null }, { appId: APP, destinationId: "d1", createdAt: weekly.createdAt }]);
+      // Dockify's own dumps stay out of every read.
+      for (const f of finds) expect(f.where.AND[1]).toEqual({ kind: { not: "control_plane" } });
+      expect(groups[0]!.where.AND[1]).toEqual({ kind: { not: "control_plane" } });
+    });
+  });
+
+  describe("Back up now for every enabled database", () => {
+    const listed = (over: AnyRow = {}) => ({ id: APP, name: "db", displayName: null, desiredState: "running", environment: { project: { slug: "acme" } }, ...over });
+    const bulk = (apps: AnyRow[], seen: AnyRow[] = []) =>
+      call(h["backups.run"], {
+        ctx: ctxWith(baseDb({
+          app: { findMany: async (args: AnyRow) => (seen.push(args), apps), findUnique: async () => ({ ...serviceApp, environmentId: "e1" }) },
+          // A restore is running, so every request is refused as busy.
+          job: { findFirst: async () => ({ id: "restore" }) },
+        })),
+        body: {},
+      });
+
+    it("targets the databases with a tier turned on, not every running one", async () => {
+      const seen: AnyRow[] = [];
+      await expect(bulk([], seen)).rejects.toMatchObject({ status: 409, code: "NOTHING_TO_BACK_UP" });
+      expect(seen[0]!.where.backupSchedules).toEqual({ some: { enabled: true } });
+      expect(seen[0]!.where.desiredState).toBeUndefined();
+    });
+
+    it("fails when nothing starts, naming each database and why", async () => {
+      reset();
+      const err = await bulk([listed(), listed({ id: "0f0f0f0f-0000-4000-8000-000000000002", name: "cache", displayName: "Cache", desiredState: "stopped" })]).catch((e) => e);
+      expect(err).toMatchObject({ status: 409, code: "NOTHING_STARTED" });
+      expect(err.message).toBe("No backup was started. acme / Cache (it is stopped); acme / db (A restore of this database is running; try again when it finishes)");
+      expect(audits).toHaveLength(0);
+    });
+  });
+
+  describe("what a Viewer reads", () => {
+    const viewer: Actor = { kind: "session", userId: "u2", name: "Viewer", role: "viewer", sessionId: "s2", elevated: false };
+    const offsite = { tier: "offsite", enabled: true, cron: "0 3 * * *", timezone: "UTC", keep: 7, keepDays: null, destinationId: null, lastRunAt: null };
+
+    it("withholds names, buckets, the key and error text, and still matches the contract", () => {
+      const r = limitRun(toRun(row({ status: "failed", error: "AccessDenied on bucket dk", restoreTestStatus: "failed", restoreTestError: "s3.example.com refused" })));
+      expect(B.BackupRun.parse(r)).toEqual(r);
+      expect(r).toMatchObject({ status: "failed", tier: "offsite", destination: "s3", storage: { id: "d1", name: "Offsite storage", provider: "custom", bucket: "" }, encryption: { enabled: true, fingerprint: null }, error: null, restoreTest: { status: "failed", error: null } });
+      const s = limitSchedule(toSchedule(scheduleApp(), sctx()));
+      expect(B.BackupSchedule.parse(s)).toEqual(s);
+      expect(JSON.stringify([r, s])).not.toMatch(/R2|"dk"|abcd|AccessDenied|example\.com/);
+      expect(s.tiers.offsite).toMatchObject({ enabled: true, available: true, storage: { name: "Offsite storage", bucket: "" } });
+    });
+
+    it("the config lists destinations for an admin only", async () => {
+      reset([], [{ ...B2, integration: { ...B2.integration, error: "403 from b2.example.com" } }]);
+      const admin = await call(h["backups.config"], { ctx: ctxWith(baseDb()) });
+      expect(admin.destinations).toMatchObject([{ name: "Backblaze B2", bucket: "dk", error: "403 from b2.example.com" }]);
+      const limited = await call(h["backups.config"], { ctx: ctxWith(baseDb()), actor: viewer });
+      expect(B.BackupConfig.parse(limited)).toEqual(limited);
+      expect(limited.destinations).toEqual([]);
+      expect(limited.encryption).toMatchObject({ enabled: true, fingerprint: null });
+      expect(limited.restoreTests.cron).toBe("0 4 * * 0");
+    });
+
+    it("an app's backups read the same way, for a read token too", async () => {
+      reset([offsite], [B2]);
+      const db = () => ctxWith(baseDb({ backup: { findMany: async () => [row({ destination: B2 as never })] } }));
+      const admin = await call(h["apps.backups"], { ctx: db(), params: { id: APP } });
+      expect(admin).toMatchObject({ schedule: { storage: { name: "Backblaze B2", bucket: "dk" } }, runs: [{ storage: { name: "Backblaze B2" }, encryption: { fingerprint: "abcd" } }], config: { destinations: [{ bucket: "dk" }] } });
+      const token: Actor = { kind: "token", userId: "u", name: "ci", role: "viewer", tokenId: "t", scope: "read", allProjects: true, projectIds: [], grants: [], elevated: false };
+      for (const actor of [viewer, token]) {
+        const out = await call(h["apps.backups"], { ctx: db(), params: { id: APP }, actor });
+        expect(Ap.AppBackups.parse(out)).toEqual(out);
+        expect(out).toMatchObject({ schedule: { enabled: true, storage: { name: "Offsite storage", bucket: "" } }, runs: [{ status: "ready", storage: { name: "Offsite storage" }, encryption: { fingerprint: null } }], config: { destinations: [] } });
+        expect(JSON.stringify(out)).not.toMatch(/Backblaze|"dk"|abcd/);
+      }
+    });
+  });
+
+  it("Dockify's own dump is not a backup anyone restores, tests or downloads here", async () => {
+    const own = ctxWith(baseDb({ backup: { findUnique: async () => ({ ...row(), objectKey: "k", kind: "control_plane", appId: null, app: null }) } }));
+    const gone = { status: 404, code: "NOT_FOUND" };
+    await expect(call(h["backups.download"], { ctx: own, params: { id: BK } })).rejects.toMatchObject(gone);
+    await expect(call(h["backups.restore"], { ctx: own, params: { id: BK }, body: { mode: "new", name: "copy" } })).rejects.toMatchObject(gone);
+    await expect(call(h["backups.test"], { ctx: own, params: { id: BK } })).rejects.toMatchObject(gone);
+    await expect(call(h["backups.restoreStatus"], { ctx: own, params: { id: BK, jobId: BK } })).rejects.toMatchObject(gone);
+    expect(audits.filter((a) => a.action === "backup.download")).toHaveLength(0);
   });
 
   it("a project limited token cannot reach another project's backup", async () => {
