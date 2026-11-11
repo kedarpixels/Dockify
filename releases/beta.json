@@ -1,8 +1,30 @@
 {
   "schema": 2,
   "channel": "beta",
-  "generatedAt": "2026-11-11T18:59:07.078Z",
+  "generatedAt": "2026-11-11T22:12:19.821Z",
   "releases": [
+    {
+      "version": "1.0.8",
+      "date": "2026-11-12",
+      "publishedAt": "2026-11-11T22:12:19.821Z",
+      "minFrom": "0.0.0",
+      "migration": "0032_preview_repo_key",
+      "critical": false,
+      "notesUrl": "https://github.com/kedarpixels/Dockify/releases/tag/v1.0.8",
+      "notes": "## 1.0.8 (2026-11-12)\n\nApp volumes are backed up and restored like databases, and an app that runs a published image is named and drawn for what it is.\n\n### Added\n- Backups of app volumes. Every app that keeps one or more named volumes, such as a SeaweedFS or Memos template or your own app with an uploads folder, now has the same two backup tiers, schedules, retention, encryption, download and weekly restore test as a database. All of an app's volumes go into one archive, read by a short-lived helper that mounts them read-only on a network with no way out, while the app keeps running. Files, folders, symlinks and hard links come back with their owners, permissions (setgid and setuid included) and times.\n- Restoring a backup of volumes over its app. Dockify verifies the whole archive first, stops the app, takes a pre-restore backup, checks there is disk for it, then empties and refills only the volumes the backup holds and starts the app again. If a restore fails after the volumes were emptied, or the worker dies part way, the app is left stopped on purpose, and Activity names the backup to restore before starting it. A failure before that point changes nothing and starts the app again.\n- Backups, restores and restore tests of volumes refuse to start, or stop cleanly, when they would push the server's free disk under its floor.\n\n### Changed\n- An app that runs a published image no longer reads as Backend. SeaweedFS, MinIO and Garage read as Storage, Uptime Kuma, Grafana and Prometheus as Monitoring, ntfy and Gotify as Notifications, Memos as Notes, Miniflux as Feed reader, and any other image as Service, each with its own icon. Apps built from your repository keep their kind, and an uploaded icon or a favicon still wins.\n- While a restore of a database or of volumes runs, the apps it holds cannot be deployed, redeployed, rolled back, started or restarted, and say so. A restore is refused while one of those apps is deploying or starting. A push that arrives meanwhile is kept and deploys when the restore ends, never dropped.\n\n### Fixed\n- A deploy or a start could land in the middle of a database restore and run an app against a half restored database.\n",
+      "images": {
+        "control": {
+          "amd64": "ghcr.io/kedarpixels/dockify-control@sha256:d52331d598fd70ee882a49a5e480c8c818110b17550bdb9284dc89d5cedab6dd",
+          "arm64": "ghcr.io/kedarpixels/dockify-control@sha256:8860e38a77c0a3dc65e75ecd50c9a30e00f323bb99f50e8a9eb5c48680c95ab6"
+        },
+        "web": {
+          "amd64": "ghcr.io/kedarpixels/dockify-web@sha256:965ee8ee2c8a5c4013902b8d680ba6f04515921256dba436c32c156bea1e1818",
+          "arm64": "ghcr.io/kedarpixels/dockify-web@sha256:6f7cd18ce7f55e6f196917d675ef2123708fe22ea822878a369d7c109df1ced3"
+        }
+      },
+      "composeSha256": "7742d0c095f02b1d16c26806b9087931bc4fd7f4471f05d551b87c64062956f0",
+      "socketProxySha256": "19d55ffbf94bef940073b91432131ce3a87bce08401076fbd26b4a5967243e98"
+    },
     {
       "version": "1.0.7",
       "date": "2026-11-12",
