@@ -28,6 +28,9 @@
     { "name": "0026_app_display_name", "sha256": "762ea0f12e148167d090900ffdf19bab803cb72408279ea830026e1dc3dda55f" },
     { "name": "0027_backup_tiers", "sha256": "546af79e0be51c2367076ae4f042de65d6ba8ebc2ba42f72007e5a173c4dd44b" },
     { "name": "0028_project_icon_app", "sha256": "5e68ed4aaea8982f67d21e4733828d530e4f7b049e7acbe7b200b72294703c7c" },
-    { "name": "0029_project_icon_folder", "sha256": "d0de43d063f488eb90bb8d395364ad6e846147aa2a00f61b47c852e1db9c11c0" }
+    { "name": "0029_project_icon_folder", "sha256": "d0de43d063f488eb90bb8d395364ad6e846147aa2a00f61b47c852e1db9c11c0" },
+    { "name": "0030_favicon_svg", "sha256": "e501b786f08a174f3ac9a7d5ac40ad1a12e861dc597752e16c84d43e652ed227" },
+    { "name": "0031_mfa_lockout", "sha256": "c6c92336fb302c103cf3d1d2fabf8188835cfa2e5a6af75279b31131b4e687b8" },
+    { "name": "0032_preview_repo_key", "sha256": "ed0badefee5d2ed97782e451a58b147b5bd388f733df12f4e0a04c97d827d937" }
   ]
 }
