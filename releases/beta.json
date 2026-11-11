@@ -1,8 +1,30 @@
 {
   "schema": 2,
   "channel": "beta",
-  "generatedAt": "2026-11-11T14:39:53.443Z",
+  "generatedAt": "2026-11-11T18:39:58.348Z",
   "releases": [
+    {
+      "version": "1.0.6",
+      "date": "2026-11-12",
+      "publishedAt": "2026-11-11T18:39:58.348Z",
+      "minFrom": "0.0.0",
+      "migration": "0032_preview_repo_key",
+      "critical": false,
+      "notesUrl": "https://github.com/kedarpixels/Dockify/releases/tag/v1.0.6",
+      "notes": "## 1.0.6 (2026-11-12)\n\nGitHub shows a status per app, and a new domain starts routing right away instead of waiting for builds.\n\n### Changed\n- Each app built from a commit now posts its own GitHub commit status, \"Dockify / <app>\" (with the environment in a project that has several), instead of one shared \"Dockify\" status. It shows pending while the deployment is queued, building or deploying, then Deployed, the failure reason, or Cancelled. Before, the first app to finish marked the whole commit Deployed while the others were still building, and a later success could hide an earlier failure. A branch protection rule that requires the old \"Dockify\" check needs the new per-app names.\n\n### Fixed\n- A domain added to an app, or an app stopped or started, waited for every queued build on the server before its route changed, so a new domain could answer \"404 page not found\" for minutes. Route changes now run on the maintenance queue, and a per-app lock keeps them from ever interleaving with that app's own deploy. A deploy also re-reads the app's domains when it switches traffic, so a domain added during a long build is kept.\n",
+      "images": {
+        "control": {
+          "amd64": "ghcr.io/kedarpixels/dockify-control@sha256:86fb12808a8eb5391bfbafe58bac44efb0e7e2db8f6ba266c9289c923ac51ffa",
+          "arm64": "ghcr.io/kedarpixels/dockify-control@sha256:29fff611983fbe3be0d8e3cd3e8c49fe0539bade020833ffccaffc1fece620f1"
+        },
+        "web": {
+          "amd64": "ghcr.io/kedarpixels/dockify-web@sha256:7356c78c1109d71d10444c43c5597a9928a53cbe7cccd1384102c2b14ab9d09f",
+          "arm64": "ghcr.io/kedarpixels/dockify-web@sha256:85322a8cb6d1130fe2e51525ec1a52de19746abe8262861cf60faefe70d16855"
+        }
+      },
+      "composeSha256": "7742d0c095f02b1d16c26806b9087931bc4fd7f4471f05d551b87c64062956f0",
+      "socketProxySha256": "19d55ffbf94bef940073b91432131ce3a87bce08401076fbd26b4a5967243e98"
+    },
     {
       "version": "1.0.5",
       "date": "2026-11-11",
