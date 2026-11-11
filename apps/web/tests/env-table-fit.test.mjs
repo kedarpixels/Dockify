@@ -1,12 +1,13 @@
 // The project Variables tables wrapped long keys onto two lines and dropped the lock icon to a third,
-// while the value column sat mostly empty. The key column now takes the width its longest key
-// needs, up to a cap, and a key never wraps. Run: npm test.
+// and the overrides table's app column cut names like game-dashboard short. A key never wraps, its
+// column fits its longest key, and each app is named once above its rows. Run: npm test.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const css = readFileSync(new URL("../app/styles/env-table.css", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const workbench = readFileSync(new URL("../components/project-extras/env-workbench.tsx", import.meta.url), "utf8");
+const table = readFileSync(new URL("../components/env/env-table.tsx", import.meta.url), "utf8");
 
 /** The body of the first rule whose selector is exactly `selector`, searched in `from`. */
 function rule(selector, from = css) {
@@ -15,7 +16,7 @@ function rule(selector, from = css) {
   return from.slice(at, from.indexOf("}", at));
 }
 
-const wide = css.slice(css.indexOf("@container ev-vars (width >= 760px)"), css.indexOf("/* Narrow:"));
+const wide = css.slice(css.indexOf("@container ev-vars (width >= 760px)"), css.indexOf("@container ev-vars (width < 760px)"));
 const px = (s) => [...s.matchAll(/(\d+)px/g)].map((m) => Number(m[1]));
 
 test("a key stays on one line, its lock right after it, and cuts with an ellipsis", () => {
@@ -30,26 +31,29 @@ test("a key stays on one line, its lock right after it, and cuts with an ellipsi
 
 test("in columns the rows share one key track sized to the longest key, and the value takes the rest", () => {
   assert.ok(wide.length > 0, "the column layout lives in the wide container query");
-  for (const sel of [".ev-vars-fit", ".ev-vars-fit[data-app]"]) {
-    const cols = rule(sel, wide);
-    assert.match(cols, /minmax\(1\d\dpx, max-content\)/, `${sel}: the key track follows its content`);
-    assert.match(cols, /1fr\)/, `${sel}: the value track takes what is left`);
-  }
+  const cols = rule(".ev-vars-fit", wide);
+  assert.match(cols, /minmax\(1\d\dpx, max-content\)/, "the key track follows its content");
+  assert.match(cols, /1fr\)/, "the value track takes what is left");
   assert.match(rule(".ev-vars-fit > .ev-vars", wide), /grid-template-columns: subgrid/);
   assert.match(rule(".ev-vars-fit .ev-var", wide), /grid-template-columns: subgrid/);
   // The cap: past it a key cuts instead of starving the value.
   assert.match(rule(".ev-vars-fit .ev-var-key", wide), /max-width: min\(320px/);
+  // Key floor, value floor, used at, updated, keys, and four 12px gaps fit in 760px.
+  const tracks = px(cols.split("grid-template-columns:")[1]);
+  assert.ok(tracks.reduce((a, b) => a + b, 0) + 4 * 12 <= 760);
 });
 
-test("the app column keeps its 120px and the narrowest column layout fits in 760px", () => {
-  const app = rule(".ev-vars-fit[data-app]", wide).split("grid-template-columns:")[1];
-  // The 128px track less the row's 8px padding is the 120px app cell.
-  assert.ok(app.trim().startsWith("128px "));
-  for (const n of [128, 168, 112, 96, 88, 100]) assert.ok(px(app).includes(n), `${n}px track`);
-  // App, key floor, value floor (the clamp's minimum), used at, updated, keys, and five 12px gaps.
-  assert.ok(128 + 168 + 112 + 96 + 88 + 100 + 5 * 12 <= 760);
-  const shared = px(rule(".ev-vars-fit", wide).split("grid-template-columns:")[1]);
-  assert.ok(shared.reduce((a, b) => a + b, 0) + 4 * 12 <= 760);
+test("the overrides table names each app once above its rows, never in a column", () => {
+  assert.doesNotMatch(css, /ev-var-app|\.ev-var-a\b|data-app/);
+  assert.doesNotMatch(table, /AppCell|RowApp/);
+  // The head spans every track, and a long name wraps instead of cutting.
+  assert.match(rule(".ev-group"), /grid-column: 1 \/ -1/);
+  assert.match(rule(".ev-group-name"), /overflow-wrap: anywhere/);
+  assert.match(rule(".ev-group-count"), /flex: none/);
+  // Every app after the first opens with a whole-pixel rule.
+  assert.match(rule(".ev-vars > .ev-group ~ .ev-group"), /border-top: 1px solid var\(--line\)/);
+  assert.match(workbench, /group=\{self \? undefined : \{ name: appTitle\(g\.app\)/);
+  assert.match(workbench, /<EnvGroupHead name=\{group\.name\}/);
 });
 
 test("below 760px the rows stack as before, so nothing forces a sideways scroll", () => {
@@ -62,8 +66,7 @@ test("below 760px the rows stack as before, so nothing forces a sideways scroll"
 });
 
 test("both workbench tables use the fitted layout, and a cut key shows whole on hover", () => {
-  assert.match(workbench, /<FitTable app=\{!self\}>\s*<EnvTableHead targets app=\{!self\} \/>/);
-  assert.match(workbench, /<FitTable>\s*<EnvTableHead targets \/>/);
+  assert.equal([...workbench.matchAll(/<FitTable>\s*<EnvTableHead targets \/>/g)].length, 2);
   assert.match(workbench, /className="ev-vars-fit"/);
   assert.match(workbench, /scrollWidth > key\.clientWidth\) key\.title = key\.textContent/);
 });

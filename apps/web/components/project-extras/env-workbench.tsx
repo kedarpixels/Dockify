@@ -25,7 +25,7 @@ import { appTitle, plural } from "@/lib/format";
 import type { AppSummary, EnvTarget, EnvVersion, ProjectExtras } from "@/lib/pages/project-detail";
 import type { ActorRef } from "@/lib/types";
 import { useCan, useViewer } from "@/lib/viewer";
-import { EnvEditRow, EnvTableHead, EnvVarRow, TARGET_OPTIONS, type Draft, type RowApp } from "@/components/env/env-table";
+import { EnvEditRow, EnvGroupHead, EnvTableHead, EnvVarRow, TARGET_OPTIONS, type Draft } from "@/components/env/env-table";
 import { send } from "./api";
 import {
   affectedApps, applyLocal, changeId, changesIn, refViewOf, rowsOf, stage, unstage, varsOf, versionOf, type EnvRow, type Scope, type Staged,
@@ -84,7 +84,7 @@ function ScopeItems({
   scope,
   rows,
   taken,
-  app,
+  group,
   readOnlyHref,
   now,
   editing,
@@ -105,7 +105,8 @@ function ScopeItems({
   rows: EnvRow[];
   /** Keys already set in the scope, which the add row refuses. */
   taken: string[];
-  app?: Omit<RowApp, "start">;
+  /** Set on the project overrides table: the app's name heads its rows. */
+  group?: { name: string; icon: React.ReactNode };
   readOnlyHref?: string;
   now: number;
   editing: Editing;
@@ -128,17 +129,18 @@ function ScopeItems({
   const adding = editing?.scope === sid && editing.key === null;
   const valueOf = (r: EnvRow) => (r.value !== null ? r.value : (cache.get(changeId(scope, r.key)) ?? null));
   const remove = (r: EnvRow) => onStage(scope, { key: r.key, value: undefined, secret: r.secret, target: r.target }, { ...r, state: "removed" });
-  const cell = (start: boolean) => (app ? { ...app, start } : undefined);
 
   return (
     <>
+      {group && (adding || rows.length) ? (
+        <EnvGroupHead name={group.name} icon={group.icon} count={rows.length ? plural(rows.length, "variable") : undefined} />
+      ) : null}
       {adding ? (
         <EnvEditRow
           mode="add"
           initial={{ key: "", value: "", secret: true, target: "runtime" }}
           targets
           staged
-          app={cell(true)}
           taken={taken}
           onSave={(d) => {
             onStage(scope, d);
@@ -150,9 +152,8 @@ function ScopeItems({
           }}
         />
       ) : null}
-      {rows.map((r, i) => {
+      {rows.map((r) => {
         const id = changeId(scope, r.key);
-        const start = i === 0 && !adding;
         if (editing?.scope === sid && editing.key === r.key) {
           const value = valueOf(r);
           return (
@@ -163,7 +164,6 @@ function ScopeItems({
               knownValue={value !== null}
               targets
               staged
-              app={cell(start)}
               taken={[]}
               onSave={(d) => {
                 onStage(scope, d, r);
@@ -197,7 +197,6 @@ function ScopeItems({
             revealing={revealing.has(id)}
             note={notes(r.key)}
             link={link(r)}
-            app={cell(start)}
             onReveal={() => onReveal(scope, r)}
             onCopy={() => onCopy(scope, r)}
             onEdit={readOnlyHref ? () => router.push(readOnlyHref) : () => onEditing({ scope: sid, key: r.key })}
@@ -229,9 +228,9 @@ function tipCutKey(e: React.PointerEvent) {
 }
 
 /** The head and rows of one table: its key column is as wide as its longest key (env-table.css). */
-function FitTable({ app = false, children }: { app?: boolean; children: React.ReactNode }) {
+function FitTable({ children }: { children: React.ReactNode }) {
   return (
-    <div className="ev-vars-fit" data-app={app ? "" : undefined} onPointerOver={tipCutKey}>
+    <div className="ev-vars-fit" onPointerOver={tipCutKey}>
       {children}
     </div>
   );
@@ -771,8 +770,8 @@ export function EnvWorkbench({
   } else {
     overridesBody = (
       <div className="ev-vars-wrap">
-        <FitTable app={!self}>
-          <EnvTableHead targets app={!self} />
+        <FitTable>
+          <EnvTableHead targets />
           <ul className="ev-vars" aria-label={self ? `${appTitle(self)} overrides` : "App overrides"}>
             {overrides.map((g) => (
               <ScopeItems
@@ -780,7 +779,7 @@ export function EnvWorkbench({
                 scope={g.scope}
                 rows={g.shown}
                 taken={takenIn(g.rows)}
-                app={self ? undefined : { name: appTitle(g.app), icon: <AppIcon id={g.app.id} kind={g.app.kind} /> }}
+                group={self ? undefined : { name: appTitle(g.app), icon: <AppIcon id={g.app.id} kind={g.app.kind} /> }}
                 notes={(key) => (sharedKeys.has(key) ? "Overrides shared" : undefined)}
                 {...rowsProps}
               />
