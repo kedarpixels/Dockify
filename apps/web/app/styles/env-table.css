@@ -33,47 +33,37 @@
   grid-template-columns: minmax(0, 1fr) round(down, calc((100% - 324px) * 0.625), 1px) 96px 88px 92px;
 }
 
-/* The app column is carved out of the key track (0.9 of 2.4 of what the 324px of fixed tracks and
-   gaps leave), so the other columns line up with ev-var-t. The key never goes under 168px. */
-.ev-var-t.ev-var-a {
-  grid-template-columns: 120px max(168px, round(down, calc((100% - 324px) * 0.375 - 132px), 1px)) minmax(0, 1fr) 96px 88px 92px;
-}
-
-.ev-var-a {
-  position: relative;
-}
-
-.ev-var-app {
+/* An app heads its rows across the whole table, so a long app name never cuts. */
+.ev-group {
   display: flex;
+  grid-column: 1 / -1;
   align-items: center;
   gap: 8px;
-  min-width: 0;
+  min-height: 36px;
+  padding: 0 8px;
   font-size: 13px;
+  line-height: 20px;
   font-weight: 500;
-  color: var(--ink-2);
+  color: var(--ink);
 }
 
-.ev-var-app[data-cont] {
-  visibility: hidden;
-}
-
-.ev-var-appname {
+.ev-group-name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
-/* A 1px line cannot sit on the 4px gap's half pixel, so it takes the gap's second row. */
-.ev-vars > .ev-var-a[data-start] ~ .ev-var-a[data-start]::before {
-  content: "";
-  position: absolute;
-  top: -3px;
-  right: 8px;
-  left: 8px;
-  height: 1px;
-  background: var(--line);
-  pointer-events: none;
+.ev-group-count {
+  flex: none;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+/* Every app after the first opens with a rule; its 8px top margin and the list's 4px gap give 12px above it. */
+.ev-vars > .ev-group ~ .ev-group {
+  min-height: 45px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
 }
 
 li.ev-var:hover {
@@ -228,15 +218,12 @@ li.ev-var-edit:hover {
 }
 
 /* .ev-vars-fit is the one grid and the head, list and rows are subgrids of it, so all rows share
-   one key track. A row's 8px side padding sits inside the two edge tracks, hence 128, 176 and 100. */
+   one key track. A row's 8px side padding sits inside the two edge tracks, hence 176 and 100. */
 @container ev-vars (width >= 760px) {
   .ev-vars-fit {
     display: grid;
     grid-template-columns: minmax(176px, max-content) minmax(184px, 1fr) 96px 88px 100px;
     column-gap: 12px;
-  }
-  .ev-vars-fit[data-app] {
-    grid-template-columns: 128px minmax(168px, max-content) minmax(clamp(112px, calc(100cqw - 648px), 184px), 1fr) 96px 88px 100px;
   }
   .ev-vars-fit > .ev-vars {
     grid-column: 1 / -1;
@@ -299,23 +286,4 @@ li.ev-var-edit:hover {
       "when acts";
   }
   .ev-var-edit > .ev-var-when { display: flex; grid-area: when; justify-content: flex-start; }
-  .ev-var-t.ev-var-a {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      "app key key"
-      "val val acts"
-      "meta meta acts";
-  }
-  .ev-var-app { grid-area: app; }
-  .ev-var-app[data-cont] { visibility: visible; }
-  .ev-var-edit.ev-var-t.ev-var-a {
-    grid-template-areas:
-      "app key key"
-      "val val val"
-      "meta meta meta"
-      "when when acts";
-  }
-  .ev-vars-fit .ev-var-app {
-    max-width: round(down, 40cqw, 1px);
-  }
 }

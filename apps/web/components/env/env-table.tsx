@@ -40,28 +40,22 @@ export interface Draft {
 /** What a linked row's third key does: open the project's Variables tab, or a menu with Unlink and Remove. */
 export type LinkEdit = { href: string } | { onUnlink: () => void; onRemove: () => void };
 
-/** `start` marks the first row of the app's run: only it shows the app on wide screens. */
-export interface RowApp {
-  name: string;
-  icon: React.ReactNode;
-  start: boolean;
-}
+const rowClass = (targets: boolean, extra?: string) => cx("ev-var", targets && "ev-var-t", extra);
 
-const rowClass = (targets: boolean, app: boolean, extra?: string) => cx("ev-var", targets && "ev-var-t", app && "ev-var-a", extra);
-
-function AppCell({ app }: { app: RowApp }) {
+/** An app named above its rows in the project overrides table, where a column would cut a long name. */
+export function EnvGroupHead({ name, icon, count }: { name: string; icon: React.ReactNode; count?: string }) {
   return (
-    <span className="ev-var-app" data-cont={app.start ? undefined : true}>
-      {app.icon}
-      <span className="ev-var-appname">{app.name}</span>
-    </span>
+    <li className="ev-group">
+      {icon}
+      <span className="ev-group-name">{name}</span>
+      {count ? <span className="ev-group-count">{count}</span> : null}
+    </li>
   );
 }
 
-export function EnvTableHead({ targets = false, app = false }: { targets?: boolean; app?: boolean }) {
+export function EnvTableHead({ targets = false }: { targets?: boolean }) {
   return (
-    <div className={rowClass(targets, app, "ev-var-head")} aria-hidden="true">
-      {app ? <span>App</span> : null}
+    <div className={rowClass(targets, "ev-var-head")} aria-hidden="true">
       <span>Key</span>
       <span>Value</span>
       {targets ? <span>Used at</span> : null}
@@ -104,7 +98,6 @@ export function EnvVarRow({
   note,
   link,
   linkEdit,
-  app,
   onReveal,
   onCopy,
   onEdit,
@@ -129,7 +122,6 @@ export function EnvVarRow({
   /** The chip of a linked row: "horseai/postgres, DATABASE_URL". */
   link?: { text: string; missing?: boolean };
   linkEdit?: LinkEdit;
-  app?: RowApp;
   onReveal: () => void;
   /** Rejects when the value cannot be read, so the key reads "Copy failed". */
   onCopy: () => Promise<string>;
@@ -170,8 +162,7 @@ export function EnvVarRow({
   }
 
   return (
-    <li className={rowClass(targets, Boolean(app))} data-state={state} data-start={app?.start || undefined} data-row={rowId}>
-      {app ? <AppCell app={app} /> : null}
+    <li className={rowClass(targets)} data-state={state} data-row={rowId}>
       <span className="ev-var-key">
         <span className="ev-var-keytext">{name}</span>
         {secret ? <Icon name="lock" size={14} className="ev-var-lock" label="Secret" /> : null}
@@ -255,7 +246,6 @@ export function EnvEditRow({
   targets = false,
   staged = false,
   busy = false,
-  app,
   onSave,
   onCancel,
   onDelete,
@@ -268,7 +258,6 @@ export function EnvEditRow({
   targets?: boolean;
   staged?: boolean;
   busy?: boolean;
-  app?: RowApp;
   onSave: (d: Draft) => void;
   onCancel: () => void;
   onDelete?: () => void;
@@ -302,8 +291,7 @@ export function EnvEditRow({
   };
 
   return (
-    <li className={rowClass(targets, Boolean(app), "ev-var-edit")} data-start={app?.start || undefined} onKeyDown={onKey}>
-      {app ? <AppCell app={app} /> : null}
+    <li className={rowClass(targets, "ev-var-edit")} onKeyDown={onKey}>
       <span className="ev-var-key">
         {mode === "add" ? (
           <TextInput
