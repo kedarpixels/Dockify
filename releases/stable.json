@@ -1,8 +1,30 @@
 {
   "schema": 2,
   "channel": "stable",
-  "generatedAt": "2026-11-11T18:39:56.323Z",
+  "generatedAt": "2026-11-11T18:59:04.450Z",
   "releases": [
+    {
+      "version": "1.0.7",
+      "date": "2026-11-12",
+      "publishedAt": "2026-11-11T18:59:04.450Z",
+      "minFrom": "0.0.0",
+      "migration": "0032_preview_repo_key",
+      "critical": false,
+      "notesUrl": "https://github.com/kedarpixels/Dockify/releases/tag/v1.0.7",
+      "notes": "## 1.0.7 (2026-11-12)\n\nThe project Variables tab names each app above its overrides instead of in a narrow column.\n\n### Fixed\n- In the App overrides table, long app names such as game-dashboard were cut short in a 120px column. Each app is now named once, in full, above its variables, with how many it has and a rule between apps. The key column gets the freed width, so keys and their lock icons stay on one line.\n",
+      "images": {
+        "control": {
+          "amd64": "ghcr.io/kedarpixels/dockify-control@sha256:04ad59676e1199f53f690fc7dbb5e8b2777bc53d4d583db217babc7d8093b8a3",
+          "arm64": "ghcr.io/kedarpixels/dockify-control@sha256:f3f4e4f41479ccb06fdb07b73a8b4d886b2d484eb03ad534121063268ec0f709"
+        },
+        "web": {
+          "amd64": "ghcr.io/kedarpixels/dockify-web@sha256:c5920d42f9ef6d1aeb61aedb4e995aacfdc61424b41af141592e819ba0452bdb",
+          "arm64": "ghcr.io/kedarpixels/dockify-web@sha256:298d6c7ab0418dfdd9fb7314772a759d1b3a321567d515d08eaaa604b8e7c7ca"
+        }
+      },
+      "composeSha256": "7742d0c095f02b1d16c26806b9087931bc4fd7f4471f05d551b87c64062956f0",
+      "socketProxySha256": "19d55ffbf94bef940073b91432131ce3a87bce08401076fbd26b4a5967243e98"
+    },
     {
       "version": "1.0.6",
       "date": "2026-11-12",
