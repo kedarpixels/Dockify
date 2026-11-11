@@ -3,7 +3,6 @@
 import { useRef, useState } from "react";
 import { CardTitle } from "@/components/card-title";
 import { Icon } from "@/components/icon";
-import { KIND_LABEL } from "@/components/project-detail/shared";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { PendingButton } from "@/components/ui/pending";
 import { Select, type SelectOption } from "@/components/ui/select";
@@ -12,7 +11,7 @@ import { report } from "@/lib/feedback";
 import { PROJECT_FOLDER as FOLDER, PROJECT_UPLOAD as UPLOADED, projectIconLine, projectIconPick, type IconBody, type IconState, type IconTarget } from "@/lib/icons";
 import type { AppKind } from "@/lib/types";
 import { useCan } from "@/lib/viewer";
-import { AppIcon, ProjectIcon, useIcons } from "./app-icon";
+import { AppIcon, ProjectIcon, useAppRole, useIcons } from "./app-icon";
 import { prepareUpload, sendIcon } from "./upload";
 
 /* Each action saves at once; a refused upload says why under the card. */
@@ -28,12 +27,12 @@ function hostOf(url: string | null) {
   }
 }
 
-/** Names the kind as every other page does ("Backend", "Storage"), not the preset. */
-function statusLine(state: IconState | undefined, kind: AppKind | undefined, domain: string | null, now: number): React.ReactNode {
+/** Names what the app is as every other page does ("Backend", "Storage"), not the preset. */
+function statusLine(state: IconState | undefined, kind: AppKind | undefined, label: string, domain: string | null, now: number): React.ReactNode {
   if (state?.choice === "upload") return state.image ? `Uploaded image, ${state.image.width} by ${state.image.height}` : "Uploaded image";
   const fav = state?.favicon;
   if (!kind) return projectIconLine(state);
-  if (kind !== "frontend") return `The ${KIND_LABEL[kind]} icon`;
+  if (kind !== "frontend") return `The ${label} icon`;
   const from = hostOf(fav?.origin ?? null) ?? domain;
   if (state?.image && fav?.fetchedAt) {
     return <When iso={fav.fetchedAt} now={now} prefix={`Favicon from ${from ?? "its domain"}, fetched`} />;
@@ -68,6 +67,8 @@ export function IconCard({
   const domain = hostOf(url);
   const choice = state?.choice ?? "auto";
   const frontend = kind === "frontend";
+  const roleOf = useAppRole();
+  const label = kind && target.target === "app" ? roleOf({ id: target.id, kind }).label : "";
 
   // A ref, not `busy`: a second click can land before the re-render disables the keys.
   const inFlight = useRef(false);
@@ -153,12 +154,12 @@ export function IconCard({
           {project ? (
             <span className="ic-pick">
               <Select label={`Icon of ${name}`} value={picked} options={options} onChange={pick} disabled={!can.manage || busy !== null} />
-              <span className="two-sub">{statusLine(state, kind, domain, now)}</span>
+              <span className="two-sub">{statusLine(state, kind, label, domain, now)}</span>
             </span>
           ) : (
             <span className="two">
               <span className="two-main">{choice === "auto" ? "Automatic" : "Uploaded"}</span>
-              <span className="two-sub">{statusLine(state, kind, domain, now)}</span>
+              <span className="two-sub">{statusLine(state, kind, label, domain, now)}</span>
             </span>
           )}
           <span className="ic-now-acts">

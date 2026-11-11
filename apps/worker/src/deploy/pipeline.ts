@@ -6,7 +6,7 @@ import { enqueue, type Db, type Prisma, type SecretVault } from "@dockify/db";
 import type { DockerPort } from "../data/docker-port.ts";
 import { EngineDataPort } from "../data/engine-port.ts";
 import { deployManagedService, ManagedServiceError } from "../data/managed.ts";
-import { isServiceKind } from "../data/requests.ts";
+import { HELD_BY_RESTORE, isServiceKind } from "../data/requests.ts";
 import type { ClaimedJob } from "../queue.ts";
 import { buildCacheScope } from "@dockify/engine";
 import { pullAuth, pullImage } from "./pull.ts";
@@ -205,13 +205,29 @@ async function observeApp(deps: Pick<DeployDeps, "db" | "docker">, appId: string
   await writeObservedStatus(deps.db, appId, container).catch(() => null);
 }
 
+/**
+ * A restore holds the app while it replaces its data (data/pipeline.ts hold). The api refuses a deploy then, under
+ * the same lock; this is for a job that was queued by another path, before a container is made for it.
+ */
+export async function assertNotHeldByRestore(db: Pick<Db, "app">, appId: string, trigger?: string): Promise<void> {
+  const row = await db.app.findUnique({ where: { id: appId }, select: { quiescedByJobId: true } });
+  if (!row?.quiescedByJobId) return;
+  // A push is not lost with its deployment: it waits as the pending deploy the restore promotes when it ends.
+  // Anything else named an image or a commit of its own, which a later deploy of the branch would not be.
+  if (trigger !== "push") throw new PermanentDeployError(HELD_BY_RESTORE);
+  await db.app.updateMany({ where: { id: appId }, data: { pendingDeployAt: new Date() } });
+  throw new PermanentDeployError(`${HELD_BY_RESTORE} The push is kept and deploys when the restore has finished.`);
+}
+
 /** A push coalesced into App.pendingDeployAt becomes a fresh deployment, under the api's per-app lock and dedupe key. */
 export async function promotePending(db: Db, appId: string): Promise<string | null> {
   return db.$transaction(async (tx) => {
     const key = `deploy:${appId}`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
-    const app = await tx.app.findUnique({ where: { id: appId }, select: { pendingDeployAt: true, gitBranch: true, desiredState: true, serverId: true } });
+    const app = await tx.app.findUnique({ where: { id: appId }, select: { pendingDeployAt: true, gitBranch: true, desiredState: true, serverId: true, quiescedByJobId: true } });
     if (!app?.pendingDeployAt || app.desiredState !== "running") return null;
+    // Kept for the restore's own resume, which promotes it.
+    if (app.quiescedByJobId) return null;
     // Scoped like requestDeployTx: a preview in flight must not lose the push, nothing would retry it.
     const open = await tx.deployment.findFirst({ where: { appId, previewId: null, status: { in: [...IN_FLIGHT] } }, select: { id: true } });
     if (open) return null;
@@ -335,6 +351,8 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
   try {
     // A managed Postgres or Redis never takes the generic path below: no project variables, its own
     // credentials, its named volume and a pinned image (data/managed.ts).
+    // A preview runs in its own container on none of the app's volumes, so a restore does not hold it.
+    if (!preview) await assertNotHeldByRestore(db, app.id, dep.trigger);
     if (isServiceKind(app.kind)) {
       if (preview) throw new PermanentDeployError("a managed service is never deployed into a preview");
       await deployService(deps, dep, track, log, checkCancel);
@@ -512,6 +530,8 @@ export async function handleDeploy(deps: DeployDeps, job: ClaimedJob, shutdown: 
       await settlePreview(db, preview.envId);
       return;
     }
+    // Again after the build, which is long enough for a restore to have begun.
+    await assertNotHeldByRestore(db, app.id, dep.trigger);
     const result = await swap(swapApp, deploymentId, imageId, env, {
       docker,
       log,

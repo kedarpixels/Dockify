@@ -18,7 +18,7 @@ const BK = "0f0f0f0f-0000-4000-8000-0000000000b1";
 const s3: DestinationRow = { id: "d1", name: "R2", type: "s3", isDefault: true, integration: { name: "r2", config: { provider: "r2", bucket: "dk" }, lastCheckedAt: null, error: null } };
 
 const row = (over: Partial<BackupRowIn> = {}): BackupRowIn => ({
-  id: BK, appId: APP, sourceAppId: APP, appSnapshot: { name: "db", projectSlug: "acme", environment: "prod" }, trigger: "schedule", status: "ready",
+  id: BK, appId: APP, sourceAppId: APP, appSnapshot: { name: "db", projectSlug: "acme", environment: "prod" }, kind: "postgres", trigger: "schedule", status: "ready",
   createdAt: new Date("2026-10-30T03:00:00Z"), finishedAt: new Date("2026-10-30T03:01:00Z"), sizeBytes: 1234n, encrypted: true, keyFingerprint: "abcd",
   error: null, restoreTestStatus: "not_tested", restoreTestedAt: null, restoreTestTables: null, restoreTestRows: null, restoreTestError: null, expiredAt: null,
   destination: s3, ...over,
@@ -28,7 +28,7 @@ const tierRow = (tier: "local" | "offsite", over: Partial<TierRow> = {}): TierRo
   tier, enabled: true, cron: "0 3 * * *", timezone: "UTC", keep: 7, keepDays: null, destinationId: null, lastRunAt: null, ...over,
 });
 const scheduleApp = (tiers: TierRow[] = [tierRow("offsite", { keep: 3, keepDays: 14 })]): ScheduleAppIn => ({
-  id: APP, name: "db", createdAt: new Date("2026-10-01T00:00:00Z"), environment: { name: "prod", project: { slug: "acme" } }, backupSchedules: tiers,
+  id: APP, name: "db", kind: "postgres", createdAt: new Date("2026-10-01T00:00:00Z"), environment: { name: "prod", project: { slug: "acme" } }, backupSchedules: tiers,
 });
 const sctx = (over: Partial<ScheduleContext> = {}): ScheduleContext => ({ fingerprint: "abcd", s3: [s3], defaultType: "s3", localAllowed: true, ...over });
 
@@ -42,6 +42,18 @@ describe("contract shapes", () => {
     expect(toRun(row({ trigger: "pre_deploy" })).kind).toBe("preDeploy");
     expect(toRun(row({ trigger: "pre_update" })).kind).toBe("preUpdate");
     expect(toRun(row({ restoreTestStatus: "passed", restoreTestRows: 5n, restoreTestTables: 2 })).restoreTest).toMatchObject({ status: "passed", rows: 5, tables: 2 });
+  });
+  it("says what a backup holds: a database, or an app's volumes with the files its test extracted", () => {
+    expect(toRun(row()).content).toBe("database");
+    expect(toRun(row({ restoreTestStatus: "passed", restoreTestRows: 5n })).restoreTest.files).toBeUndefined();
+    const files = toRun(row({ kind: "volume", restoreTestStatus: "passed", restoreTestRows: 1204n }));
+    expect(B.BackupRun.parse(files)).toEqual(files);
+    expect(files.content).toBe("volumes");
+    expect(files.restoreTest).toMatchObject({ status: "passed", files: 1204, rows: null, tables: null });
+    expect(toSchedule(scheduleApp(), sctx()).content).toBe("database");
+    const storage = toSchedule({ ...scheduleApp(), name: "storage", kind: "backend" }, sctx());
+    expect(B.BackupSchedule.parse(storage)).toEqual(storage);
+    expect(storage.content).toBe("volumes");
   });
   it("an orphan outlives its app and says so", () => {
     const r = toRun(row({ appId: null, appSnapshot: { name: "db", projectSlug: "acme", environment: "prod", deletedAt: "2026-10-29T00:00:00.000Z" } }));
@@ -271,6 +283,69 @@ describe("backup handlers", () => {
     expect(out?.code).not.toBe("CONFIRM_MISMATCH");
   });
 
+  describe("an app with volumes", () => {
+    const storage = { ...serviceApp, name: "storage", kind: "backend", serverId: "s1", environmentId: "e1", volumes: [{ id: "v1" }] };
+    const volumeBackup = (over: AnyRow = {}) => ({ ...row({ kind: "volume", appSnapshot: { name: "storage", kind: "backend", projectSlug: "acme", environment: "prod" } }), objectKey: "k", app: { environment: { projectId: "p1" } }, ...over });
+    const world = (app: AnyRow, over: AnyRow = {}) => {
+      const created: AnyRow[] = [];
+      const queued: AnyRow[] = [];
+      dests = [{ id: "here", name: "This server", type: "local", isDefault: true, createdAt: new Date() }];
+      tiers = [];
+      const d = baseDb({
+        app: { findUnique: async () => ({ ...app, backupSchedules: [] }), findUniqueOrThrow: async () => ({ ...app, backupSchedules: tiers.map((t) => ({ ...t })) }) },
+        backup: { findUnique: async () => volumeBackup(), findFirst: async () => null, create: async ({ data }: AnyRow) => (created.push(data), { id: `b${created.length}` }), findMany: async () => [], ...over.backup },
+        job: { findFirst: async () => null, create: async ({ data }: AnyRow) => (queued.push(data), { id: "j1" }), findUnique: async () => ({ completedAt: null, failedAt: null, lastError: null }) },
+      });
+      return { ctx: ctxWith({ ...d, $transaction: async (fn: (tx: unknown) => unknown) => fn(d) }), created, queued };
+    };
+
+    it("is backed up on demand as kind volume, and can be given a schedule", async () => {
+      const w = world(storage);
+      await call(h["backups.run"], { ctx: w.ctx, body: { resourceId: APP } });
+      expect(w.created[0]).toMatchObject({ appId: APP, kind: "volume", trigger: "manual", encrypted: true });
+      expect(w.created[0]!.appSnapshot).toMatchObject({ name: "storage", kind: "backend" });
+      expect(w.queued[0]).toMatchObject({ kind: "backup", lane: "data", dedupeKey: `backup:${APP}` });
+      expect(audits.at(-1)).toMatchObject({ action: "backup.run", targetLabel: "1 app" });
+      const s = await call(h["backups.schedules.patch"], { ctx: w.ctx, params: { id: APP }, body: { tier: "local", enabled: true, cron: "0 */12 * * *", keep: 2 } });
+      expect(B.BackupSchedule.parse(s)).toMatchObject({ content: "volumes", tiers: { local: { enabled: true, keep: 2 } } });
+    });
+
+    it("has nothing to back up, schedule or list without a volume of its own", async () => {
+      const w = world({ ...storage, volumes: [] });
+      await expect(call(h["backups.run"], { ctx: w.ctx, body: { resourceId: APP } })).rejects.toMatchObject({ status: 400, code: "NOT_A_SERVICE", message: "Only Postgres and Redis services and apps with a volume are backed up" });
+      await expect(call(h["backups.schedules.patch"], { ctx: w.ctx, params: { id: APP }, body: { enabled: true } })).rejects.toMatchObject({ code: "NOT_A_SERVICE" });
+      expect(await call(h["apps.backups"], { ctx: w.ctx, params: { id: APP } })).toEqual({ schedule: null, runs: [], config: null });
+      expect(w.created).toEqual([]);
+    });
+
+    it("lists its schedule and runs on the app's own Backups tab", async () => {
+      const out = await call(h["apps.backups"], { ctx: world(storage).ctx, params: { id: APP } });
+      expect(Ap.AppBackups.parse(out).schedule).toMatchObject({ content: "volumes", resourceId: APP });
+    });
+
+    it("restores over the app behind the same typed confirm, and never into a new one", async () => {
+      const w = world(storage);
+      await expect(call(h["backups.restore"], { ctx: w.ctx, params: { id: BK }, body: { mode: "replace", confirm: "storage" } })).rejects.toMatchObject({ code: "CONFIRM_MISMATCH", message: "Type acme/storage to confirm replacing its data" });
+      await expect(call(h["backups.restore"], { ctx: w.ctx, params: { id: BK }, body: { mode: "new", name: "storage-copy" } })).rejects.toMatchObject({ status: 400, code: "NOT_RESTORABLE" });
+      expect(w.queued).toEqual([]);
+      let code = 0;
+      const reply = { code: (c: number) => { code = c; return reply; } };
+      const out = await call(h["backups.restore"], { ctx: w.ctx, params: { id: BK }, body: { mode: "replace", confirm: "acme/storage" }, reply });
+      expect(code).toBe(202);
+      expect(out).toEqual({ jobId: "j1", resourceId: APP, status: "queued" });
+      expect(w.queued[0]).toMatchObject({ kind: "restore", payload: { backupId: BK, mode: "replace", targetAppId: APP }, maxAttempts: 1 });
+    });
+
+    it("an orphan's files are downloaded, not restored; a backup that no longer fits the app is refused", async () => {
+      const orphan = world(storage, { backup: { findUnique: async () => volumeBackup({ appId: null, app: null }) } });
+      await expect(call(h["backups.restore"], { ctx: orphan.ctx, params: { id: BK }, body: { mode: "replace", confirm: "acme/storage" } })).rejects.toMatchObject({ code: "ORPHANED", message: expect.stringContaining("Download the backup") });
+      const changed = world({ ...storage, volumes: [] });
+      await expect(call(h["backups.restore"], { ctx: changed.ctx, params: { id: BK }, body: { mode: "replace", confirm: "acme/storage" } })).rejects.toMatchObject({ code: "NOT_A_SERVICE" });
+      const db = world({ ...serviceApp, serverId: "s1" });
+      await expect(call(h["backups.restore"], { ctx: db.ctx, params: { id: BK }, body: { mode: "replace", confirm: "acme/db" } })).rejects.toMatchObject({ code: "KIND_MISMATCH" });
+    });
+  });
+
   it("replace is refused for an orphan; restore into new is the way", async () => {
     const db = baseDb({ backup: { findUnique: async () => ({ ...row({ appId: null }), objectKey: "k", kind: "postgres", app: null }) } });
     await expect(call(h["backups.restore"], { ctx: ctxWith(db), params: { id: BK }, body: { mode: "replace", confirm: "db" } })).rejects.toMatchObject({ code: "ORPHANED" });
@@ -403,7 +478,7 @@ describe("backup handlers", () => {
   });
 
   describe("Back up now for every enabled database", () => {
-    const listed = (over: AnyRow = {}) => ({ id: APP, name: "db", displayName: null, desiredState: "running", environment: { project: { slug: "acme" } }, ...over });
+    const listed = (over: AnyRow = {}) => ({ id: APP, name: "db", kind: "postgres", displayName: null, desiredState: "running", environment: { project: { slug: "acme" } }, ...over });
     const bulk = (apps: AnyRow[], seen: AnyRow[] = []) =>
       call(h["backups.run"], {
         ctx: ctxWith(baseDb({
@@ -419,6 +494,16 @@ describe("backup handlers", () => {
       await expect(bulk([], seen)).rejects.toMatchObject({ status: 409, code: "NOTHING_TO_BACK_UP" });
       expect(seen[0]!.where.backupSchedules).toEqual({ some: { enabled: true } });
       expect(seen[0]!.where.desiredState).toBeUndefined();
+    });
+
+    it("lists apps with a volume beside the databases, and a stopped one of those is still backed up", async () => {
+      reset();
+      const seen: AnyRow[] = [];
+      const err = await bulk([listed({ name: "storage", kind: "backend", desiredState: "stopped" })], seen).catch((e) => e);
+      expect(seen[0]!.where.OR).toEqual([{ kind: { in: ["postgres", "redis", "s3"] } }, { kind: { in: ["frontend", "backend", "bot"] }, volumes: { some: {} } }]);
+      // Tried, and refused only by the restore the fake has running: a helper reads volumes whatever the app does.
+      expect(err.message).not.toContain("it is stopped");
+      expect(err.message).toContain("is running; try again when it finishes");
     });
 
     it("fails when nothing starts, naming each database and why", async () => {

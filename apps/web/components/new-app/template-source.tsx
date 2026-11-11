@@ -89,7 +89,7 @@ function WhatRuns({ row, base, hostname }: { row: TemplateRow; base: string; hos
         {row.apps.map((a) => (
           <li key={a.service} className="na-tpl-app">
             <div className="na-tpl-head">
-              <AppIcon kind={a.kind} size="md" />
+              <AppIcon kind={a.kind} image={a.image} size="md" />
               <span className="two">
                 <span className="two-main na-svc-name">{nameOf(a.service, a.primary)}</span>
                 <span className="two-sub na-svc-sub mono">{a.managed ? `${a.managed}, managed by Dockify, backed up` : a.image}</span>

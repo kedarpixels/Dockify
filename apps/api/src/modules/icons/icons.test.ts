@@ -30,10 +30,10 @@ interface Img { id?: string; appId?: string; projectId?: string; source: "favico
 interface Front { env: string; id: string; name?: string; displayName?: string; primary?: boolean | string; test?: boolean; domains?: string[]; born?: number; fav?: Img }
 const hostOf = (f: Front) => (f.primary === true ? `${f.id}.example.com` : f.primary || null);
 
-function fakeDb(opts: { kind?: string; choice?: "auto" | "upload"; images?: Img[]; appMissing?: boolean; frontends?: Front[]; projectChoice?: "auto" | "upload"; pick?: string | null } = {}) {
+function fakeDb(opts: { kind?: string; image?: string; choice?: "auto" | "upload"; images?: Img[]; appMissing?: boolean; frontends?: Front[]; projectChoice?: "auto" | "upload"; pick?: string | null } = {}) {
   let images = (opts.images ?? []).map((i, n) => ({ ...i, id: i.id ?? `img${n}` }));
   const app = {
-    id: APP, name: "web", kind: opts.kind ?? "frontend", iconChoice: opts.choice ?? "auto",
+    id: APP, name: "web", kind: opts.kind ?? "frontend", image: opts.image ?? null, iconChoice: opts.choice ?? "auto",
     faviconCheckedAt: null as Date | null, faviconError: null as string | null,
     environment: { name: "production", projectId: PROJECT, project: { slug: "shop" } },
   };
@@ -457,5 +457,15 @@ describe("projects.icon.put and icons.list", () => {
     const f = fakeDb();
     await call("icons.list", f.db, { actor: limitedToken }).out;
     expect(JSON.stringify(f.finds[0])).toContain('"in":["other"]');
+    expect(JSON.stringify(f.finds[1])).toContain('"in":["other"]');
+  });
+
+  it("lists the published image of an app that runs one, and never a managed service's", async () => {
+    const f = fakeDb({ kind: "backend", image: "chrislusf/seaweedfs:4.52" });
+    const map = (await call("icons.list", f.db).out) as unknown as { stock: Record<string, string> };
+    expect(endpoints["icons.list"].response.safeParse(map).success).toBe(true);
+    expect(map.stock).toEqual({ [APP]: "chrislusf/seaweedfs:4.52" });
+    expect(f.finds[1]?.where).toMatchObject({ image: { not: null }, kind: { in: ["frontend", "backend", "bot"] } });
+    expect(((await call("icons.list", fakeDb().db).out) as unknown as typeof map).stock).toEqual({});
   });
 });

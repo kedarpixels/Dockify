@@ -134,7 +134,7 @@ const PREVIEW_TEMPLATES: TemplateRow[] = [
   },
   {
     id: "memos", name: "Memos", summary: "Quick notes, in a timeline of your own.", category: "Collaboration", icon: "", license: "MIT", homepage: "https://usememos.com", docs: "https://usememos.com/docs/installation/docker",
-    firstRun: "It asks you to create the first account. Do that before you share the address. Dockify does not back up its volume.", needsDomain: false, inputs: [],
+    firstRun: "It asks you to create the first account. Do that before you share the address. Its volume has no backup until you turn on a schedule on its Backups tab.", needsDomain: false, inputs: [],
     apps: [{ service: "memos", kind: "backend", image: "neosmemo/memos:26.11.0", managed: null, command: null, port: 5230, primary: true, volumes: [{ name: "data", path: "/var/opt/memos" }], memoryMb: 128, env: [] }],
   },
 ];

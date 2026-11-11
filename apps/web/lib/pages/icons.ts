@@ -20,7 +20,7 @@ export const getIcons = cache(async (): Promise<IconMap> => {
   if (process.env.DOCKIFY_API_URL) {
     // Icons are cosmetic: a slow or failed read gives every icon its default, never a broken layout.
     const r = await apiRequest<Partial<IconMap>>("/api/v1/icons", { timeoutMs: 5_000 });
-    return r.ok && r.data ? { apps: r.data.apps ?? {}, projects: r.data.projects ?? {} } : EMPTY_ICONS;
+    return r.ok && r.data ? { apps: r.data.apps ?? {}, projects: r.data.projects ?? {}, stock: r.data.stock ?? {} } : EMPTY_ICONS;
   }
   // The design preview draws a few fictional favicons; every other icon is its default.
   return isPreviewMode() ? previewIconMap() : EMPTY_ICONS;

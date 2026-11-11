@@ -9,7 +9,7 @@ export const memos: Template = {
   license: "MIT",
   homepage: "https://usememos.com",
   docs: "https://usememos.com/docs/installation/docker",
-  firstRun: "It asks you to create the first account. Do that before you share the address. Dockify does not back up its volume.",
+  firstRun: "It asks you to create the first account. Do that before you share the address. Its volume has no backup until you turn on a schedule on its Backups tab.",
   primary: "memos",
   memoryMb: {"memos": 128},
   secrets: {},

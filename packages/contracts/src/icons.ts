@@ -73,6 +73,8 @@ export type IconState = z.infer<typeof IconState>;
 export const IconMap = z.object({
   apps: z.record(Uuid, IconState),
   projects: z.record(Slug, IconState),
+  /** The published image of every app that runs one and is no managed service, so the console can say what it is. */
+  stock: z.record(Uuid, z.string()),
 });
 export type IconMap = z.infer<typeof IconMap>;
 

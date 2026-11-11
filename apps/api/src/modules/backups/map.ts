@@ -1,7 +1,7 @@
 // Database rows to contract shapes. Pure.
 import { iso, type backups as B } from "@dockify/contracts";
 import type { z } from "zod";
-import { bothTiers, DEFAULT_CRON, LOCAL_WARNING, localTierWarning, nextRun, primaryTier, tierOfType, type TierRow } from "./shared.ts";
+import { bothTiers, DEFAULT_CRON, isServiceKind, LOCAL_WARNING, localTierWarning, nextRun, primaryTier, tierOfType, type TierRow } from "./shared.ts";
 
 type BackupRun = z.infer<typeof B.BackupRun>;
 type BackupSchedule = z.infer<typeof B.BackupSchedule>;
@@ -21,6 +21,7 @@ export interface BackupRowIn {
   appId: string | null;
   sourceAppId: string;
   appSnapshot: unknown;
+  kind: "postgres" | "redis" | "volume" | "control_plane";
   trigger: "schedule" | "manual" | "pre_deploy" | "pre_update" | "pre_restore";
   status: "running" | "ready" | "failed";
   createdAt: Date;
@@ -76,11 +77,14 @@ const TEST: Record<BackupRowIn["restoreTestStatus"], BackupRun["restoreTest"]["s
 };
 
 export function toRun(b: BackupRowIn): BackupRun {
+  const volumes = b.kind === "volume";
+  const counted = b.restoreTestRows === null ? null : Number(b.restoreTestRows);
   return {
     id: b.id,
     scheduleId: b.trigger === "schedule" ? b.sourceAppId : null,
     resourceId: b.sourceAppId,
     database: { ...database(b.appSnapshot, b.appId === null ? (b.finishedAt ?? b.createdAt) : null), ...(b.app?.displayName ? { displayName: b.app.displayName } : {}) },
+    content: volumes ? "volumes" : "database",
     status: b.status,
     kind: KIND[b.trigger],
     createdAt: b.createdAt.toISOString(),
@@ -96,7 +100,9 @@ export function toRun(b: BackupRowIn): BackupRun {
       status: TEST[b.restoreTestStatus],
       testedAt: iso(b.restoreTestedAt),
       tables: b.restoreTestTables,
-      rows: b.restoreTestRows === null ? null : Number(b.restoreTestRows),
+      // The one stored count is files for volumes, rows for a database.
+      rows: volumes ? null : counted,
+      ...(volumes ? { files: counted } : {}),
       error: b.restoreTestError,
     },
     expired: b.expiredAt !== null,
@@ -119,6 +125,7 @@ export function limitSchedule(s: BackupSchedule): BackupSchedule {
 export interface ScheduleAppIn {
   id: string;
   name: string;
+  kind: string;
   displayName?: string | null;
   createdAt: Date;
   environment: { name: string; project: { slug: string } };
@@ -196,6 +203,7 @@ export function toSchedule(app: ScheduleAppIn, c: ScheduleContext, now = new Dat
     id: app.id,
     resourceId: app.id,
     database: { name: app.name, ...(app.displayName ? { displayName: app.displayName } : {}), projectSlug: app.environment.project.slug, environment: app.environment.name, deletedAt: null },
+    content: isServiceKind(app.kind) ? "database" : "volumes",
     cron: main.cron,
     timezone: main.timezone,
     retentionDays: approxRetentionDays(rows[main.tier], now),

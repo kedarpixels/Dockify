@@ -13,6 +13,7 @@ import { plural } from "@/lib/format";
 import { useUtcAt } from "@/lib/time-prefs";
 import type { BackupConfig, BackupRun, BackupSchedule, BackupTierSchedule, StorageProvider } from "@/lib/pages/server-backups";
 import { useCan } from "@/lib/viewer";
+import { heldNoun, isVolumes, listNoun } from "./history";
 import { Countdown } from "./live";
 import { lastOf, lastWord, TIER_LABEL, TIERS, tierWords } from "./tier-schedule";
 import { cronText, dbLabel, dbName } from "./util";
@@ -99,7 +100,7 @@ export function Schedules({
   return (
     <section className="card sb-sched" aria-labelledby="sb-sched-title">
       <div className="card-hd">
-        <CardTitle id="sb-sched-title" icon="calendar" title="Schedules" sub={`${on} of ${plural(schedules.length, "database")} on, times in UTC`} />
+        <CardTitle id="sb-sched-title" icon="calendar" title="Schedules" sub={`${on} of ${plural(schedules.length, listNoun(schedules))} on, times in UTC`} />
       </div>
       {local.length ? (
         <div className="bk-note-wrap">
@@ -121,7 +122,7 @@ export function Schedules({
             <b>Not off-server.</b> {local.map((s) => dbLabel(s.database)).join(", ")} {local.length === 1 ? "keeps its" : "keep their"} backups on this
             server only. If the disk fails, they go with it.{" "}
             {hasStorage
-              ? `Turn on the Offsite tier of ${local.length === 1 ? "this database" : "each"} with Edit to keep copies elsewhere.`
+              ? `Turn on the Offsite tier of ${local.length === 1 ? `this ${heldNoun(local[0]!)}` : "each"} with Edit to keep copies elsewhere.`
               : "Add S3 compatible storage in Settings, Integrations, then turn on the Offsite tier to keep copies elsewhere."}
           </Callout>
         </div>
@@ -131,7 +132,7 @@ export function Schedules({
           {schedules.map((s) => (
             <li key={s.id} className="sb-sched-row bk-sched-row" data-off={!s.enabled || undefined}>
               <IconTile size="sm" className="sb-sched-tile">
-                <Icon name="database" />
+                <Icon name={isVolumes(s) ? "folder" : "database"} />
               </IconTile>
               <span className="sb-sched-db two">
                 <span className="two-main">
@@ -211,7 +212,7 @@ export function StorageCard({ config, schedules, now }: { config: BackupConfig; 
                 </span>
               </span>
               <span className="bk-store-end two">
-                <span className="two-main num">{n ? plural(n, "database") : "Not used yet"}</span>
+                <span className="two-main num">{n ? plural(n, listNoun(schedules)) : "Not used yet"}</span>
                 {d.error ? (
                   <span className="two-sub tone-bad">{d.error}</span>
                 ) : (
@@ -234,7 +235,7 @@ export function StorageCard({ config, schedules, now }: { config: BackupConfig; 
               <span className="two-sub">Local disk, not off-server</span>
             </span>
             <span className="bk-store-end two">
-              <span className="two-main num">{plural(local, "database")}</span>
+              <span className="two-main num">{plural(local, listNoun(schedules))}</span>
               <span className="two-sub">Lost with the disk</span>
             </span>
           </li>
@@ -283,7 +284,7 @@ export function StorageCard({ config, schedules, now }: { config: BackupConfig; 
           <span className="two">
             <span className="two-main">Restore tests</span>
             <span className="two-sub">
-              {cronText(config.restoreTests.cron)} UTC, each database’s newest backup goes into a throwaway container
+              {cronText(config.restoreTests.cron)} UTC, the newest backup of each {listNoun(schedules)} goes into a throwaway container
             </span>
           </span>
           <span className="bk-store-end two">

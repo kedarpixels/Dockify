@@ -137,7 +137,8 @@ describe("icon schemas", () => {
 
   it("keys the map by app id and project slug", () => {
     const state = { choice: "auto", image: null, favicon: null };
-    expect(IconMap.safeParse({ apps: { "0f0e0d0c-0000-4000-8000-0000000000aa": state }, projects: { horseai: state } }).success).toBe(true);
-    expect(IconMap.safeParse({ apps: { "not-an-id": state }, projects: {} }).success).toBe(false);
+    expect(IconMap.safeParse({ apps: { "0f0e0d0c-0000-4000-8000-0000000000aa": state }, projects: { horseai: state }, stock: { "0f0e0d0c-0000-4000-8000-0000000000aa": "chrislusf/seaweedfs:4.52" } }).success).toBe(true);
+    expect(IconMap.safeParse({ apps: { "not-an-id": state }, projects: {}, stock: {} }).success).toBe(false);
+    expect(IconMap.safeParse({ apps: {}, projects: {}, stock: { "not-an-id": "redis:7" } }).success).toBe(false);
   });
 });

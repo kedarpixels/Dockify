@@ -1,7 +1,7 @@
 import { guardWrite, json, refuse } from "@/lib/http";
 import { deleteOrphans } from "@/lib/pages/server-backups";
 
-/** DELETE {}: every backup of a deleted database. The API refuses it while the database exists. Elevated. */
+/** DELETE {}: every backup of a deleted database or app. The API refuses it while the app exists. Elevated. */
 export async function DELETE(req: Request, { params }: { params: Promise<{ resourceId: string }> }) {
   const refused = guardWrite(req);
   if (refused) return refused;

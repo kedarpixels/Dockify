@@ -16,6 +16,12 @@ export const RESTORE_TEST_ROLE = "restore-test";
 const SCRATCH_PREFIX = "dockify-rt-";
 /** Within the dk- volume names the socket proxy lets the worker delete. */
 const SCRATCH_VOLUME_PREFIX = "dk-rt-";
+/** The helpers that read and fill an app's volumes (volume-backup.ts), named dockify-bk-<backup> and dockify-rs-<backup>. */
+export const BACKUP_HELPER_ROLE = "backup-helper";
+export const RESTORE_HELPER_ROLE = "restore-helper";
+export const BACKUP_HELPER_PREFIX = "dockify-bk-";
+export const RESTORE_HELPER_PREFIX = "dockify-rs-";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** The app name a restore test's credentials are made for, so also its database's name. */
 export const RESTORE_TEST_NAME = "restore_test";
 
@@ -40,6 +46,14 @@ export async function discardRestoreScratch(docker: DockerPort, backupId: string
 
 async function liveRestoreTest(db: Db, serverId: string, backupId: string, now: Date): Promise<boolean> {
   const open = await db.job.findFirst({ where: { kind: "restore_test", ...appsHere(serverId), dedupeKey: `restore-test:${backupId}`, completedAt: null, failedAt: null, lockedUntil: { gt: now } }, select: { id: true } });
+  return !!open;
+}
+
+/** A volume helper is in use while its backup row still runs, or its restore job is held by a worker. */
+async function liveVolumeHelper(db: Db, serverId: string, role: string, backupId: string, now: Date): Promise<boolean> {
+  if (!UUID.test(backupId)) return false;
+  if (role === BACKUP_HELPER_ROLE) return !!(await db.backup.findFirst({ where: { id: backupId, status: "running" }, select: { id: true } }));
+  const open = await db.job.findFirst({ where: { kind: "restore", ...appsHere(serverId), payload: { path: ["backupId"], equals: backupId }, completedAt: null, failedAt: null, lockedUntil: { gt: now } }, select: { id: true } });
   return !!open;
 }
 
@@ -110,6 +124,15 @@ export async function sweepLeftovers(deps: LeftoverDeps): Promise<LeftoverReport
     const name = c.names.find(isRestoreTestContainer);
     if (name && (await liveRestoreTest(db, serverId, name.slice(SCRATCH_PREFIX.length), now))) continue;
     await docker.remove(c.id, { volumes: true }).then(() => report.scratchContainers++, fail("a restore test container"));
+  }
+
+  // A volume helper a dead worker left: it holds an app's volumes mounted, so it goes once nothing uses it.
+  for (const [role, prefix] of [[BACKUP_HELPER_ROLE, BACKUP_HELPER_PREFIX], [RESTORE_HELPER_ROLE, RESTORE_HELPER_PREFIX]] as const) {
+    for (const c of await docker.list({ [LABEL_ROLE]: role })) {
+      const name = c.names.find((n) => n.startsWith(prefix));
+      if (name && (await liveVolumeHelper(db, serverId, role, name.slice(prefix.length), now))) continue;
+      await docker.remove(c.id, { volumes: true }).then(() => report.scratchContainers++, fail("a volume backup helper"));
+    }
   }
 
   const volumes = await deps.volumes();

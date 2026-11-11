@@ -16,6 +16,7 @@ A template is a small file reviewed into Dockify's own repository and shipped wi
 - **Same rules as your apps.** Each one goes through the same [Compose import](/docs/sources#compose-import) checks. It cannot ask for privileged mode, capabilities, host paths or the Docker socket.
 - **Secrets.** Each is generated for your install and sealed in the secret store. You can reveal them on the app's **Variables** tab. No template ships a known password.
 - **Databases.** A Postgres or Redis a template asks for is a managed service, linked to the app and backed up on the schedule you set.
+- **Volumes.** A template's own volume, where its files live, has a backup schedule on the app's **Backups** tab, off until you turn it on. See [Backups and restore](/docs/backups).
 - **Images.** Each is pinned by tag. The first pull records the digest, and a redeploy runs that digest until you change the image.
 - **Order.** Services deploy first, then the other containers, then the routed app.
 
@@ -53,7 +54,7 @@ Many apps let the first visitor create the admin account, as their docs describe
 
 Each app's own license applies to you as its operator. Some are not open source, and the table says so.
 
-The ntfy and Uptime Kuma icons are from [Simple Icons](https://simple-icons.org) under CC0; the others show a plain box. Each mark stays its owner's trademark.
+The ntfy and Uptime Kuma icons are from [Simple Icons](https://simple-icons.org) under CC0; the others show a plain box. Each mark stays its owner's trademark. Once deployed, each app is named and drawn for what it is, such as Storage or Monitoring: see [App kinds](/docs/projects-and-apps#app-kinds).
 
 ## What can go wrong
 

@@ -16,9 +16,9 @@ import type { ContainerState, DockerPort, ExecHandle } from "./docker-port.ts";
 import { backupKeyFingerprint, DecryptStream } from "./envelope.ts";
 import { escrowObjectKey } from "./key-escrow.ts";
 import { DATA_JOB_LIMITS_MS, dataJobHandlers } from "./handlers.ts";
-import { HashCount, runBackup, runRestore, runRestoreTest } from "./pipeline.ts";
+import { fetchVerified, HashCount, runBackup, runRestore, runRestoreTest } from "./pipeline.ts";
 import type { RedisConn, RespValue } from "./resp.ts";
-import { applyRetention, recoverQuiesced } from "./scheduler.ts";
+import { applyRetention, recoverQuiesced, releaseStuckHolds } from "./scheduler.ts";
 import { settleAbandonedUpgrades } from "./upgrade.ts";
 import { LocalStore, S3Store, signRequest, type S3Config } from "./store.ts";
 import { createServer, type Server } from "node:http";
@@ -28,7 +28,8 @@ import type { AddressInfo } from "node:net";
 
 type Row = Record<string, any>;
 
-function fakeDb(seed: { apps: Row[]; backups?: Row[]; jobs?: Row[] }) {
+function fakeDb(seed: { apps: Row[]; backups?: Row[]; jobs?: Row[]; deployments?: Row[] }) {
+  const deployments: Row[] = seed.deployments ?? [];
   const apps = new Map(seed.apps.map((a) => [a.id, a]));
   const backups = new Map((seed.backups ?? []).map((b) => [b.id, b]));
   const jobs = new Map((seed.jobs ?? []).map((j) => [j.id, j]));
@@ -38,7 +39,7 @@ function fakeDb(seed: { apps: Row[]; backups?: Row[]; jobs?: Row[] }) {
   const matches = (row: Row, where: Row) =>
     Object.entries(where).every(([k, v]) => {
       if (v && typeof v === "object" && "in" in v) return (v.in as unknown[]).includes(row[k]);
-      if (v && typeof v === "object" && "not" in v) return row[k] !== v.not;
+      if (v && typeof v === "object" && "not" in v) return (row[k] ?? null) !== v.not;
       if (v && typeof v === "object" && "lt" in v) return row[k] && row[k] < v.lt;
       if (v && typeof v === "object" && "gt" in v) return row[k] && row[k] > v.gt;
       return row[k] === v;
@@ -48,7 +49,13 @@ function fakeDb(seed: { apps: Row[]; backups?: Row[]; jobs?: Row[] }) {
       findUnique: async ({ where }: Row) => apps.get(where.id) ?? null,
       findMany: async ({ where }: Row) => [...apps.values()].filter((a) => matches(a, where)),
       update: async ({ where, data }: Row) => Object.assign(apps.get(where.id)!, data),
+      updateMany: async ({ where, data }: Row) => {
+        const hit = [...apps.values()].filter((a) => matches(a, where));
+        for (const a of hit) Object.assign(a, data);
+        return { count: hit.length };
+      },
     },
+    deployment: { findFirst: async ({ where }: Row) => deployments.find((d) => d.appId === where.appId && where.status.in.includes(d.status)) ?? null },
     backupSchedule: {
       updateMany: async ({ where, data }: Row) => {
         schedules.push({ appId: where.appId, tier: where.tier, ...data });
@@ -78,11 +85,14 @@ function fakeDb(seed: { apps: Row[]; backups?: Row[]; jobs?: Row[] }) {
         return Object.assign(jobs.get(where.id) ?? {}, data);
       },
       findMany: async ({ where }: Row) => [...jobs.values()].filter((j) => j.kind === where.kind),
+      findFirst: async ({ where }: Row) => [...jobs.values()].find((j) => (where.dedupeKey?.in ?? [where.dedupeKey]).includes(j.dedupeKey) && !j.completedAt && !j.failedAt) ?? null,
+      findUnique: async ({ where }: Row) => jobs.get(where.id) ?? null,
     },
     activityLog: { create: async ({ data }: Row) => activity.push(data) },
-    $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
+    $executeRaw: async () => 0,
+    $transaction: async (ops: Promise<unknown>[] | ((tx: unknown) => Promise<unknown>)) => (typeof ops === "function" ? ops(db) : Promise.all(ops)),
   };
-  return { db: db as unknown as Db, apps, backups, jobs, log, activity, schedules };
+  return { db: db as unknown as Db, apps, backups, jobs, log, activity, schedules, deployments };
 }
 
 interface ExecPlan {
@@ -959,5 +969,583 @@ describe("redis browser", () => {
     const r = await scanKeys(conn, "*", 10);
     expect(r).toEqual({ keys: [{ key: "a", type: "string", ttlSeconds: 2, sizeBytes: 64 }, { key: "b", type: "hash", ttlSeconds: null, sizeBytes: 64 }], total: 2, truncated: false });
     expect(sent.some((c) => c[0] === "KEYS")).toBe(false);
+  });
+});
+
+// --------------------------------------------------------------------------------- an app's volumes
+
+function tarHeader(name: string, type: string, size = 0): Buffer {
+  const h = Buffer.alloc(512);
+  h.write(name, 0, 100, "utf8");
+  h.write(size.toString(8).padStart(11, "0") + "\0", 124);
+  h.write(type, 156);
+  h.write("ustar\0", 257);
+  return h;
+}
+const tarFile = (name: string, body: string) => {
+  const pad = Buffer.alloc(Math.ceil(body.length / 512) * 512);
+  pad.write(body);
+  return Buffer.concat([tarHeader(name, "0", body.length), pad]);
+};
+const archive = (...entries: Buffer[]) => Buffer.concat([...entries, Buffer.alloc(1024)]);
+
+describe("an app's volumes", () => {
+  const UPLOADS = "dk-0f0e0d0c0000-uploads";
+  const CACHE = "dk-0f0e0d0c0000-cache";
+  /** Two folders and two files: four paths come out of it. */
+  const TAR = archive(tarHeader(`${UPLOADS}/`, "5"), tarFile(`${UPLOADS}/a.png`, "png-bytes"), tarHeader(`${CACHE}/`, "5"), tarFile(`${CACHE}/k`, "v"));
+
+  const world = (over: { tar?: Buffer; tarExit?: number; count?: string } = {}) => {
+    const extracted: string[] = [];
+    const s = setup((cmd) => {
+      if (cmd[0] === "tar" && cmd.includes("--create")) return { stdout: over.tar ?? TAR, exitCode: over.tarExit ?? 0 };
+      if (cmd[0] === "sh" && cmd[2]!.includes("--extract")) return { onStdin: (data) => extracted.push(data) };
+      if (cmd[0] === "sh" && cmd[2]!.includes("wc -c")) return { stdout: over.count ?? "4\n" };
+      return undefined;
+    });
+    s.apps.get(WEB_APP)!.volumes = [{ name: UPLOADS }, { name: CACHE }];
+    return { s, extracted };
+  };
+  const take = async (s: ReturnType<typeof setup>) => {
+    const b = await s.db.backup.create({ data: { appId: WEB_APP, sourceAppId: WEB_APP, appSnapshot: { environmentId: ENV, kind: "backend" }, kind: "volume", trigger: "manual", destinationId: null } });
+    await runBackup(s.deps, b.id).catch(() => {});
+    return s.backups.get(b.id)!;
+  };
+
+  it("are read live by a helper that mounts them read-only, and stored like any dump", async () => {
+    const { s } = world();
+    const b = await take(s);
+    expect(b.status).toBe("ready");
+    expect(b.objectKey).toMatch(/\.tar\.gz\.dkbk$/);
+    expect(b.encrypted).toBe(true);
+    const blob = await readFile(join(dir, "store", b.objectKey));
+    expect(blob.includes(Buffer.from("png-bytes"))).toBe(false);
+
+    const spec = s.specs.get(`dockify-bk-${b.id}`)!;
+    expect(spec.Image).toBe(IMAGE_ID);
+    expect(spec.HostConfig.Mounts).toEqual([
+      { Type: "volume", Source: UPLOADS, Target: `/v/${UPLOADS}`, ReadOnly: true },
+      { Type: "volume", Source: CACHE, Target: `/v/${CACHE}`, ReadOnly: true },
+    ]);
+    expect(spec.HostConfig.NetworkMode).toBe("dockify-helpers");
+    expect(spec.HostConfig.ReadonlyRootfs).toBe(true);
+    expect(spec.Labels).toMatchObject({ "dockify.role": "backup-helper", "dockify.app": WEB_APP, "dockify.backup": b.id });
+    // The helper is gone, and the app was never stopped: a CDN keeps serving through its backup.
+    expect(s.containers.has(`dockify-bk-${b.id}`)).toBe(false);
+    expect(s.log.some((l) => l.startsWith("stop:"))).toBe(false);
+    expect(s.containers.get(`dk-${WEB_APP}`)!.running).toBe(true);
+    // The helper image comes by its digest, never by a tag.
+    expect(s.log.filter((l) => l.startsWith("pull:"))).toEqual([expect.stringMatching(/^pull:debian@sha256:[0-9a-f]{64}$/)]);
+  });
+
+  it("need no running app: the helper mounts the volumes of a stopped one", async () => {
+    const { s } = world();
+    s.containers.delete(`dk-${WEB_APP}`);
+    expect((await take(s)).status).toBe("ready");
+  });
+
+  it("a file that changed while tar read it is a good backup, with a note; a real tar failure is not", async () => {
+    const live = world({ tarExit: 1 });
+    expect((await take(live.s)).status).toBe("ready");
+    expect(live.s.activity.at(-1)).toMatchObject({ action: "backup.run", failed: false, targetId: WEB_APP });
+    expect(live.s.activity.at(-1)!.suffix).toMatch(/changed while they were read/);
+
+    const broken = world({ tarExit: 2 });
+    const b = await take(broken.s);
+    expect(b.status).toBe("failed");
+    expect(b.error).toMatch(/tar exited with code 2/);
+    expect(broken.s.containers.has(`dockify-bk-${b.id}`)).toBe(false);
+  });
+
+  it("a volume holding what a restore would refuse fails as a backup, not later as a restore", async () => {
+    const { s } = world({ tar: archive(tarHeader(`${UPLOADS}/`, "5"), tarHeader(`${UPLOADS}/sda`, "4")) });
+    const b = await take(s);
+    expect(b.status).toBe("failed");
+    expect(b.error).toMatch(/a device/);
+  });
+
+  it("an app with no volume of its own is refused", async () => {
+    const { s } = world();
+    s.apps.get(WEB_APP)!.volumes = [];
+    const b = await take(s);
+    expect(b.status).toBe("failed");
+    expect(b.error).toMatch(/no volume of its own/);
+  });
+
+  it("restore: verified first, a dump of what it replaces, the app stopped, volumes emptied and filled, the app started", async () => {
+    const { s, extracted } = world();
+    const b = await take(s);
+    s.log.length = 0;
+    await runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP });
+
+    const recorded = s.log.findIndex((l) => l.startsWith("job.update:") && l.includes(WEB_APP));
+    const stop = s.log.indexOf(`stop:dk-${WEB_APP}`);
+    const pre = s.log.indexOf("backup.create:pre_restore");
+    const marked = s.log.findIndex((l, i) => i > pre && l.startsWith("job.update:"));
+    const fill = s.log.indexOf(`exec:dockify-rs-${b.id}:sh`);
+    const start = s.log.lastIndexOf(`start:dk-${WEB_APP}`);
+    // Stopped first, so the pre-restore backup misses no write; the emptying is on the job before it begins.
+    expect(recorded).toBeGreaterThanOrEqual(0);
+    expect(stop).toBeGreaterThan(recorded);
+    expect(pre).toBeGreaterThan(stop);
+    expect(marked).toBeGreaterThan(pre);
+    expect(fill).toBeGreaterThan(marked);
+    expect(start).toBeGreaterThan(fill);
+    expect(s.jobs.get("job-1")!.payload).toMatchObject({ preRestoreBackupId: expect.any(String), emptiedAt: expect.any(String) });
+    expect(s.jobs.get("job-1")!.payload.leftStopped).toBeUndefined();
+    // The hold on deploys and starts is over.
+    expect(s.apps.get(WEB_APP)!.quiescedByJobId).toBeNull();
+    // Only this app is stopped, never the database beside it.
+    expect(s.log).not.toContain(`stop:dk-${DB_APP}`);
+
+    const spec = s.specs.get(`dockify-rs-${b.id}`)!;
+    expect(spec.HostConfig.Mounts.map((m) => [m.Source, m.Target, m.ReadOnly])).toEqual([[UPLOADS, `/v/${UPLOADS}`, false], [CACHE, `/v/${CACHE}`, false]]);
+    expect(spec.Labels).toMatchObject({ "dockify.role": "restore-helper" });
+    expect(s.containers.has(`dockify-rs-${b.id}`)).toBe(false);
+    expect(extracted.at(-1)).toContain("png-bytes");
+    expect(s.jobs.get("job-1")!.payload.resumedAt).toBeTruthy();
+    expect(s.activity.at(-1)).toMatchObject({ failed: false, verb: "restored a backup over the volumes of" });
+  });
+
+  it("restore refuses an archive naming a volume the app no longer has, before anything is stopped or emptied", async () => {
+    const { s, extracted } = world();
+    const b = await take(s);
+    s.apps.get(WEB_APP)!.volumes = [{ name: UPLOADS }];
+    s.log.length = 0;
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP })).rejects.toThrow(new RegExp(`${CACHE}, which web no longer has`));
+    expect(s.log.some((l) => l.startsWith("stop:") || l.startsWith("create:"))).toBe(false);
+    expect(extracted).toEqual([]);
+    expect(s.activity.at(-1)!.failed).toBe(true);
+  });
+
+  it("restore fills only the volumes the archive holds, and leaves one added since alone", async () => {
+    const { s } = world();
+    const b = await take(s);
+    s.apps.get(WEB_APP)!.volumes.push({ name: "dk-0f0e0d0c0000-new" });
+    await runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP });
+    expect(s.specs.get(`dockify-rs-${b.id}`)!.HostConfig.Mounts.map((m) => m.Source)).toEqual([UPLOADS, CACHE]);
+  });
+
+  it("restore is only over the app the backup came from, never into a new one or another app", async () => {
+    const { s } = world();
+    const b = await take(s);
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "new", targetAppId: WEB_APP })).rejects.toThrow(/not into a new one/);
+    const other = randomUUID();
+    s.apps.set(other, { id: other, name: "other", kind: "backend", environmentId: ENV, volumes: [{ name: UPLOADS }] });
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: other })).rejects.toThrow(/only over the app it came from/);
+  });
+
+  it("restore refuses a tampered archive before the app is stopped", async () => {
+    const { s } = world();
+    const b = await take(s);
+    const path = join(dir, "store", b.objectKey);
+    const blob = await readFile(path);
+    blob[blob.length - 20]! ^= 0xff;
+    await writeFile(path, blob);
+    s.log.length = 0;
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP })).rejects.toThrow(/checksum/);
+    expect(s.log.some((l) => l.startsWith("stop:"))).toBe(false);
+  });
+
+  const failExtract = (s: ReturnType<typeof setup>) => {
+    const exec = s.deps.docker.exec;
+    s.deps.docker.exec = async (id, o) => {
+      if (o.cmd[0] === "sh" && o.cmd[2]!.includes("--extract")) throw new Error("the daemon went away");
+      return exec(id, o);
+    };
+  };
+
+  it("a restore that fails after the volumes were emptied leaves the app stopped, and says which backup to restore", async () => {
+    const { s } = world();
+    const b = await take(s);
+    failExtract(s);
+    s.log.length = 0;
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP })).rejects.toThrow(/daemon went away/);
+    // Never started on empty or half filled volumes, and reconcile will not start it either.
+    expect(s.log).toContain(`stop:dk-${WEB_APP}`);
+    expect(s.log).not.toContain(`start:dk-${WEB_APP}`);
+    expect(s.apps.get(WEB_APP)).toMatchObject({ desiredState: "stopped", quiescedByJobId: null });
+    expect(s.jobs.get("job-1")!.payload).toMatchObject({ leftStopped: true, emptiedAt: expect.any(String) });
+    const note = s.activity.at(-1)!;
+    expect(note).toMatchObject({ failed: true, targetId: WEB_APP, verb: "left stopped on purpose, after a failed restore of the volumes of" });
+    expect(note.suffix).toMatch(/Restore the pre-restore backup from \d{4}-\d\d-\d\d \d\d:\d\d UTC, then start the app\./);
+    expect([...s.backups.values()].filter((x) => x.trigger === "pre_restore" && x.status === "ready")).toHaveLength(1);
+    expect(s.containers.has(`dockify-rs-${b.id}`)).toBe(false);
+    // Recovery finds the job settled and starts nothing.
+    s.jobs.get("job-1")!.failedAt = new Date();
+    s.deps.db.job.findMany = (async () => [s.jobs.get("job-1")]) as never;
+    s.log.length = 0;
+    await recoverQuiesced(s.deps, new Date(), "s1");
+    expect(s.log.some((l) => l.startsWith("start:"))).toBe(false);
+  });
+
+  it("a worker that died after the emptying began: recovery leaves the app stopped; one that died before starts it", async () => {
+    const dead = world();
+    dead.s.apps.get(WEB_APP)!.quiescedByJobId = "job-1";
+    dead.s.containers.get(`dk-${WEB_APP}`)!.running = false;
+    Object.assign(dead.s.jobs.get("job-1")!, { payload: { backupId: randomUUID(), mode: "replace", targetAppId: WEB_APP, quiesced: [WEB_APP], emptiedAt: new Date().toISOString() }, attempts: 1, maxAttempts: 1, lockedUntil: new Date(Date.now() - 60_000), createdAt: new Date() });
+    dead.s.deps.db.job.findMany = (async () => [dead.s.jobs.get("job-1")]) as never;
+    expect(await recoverQuiesced(dead.s.deps, new Date(), "s1")).toBe(1);
+    expect(dead.s.log.some((l) => l.startsWith("start:"))).toBe(false);
+    expect(dead.s.apps.get(WEB_APP)).toMatchObject({ desiredState: "stopped", quiescedByJobId: null });
+    expect(dead.s.jobs.get("job-1")!.lastError).toMatch(/left stopped on purpose/);
+    expect(dead.s.activity.at(-1)!.suffix).toMatch(/Restore the backup taken just before this restore, then start the app/);
+
+    const early = world();
+    early.s.apps.get(WEB_APP)!.quiescedByJobId = "job-1";
+    early.s.containers.get(`dk-${WEB_APP}`)!.running = false;
+    Object.assign(early.s.jobs.get("job-1")!, { payload: { backupId: randomUUID(), mode: "replace", targetAppId: WEB_APP, quiesced: [WEB_APP] }, attempts: 1, maxAttempts: 1, lockedUntil: new Date(Date.now() - 60_000), createdAt: new Date() });
+    early.s.deps.db.job.findMany = (async () => [early.s.jobs.get("job-1")]) as never;
+    await recoverQuiesced(early.s.deps, new Date(), "s1");
+    expect(early.s.log).toContain(`start:dk-${WEB_APP}`);
+    expect(early.s.apps.get(WEB_APP)).toMatchObject({ desiredState: "running", quiescedByJobId: null });
+  });
+
+  it("a pre-restore backup that fails starts the app again on its untouched volumes, and nothing is emptied", async () => {
+    const { s, extracted } = world();
+    const b = await take(s);
+    const exec = s.deps.docker.exec;
+    s.deps.docker.exec = async (id, o) => {
+      if (o.cmd[0] === "tar") throw new Error("no helper today");
+      return exec(id, o);
+    };
+    s.log.length = 0;
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP })).rejects.toThrow(/no helper today/);
+    expect(s.log.lastIndexOf(`start:dk-${WEB_APP}`)).toBeGreaterThan(s.log.indexOf(`stop:dk-${WEB_APP}`));
+    expect(s.log).not.toContain(`create:dockify-rs-${b.id}`);
+    expect(extracted).toEqual([]);
+    expect(s.apps.get(WEB_APP)).toMatchObject({ desiredState: "running", quiescedByJobId: null });
+    expect(s.jobs.get("job-1")!.payload.emptiedAt).toBeUndefined();
+  });
+
+  it("holds the app against deploys and starts while it runs, and is refused while a deploy of it is open", async () => {
+    const { s } = world();
+    const b = await take(s);
+    let during: unknown = "unset";
+    const exec = s.deps.docker.exec;
+    s.deps.docker.exec = async (id, o) => {
+      if (o.cmd[0] === "sh" && o.cmd[2]!.includes("--extract")) during = s.apps.get(WEB_APP)!.quiescedByJobId;
+      return exec(id, o);
+    };
+    const promoted: string[] = [];
+    s.deps.promotePending = async (id) => void promoted.push(id);
+    await runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP });
+    expect(during).toBe("job-1");
+    expect(s.apps.get(WEB_APP)!.quiescedByJobId).toBeNull();
+    // A push that arrived meanwhile deploys once the hold ends.
+    expect(promoted).toEqual([WEB_APP]);
+
+    s.deployments.push({ appId: WEB_APP, status: "building" });
+    s.log.length = 0;
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP })).rejects.toThrow(/A deployment or a start of web is in progress/);
+    expect(s.log.some((l) => l.startsWith("stop:") || l.startsWith("create:"))).toBe(false);
+    expect(s.apps.get(WEB_APP)!.quiescedByJobId).toBeNull();
+  });
+
+  it("a stopped app is held too, stays stopped, and its hold ends with the restore", async () => {
+    const { s } = world();
+    const b = await take(s);
+    s.containers.get(`dk-${WEB_APP}`)!.running = false;
+    s.apps.get(WEB_APP)!.desiredState = "stopped";
+    let during: unknown = "unset";
+    const exec = s.deps.docker.exec;
+    s.deps.docker.exec = async (id, o) => {
+      if (o.cmd[0] === "sh" && o.cmd[2]!.includes("--extract")) during = s.apps.get(WEB_APP)!.quiescedByJobId;
+      return exec(id, o);
+    };
+    s.log.length = 0;
+    await runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP });
+    expect(during).toBe("job-1");
+    expect(s.log.some((l) => l === `start:dk-${WEB_APP}` || l === `stop:dk-${WEB_APP}`)).toBe(false);
+    expect(s.apps.get(WEB_APP)).toMatchObject({ desiredState: "stopped", quiescedByJobId: null });
+  });
+
+  it("a database restore holds the apps it stops the same way, and frees them after", async () => {
+    const s = setup();
+    const b = await backedUp(s);
+    let during: unknown = "unset";
+    const exec = s.deps.docker.exec;
+    s.deps.docker.exec = async (id, o) => {
+      if (o.cmd[0] === "psql") during = s.apps.get(WEB_APP)!.quiescedByJobId;
+      return exec(id, o);
+    };
+    await runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: DB_APP });
+    expect(during).toBe("job-1");
+    expect(s.apps.get(WEB_APP)!.quiescedByJobId).toBeNull();
+  });
+
+  it("puts the setgid bit back on folders and files after extracting, as each one's own group", async () => {
+    const shared = tarHeader(`${UPLOADS}/shared/`, "5");
+    shared.write("0002750\0", 100);
+    shared.write("0001750\0", 116);
+    const tool = tarFile(`${UPLOADS}/shared/tool`, "x");
+    tool.write("0002755\0", 100);
+    tool.write("0000144\0", 116);
+    const fed: string[] = [];
+    const s = setup((cmd) => {
+      if (cmd[0] === "tar" && cmd.includes("--create")) return { stdout: archive(tarHeader(`${UPLOADS}/`, "5"), shared, tool) };
+      if (cmd[0] === "xargs") return { onStdin: (data) => fed.push(data) };
+      if (cmd[0] === "sh") return { onStdin: () => {} };
+      return undefined;
+    });
+    s.apps.get(WEB_APP)!.volumes = [{ name: UPLOADS }];
+    const b = await take(s);
+    s.log.length = 0;
+    await runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP });
+    expect(fed).toEqual([`1000\x00${UPLOADS}/shared/\x00100\x00${UPLOADS}/shared/tool\x00`]);
+    // After the files are in, in the same helper, before the app starts.
+    const fill = s.log.indexOf(`exec:dockify-rs-${b.id}:sh`);
+    const bits = s.log.indexOf(`exec:dockify-rs-${b.id}:xargs`);
+    expect(bits).toBeGreaterThan(fill);
+    expect(s.log.lastIndexOf(`start:dk-${WEB_APP}`)).toBeGreaterThan(bits);
+    expect(s.activity.at(-1)).toMatchObject({ failed: false, suffix: null });
+  });
+
+  it("a setgid pass that fails is noted on the restore, which still succeeds: every file is back", async () => {
+    const shared = tarHeader(`${UPLOADS}/shared/`, "5");
+    shared.write("0002750\0", 100);
+    shared.write("0001750\0", 116);
+    const s = setup((cmd) => {
+      if (cmd[0] === "tar" && cmd.includes("--create")) return { stdout: archive(tarHeader(`${UPLOADS}/`, "5"), shared) };
+      if (cmd[0] === "xargs") return { onStdin: () => {}, exitCode: 123 };
+      if (cmd[0] === "sh") return { onStdin: () => {} };
+      return undefined;
+    });
+    s.apps.get(WEB_APP)!.volumes = [{ name: UPLOADS }];
+    const b = await take(s);
+    await runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP });
+    expect(s.activity.at(-1)).toMatchObject({ failed: false, verb: "restored a backup over the volumes of" });
+    expect(s.activity.at(-1)!.suffix).toMatch(/Every file is back, but the setgid bit could not be set again/);
+    expect(s.apps.get(WEB_APP)).toMatchObject({ desiredState: "running", quiescedByJobId: null });
+    expect(s.containers.get(`dk-${WEB_APP}`)!.running).toBe(true);
+  });
+
+  it("a restore that got every file back but could not start the app is a success: recovery retries the start and never stops it", async () => {
+    const { s } = world();
+    const b = await take(s);
+    const start = s.deps.docker.start;
+    let refuse = true;
+    s.deps.docker.start = async (id) => {
+      if (refuse && id === `dk-${WEB_APP}`) throw Object.assign(new Error("port is already allocated"), { status: 500 });
+      return start(id);
+    };
+    await runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP });
+    const p = s.jobs.get("job-1")!.payload;
+    expect(p).toMatchObject({ emptiedAt: expect.any(String), restoredAt: expect.any(String) });
+    expect(p.resumedAt).toBeUndefined();
+    expect(p.leftStopped).toBeUndefined();
+    expect(s.activity.at(-1)).toMatchObject({ failed: true, verb: "could not start the app again after the restore of the volumes of", suffix: "The files were restored. Only the start failed, and it is retried each minute." });
+    // The hold is over even so: a deploy may be what brings it up.
+    expect(s.apps.get(WEB_APP)).toMatchObject({ desiredState: "running", quiescedByJobId: null });
+
+    s.jobs.get("job-1")!.completedAt = new Date();
+    s.deps.db.job.findMany = (async () => [s.jobs.get("job-1")]) as never;
+    await recoverQuiesced(s.deps, new Date(), "s1");
+    expect(s.apps.get(WEB_APP)!.desiredState).toBe("running");
+    expect(s.activity.some((a) => String(a.verb).startsWith("left stopped"))).toBe(false);
+    refuse = false;
+    await recoverQuiesced(s.deps, new Date(), "s1");
+    expect(s.containers.get(`dk-${WEB_APP}`)!.running).toBe(true);
+    expect(s.jobs.get("job-1")!.payload.resumedAt).toBeTruthy();
+  });
+
+  it("the hold outlasts the start and ends with the job's own record, so nothing slips between", async () => {
+    const { s } = world();
+    const b = await take(s);
+    let atStart: unknown = "unset";
+    const start = s.deps.docker.start;
+    s.deps.docker.start = async (id) => {
+      if (id === `dk-${WEB_APP}`) atStart = s.apps.get(WEB_APP)!.quiescedByJobId;
+      return start(id);
+    };
+    await runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP });
+    expect(atStart).toBe("job-1");
+    expect(s.apps.get(WEB_APP)!.quiescedByJobId).toBeNull();
+    expect(s.jobs.get("job-1")!.payload.resumedAt).toBeTruthy();
+  });
+
+  it("recovery of a dead restore never starts an app another restore holds by now", async () => {
+    const { s } = world();
+    s.containers.get(`dk-${WEB_APP}`)!.running = false;
+    s.apps.get(WEB_APP)!.quiescedByJobId = "job-9";
+    Object.assign(s.jobs.get("job-1")!, { payload: { backupId: randomUUID(), mode: "replace", targetAppId: DB_APP, quiesced: [WEB_APP] }, attempts: 1, maxAttempts: 1, failedAt: new Date() });
+    s.deps.db.job.findMany = (async () => [s.jobs.get("job-1")]) as never;
+    await recoverQuiesced(s.deps, new Date(), "s1");
+    expect(s.log).not.toContain(`start:dk-${WEB_APP}`);
+    expect(s.apps.get(WEB_APP)!.quiescedByJobId).toBe("job-9");
+  });
+
+  it("a restore is refused while a start of the app is queued, or while another restore holds it", async () => {
+    const { s } = world();
+    const b = await take(s);
+    s.jobs.set("power", { id: "power", kind: "app_power", dedupeKey: `app.power:${WEB_APP}:start` });
+    s.log.length = 0;
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP })).rejects.toThrow(/A deployment or a start of web is in progress/);
+    s.jobs.delete("power");
+    s.apps.get(WEB_APP)!.quiescedByJobId = "job-9";
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP })).rejects.toThrow(/Another restore is holding web/);
+    expect(s.log.some((l) => l.startsWith("stop:") || l.startsWith("create:dockify-rs"))).toBe(false);
+    expect(s.apps.get(WEB_APP)!.quiescedByJobId).toBe("job-9");
+  });
+
+  it("a database restore is refused while an app it would stop is deploying, and names it", async () => {
+    const s = setup();
+    const b = await backedUp(s);
+    s.deployments.push({ appId: WEB_APP, status: "building" });
+    s.log.length = 0;
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: DB_APP })).rejects.toThrow("A deployment or a start of web is in progress. Restore when it has finished.");
+    expect(s.log.some((l) => l.startsWith("stop:"))).toBe(false);
+    expect(s.restored).toEqual([]);
+    expect(s.apps.get(WEB_APP)!.quiescedByJobId ?? null).toBeNull();
+  });
+
+  it("an app left stopped keeps a push that arrived meanwhile, and Activity says it waits for a start", async () => {
+    const { s } = world();
+    const b = await take(s);
+    failExtract(s);
+    s.apps.get(WEB_APP)!.pendingDeployAt = new Date();
+    const promoted: string[] = [];
+    s.deps.promotePending = async (id) => void promoted.push(id);
+    await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP })).rejects.toThrow();
+    expect(promoted).toEqual([]);
+    expect(s.apps.get(WEB_APP)!.pendingDeployAt).toBeInstanceOf(Date);
+    expect(s.activity.at(-1)).toMatchObject({ failed: false, verb: "is holding a push that arrived during the restore of", suffix: "It deploys when the app is started." });
+  });
+
+  describe("a hold that outlived its restore is ended from the app's own row, with no age limit", () => {
+    const old = new Date("2026-01-01T00:00:00Z");
+    const stuck = (job: Row | null) => {
+      const { s } = world();
+      Object.assign(s.apps.get(WEB_APP)!, { quiescedByJobId: "job-1", serverId: "s1" });
+      s.containers.get(`dk-${WEB_APP}`)!.running = false;
+      if (job) Object.assign(s.jobs.get("job-1")!, { attempts: 1, maxAttempts: 1, createdAt: old, ...job });
+      else s.jobs.delete("job-1");
+      return s;
+    };
+    const base = { backupId: randomUUID(), mode: "replace", targetAppId: WEB_APP, quiesced: [WEB_APP] };
+
+    it("the job is gone: the hold is released, nothing is started, and Activity says to check it", async () => {
+      const s = stuck(null);
+      expect(await releaseStuckHolds(s.deps, new Date(), "s1")).toBe(1);
+      expect(s.apps.get(WEB_APP)).toMatchObject({ quiescedByJobId: null, desiredState: "running" });
+      expect(s.log.some((l) => l.startsWith("start:"))).toBe(false);
+      expect(s.activity.at(-1)).toMatchObject({ failed: true, targetId: WEB_APP, verb: "released a restore's hold that nothing was left to end, on" });
+    });
+
+    it("a months old job that failed before the emptying: the app is started and freed", async () => {
+      const s = stuck({ failedAt: old, payload: base });
+      await releaseStuckHolds(s.deps, new Date(), "s1");
+      expect(s.log).toContain(`start:dk-${WEB_APP}`);
+      expect(s.apps.get(WEB_APP)!.quiescedByJobId).toBeNull();
+    });
+
+    it("one that died after the emptying and short of the last file: left stopped, not started", async () => {
+      const s = stuck({ lockedUntil: old, payload: { ...base, emptiedAt: old.toISOString() } });
+      await releaseStuckHolds(s.deps, new Date(), "s1");
+      expect(s.log.some((l) => l.startsWith("start:"))).toBe(false);
+      expect(s.apps.get(WEB_APP)).toMatchObject({ quiescedByJobId: null, desiredState: "stopped" });
+    });
+
+    it("one that had every file back: started, never left stopped", async () => {
+      const s = stuck({ completedAt: old, payload: { ...base, emptiedAt: old.toISOString(), restoredAt: old.toISOString() } });
+      await releaseStuckHolds(s.deps, new Date(), "s1");
+      expect(s.log).toContain(`start:dk-${WEB_APP}`);
+      expect(s.apps.get(WEB_APP)).toMatchObject({ quiescedByJobId: null, desiredState: "running" });
+    });
+
+    it("a job already marked resumed whose hold stayed: released as it is", async () => {
+      const s = stuck({ completedAt: old, payload: { ...base, resumedAt: old.toISOString() } });
+      await releaseStuckHolds(s.deps, new Date(), "s1");
+      expect(s.apps.get(WEB_APP)!.quiescedByJobId).toBeNull();
+      expect(s.log.some((l) => l.startsWith("start:"))).toBe(false);
+    });
+
+    it("a restore still running keeps its hold", async () => {
+      const s = stuck({ lockedUntil: new Date(Date.now() + 60_000), payload: base });
+      expect(await releaseStuckHolds(s.deps, new Date(), "s1")).toBe(0);
+      expect(s.apps.get(WEB_APP)!.quiescedByJobId).toBe("job-1");
+    });
+  });
+
+  describe("with the disk near full", () => {
+    const GiB = 1024 ** 3;
+    const disk = (freeGiB: number) => async () => ({ freeBytes: freeGiB * GiB, totalBytes: 100 * GiB });
+
+    it("a restore test is refused before it extracts anything, with the numbers", async () => {
+      const { s, extracted } = world();
+      const b = await take(s);
+      s.deps.volumeDisk = disk(4);
+      s.log.length = 0;
+      const out = await runRestoreTest(s.deps, b.id);
+      expect(out.status).toBe("failed");
+      expect(out.error).toMatch(/the server's disk has 4\.0 GiB free\. Dockify keeps 5\.0 GiB free, so the test was not run/);
+      expect(s.log.some((l) => l.startsWith("create:") || l.startsWith("ensureVolume:"))).toBe(false);
+      expect(extracted).toEqual([]);
+      s.deps.volumeDisk = disk(50);
+      expect((await runRestoreTest(s.deps, b.id)).status).toBe("passed");
+    });
+
+    it("a restore is refused before the volumes are emptied, and the app runs again unchanged", async () => {
+      const { s, extracted } = world();
+      const b = await take(s);
+      s.deps.volumeDisk = disk(4);
+      s.log.length = 0;
+      await expect(runRestore(s.deps, "job-1", { backupId: b.id, mode: "replace", targetAppId: WEB_APP })).rejects.toThrow(/Dockify keeps 5\.0 GiB free, so nothing was changed/);
+      expect(extracted).toEqual([]);
+      expect(s.log).not.toContain(`create:dockify-rs-${b.id}`);
+      expect(s.log.lastIndexOf(`start:dk-${WEB_APP}`)).toBeGreaterThan(s.log.indexOf(`stop:dk-${WEB_APP}`));
+      expect(s.apps.get(WEB_APP)).toMatchObject({ desiredState: "running", quiescedByJobId: null });
+    });
+
+    it("a backup stops cleanly when its staged copy would fill the disk: helper gone, nothing left behind", async () => {
+      const { s } = world();
+      s.deps.scratchDisk = disk(4);
+      const b = await take(s);
+      expect(b.status).toBe("failed");
+      expect(b.error).toMatch(/The backup was stopped: the disk it is staged on has 4\.0 GiB free, under the 5\.0 GiB Dockify keeps free/);
+      expect(s.containers.has(`dockify-bk-${b.id}`)).toBe(false);
+      expect(await readFile(join(dir, "tmp", `backup-${b.id}.dkbk`)).then(() => true, () => false)).toBe(false);
+      expect(b.objectKey).toBeNull();
+      // A disk that cannot be read stops nothing.
+      s.deps.scratchDisk = async () => { throw new Error("statfs failed"); };
+      expect((await take(s)).status).toBe("ready");
+    });
+  });
+
+  it("restore test: extracted into one throwaway volume, counted against the archive, then removed", async () => {
+    const { s, extracted } = world();
+    const b = await take(s);
+    s.log.length = 0;
+    expect(await runRestoreTest(s.deps, b.id)).toEqual({ status: "passed", tables: null, rows: 2, error: null });
+    const spec = s.specs.get(`dockify-rt-${b.id}`)!;
+    expect(spec.HostConfig.Mounts).toEqual([{ Type: "volume", Source: `dk-rt-${b.id}`, Target: "/v", ReadOnly: false }]);
+    expect(spec.Labels).toMatchObject({ "dockify.role": "restore-test" });
+    expect(spec.HostConfig.NetworkMode).toBe("dockify-helpers");
+    expect(extracted.at(-1)).toContain("png-bytes");
+    // Never the app's own volumes, and nothing of the test is left.
+    expect(s.log).toContain(`ensureVolume:dk-rt-${b.id}`);
+    expect(s.log.lastIndexOf(`removeVolume:dk-rt-${b.id}`)).toBeGreaterThan(s.log.lastIndexOf(`remove:dockify-rt-${b.id}`));
+    expect(s.containers.has(`dockify-rt-${b.id}`)).toBe(false);
+    expect(s.log.some((l) => l.startsWith("stop:"))).toBe(false);
+    expect(s.backups.get(b.id)!.restoreTestStatus).toBe("passed");
+  });
+
+  it("restore test fails when fewer files come out than the archive lists, and still removes its copy", async () => {
+    const { s } = world({ count: "3\n" });
+    const b = await take(s);
+    const out = await runRestoreTest(s.deps, b.id);
+    expect(out.status).toBe("failed");
+    expect(out.error).toMatch(/lists 4 files and folders, and 3 came out/);
+    expect(s.log).toContain(`removeVolume:dk-rt-${b.id}`);
+  });
+
+  it("a Storage service's older volume archive keeps the format check alone", async () => {
+    const { s } = world();
+    const b = await take(s);
+    b.appSnapshot = { environmentId: ENV, kind: "s3" };
+    s.log.length = 0;
+    expect((await runRestoreTest(s.deps, b.id)).status).toBe("passed");
+    expect(s.log.some((l) => l.startsWith("create:"))).toBe(false);
+    await rm(await fetchVerified(s.deps, b as never), { force: true });
   });
 });

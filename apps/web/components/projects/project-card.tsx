@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
-import { AppIcon, ProjectIcon } from "@/components/icons/app-icon";
-import { KIND_LABEL } from "@/components/project-detail/shared";
+import { AppIcon, ProjectIcon, useAppRole } from "@/components/icons/app-icon";
 import { StatusChip } from "@/components/ui/chip";
 import { EnvTag } from "@/components/ui/env-tag";
 import { BranchRef, GitLink } from "@/components/ui/git-ref";
@@ -107,6 +106,7 @@ export function ProjectCard({ p, now, variant, delay = 0 }: { p: ProjectSummary;
   const running = upCount(p.apps);
   const shown = p.apps.slice(0, SHOWN);
   const multiEnv = showsEnvironments(p.environments);
+  const roleOf = useAppRole();
   return (
     <article className="pj-cell reveal" data-variant={variant} style={delay ? { animationDelay: `${delay}ms` } : undefined}>
       <Corners />
@@ -143,7 +143,7 @@ export function ProjectCard({ p, now, variant, delay = 0 }: { p: ProjectSummary;
                       {appTitle(a)}
                     </span>
                     {multiEnv ? <EnvTag env={a.environment} quiet compact /> : null}
-                    <span className="pj-kind">{KIND_LABEL[a.kind]}</span>
+                    <span className="pj-kind">{roleOf(a).label}</span>
                     <span className="dot" data-tone={APP_TONE[a.status]} role="img" aria-label={APP_STATUS_LABEL[a.status]} data-tip={APP_STATUS_LABEL[a.status]} />
                   </Link>
                 </li>

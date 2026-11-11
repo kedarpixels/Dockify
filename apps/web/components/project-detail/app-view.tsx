@@ -17,7 +17,7 @@ import { CardTitle } from "@/components/card-title";
 import { VercelRuntimeLogs } from "@/components/deployments/vercel-runtime-logs";
 import { triggerLabel } from "@/components/deployments/actions";
 import { Icon, type IconName } from "@/components/icon";
-import { AppIcon, ProjectIcon } from "@/components/icons/app-icon";
+import { AppIcon, ProjectIcon, useAppRole } from "@/components/icons/app-icon";
 import { DeployRow } from "@/components/overview/deploy-row";
 import { useProjectExtras } from "@/components/project-extras/api";
 import { EnvWorkbench, type EnvProject } from "@/components/project-extras/env-workbench";
@@ -67,7 +67,8 @@ const TAB_LABEL: Record<AppTab, string> = {
 };
 
 /* Tabs that only some kinds have: databases are never published, so they get no Domains, and
-   only Postgres and Redis have a data browser. Backups are Postgres dumps. */
+   only Postgres and Redis have a data browser. Backups are Postgres dumps, or the files of an
+   app that keeps volumes (hasTab). */
 const TAB_KINDS: Partial<Record<AppTab, readonly AppKind[]>> = {
   domains: ["frontend", "backend", "s3"],
   data: ["postgres", "redis"],
@@ -76,7 +77,7 @@ const TAB_KINDS: Partial<Record<AppTab, readonly AppKind[]>> = {
   jobs: ["frontend", "backend", "bot"],
 };
 
-const hasTab = (kind: AppKind, t: AppTab) => TAB_KINDS[t]?.includes(kind) ?? true;
+const hasTab = (kind: AppKind, t: AppTab, volumes = 0) => (TAB_KINDS[t]?.includes(kind) ?? true) || (t === "backups" && volumes > 0 && TAB_KINDS.jobs!.includes(kind));
 
 const onVercel = (app: Pick<AppDetail, "target">) => app.target?.kind === "vercel";
 
@@ -348,6 +349,7 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
   const { result } = useOverview(overview);
   const now = useNow(1000, overview.fetchedAt);
   const can = useCan();
+  const roleOf = useAppRole();
   const o = result.data;
   const notices = useMemo(() => (o ? deriveNotices(o, now) : null), [o, now]);
   const [tab, setTab] = useUrlTab(APP_TABS);
@@ -386,12 +388,13 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
   const multiEnv = app ? projectsShowingEnvironments(o?.resources ?? [])(app.projectSlug) : false;
   const deployCount = app?.deployments.length;
   const kind = app?.kind;
+  const volumes = app?.volumes;
   const hosted = !!app && onVercel(app);
   // A Viewer never gets the terminal, and nobody does while the instance's switch is off: the API says so per caller.
   const terminal = !!app?.terminal && can.manage;
   const tabs = useMemo(
-    () => APP_TABS.filter((t) => (!kind || hasTab(kind, t)) && !(hosted && HOSTED_HIDES.has(t)) && (t !== "terminal" || terminal)).map((t) => ({ value: t, label: TAB_LABEL[t], count: t === "deployments" ? deployCount : undefined })),
-    [deployCount, kind, hosted, terminal],
+    () => APP_TABS.filter((t) => (!kind || hasTab(kind, t, volumes)) && !(hosted && HOSTED_HIDES.has(t)) && (t !== "terminal" || terminal)).map((t) => ({ value: t, label: TAB_LABEL[t], count: t === "deployments" ? deployCount : undefined })),
+    [deployCount, kind, volumes, hosted, terminal],
   );
 
   const trail = ["Apps", app ? appTitle(app) : id];
@@ -454,7 +457,7 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
   };
 
   // A ?tab= this kind does not have (a shared link from another app) falls back to the overview.
-  const shown: AppTab = hasTab(app.kind, tab) && !(hosted && HOSTED_HIDES.has(tab)) && (tab !== "terminal" || terminal) ? tab : "overview";
+  const shown: AppTab = hasTab(app.kind, tab, app.volumes) && !(hosted && HOSTED_HIDES.has(tab)) && (tab !== "terminal" || terminal) ? tab : "overview";
   // Nothing runs: Start brings the container back, unless there is none to start (it never went
   // live, or the daemon lost it), where only a deploy helps.
   const down = notRunning(app.status);
@@ -477,13 +480,13 @@ export function AppView({ overview, page, id }: { overview: OverviewResult; page
           level={1}
           title={
             <span className="pd-title">
-              <AppIcon id={app.id} kind={app.kind} size="lg" />
+              <AppIcon id={app.id} kind={app.kind} image={app.image} size="lg" />
               <span className="ellipsis" title={appTitle(app)}>{appTitle(app)}</span>
             </span>
           }
           lead={
             <DetailLead tone={APP_TONE[app.status]} state={APP_STATUS_LABEL[app.status]} envs={multiEnv ? [app.environment] : []}>
-              <span className="pd-kind">{KIND_LABEL[app.kind]}</span>
+              <span className="pd-kind">{roleOf(app).label}</span>
               {/* Renamed: the name links, the CLI and preview addresses still use, so nobody types the wrong one. */}
               {app.displayName && app.displayName !== app.name ? (
                 <span className="pd-repo" title="The app’s name in links, the CLI and preview addresses">

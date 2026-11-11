@@ -161,7 +161,7 @@ export function ProjectSettings({
         rows={[
           {
             title: "Delete project",
-            body: `Stops and removes ${plural(p.apps.length, "app")}, their volumes, ${plural(p.domains.length, "domain")} and every variable. Database backups stay until you delete them on the Backups page.`,
+            body: `Stops and removes ${plural(p.apps.length, "app")}, their volumes, ${plural(p.domains.length, "domain")} and every variable. Backups stay until you delete them on the Backups page.`,
             action: "Delete project",
             onAction: () => setDel(true),
           },

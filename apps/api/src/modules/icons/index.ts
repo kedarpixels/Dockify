@@ -182,7 +182,7 @@ export const iconHandlers: Handlers = {
   "icons.list": async ({ ctx, actor }) => {
     const limit = tokenProjectLimit(requireActor(actor));
     const inScope = limit ? { id: { in: limit } } : {};
-    const [apps, projects] = await Promise.all([
+    const [apps, projects, stock] = await Promise.all([
       ctx.db.app.findMany({
         where: { environment: { project: inScope }, OR: [{ iconChoice: { not: "auto" } }, { icons: { some: {} } }, { faviconCheckedAt: { not: null } }] },
         select: APP_ICON,
@@ -192,8 +192,13 @@ export const iconHandlers: Handlers = {
         where: { ...inScope, OR: [{ iconChoice: { not: "auto" } }, { iconAppId: { not: null } }, { icons: { some: {} } }, { environments: { some: { apps: { some: { kind: "frontend", icons: { some: { source: "favicon" } } } } } } }] },
         select: PROJECT_ICON,
       }),
+      ctx.db.app.findMany({
+        where: { environment: { project: inScope }, image: { not: null }, kind: { in: ["frontend", "backend", "bot"] } },
+        select: { id: true, image: true },
+      }),
     ]);
     return {
+      stock: Object.fromEntries(stock.flatMap((a) => (a.image ? [[a.id, a.image]] : []))),
       apps: Object.fromEntries(apps.map((a) => [a.id, appStateOf(a)])),
       projects: Object.fromEntries(projects.map((p) => [p.slug, projectStateOf(p)])),
     };

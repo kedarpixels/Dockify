@@ -3,7 +3,8 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { ProjectTile } from "@/components/project-tile";
 import { cx } from "@/components/ui/cx";
-import { EMPTY_ICONS, iconUrl, KIND_PRESET, type IconMap, type IconPreset, type IconState, type IconTarget } from "@/lib/icons";
+import { appRole, type AppRole } from "@/lib/app-role";
+import { EMPTY_ICONS, iconUrl, type IconMap, type IconPreset, type IconState, type IconTarget } from "@/lib/icons";
 import type { AppKind } from "@/lib/types";
 import { PresetTile } from "./preset-tile";
 
@@ -78,9 +79,23 @@ function Face({ face, size, className }: { face: ReturnType<typeof useIconFace>;
   );
 }
 
-/** An app's icon: its upload, its favicon (frontends, automatic), or its kind's default. */
-export function AppIcon({ id, kind, size = "sm", className }: { id?: string; kind?: AppKind; size?: IconSize; className?: string }) {
-  const face = useIconFace(id ? { target: "app", id } : null, KIND_PRESET[kind ?? "backend"]);
+export interface RoleApp {
+  id?: string;
+  kind: AppKind;
+  /** Its published image when the caller has it; otherwise the icon map's is read by id. */
+  image?: string | null;
+}
+
+/** What any app reads as (lib/app-role.ts), for the label next to its icon. */
+export function useAppRole(): (app: RoleApp) => AppRole {
+  const { stock } = useIcons().map;
+  return useCallback((app) => appRole(app.kind, app.image ?? (app.id ? stock[app.id] : undefined)), [stock]);
+}
+
+/** An app's icon: its upload, its favicon (frontends, automatic), or the default of what it is. */
+export function AppIcon({ id, kind, image, size = "sm", className }: Partial<RoleApp> & { size?: IconSize; className?: string }) {
+  const role = useAppRole()({ id, kind: kind ?? "backend", image });
+  const face = useIconFace(id ? { target: "app", id } : null, role.preset);
   return <Face face={face} size={size} className={className} />;
 }
 

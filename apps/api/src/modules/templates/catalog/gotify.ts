@@ -9,7 +9,7 @@ export const gotify: Template = {
   license: "MIT",
   homepage: "https://gotify.net",
   docs: "https://gotify.net/docs/config",
-  firstRun: "Sign in as admin with GOTIFY_DEFAULTUSER_PASS, which you can reveal on its Variables tab. Dockify does not back up its volume.",
+  firstRun: "Sign in as admin with GOTIFY_DEFAULTUSER_PASS, which you can reveal on its Variables tab. Its volume has no backup until you turn on a schedule on its Backups tab.",
   primary: "gotify",
   memoryMb: {"gotify": 128},
   secrets: {"ADMIN_PASSWORD": "b64url24"},

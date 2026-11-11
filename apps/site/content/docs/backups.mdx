@@ -1,7 +1,16 @@
 ---
 title: "Backups and restore"
-description: "At the end your databases will be backed up on this server and off it, each on its own schedule and keeping its own count, encrypted before upload, and Postgres backups restored for real every week by default to prove it."
+description: "At the end your databases and the volumes of your apps will be backed up on this server and off it, each on its own schedule and keeping its own count, encrypted before upload, and restored for real every week by default to prove it."
 ---
+
+## What is backed up
+
+- **Managed databases.** Every Postgres and Redis service.
+- **App volumes.** Every app that keeps one or more named volumes, such as a SeaweedFS or Memos template, or your own app with an uploads folder. All of an app's volumes go into one backup.
+
+An app with no volume has nothing of its own to back up: its code is in your repository and its image is rebuilt from it. A pull request preview is never backed up.
+
+Both kinds share everything on this page: the two tiers, schedules, retention, destinations, encryption, restore tests and download. Where they differ, the section says so.
 
 ## Add a destination
 
@@ -21,21 +30,21 @@ Until you add a destination, backups, manual and scheduled alike, are kept on th
 
 ## Schedules
 
-Every database has two backup tiers, each off until you turn it on, each with its own schedule:
+Every database, and every app with a volume, has two backup tiers, each off until you turn it on, each with its own schedule:
 
 | Tier | Where the copies go | Good for |
 |---|---|---|
 | **On this server** | This server's disk. | Quick restores. Lost with the disk. |
 | **Offsite** | An S3 destination, such as Backblaze B2 or Cloudflare R2. | Surviving a lost server. |
 
-For example, a backup on the server every 12 hours keeping only the latest one, and a daily backup to Backblaze B2 keeping 7. Open **Schedule** on the database's Backups tab, or **Edit** on its row on the Backups page, and set for each tier:
+For example, a backup on the server every 12 hours keeping only the latest one, and a daily backup to Backblaze B2 keeping 7. Open **Schedule** on the Backups tab of the database or app, or **Edit** on its row on the Backups page, and set for each tier:
 
 - **On or off.**
 - **How often.** Every hour, every 6 or 12 hours, daily, weekly, or a five field cron such as `0 */6 * * *`. Times are UTC.
 - **Keep.** How many backups the tier keeps, 1 to 1000.
 - **Destination**, offsite only. The default S3 destination, or another one.
 
-The Backups tab shows each tier with its schedule in words ("Every 12 hours, keep 1"), where the copies go, the next run and the last result. The Backups page lists every database with both tiers.
+The Backups tab shows each tier with its schedule in words ("Every 12 hours, keep 1"), where the copies go, the next run and the last result. The Backups page lists every database and every app with a volume, with both tiers.
 
 When both tiers are due in the same minute, one dump serves both: it is taken once, then encrypted and stored once per tier. Each copy succeeds or fails on its own, so a bucket that is down never fails the copy on this server.
 
@@ -60,16 +69,27 @@ The API keeps the old single schedule fields (`cron`, `retentionDays`, `destinat
 
 ### Back up now
 
-**Back up now** takes one dump of the database and stores a copy in every tier that is on, so with both on you get a copy here and one offsite. With no tier on, it goes where the schedule points. You can run it for one database or all of them. Through the API, `tier` picks `local`, `offsite` or `both`.
+**Back up now** takes one dump of the database, or one archive of the app's volumes, and stores a copy in every tier that is on, so with both on you get a copy here and one offsite. With no tier on, it goes where the schedule points. You can run it for one or for all of them. Through the API, `tier` picks `local`, `offsite` or `both`, and `resourceId` is the id of the database or of the app.
 
 ## What a backup is
 
-| Service | Dump |
+| What | Dump |
 |---|---|
 | Postgres | `pg_dump` |
 | Redis | `redis-cli --rdb` |
+| An app's volumes | One `tar` archive, a folder per volume |
 
 Each dump is compressed, then **encrypted on the server** before it is written anywhere. Only ciphertext touches the scratch disk and the bucket. The finished backup records its size, its SHA-256 and the fingerprint of the key that encrypted it.
+
+### Volumes are read while the app runs
+
+Nothing is stopped or paused for a backup of volumes, so a file server keeps serving through it. A small helper container mounts the volumes **read-only**, on a network with no way out, and streams `tar` of them. It cannot change a file, and it is removed when the backup ends. A stopped app is backed up the same way.
+
+<Note title="Crash-consistent, not a frozen snapshot">The files are read one after another while the app may still be writing, so the backup is what a power cut at that moment would have left on disk, not one instant frozen across every file. A file that changed while it was read is still backed up, and Activity notes that it happened. That is fine for uploads, media and object storage. An app that keeps a database of its own in a volume (SQLite, or a self-run Postgres or MySQL) should also write its own dump into the volume on a schedule, and the backup then carries that dump. Managed Postgres and Redis are not affected: they are dumped through the database itself.</Note>
+
+A backup of volumes holds files, folders, symlinks and hard links, with their owners, permissions and times, under any name Linux allows. A volume that holds a device file or a named pipe fails its backup with the path, instead of producing a backup that could not be restored. Sockets are skipped. Extended attributes and ACLs are not kept.
+
+The archive is staged, encrypted, on this server's disk before it is stored or uploaded. If that disk falls under the free space Dockify keeps for itself (3 GiB or 5% of the disk, whichever is larger) while a backup of volumes is written, the backup stops, removes what it staged and says so.
 
 ## Encryption
 
@@ -87,8 +107,9 @@ A backup you have not restored is a hope. Dockify restores for real on a schedul
 
 - **Postgres** dumps are replayed into a throwaway Postgres on a scratch volume that is deleted afterwards. Dockify counts the tables and rows, records the result on the backup, and throws the database away.
 - **Redis** backups get the full decrypt and format checks.
+- **Volume** backups are extracted into a throwaway volume, never the app's own. Dockify checks that every file and folder the archive lists came out, records how many files, and deletes the volume. The test needs room for one full copy of the files: when extracting them would leave the disk under the free space Dockify keeps for itself, the test is not run and fails with the numbers.
 
-Each backup shows **Passed**, **Failed**, **Testing** or **Not tested**, with when, how many tables and rows, and the error if it failed. You can run a test on any backup by hand.
+Each backup shows **Passed**, **Failed**, **Testing** or **Not tested**, with when, how many tables and rows or how many files, and the error if it failed. You can run a test on any backup by hand.
 
 ## Restore
 
@@ -105,7 +126,7 @@ Type `<project-slug>/<name>` to confirm. Dockify then:
 <Steps>
 
 1. Takes a **pre-restore dump** of the current data.
-2. Stops the environment's apps, and records that on the job first, so a crash halfway is undone by recovery.
+2. Stops the environment's apps, and records that on the job first, so if the worker dies halfway, recovery, which looks each minute, starts them again once it finds the job dead. Until they are started, a deploy, a start or a restart of one of them is refused, and a push waits and deploys after. The restore itself is refused, naming the app, while one of them is deploying or has a start queued.
 3. Empties the database and replays the dump, inside one explicit transaction. Tables added since the backup go, so afterwards the database holds exactly what the backup does. Any failure rolls all of it back.
 4. Starts the apps again. One that will not start is written to Activity as a failure, and tried again each minute.
 
@@ -113,7 +134,34 @@ Type `<project-slug>/<name>` to confirm. Dockify then:
 
 A Redis restore swaps the snapshot in, restarts Redis, and proves it answers before it reports success. If Redis cannot read the snapshot, the restore fails and says so, and the pre-restore dump holds what it replaced.
 
-Both kinds of restore ask you to confirm it is you. A long restore goes on in the background. The page follows it while it stays open, and the backups list shows the result after.
+### An app's volumes
+
+A backup of volumes restores over the app it came from. Type `<project-slug>/<name>` to confirm. Dockify then:
+
+<Steps>
+
+1. Verifies the whole archive before anything is touched. An entry whose path would leave its volume, a hard link that points outside its own volume, a device file, or an archive naming a volume the app no longer has refuses the restore, and nothing has changed. Symlinks are kept as they were, and nothing is ever written through one that points outside.
+2. Stops the app, and holds it: until the restore is over, a deploy, a start or a restart of it is refused, and a push waits and deploys after. A restore is refused while a deploy of the app is running or a start of it is queued.
+3. Takes a **pre-restore backup** of the volumes, with the app stopped, so it misses nothing.
+4. Checks the disk. If the backup holds more than the volumes do now, and filling them would leave the disk under the free space Dockify keeps for itself, the restore stops here.
+5. Empties each volume the backup holds and extracts the archive into it, in a helper container that mounts those volumes and nothing else. Owners, permissions and times come back as they were, setgid bits on folders and files included.
+6. Starts the app again. If it will not start, that is written to Activity as a failure, and tried again each minute.
+
+</Steps>
+
+What a failure leaves depends on when it happens:
+
+- **Before step 5**, nothing was changed. The app is started again on its own files, and the restore reads failed with the reason. If the worker itself died, recovery, which looks each minute, starts the app once it finds the job dead.
+- **During step 5**, the volumes are empty or half filled, so the app is **left stopped on purpose**, whether the restore failed or the worker died. Activity says so and names the pre-restore backup. Restore that backup, which puts back the files the app had, then start the app. A push that arrived meanwhile is kept, Activity says it is waiting, and it deploys when you start the app.
+- **After step 5**, the restore succeeded. If only the start in step 6 fails, the files stay restored and the start is retried each minute.
+
+The hold never needs ending by hand. It ends with its restore, and a check each minute releases one whose restore is over, dead or gone.
+
+Only the volumes in the backup are replaced: a volume added to the app since then is left as it is.
+
+There is no restore into a new app. To use the files anywhere else, or after the app was deleted, download the backup: it is a plain `.tar.gz` with one folder per volume.
+
+Every restore asks you to confirm it is you. A long restore goes on in the background. The page follows it while it stays open, and the backups list shows the result after.
 
 ## Download
 
@@ -128,4 +176,9 @@ The Server page shows the backup of the control plane itself: when it last ran, 
 - **"Local backups are turned off on this server".** `DOCKIFY_ALLOW_LOCAL_BACKUPS=0` is set and the backup was sent to this server's disk. Add one, or remove the setting as above.
 - **"Restore test failed".** Open the backup to read the error. A dump that does not replay is the reason the test exists. Take a manual backup and test it, then check the database's logs.
 - **Destination test fails.** Check the endpoint is https, the region is right, and the key can write to the bucket.
-- **Backups of a deleted database.** They are kept and listed as orphans, so deleting an app never silently deletes its history. Remove them on purpose when you are sure.
+- **Backups of a deleted database or app.** They are kept and listed as orphans, so deleting an app never silently deletes its history. Remove them on purpose when you are sure. A deleted app's volume backups cannot be restored from the dashboard: download them.
+- **"A restore of this app's data is running".** A deploy, start or restart was asked for while a restore held the app. Try again when the restore has finished.
+- **"left stopped on purpose"** in Activity. A restore of volumes failed after it had emptied them. Restore the pre-restore backup it names, then start the app.
+- **"Dockify keeps ... free"** on a backup, a restore or a restore test of volumes. The disk is too full for it. Free some space on the Server page, or move backups offsite, and run it again.
+- **"tar exited with code 2"** on a backup of volumes. `tar` could not read something, and the message names it. A backup that only met files changing under it still succeeds.
+- **A backup of volumes is large or slow.** It is a full copy every time, not an incremental one. Size the schedule and the keep count to the volume.

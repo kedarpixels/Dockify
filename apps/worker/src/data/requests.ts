@@ -11,6 +11,26 @@ export const isServiceKind = (k: string): k is ServiceAppKind => (SERVICE_KINDS 
 
 export const backupKindFor = (k: ServiceAppKind): BackupKind => (k === "s3" ? "volume" : k);
 
+/** The kinds whose own named volumes are backed up as files. A managed service is dumped through its server instead. */
+export const VOLUME_APP_KINDS = ["frontend", "backend", "bot"] as const;
+const isVolumeAppKind = (k: string): boolean => (VOLUME_APP_KINDS as readonly string[]).includes(k);
+
+/** Every app that has backups: a managed service, or an app with a volume of its own. A preview has no app row and no volume. */
+export const BACKED_UP_APPS = {
+  OR: [{ kind: { in: [...SERVICE_KINDS] } }, { kind: { in: [...VOLUME_APP_KINDS] }, volumes: { some: {} } }],
+} satisfies Prisma.AppWhereInput;
+
+/** What a backup of this app holds, or null when there is nothing of its own to back up. */
+export function backupSourceOf(app: { kind: string; volumes: readonly unknown[] }): BackupKind | null {
+  if (isServiceKind(app.kind)) return backupKindFor(app.kind);
+  return isVolumeAppKind(app.kind) && app.volumes.length > 0 ? "volume" : null;
+}
+
+/** What a deploy, a start or a restart of an app answers while a restore holds it (App.quiescedByJobId). */
+export const HELD_BY_RESTORE = "A restore of this app's data is running. Try again when it finishes.";
+
+export const NOT_BACKED_UP = "Only Postgres and Redis services and apps with a volume are backed up";
+
 export class RequestError extends Error {
   readonly status: number;
   readonly code: string;
@@ -66,18 +86,20 @@ export async function requestBackup(db: Db, appId: string, trigger: BackupTrigge
     await lock(tx, `dockify.backup:${appId}`);
     const app = await tx.app.findUnique({
       where: { id: appId },
-      include: { environment: { include: { project: { select: { slug: true } } } } },
+      include: { environment: { include: { project: { select: { slug: true } } } }, volumes: { select: { id: true } } },
     });
     if (!app) throw new RequestError(404, "That app does not exist", "NOT_FOUND");
-    if (!isServiceKind(app.kind)) throw new RequestError(400, "Only Postgres, Redis and storage services are backed up", "NOT_A_SERVICE");
+    const kind = backupSourceOf(app);
+    if (!kind) throw new RequestError(400, NOT_BACKED_UP, "NOT_A_SERVICE");
+    const what = kind === "volume" ? "these volumes" : "this database";
 
     const restoring = await tx.job.findFirst({ where: { kind: "restore", dedupeKey: `restore:${appId}`, completedAt: null, failedAt: null }, select: { id: true } });
-    if (restoring) throw new RequestError(409, "A restore of this database is running; try again when it finishes", "BUSY");
+    if (restoring) throw new RequestError(409, `A restore of ${what} is running; try again when it finishes`, "BUSY");
 
     const running = await tx.backup.findFirst({ where: { appId, status: "running" }, orderBy: { createdAt: "desc" } });
     if (running) {
       const job = await tx.job.findFirst({ where: { kind: "backup", dedupeKey: `backup:${appId}`, completedAt: null, failedAt: null }, select: { id: true } });
-      if (job && trigger === "schedule" && opts.tiers) throw new RequestError(409, "A backup of this database is running; the schedule fires when it finishes", "BUSY");
+      if (job && trigger === "schedule" && opts.tiers) throw new RequestError(409, `A backup of ${what} is running; the schedule fires when it finishes`, "BUSY");
       if (job) return { backupId: running.id, backupIds: [running.id], jobId: job.id, existing: true };
       // A running row with no open job will never finish: settle it with the best reason there is.
       const last = await tx.job.findFirst({ where: { kind: "backup", payload: { path: ["backupId"], equals: running.id } }, orderBy: { createdAt: "desc" }, select: { lastError: true } });
@@ -116,7 +138,7 @@ export async function requestBackup(db: Db, appId: string, trigger: BackupTrigge
           appId,
           sourceAppId: appId,
           appSnapshot: snapshot as unknown as Prisma.InputJsonValue,
-          kind: backupKindFor(app.kind),
+          kind,
           trigger,
           status: "running",
           destinationId,
@@ -161,6 +183,14 @@ export interface RestorePayload {
   /** Written by the worker before it stops anything, read by recovery after a crash. */
   quiesced?: string[];
   resumedAt?: string;
+  /** A restore of volumes: the backup of what they held, taken with the app stopped. */
+  preRestoreBackupId?: string;
+  /** Written just before the volumes are emptied. Past it, a restore that dies leaves the app stopped. */
+  emptiedAt?: string;
+  /** Written when every file is back, before the app is started: from here the restore succeeded. */
+  restoredAt?: string;
+  /** The app was left stopped on purpose, on volumes that are empty or half filled. */
+  leftStopped?: boolean;
 }
 
 /**
@@ -174,8 +204,9 @@ export async function requestRestore(db: Db, payload: RestorePayload): Promise<s
       where: { kind: { in: ["restore", "backup"] }, dedupeKey: { in: [`restore:${payload.targetAppId}`, `backup:${payload.targetAppId}`] }, completedAt: null, failedAt: null },
       select: { kind: true },
     });
-    if (open) throw new RequestError(409, open.kind === "restore" ? "A restore of this database is already running" : "A backup of this database is running; try again when it finishes", "BUSY");
-    const target = await tx.app.findUnique({ where: { id: payload.targetAppId }, select: { serverId: true } });
+    const target = await tx.app.findUnique({ where: { id: payload.targetAppId }, select: { serverId: true, kind: true } });
+    const what = target && !isServiceKind(target.kind) ? "these volumes" : "this database";
+    if (open) throw new RequestError(409, open.kind === "restore" ? `A restore of ${what} is already running` : `A backup of ${what} is running; try again when it finishes`, "BUSY");
     if (!target) throw new RequestError(404, "The service to restore into no longer exists", "NOT_FOUND");
     const job = await tx.job.create({
       data: { kind: "restore", lane: "data", serverId: target.serverId, payload: payload as unknown as Prisma.InputJsonValue, dedupeKey: `restore:${payload.targetAppId}`, maxAttempts: 1 },

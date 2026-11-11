@@ -18,6 +18,7 @@ import { appContainerInput, jobRunName, parkedName, releaseName, type RunnableAp
 import { previewReleaseInput } from "../deploy/preview.ts";
 import { restoreTestContainer, restoreTestVolume } from "../data/leftovers.ts";
 import { HELPER_NETWORK, serviceSpec, volumeNameFor } from "../data/services.ts";
+import { backupHelperName, restoreHelperName, volumeHelperInput, volumeMounts } from "../data/volume-backup.ts";
 
 const APP = "0f0e0d0c-0000-4000-8000-0000000000aa";
 const ENV = "0f0e0d0c-0000-4000-8000-0000000000bb";
@@ -50,6 +51,21 @@ describe("the bodies the worker really sends pass the gate", () => {
     const helper = containerSpec({ name: restoreTestContainer("b"), image: `sha256:${"a".repeat(64)}`, network: HELPER_NETWORK, cmd: ["sleep", "300"], restart: "no", memoryMb: 64, pidsLimit: 32, readOnlyRootfs: true, volumes: [{ name: restoreTestVolume("b"), mountPath: "/check", readOnly: true }, { name: "a".repeat(64), mountPath: "/from", readOnly: true }] }, 4);
     expect(() => checkCreateBody(JSON.parse(JSON.stringify(helper)))).not.toThrow();
     expect(() => ruleFor("POST", createUrl(restoreTestContainer("b")))).not.toThrow();
+  });
+
+  it.each([
+    ["a backup, its volumes read-only", backupHelperName(APP), true],
+    ["a restore, its volumes writable", restoreHelperName(APP), false],
+  ])("the helper of an app's volumes for %s", (_label, name, readOnly) => {
+    const body = containerSpec(volumeHelperInput({ name, image: `sha256:${"a".repeat(64)}`, role: readOnly ? "backup-helper" : "restore-helper", appId: APP, backupId: APP, mounts: volumeMounts(["dk-0f0e0d0c0000-uploads", "dk-0f0e0d0c0000-cache"], readOnly) }), 4);
+    expect(() => ruleFor("POST", createUrl(name))).not.toThrow();
+    expect(() => checkCreateBody(JSON.parse(JSON.stringify(body)))).not.toThrow();
+    // Its tar runs as an exec, the one way in the gate gives a helper.
+    expect(() => ruleFor("POST", `/v1.43/containers/${name}/exec`, { "content-type": "application/json" })).not.toThrow();
+    // The gate still refuses the same helper over anything that is not a tenant's volume.
+    const stolen = JSON.parse(JSON.stringify(body)) as { HostConfig: { Mounts: Array<{ Source: string }> } };
+    stolen.HostConfig.Mounts[0]!.Source = "dockify_dockify-db";
+    expect(() => checkCreateBody(stolen)).toThrow(/not a tenant volume|named volume/);
   });
 
   it("a preview's release command, on the forks' network", () => {

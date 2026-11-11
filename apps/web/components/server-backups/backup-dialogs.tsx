@@ -10,6 +10,7 @@ import { bytes, plural } from "@/lib/format";
 import { useUtcAt } from "@/lib/time-prefs";
 import type { BackupRun, BackupSchedule, RestoreRequest } from "@/lib/pages/server-backups";
 import { NEW_DB_NAME, isOrphan } from "@/lib/pages/server-backups-shared";
+import { isVolumes, listNoun } from "./history";
 import { backUpPlaces } from "./tier-schedule";
 import { dbLabel, dbName, dbRef, placeName, restoreName } from "./util";
 import { hasReservedPrefix, isReservedServiceName, RESERVED_NAME_MESSAGE, RESERVED_SERVICE_MESSAGE } from "@/lib/validation";
@@ -18,17 +19,21 @@ import { hasReservedPrefix, isReservedServiceName, RESERVED_NAME_MESSAGE, RESERV
 
 export function testLine(r: BackupRun): string {
   const t = r.restoreTest;
-  if (t.status === "passed") return `Passed${t.tables !== null ? `, ${plural(t.tables, "table")}` : ""}${t.rows !== null ? `, ${plural(t.rows, "row")}` : ""}`;
+  if (t.status === "passed") return `Passed${t.tables !== null ? `, ${plural(t.tables, "table")}` : ""}${t.rows !== null ? `, ${plural(t.rows, "row")}` : ""}${t.files != null ? `, ${plural(t.files, "file")}` : ""}`;
   if (t.status === "failed") return `Failed, ${t.error ?? "the restore did not match the backup"}`;
   if (t.status === "running") return "Running now";
   return "Not tested";
 }
 
-/** Replacing the live database sits behind a typed confirm. Mounted once per opened run, so every field starts fresh. */
+/**
+ * Replacing the live database, or an app's files, sits behind a typed confirm. A backup of volumes only
+ * restores over its app. Mounted once per opened run, so every field starts fresh.
+ */
 export function RestoreDialog({ run, onClose, onConfirm }: { run: BackupRun; onClose: () => void; onConfirm: (r: BackupRun, req: RestoreRequest) => void }) {
   const utcAt = useUtcAt();
   const orphan = isOrphan(run);
-  const [mode, setMode] = useState<RestoreRequest["mode"]>("new");
+  const files = isVolumes(run);
+  const [mode, setMode] = useState<RestoreRequest["mode"]>(files ? "replace" : "new");
   const [name, setName] = useState(() => restoreName(run.database, run.createdAt));
   const [typed, setTyped] = useState("");
   const [tried, setTried] = useState(false);
@@ -55,10 +60,12 @@ export function RestoreDialog({ run, onClose, onConfirm }: { run: BackupRun; onC
     onConfirm(run, mode === "new" ? { mode, name } : { mode, confirm: typed.trim() });
   };
 
-  const modes: Array<{ value: RestoreRequest["mode"]; title: string; sub: string }> = [
-    { value: "new", title: "Into a new database", sub: `Creates ${run.database.projectSlug} / ${name || "new database"} from this backup. Nothing live changes.` },
-    ...(orphan ? [] : [{ value: "replace" as const, title: "Replace the live database", sub: `Overwrites ${label}. Writes after ${stamp} are lost.` }]),
-  ];
+  const modes: Array<{ value: RestoreRequest["mode"]; title: string; sub: string }> = files
+    ? [{ value: "replace", title: "Replace the app's files", sub: `Overwrites the volumes of ${label}. Files written after ${stamp} are lost.` }]
+    : [
+        { value: "new", title: "Into a new database", sub: `Creates ${run.database.projectSlug} / ${name || "new database"} from this backup. Nothing live changes.` },
+        ...(orphan ? [] : [{ value: "replace" as const, title: "Replace the live database", sub: `Overwrites ${label}. Writes after ${stamp} are lost.` }]),
+      ];
 
   return (
     <Dialog
@@ -82,7 +89,7 @@ export function RestoreDialog({ run, onClose, onConfirm }: { run: BackupRun; onC
           ) : (
             <button type="submit" className="btn btn-danger">
               <Icon name="rollback" />
-              Replace database
+              {files ? "Replace files" : "Replace database"}
             </button>
           )}
         </>
@@ -102,7 +109,11 @@ export function RestoreDialog({ run, onClose, onConfirm }: { run: BackupRun; onC
           ))}
         </fieldset>
       ) : (
-        <p className="dlg-text">This service was deleted, so its backups restore into a new database only.</p>
+        <p className="dlg-text">
+          {files
+            ? "A backup of volumes restores over the app it came from. The app is stopped while its volumes are emptied and filled, then started again."
+            : "This service was deleted, so its backups restore into a new database only."}
+        </p>
       )}
 
       {mode === "new" ? (
@@ -116,10 +127,10 @@ export function RestoreDialog({ run, onClose, onConfirm }: { run: BackupRun; onC
       ) : (
         <>
           <Callout tone="bad" icon="alert">
-            This replaces all current data in <b>{label}</b> with the backup from {stamp}. Anything written after that time is lost and
-            cannot be brought back.
+            This replaces {files ? "every file in the volumes of" : "all current data in"} <b>{label}</b> with the backup from {stamp}. Anything
+            written after that time is lost and cannot be brought back.
           </Callout>
-          <Field label={<>Type <b className="dlg-confirm-name">{ref}</b> to confirm</>} error={tried && typed.trim() !== ref ? `Type ${ref} exactly to replace the database` : null}>
+          <Field label={<>Type <b className="dlg-confirm-name">{ref}</b> to confirm</>} error={tried && typed.trim() !== ref ? `Type ${ref} exactly to replace the ${files ? "files" : "database"}` : null}>
             {(ids) => <TextInput ids={ids} value={typed} onChange={(e) => setTyped(e.target.value)} spellCheck={false} autoComplete="off" data-autofocus />}
           </Field>
         </>
@@ -151,7 +162,7 @@ export function RunDialog({ onClose, schedules, onConfirm }: { onClose: () => vo
   const enabled = schedules.filter((s) => s.enabled).length;
 
   const choices: Array<{ value: string; label: React.ReactNode; meta: string }> = [
-    ...(enabled ? [{ value: "all", label: "Every enabled database", meta: plural(enabled, "database") }] : []),
+    ...(enabled ? [{ value: "all", label: `Every enabled ${listNoun(schedules)}`, meta: plural(enabled, listNoun(schedules)) }] : []),
     ...schedules.map((s) => ({
       value: s.resourceId,
       label: (
@@ -231,7 +242,7 @@ export function DeleteOrphansDialog({
             This deletes {plural(runs.length, "backup")} of {dbLabel(first.database)}, {bytes(size)} on {placeName(first.storage)}. The service was
             deleted, so these are the last copies of its data.
           </p>
-          <p className="sb-dlg-note">Restore one into a new database first if you might need it.</p>
+          <p className="sb-dlg-note">{isVolumes(first) ? "Download one first if you might need it." : "Restore one into a new database first if you might need it."}</p>
         </>
       }
     />
