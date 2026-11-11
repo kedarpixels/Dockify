@@ -54,7 +54,7 @@ function harness(app: Record<string, unknown> | null, opts: { container?: "runni
 }
 
 const app = (over: Record<string, unknown> = {}) => ({
-  id: APP, name: "web", kind: "frontend", desiredState: "running", deployTarget: "server",
+  id: APP, serverId: "s1", name: "web", kind: "frontend", desiredState: "running", deployTarget: "server",
   status: "running", currentDeploymentId: "d1", containerStartedAt: null, deployments: [{ status: "ready" }], ...over,
 });
 
@@ -70,7 +70,7 @@ describe("app_power", () => {
     expect(await runPower(h, { appId: APP, op: "stop" })).toBe("stopped");
     expect(h.calls).toEqual([`inspect ${NAME}`, `stop ${NAME}`, `inspect ${NAME}`]);
     expect(h.updates).toEqual([{ status: "stopped", containerId: "c1", containerStartedAt: null }]);
-    expect(h.jobs[0]).toMatchObject({ kind: "edge_route_sync", payload: { appId: APP }, dedupeKey: `edge.route:${APP}` });
+    expect(h.jobs[0]).toMatchObject({ kind: "edge_route_sync", lane: "maintenance", serverId: "s1", payload: { appId: APP }, dedupeKey: `edge.route:${APP}` });
   });
 
   it("restarts by stop then start, and a start of a running container is not an error", async () => {

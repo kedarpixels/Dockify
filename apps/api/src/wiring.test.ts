@@ -80,6 +80,20 @@ describe("one deploy request helper", () => {
     expect(writes.apps[0]).toMatchObject({ status: "deploying", pendingDeployAt: null });
   });
 
+  it("queues one pending commit status when the commit is already known, and never for a preview", async () => {
+    const sha = "a".repeat(40);
+    const known = fakeTx({});
+    await requestDeployTx(known.tx, APP, { ...data, trigger: "push", commitSha: sha }, "coalesce");
+    expect(known.writes.jobs).toHaveLength(2);
+    expect(known.writes.jobs[1]).toMatchObject({ kind: "deploy_status", lane: "maintenance", dedupeKey: "deploy_status:dep-1:pending", payload: { deploymentId: "dep-1" } });
+    const unknown = fakeTx({});
+    await requestDeployTx(unknown.tx, APP, data, "reject");
+    expect(unknown.writes.jobs).toHaveLength(1);
+    const preview = fakeTx({});
+    await requestDeployTx(preview.tx, APP, { ...data, trigger: "preview", previewId: "p1", commitSha: sha }, "coalesce");
+    expect(preview.writes.jobs).toHaveLength(1);
+  });
+
   it("a click while one is in flight answers 409; a push or env change coalesces", async () => {
     await expect(requestDeployTx(fakeTx({ openDeployment: "d0" }).tx, APP, data, "reject")).rejects.toMatchObject({ status: 409, code: "DEPLOY_IN_FLIGHT" });
     const { tx, writes } = fakeTx({ openJob: "j0" });

@@ -288,7 +288,7 @@ describe("a deploy sets a status on its commit", () => {
   const SHA = "a".repeat(40);
   const deployment = (over: Record<string, unknown> = {}) => ({
     status: "ready", error: null, commitSha: SHA,
-    app: { gitRepository: "https://github.com/acme/web.git", gitInstallation: { installationId: 7n }, environment: { project: { gitInstallation: null } } },
+    app: { name: "web", gitRepository: "https://github.com/acme/web.git", gitInstallation: { installationId: 7n }, environment: { name: "production", project: { gitInstallation: null, _count: { environments: 1 } } } },
     ...over,
   });
   const deps = (d: unknown, status = 201) => {
@@ -308,13 +308,14 @@ describe("a deploy sets a status on its commit", () => {
       },
     };
   };
-  it("words success and failure, and says nothing for anything else", () => {
+  it("words success and failure, and says nothing for a status it does not know", () => {
     expect(deployStatusFor({ status: "ready", error: null })).toEqual({ state: "success", description: "Deployed" });
     expect(deployStatusFor({ status: "failed", error: "The build failed (exit 1). Its last lines:\n#9 boom @you https://evil.example" })).toEqual({ state: "failure", description: "Failed: The build failed (exit 1). Its last lines:" });
     // The description once stopped at "Its last lines:". It now says where.
     expect(deployStatusFor({ status: "failed", error: "The build failed (buildctl exit 1). Its last lines:\n#9 ERROR: process did not complete\nDockerfile:10\n--------------------" })!.description).toMatch(/^Failed: Build failed/);
     expect(deployStatusFor({ status: "failed", error: "The build failed (buildctl exit 1). Its last lines:\nboom" })!.description).not.toMatch(/buildctl|last lines/);
-    expect(deployStatusFor({ status: "cancelled", error: null })).toBeNull();
+    expect(deployStatusFor({ status: "cancelled", error: null })).toEqual({ state: "error", description: "Cancelled" });
+    expect(deployStatusFor({ status: "archived", error: null })).toBeNull();
     expect(deployStatusFor({ status: "failed", error: "x".repeat(300) })!.description).toHaveLength(140);
   });
   it("posts to the deployment's commit, with a link back, and retries only what can recover", async () => {
@@ -322,7 +323,7 @@ describe("a deploy sets a status on its commit", () => {
     const w = deps(deployment());
     expect(await runDeployStatus(w.deps, { deploymentId: ID })).toBe("sent");
     expect(w.calls[0]!.url).toBe(`https://api.github.com/repos/acme/web/statuses/${SHA}`);
-    expect(JSON.parse(w.calls[0]!.body!)).toEqual({ state: "success", description: "Deployed", context: "Dockify", target_url: `https://dash.example.com/deployments/${ID}` });
+    expect(JSON.parse(w.calls[0]!.body!)).toEqual({ state: "success", description: "Deployed", context: "Dockify / web", target_url: `https://dash.example.com/deployments/${ID}` });
     await expect(runDeployStatus(deps(deployment(), 502).deps, { deploymentId: ID })).rejects.toThrow("502");
     expect(await runDeployStatus(deps(deployment(), 404).deps, { deploymentId: ID })).toBe("skipped");
   });

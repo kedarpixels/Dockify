@@ -10,6 +10,7 @@ import { couldNotRun, explainFailure, failureFacts, type FailureFacts } from "./
 import type { DeployLog } from "./log.ts";
 import { dialProbes, waitUntilReady, type HealthConfig, type ProbeDeps, type Readiness } from "./readiness.ts";
 import { removeRoute, writeRoute } from "./routes.ts";
+import { withRouteLock } from "../edge/route-lock.ts";
 import { describeStrategy, swapStrategy } from "./strategy.ts";
 import type { EdgeMode } from "../edge/ingress.ts";
 import type { Dialer, RouteStore } from "../server/runtime.ts";
@@ -45,6 +46,11 @@ export interface SwapDeps {
   dashboardHost: string;
   probe?: Partial<ProbeDeps>;
   settleMs?: number;
+  /**
+   * The app's routable hosts as the database has them now. The build can take minutes, and a domain
+   * added or removed meanwhile must not be undone by a route write that names the hosts it started with.
+   */
+  routeHosts?: () => Promise<string[]>;
 }
 
 export interface SwapResult {
@@ -73,6 +79,15 @@ export async function swap(app: SwapApp, deploymentId: string, imageId: string, 
 
   await docker.ensureNetwork(network, { "dockify.managed": "true", [LABEL.environment]: app.environmentId, [LABEL.project]: app.projectId });
   for (const v of app.volumes) await docker.ensureVolume(v.name, { "dockify.managed": "true", [LABEL.app]: app.id });
+
+  // Every route write holds the app's route lock, as edge_route_sync does, and names the hosts read
+  // under it. A read that fails keeps the last known hosts: the sync queued after the deploy corrects them.
+  let routeHosts = app.routeHosts;
+  const routeLocked = <T>(write: () => Promise<T>): Promise<T> =>
+    withRouteLock(app.id, async () => {
+      if (deps.routeHosts) routeHosts = await deps.routeHosts().catch(() => routeHosts);
+      return write();
+    });
 
   let previous: Previous | null = null;
   let previousInfo: ContainerInfo | null = null;
@@ -109,12 +124,17 @@ export async function swap(app: SwapApp, deploymentId: string, imageId: string, 
       });
     }
     await docker.renameContainer(previous.parked, previous.name).catch((e) => log.error(`could not give the previous container its name back: ${reason(e)}`));
-    if (previous.stopped && app.port !== null && app.routeHosts.length) {
+    const port = app.port;
+    if (previous.stopped && port !== null) {
       // A restarted container comes back on a new address. A route to its alias follows on its
       // own; one pinned to its old address is re-keyed.
       const after = await docker.inspectContainer(previous.id).catch(() => null);
       const backend = after ? pinTarget(after, network) : null;
-      if (backend) await writeRoute(deps.routes, { appId: app.id, hosts: app.routeHosts, port: app.port, backend }, deps.dashboardHost, deps.mode).catch((e) => log.error(`could not re-publish the route: ${reason(e)}`));
+      if (backend) {
+        await routeLocked(async () => {
+          if (routeHosts.length) await writeRoute(deps.routes, { appId: app.id, hosts: routeHosts, port, backend }, deps.dashboardHost, deps.mode);
+        }).catch((e) => log.error(`could not re-publish the route: ${reason(e)}`));
+      }
     }
     log.system("previous container restored");
   };
@@ -122,8 +142,11 @@ export async function swap(app: SwapApp, deploymentId: string, imageId: string, 
   // Until the flip the route stays on the container that serves now, under a name the new one
   // never takes (see pinTarget). Unchanged for a container that already routes by its alias.
   const pin = previousInfo ? pinTarget(previousInfo, network) : null;
-  if (pin && app.port !== null && app.routeHosts.length) {
-    await writeRoute(deps.routes, { appId: app.id, hosts: app.routeHosts, port: app.port, backend: pin }, deps.dashboardHost, deps.mode);
+  const pinPort = app.port;
+  if (pin && pinPort !== null) {
+    await routeLocked(async () => {
+      if (routeHosts.length) await writeRoute(deps.routes, { appId: app.id, hosts: routeHosts, port: pinPort, backend: pin }, deps.dashboardHost, deps.mode);
+    });
   }
 
   if (previous) {
@@ -239,21 +262,23 @@ export async function swap(app: SwapApp, deploymentId: string, imageId: string, 
   // Point of no return: the route flip, to the alias only the new container holds. Cancel is no
   // longer honoured past here. A flip that throws has not moved the traffic, so the old one comes back.
   try {
-    if (app.port !== null && app.routeHosts.length && ready.address) {
-      await docker.connectNetwork(network, deps.proxyContainer);
-      const backend = routeAlias(deploymentId);
-      await writeRoute(deps.routes, { appId: app.id, hosts: app.routeHosts, port: app.port, backend }, deps.dashboardHost, deps.mode);
-      log.system(`route flipped to ${backend} (${ready.address}:${app.port}) for ${app.routeHosts.join(", ")}`);
-    } else {
-      await removeRoute(deps.routes, app.id);
-      if (app.hosts.length) {
-        log.system(app.port === null
-          ? "not routing: the app has no port, and its image says none. Set the port in the app's Settings, then deploy again"
-          : !app.routeHosts.length
-            ? "not routing yet: no domain of this app points at this server; each one is routed once its DNS check passes"
-            : "not routing: the container has no address");
+    await routeLocked(async () => {
+      if (app.port !== null && routeHosts.length && ready.address) {
+        await docker.connectNetwork(network, deps.proxyContainer);
+        const backend = routeAlias(deploymentId);
+        await writeRoute(deps.routes, { appId: app.id, hosts: routeHosts, port: app.port, backend }, deps.dashboardHost, deps.mode);
+        log.system(`route flipped to ${backend} (${ready.address}:${app.port}) for ${routeHosts.join(", ")}`);
+      } else {
+        await removeRoute(deps.routes, app.id);
+        if (app.hosts.length) {
+          log.system(app.port === null
+            ? "not routing: the app has no port, and its image says none. Set the port in the app's Settings, then deploy again"
+            : !routeHosts.length
+              ? "not routing yet: no domain of this app points at this server; each one is routed once its DNS check passes"
+              : "not routing: the container has no address");
+        }
       }
-    }
+    });
   } catch (e) {
     await scrapNew();
     await restore();

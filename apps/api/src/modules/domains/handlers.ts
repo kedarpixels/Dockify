@@ -8,7 +8,7 @@ import { assertProjectScope, tokenProjectLimit, type Actor } from "../../actor.t
 import type { Ctx, Handlers } from "../../app.ts";
 import { audit } from "../../audit.ts";
 import { HttpError, isUniqueViolation } from "../../errors.ts";
-import { isReserved, jobsForCreate, jobsForDelete, normalizeHost, reservedHosts, ROUTABLE_KINDS, toDomainRow, type EdgeJob } from "./logic.ts";
+import { edgeLane, isReserved, jobsForCreate, jobsForDelete, normalizeHost, reservedHosts, ROUTABLE_KINDS, toDomainRow, type EdgeJob } from "./logic.ts";
 
 const withApp = { app: { select: { id: true, name: true, displayName: true, port: true, serverId: true, environment: { select: { name: true, project: { select: { slug: true, id: true } } } } } } } as const;
 
@@ -43,12 +43,13 @@ export async function enqueueEdge(tx: Tx, job: Extract<EdgeJob, { kind: "dns_che
 export async function enqueueEdge(tx: Tx, job: EdgeJob, serverId: string): Promise<void>;
 export async function enqueueEdge(tx: Tx, job: EdgeJob, serverId?: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${job.dedupeKey}))`;
+  const lane = edgeLane(job.kind);
+  // Only the job's own lane: a route sync an older version left on the deploy lane may sit behind a build.
   const open = await tx.job.findFirst({
-    where: { dedupeKey: job.dedupeKey, completedAt: null, failedAt: null, attempts: 0 },
+    where: { dedupeKey: job.dedupeKey, lane, completedAt: null, failedAt: null, attempts: 0 },
     select: { id: true },
   });
   if (open) return;
-  const lane = job.kind === "dns_check" ? "maintenance" : "deploy";
   const runAfterMs = "runAfterMs" in job ? (job.runAfterMs ?? 0) : 0;
   await tx.job.create({
     data: { kind: job.kind, lane, serverId: job.kind === "dns_check" ? null : (serverId ?? null), payload: job.payload, dedupeKey: job.dedupeKey, runAfter: new Date(Date.now() + runAfterMs), maxAttempts: 5 },
