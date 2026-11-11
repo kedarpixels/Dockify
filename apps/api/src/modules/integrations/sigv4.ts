@@ -17,7 +17,7 @@ export interface SignInput {
 const hmac = (key: Buffer | string, data: string) => createHmac("sha256", key).update(data, "utf8").digest();
 export const sha256Hex = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 
-/** RFC 3986 encoding as SigV4 wants it. */
+/** RFC 3986 encoding, which SigV4 requires and encodeURIComponent alone does not give. */
 const enc = (s: string) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 
 export function amzDate(d: Date): string {

@@ -1,8 +1,6 @@
 /**
- * The readiness gate before any route flip. A container passes only when it is running, not
- * crash-looping, its own HEALTHCHECK (if any) is not unhealthy, and, when the app has a port, a TCP
- * connect (plus an HTTP GET when a health path is set) to it on the environment network succeeds.
- * "Running for a few seconds" alone is accepted only for apps with no port.
+ * The gate before any route flip: running, not crash-looping, its HEALTHCHECK not unhealthy and, with a port, a
+ * TCP connect (plus an HTTP GET when a health path is set). Staying up a few seconds passes only a portless app.
  */
 import { requestOver } from "../server/http-over.ts";
 import type { Dialer } from "../server/runtime.ts";
@@ -12,19 +10,16 @@ export interface HealthConfig {
   port: number | null;
   path: string | null;
   expectedStatus: number;
-  /** Per probe. */
   timeoutSeconds: number;
   /** Failures inside the grace window do not count against the deploy. */
   graceSeconds: number;
   intervalSeconds: number;
-  /** Total time after the grace window before giving up. */
   windowSeconds: number;
   hostHeader?: string | null;
 }
 
 export interface ProbeDeps {
   inspect(): Promise<ContainerInfo>;
-  /** The container's address on its network, read from an inspect. */
   addressOf(info: ContainerInfo): string | null;
   tcp(host: string, port: number, timeoutMs: number): Promise<boolean>;
   http(host: string, port: number, path: string, timeoutMs: number, hostHeader: string | null): Promise<number | null>;
@@ -105,10 +100,7 @@ export async function waitUntilReady(cfg: HealthConfig, deps: ProbeDeps, signal:
   }
 }
 
-/**
- * The two probes of one container, over the server's dialer. `host` is only what a request with no
- * domain of its own says in its Host header: the container's address, as it always read.
- */
+/** `host` is only what a request with no domain of its own sends as its Host header. */
 export function dialProbes(dial: Dialer, container: string, network: string, signal: AbortSignal): Pick<ProbeDeps, "tcp" | "http"> {
   return {
     async tcp(_host, port, timeoutMs) {

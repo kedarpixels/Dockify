@@ -1,8 +1,4 @@
-/**
- * The agent's calls, one H2 stream each, all on the authenticated link. Only the worker can reach
- * these: it dials nothing here, and the agent starts no request of its own. Every body is parsed with
- * the shared schemas, because the caller may be a compromised control plane.
- */
+/** Every body is parsed with the shared schemas, because the caller may be a compromised control plane. */
 import { link as L } from "@dockify/contracts";
 import { buildImage, cachePruneArgs, duArgs, endWhenDone, pruneArgs, readHost, runPlanStep, scopePruneArgs, type BuildServer, type BuildVar, type Dialer, type RouteStore, reason } from "@dockify/engine";
 import { Redactor } from "@dockify/redact";
@@ -21,17 +17,13 @@ export interface AgentDeps {
   dial: Dialer;
   routes: RouteStore;
   routeRules: RouteRules;
-  /** The addresses tenant containers hold now. A route file naming an address needs one of these. */
   heldAddresses?: () => Promise<ReadonlySet<string>>;
   /** Where the disk readings come from: any path on the filesystem Docker keeps containers on. */
   diskPath: string;
   buildRoot: string;
   build: BuildServer;
-  /** The largest context this server takes, whatever the first line asks for. */
   maxContextBytes?: number;
-  /** The facts /v1/info answers with, apart from the clock and what the kernel says. */
   facts: { version: string; hostname: string; publicIpv4: string | null; publicIpv6: string | null; dockerVersion: string | null; os: string | null; ingress: "cloudflare_tunnel" | "direct_tls" };
-  /** A test's stand-ins for what needs the real BuildKit. */
   buildImage?: typeof buildImage;
   runPlanStep?: typeof runPlanStep;
   buildctl?: (args: string[], timeoutMs: number, maxBuffer: number) => Promise<string>;
@@ -40,11 +32,10 @@ export interface AgentDeps {
 /** The JSON for every cache record can run to megabytes on a busy builder. */
 const CACHE_MAX_BUFFER = 64 * 1024 * 1024;
 const TRIM_TIMEOUT_MS = 10 * 60_000;
-/** A route change holds many small files at most. */
 const ROUTE_BODY_MAX = 16 * 1024 * 1024;
 /** Route bodies being read at once: the agent's mem_limit is 512m and a link holds up to 256 streams. */
 const ROUTE_BUFFERED_MAX = 64 * 1024 * 1024;
-/** Only a pinned address reads like this, and the fixed upstreams, which costs one list. A miss only refuses. */
+/** A backend written as an address (pinned route or fixed upstream): only then is the held-address list fetched. */
 const NAMES_AN_ADDRESS = /"http:\/\/\d/;
 
 const runBuildctl = (args: string[], timeoutMs: number, maxBuffer: number) =>
@@ -80,8 +71,8 @@ async function readJson(st: ServerHttp2Stream, max: number): Promise<unknown> {
 }
 
 /**
- * The repository's folder inside an unpacked context, with no link anywhere along it. A link here would
- * make its target the boundary every later check measures from, so a build could read the agent's key.
+ * The repository's folder inside an unpacked context, with no link anywhere along it. A link would move the
+ * boundary every later check measures from, so a build could read the agent's key.
  */
 export async function repositoryFolder(context: string, repoDir: string): Promise<string> {
   const parts = repoDir === "" ? [] : repoDir.split("/");
@@ -99,7 +90,6 @@ export async function repositoryFolder(context: string, repoDir: string): Promis
   return dir;
 }
 
-/** The first line of a stream, leaving the rest of its bytes for whoever reads next. */
 async function readLine(st: ServerHttp2Stream, max: number): Promise<string> {
   let got: Buffer = Buffer.alloc(0);
   for (;;) {
@@ -152,11 +142,7 @@ export function createAgentApi(deps: AgentDeps) {
     clock: Date.now(),
   });
 
-  /**
-   * A build or a read: first line, then the context, then log lines back and one last line. The context
-   * unpacks into a folder of its own, so nothing in it can stand where a step writes: `root` holds `ctx`
-   * and, beside it, the folders the steps make, where no tar entry ever reached.
-   */
+  /** The context unpacks into its own `ctx` folder; the folders steps write sit beside it, where no tar entry can reach. */
   const withContext = async <T extends { repoDir: string; maxBytes: number }>(
     st: ServerHttp2Stream,
     parse: (line: unknown) => T,

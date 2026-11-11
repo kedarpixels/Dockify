@@ -17,10 +17,6 @@ const KPIS: KpiData[] = [
 const RESOURCE_ROW = "minmax(0, 1.2fr) 112px minmax(0, 1.4fr) 112px 136px 72px";
 const DOMAIN_ROW = "minmax(0, 1.6fr) 168px 136px minmax(0, 1fr) 68px";
 
-/**
- * Route loading state for Resources and Domains: the real head and rule, the KPI strip on
- * Resources, the toolbar, then the list's head and two-line rows at the real 56px.
- */
 export function PageSkeleton({ page }: { page: "resources" | "domains" }) {
   const title = page === "resources" ? "Resources" : "Domains";
   return (

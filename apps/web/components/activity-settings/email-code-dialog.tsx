@@ -16,13 +16,8 @@ import type { Me, Outcome } from "@/lib/pages/activity-settings";
 import { isStepUpCancel } from "@/lib/step-up";
 import { settle } from "./form";
 
-/*
- * Confirms an address with a 6-digit emailed code. With `target` it moves the account there (the
- * code goes to the new address, the old one gets a notice); without, it verifies the current one.
- * Mounted only while open, so every opening sends a fresh code. A change needs a fresh step-up:
- * "Confirm it is you" (components/step-up) asks over this dialog when the API wants one, and
- * closing it closes this dialog too.
- */
+// Mounted only while open, so every opening sends a fresh code. With `target` the account moves
+// there; without, the current address is verified.
 
 const RESEND_SECONDS = 30;
 
@@ -38,7 +33,6 @@ export function EmailCodeDialog({
   onClose: () => void;
   onDone: (me: Me) => void;
   me: Me;
-  /** The new address for a change; undefined verifies the current one. */
   target?: string;
   preview: boolean;
 }) {
@@ -52,7 +46,6 @@ export function EmailCodeDialog({
   const seq = useRef(0);
   const change = target !== undefined;
 
-  /** One send, as "Confirm it is you" allows it; the answer lands through `landed`. */
   const request = () => elevate(() => settle(sendEmailCode(change ? { email: target } : {})), { what: "Moving your sign-in email" });
 
   const landed = (mine: number, r: Outcome<{ email: string }>) => {
@@ -66,7 +59,6 @@ export function EmailCodeDialog({
     else setStep({ at: "failed", error: r.error });
   };
 
-  // The first send, on opening; its answer is written from the request's callback.
   useEffect(() => {
     const mine = ++seq.current;
     let alive = true;
@@ -79,7 +71,6 @@ export function EmailCodeDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one send per mount; `request` and `landed` read the props they need at call time.
   }, []);
 
-  /** Send again (Try again, Send a new code): a press, so it may reset the step at once. */
   const resend = () => {
     const mine = ++seq.current;
     setStep({ at: "sending" });

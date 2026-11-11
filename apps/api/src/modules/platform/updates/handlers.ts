@@ -11,7 +11,6 @@ import { buildStatus, checkFeed, FeedError, toJob, type UpdateEnv } from "./stat
 
 export { storedFeed } from "./state.ts";
 
-/** The api's view of the update settings: the installer's env, and the image's pinned key first. */
 export const updateEnvOf = (env: PlatformEnv): UpdateEnv => ({
   version: env.version,
   feedBase: env.releaseFeedUrl,
@@ -43,10 +42,7 @@ export function updateHandlers(env: PlatformEnv, get?: Fetcher): Handlers {
       return buildStatus(ctx.db, uenv);
     },
 
-    /**
-     * Starts an update to a version of the verified feed. The updater re-fetches and re-verifies
-     * the feed and refuses if its hash differs from the one stored here.
-     */
+    /** The updater re-fetches and re-verifies the feed and refuses if its hash differs from the one stored here. */
     "server.updates.apply": async ({ body, actor, req, ctx }) => {
       const a = requireActor(actor);
       if (!uenv.feedBase || !uenv.publicKey) throw new HttpError(409, "Updates are not configured: the installer writes DOCKIFY_RELEASE_FEED and DOCKIFY_RELEASE_PUBKEY", "UPDATES_NOT_CONFIGURED");
@@ -109,13 +105,9 @@ export function updateHandlers(env: PlatformEnv, get?: Fetcher): Handlers {
       return buildStatus(ctx.db, uenv);
     },
 
-    /** The console's banner and popup: the pending security release, read from the stored signed feed, and this member's reminder. */
     "server.updates.security": async ({ actor, ctx }) => securityAlert(ctx.db, uenv, requireActor(actor).userId),
 
-    /**
-     * "Remind me in" for this member only. Putting off a security alert is on the record, so the
-     * activity log shows who chose to wait and for how long.
-     */
+    /** Audited on purpose: the activity log shows who put off a security alert and for how long. */
     "server.updates.security.snooze": async ({ body, actor, req, ctx }) => {
       const a = requireActor(actor);
       const { alert, stored } = await snoozeSecurity(ctx.db, uenv, a.userId, body);

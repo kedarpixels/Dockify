@@ -12,19 +12,8 @@ import { useLogWindow } from "./use-log-window";
 import { LogRows, type AppMeta } from "./log-rows";
 import type { RuntimeLogLine } from "./model";
 
-/*
- * The virtualised log surface, the same approach as the build log viewer: lines render in chunks
- * of 200 and only the chunks near the viewport mount; the rest are spacers sized from measured
- * (or estimated) heights. Chunks are keyed by position (`base` + index), so loading older lines
- * on top or trimming the oldest never re-renders the chunks on screen (LogRows compares the lines
- * it holds), and the view stays anchored on the row it showed.
- *
- * Following pins the view to the newest line. Scrolling up pauses the tail, scrolling back to the
- * end resumes it. A time is a permalink: a click copies a link to a window around the line.
- *
- * The box is a log for assistive tech but not a live region: lines stream faster than speech, so
- * LogAnnouncer sums them up every few seconds instead.
- */
+// Chunks are keyed by position (`base` + index), so loading older lines or trimming the oldest never
+// re-renders the chunks on screen. Not a live region: LogAnnouncer sums the stream up instead.
 
 const LINE_HASH = /^#L-([\w.:~-]{1,128})$/;
 const hashLine = (hash: string) => LINE_HASH.exec(hash)?.[1];
@@ -48,18 +37,14 @@ export function LogList({
   apps: Map<string, AppMeta>;
   re: RegExp | null;
   wrap: boolean;
-  /** Pinned to the newest line (live and not paused). */
   follow: boolean;
-  /** Pauses or resumes the tail; only called while the stream is live. */
+  /** Only called while the stream is live. */
   onPause?: (on: boolean) => void;
-  /** Lines waiting while paused, for the pill. */
   fresh: number;
   /** A new value lands the view on the newest line once (a new filter set). */
   pinKey: string;
   older: { more: boolean; trimmed: boolean; pending: boolean; error?: string; load: () => void };
-  /** Replaces the rows while loading, empty or failed. */
   status?: React.ReactNode;
-  /** The link a line's time copies. */
   permalink: (line: RuntimeLogLine) => string;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -76,12 +61,9 @@ export function LogList({
       spans.push([Math.max(k * CHUNK, base) - base, Math.min((k + 1) * CHUNK, end) - base]);
     }
   }
-  // Heights go by position key; a chunk not measured yet is estimated from its lines.
   const { setHeights, onSize, offsets, total, first, last, before, after, scrollBox, centreRow, userScrolled } = useLogWindow(box, keys.length, (i) => keys[i]!, (i) => (spans[i]![1] - spans[i]![0]) * ROW);
 
-  // Wrapping changes every chunk's height, and a new filter set is another log: either way the
-  // mounted chunks measure again and the rest re-estimate. A trim drops the heights of chunks that
-  // left the top, so the map never holds more than the lines do.
+  // Wrapping or a new filter set changes every height. A trim drops the heights of chunks that left the top.
   const lowKey = Math.floor(base / CHUNK);
   const [measured, setMeasured] = useState({ wrap, pinKey, lowKey });
   if (wrap !== measured.wrap || pinKey !== measured.pinKey) {
@@ -92,7 +74,6 @@ export function LogList({
     setHeights((m) => new Map([...m].filter(([k]) => k >= lowKey)));
   }
 
-  /** The lines of the mounted chunks only. */
   const shown: Array<{ key: number; lines: RuntimeLogLine[] }> = [];
   if (keys.length) for (let i = first; i <= last; i++) shown.push({ key: keys[i]!, lines: lines.slice(spans[i]![0], spans[i]![1]) });
 
@@ -104,14 +85,12 @@ export function LogList({
     else if (!follow && atEnd) onPause(false);
   };
 
-  // Follow: after every append or remeasure, pin the view to the newest line.
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || !follow || !mounted) return;
     scrollBox(el, el.scrollHeight);
   }, [end, follow, mounted, total, scrollBox]);
 
-  // A new filter set opens on its newest line, live or not.
   const pinned = useRef<string | null>(null);
   useLayoutEffect(() => {
     const el = box.current;
@@ -188,7 +167,6 @@ export function LogList({
     reveal(id);
   }, [mounted, lines, target]);
 
-  // Clicking a time copies its permalink and marks the line, without a page jump.
   const link = useCopy();
   const [linkId, setLinkId] = useState<string | undefined>(undefined);
   const onBoxClick = (e: React.MouseEvent) => {

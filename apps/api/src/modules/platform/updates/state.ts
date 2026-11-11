@@ -1,7 +1,4 @@
-/**
- * The update state in the database, shared by the api handlers and the updater: the stored policy,
- * the verified feed, the journal rows and the status the dashboard reads.
- */
+/** The update state in the database, shared by the api handlers and the updater. */
 import type { Db, Prisma, ReleaseUpdate, Tx } from "@dockify/db";
 import { isTimeZone, runningVersion } from "@dockify/contracts";
 import { decideAuto, DEFAULT_WINDOW, minutesOf, nextCheckAt, type UpdatePolicy, type UpdateWindow } from "./policy.ts";
@@ -9,7 +6,7 @@ import { bare, chooseRelease, trustedKey, compareVersions, FeedRelease, fetchVer
 import { SignatureError } from "./minisign.ts";
 import { plannedSteps, type Journal, type StepId, type StepRow } from "./runner.ts";
 
-/** Updates kept rollback-able: the last good version within this many days, its dump still on disk. */
+/** An update can be rolled back for this many days; its dump stays on disk that long. */
 export const ROLLBACK_DAYS = 7;
 
 export interface UpdateEnv {
@@ -19,17 +16,14 @@ export interface UpdateEnv {
 }
 
 /**
- * The updater's view of the update settings. Its version is its image's own (runningVersion): the
- * updater rewrites only release.env, so .env's DOCKIFY_VERSION still names the version before the
- * last in-app update, and reading it would offer that update again or misjudge minFrom.
+ * The version is the image's own. .env's DOCKIFY_VERSION is never rewritten by an in-app update,
+ * so reading it would offer the last update again or misjudge minFrom.
  */
 export function updateEnv(env: NodeJS.ProcessEnv = process.env): UpdateEnv {
   return { version: runningVersion(env), feedBase: env.DOCKIFY_RELEASE_FEED?.trim() || null, publicKey: trustedKey(env) };
 }
 
 type Client = Db | Tx;
-
-// ------------------------------------------------------------------ policy
 
 export function parseWindow(raw: unknown): UpdateWindow | null {
   if (raw === null) return null;
@@ -64,15 +58,13 @@ export async function readPolicy(db: Client): Promise<StoredPolicy> {
   };
 }
 
-/** The verified feed stored by the last check, re-validated; only a verified feed is ever written. */
+/** Re-validates the stored feed. Only a verified feed is ever written. */
 export function storedFeed(raw: unknown): VerifiedFeed | null {
   if (!raw || typeof raw !== "object") return null;
   const { sha256, ...rest } = raw as Record<string, unknown>;
   const m = ReleaseFeed.safeParse(rest);
   return m.success && typeof sha256 === "string" && /^[a-f0-9]{64}$/.test(sha256) ? { ...m.data, sha256 } : null;
 }
-
-// ------------------------------------------------------------------ checking the feed
 
 export type FeedErrorCode = "UPDATE_SIGNATURE_INVALID" | "UPDATE_FEED_UNREACHABLE" | "UPDATE_FEED_REPLAY" | "UPDATES_NOT_CONFIGURED";
 export class FeedError extends Error {
@@ -83,10 +75,7 @@ export class FeedError extends Error {
   }
 }
 
-/**
- * Fetches and verifies the channel's feed, refuses a replay of an older signed feed, and stores it.
- * The failure is stored too, so the dashboard shows why the last check did not succeed.
- */
+/** Refuses a replay of an older signed feed. A failure is stored too, so the dashboard can show why. */
 export async function checkFeed(db: Db, env: UpdateEnv, get?: Fetcher, now = new Date()): Promise<VerifiedFeed> {
   if (!env.feedBase || !env.publicKey) {
     throw new FeedError("Updates are not configured: the installer writes DOCKIFY_RELEASE_FEED and DOCKIFY_RELEASE_PUBKEY", "UPDATES_NOT_CONFIGURED");
@@ -97,7 +86,7 @@ export async function checkFeed(db: Db, env: UpdateEnv, get?: Fetcher, now = new
   try {
     feed = await fetchVerifiedFeed(env.feedBase, channel, env.publicKey, get);
     const prev = storedFeed(seen?.latestRelease);
-    // Only compare like with like: switching channel starts a fresh sequence.
+    // Switching channel starts a fresh sequence, so only the same channel is compared.
     if (prev?.channel === feed.channel && seen?.updateFeedSeenAt && new Date(feed.generatedAt) < seen.updateFeedSeenAt) {
       throw new FeedError("The release feed is older than one already seen (a replay). Nothing was stored.", "UPDATE_FEED_REPLAY");
     }
@@ -121,8 +110,6 @@ export async function checkFeed(db: Db, env: UpdateEnv, get?: Fetcher, now = new
   });
   return feed;
 }
-
-// ------------------------------------------------------------------ journal rows
 
 const PHASE: Record<StepId, ReleaseUpdate["phase"]> = {
   preflight: "preflight", pull: "pull", backup: "backup", migrate: "migrate",
@@ -159,7 +146,7 @@ export function journalOf(r: ReleaseUpdate): Journal {
   };
 }
 
-/** Every column of the journal, for an upsert that must recreate the row after a dump restore. */
+/** Every column, because the upsert must be able to recreate the row after a dump restore. */
 export function rowOf(j: Journal, extra: { trigger: ReleaseUpdate["trigger"]; actorName: string | null }) {
   return {
     kind: j.kind,
@@ -207,8 +194,6 @@ export const newJournal = (a: { id: string; kind: Journal["kind"]; from: string;
   finishedAt: null,
 });
 
-// ------------------------------------------------------------------ the status the dashboard reads
-
 const STEP_ID: Record<StepId, string> = {
   preflight: "preflight", pull: "pull", backup: "backup", migrate: "migrate",
   swap_api: "swapApi", swap_worker: "swapWorker", swap_web: "swapWeb", health: "health", rollback: "rollback",
@@ -249,9 +234,8 @@ const releaseInfo = (r: FeedRelease) => ({
 });
 
 /**
- * The last good version this install can go back to: the newest finished update within
- * ROLLBACK_DAYS whose pre-update dump and previous images are recorded, and which is still the
- * version running (nothing newer was installed over it).
+ * The newest finished update within ROLLBACK_DAYS that is still the running version and has its
+ * pre-update dump and previous images recorded.
  */
 export function rollbackTarget(rows: ReleaseUpdate[], current: string, now: Date) {
   const last = rows.find((r) => r.kind === "update" && r.state === "done");
@@ -259,7 +243,6 @@ export function rollbackTarget(rows: ReleaseUpdate[], current: string, now: Date
   if (!last.dumpBackupId || !last.dumpSha256 || !asImages(last.fromImages) || !last.finishedAt) return null;
   const until = new Date(last.finishedAt.getTime() + ROLLBACK_DAYS * 86_400_000);
   if (until <= now) return null;
-  // A rollback of this update already ran: nothing left to return to.
   if (rows.some((r) => r.kind === "rollback" && r.rollbackOfId === last.id && r.state === "done")) return null;
   return { updateId: last.id, version: last.fromVersion, until: until.toISOString() };
 }
@@ -304,12 +287,10 @@ export async function buildStatus(db: Db, env: UpdateEnv, now = new Date()) {
     job: live ? toJob(live) : rows[0] ? toJob(rows[0]) : null,
     history: rows.map(toJob),
     rollback: live ? null : rollbackTarget(rows, current, now),
-    // From the signed feed only: kept while any pending release is a security release.
     security: securityInfo(usable ? pendingSecurity(usable, current) : null),
   };
 }
 
-/** The release `version` from the stored feed, or why it cannot be installed over `current`. */
 export function pickStored(feed: VerifiedFeed | null, version: string, current: string): { rel: FeedRelease } | { refused: string } {
   if (!feed) return { refused: "Check for updates first: no verified release feed is stored." };
   const rel = feed.releases.find((r) => bare(r.version) === bare(version));

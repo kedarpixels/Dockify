@@ -1,7 +1,7 @@
 import { guardWrite, json, readJsonObject, refuse } from "@/lib/http";
 import { createRule, parseRule, type RuleInput } from "@/lib/pages/alerts";
 
-/** POST /api/alerts/rules RuleInput: a new rule, checked in full before it is forwarded. */
+/** The rule is checked in full before it is forwarded. */
 export async function POST(req: Request) {
   const refused = guardWrite(req);
   if (refused) return refused;

@@ -1,11 +1,6 @@
 /**
- * The api to worker channel for the data browser. The api never reaches tenant networks; the server's
- * dialer does, so browser calls are relayed: the api checks the policy, then POSTs here with the
- * internal channel token. This side re-checks everything that matters (the app exists, is the expected
- * kind, its container is ours by label and running) before dialing anything.
- *
- * Listen on the control-plane network only, never on a tenant network (a channel bound
- * to 0.0.0.0 was reachable from every environment the worker joined).
+ * Only the worker reaches tenant networks, so the api checks the policy and POSTs here with the internal token;
+ * this side re-checks the app and its container before dialing. Control-plane network only, never 0.0.0.0.
  */
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { safeEqual } from "@dockify/crypto";
@@ -29,7 +24,6 @@ export interface ChannelDeps {
   dial: Dialer;
 }
 
-/** How long a service gets to accept the connection: what each client gives its own connect. */
 const CONNECT_TIMEOUT_MS = 5_000;
 
 const MAX_BODY = 64 * 1024;

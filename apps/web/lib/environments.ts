@@ -1,11 +1,6 @@
-/*
- * The one rule for when a project talks about environments. The engine always has them (variables,
- * domains, an isolated network, the preview base), but a project with a single one shows none of it:
- * no tags, filters, selectors or columns. Each app shows its own branch instead. A second environment
- * brings all of it back; removing down to one hides it again.
- */
+// A project with a single environment shows none of it: no tags, filters, selectors or columns.
+// A second environment brings all of it back.
 
-/** Whether a project with these environments shows them anywhere in the UI. */
 export const showsEnvironments = (envs: readonly unknown[]) => envs.length > 1;
 
 /** For a page that lists apps from several projects: which projects show their environments. */

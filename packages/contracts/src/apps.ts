@@ -34,7 +34,6 @@ export const ServiceVersionView = z.object({
   upgrade: ServiceUpgradeState.nullable(),
   /** After the switch: the service that links now lead to. */
   redirect: z.object({ id: z.string(), name: z.string(), displayName: z.string().nullable().optional() }).nullable(),
-  /** A version change is running. */
   busy: z.boolean(),
 });
 export const ServiceVersionChange = z.strictObject({
@@ -66,19 +65,13 @@ export const AppAdvanced = z.strictObject({
   capAdd: z.array(Capability).max(2).optional(),
   sysctls: Sysctls.optional(),
 });
-/**
- * What the app runs: the image of an image app, the branch of a git app (null follows the
- * environment's branch). Either applies on the next deploy, through the same elevated patch.
- */
+/** A null branch follows the environment's branch. Either field applies on the next deploy. */
 export const AppSource = z.strictObject({
   image: ImageRef.optional(),
   branch: Branch.nullable().optional(),
 });
 export const AppPatchBody = z.strictObject({ settings: AppSettings, advanced: AppAdvanced.optional(), source: AppSource.optional() });
-/**
- * The name people read. Null, or the app's own name in any case, clears it so the app shows its
- * name again. The app's `name` never changes: links, containers, preview hosts and the CLI use it.
- */
+/** Null, or the app's own name in any case, clears it. The app's `name` never changes. */
 export const AppRenameBody = z.strictObject({ displayName: AppDisplayName.nullable() });
 
 export const AppUsage = z.object({ cpuPct: z.number(), memoryBytes: z.number(), memoryLimitBytes: z.number() });
@@ -87,7 +80,6 @@ export const AppDetail = Resource.extend({
   terminal: z.boolean().optional(),
   url: z.string().nullable(),
   image: z.string().nullable(),
-  /** The git repository URL the app builds from; null for an image source. */
   repo: z.string().nullable(),
   /** A git app's own branch; null follows its environment's branch, and an image app has none. */
   branch: z.string().nullable().optional(),
@@ -109,8 +101,6 @@ export const AppLogs = z.object({
   retention: VercelLogRetention.optional(),
 });
 export const DeployResponse = z.object({ deploymentId: z.string() });
-
-// ------------------------------------------------------------------ app tabs
 
 export const RangeQuery = z.strictObject({ range: MetricRange.optional() });
 export const AppMetrics = z.object({

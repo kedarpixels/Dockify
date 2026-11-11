@@ -1,12 +1,6 @@
 /**
- * The janitor keeps the disk from filling. Images are kept by reference, not by age: anything a
- * current, in-flight or one of the last N ready deployments of an app points at stays (those are
- * the rollback targets); every other Dockify-built or pulled image goes, plus dangling images. The
- * BuildKit cache is pruned down to a size cap rather than wiped, so builds stay fast. Old
- * deployments beyond the kept ready ones are deleted after the retention window, logs with them.
- * Images of apps that no longer exist go whatever their age. Volumes are not removed here: the
- * anonymous ones no container uses are listed in Activity. The wider sweep (scratch copies, empty
- * volumes, orphaned networks and containers) runs just before this pass (wiring.ts).
+ * Images are kept by reference, not by age: anything a current, in-flight or one of the last N ready deployments
+ * points at stays (the rollback targets). The BuildKit cache is pruned to a cap, and volumes are never removed here.
  */
 import type { Db } from "@dockify/db";
 import { recordVolumeSizes, reportUnusedVolumes } from "../data/volumes.ts";
@@ -37,7 +31,6 @@ export interface Retention {
   deleteDeployments: string[];
 }
 
-/** Pure: which image ids to keep and which deployment rows to delete. */
 export function computeRetention(rows: DeploymentRef[], currentIds: Set<string>, keepReady: number, cutoff: Date): Retention {
   const keepImages = new Set<string>();
   const keepRows = new Set<string>();
@@ -68,7 +61,6 @@ export function computeRetention(rows: DeploymentRef[], currentIds: Set<string>,
   return { keepImages, deleteDeployments };
 }
 
-/** The image tag a build gets (build.ts imageNameFor), which names the app it belongs to. */
 const APP_IMAGE_TAG = /^dockify\/app-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):/;
 
 /**
@@ -82,11 +74,7 @@ export async function builtImages(docker: Pick<DockerApi, "listImages">): Promis
   return [...byId.values()];
 }
 
-/**
- * Tagged builds of apps that are gone from this server. Their deployment rows went with the app, so nothing
- * keeps them and no retention rule ever names them. By tag, so an image with two tags loses both.
- * One a container still uses stays until the next pass.
- */
+/** Builds of apps gone from this server, which no retention rule names. By tag, so an image with two tags loses both. */
 export async function removeDeletedAppImages(db: Db, docker: Pick<DockerApi, "listImages" | "removeImage">, serverId: string): Promise<{ removed: number; bytes: number }> {
   const images = await builtImages(docker);
   const tagged = images.flatMap((img) => (img.RepoTags ?? []).flatMap((tag) => {
@@ -114,7 +102,6 @@ export async function removeDeletedAppImages(db: Db, docker: Pick<DockerApi, "li
 
 export interface LoadedRetention {
   plan: Retention;
-  /** Every image id a deployment row points at. Images pulled for image-based apps carry no label. */
   referenced: Set<string>;
 }
 
@@ -141,9 +128,8 @@ export async function loadRetention(db: Db, config: Pick<DeployConfig, "keepRead
 export const PARKED_ACTION = "janitor.containers.parked";
 
 /**
- * Containers a dead worker left parked and no deploy is coming back for. One may hold an app that is
- * now down, another may be old code still running next to the new, and only the next deploy of that
- * app can tell which (swap.ts), so they are reported, once each time the set changes.
+ * Containers a dead worker left parked. Only the next deploy of that app can tell whether one holds an app
+ * that is now down or old code (swap.ts), so they are reported, once each time the set changes.
  */
 export async function reportParked(db: Db, docker: Pick<DockerApi, "listContainers">, serverId: string, now: Date): Promise<string[]> {
   const rows = await docker.listContainers({ "dockify.managed": "true" });
@@ -178,11 +164,9 @@ const APP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const NOT_AN_APP_CONTAINER = ["com.docker.compose.project", "com.docker.compose.service", "dockify.preview", "dockify.preview.app"];
 
 /**
- * Removes tenant containers whose app row is gone. A worker that dies mid-deploy, followed by a delete
- * of that app, can leave one that no teardown will ever name. It has to prove what it is: the managed
- * label, an app id in the app label, a name of dk-<that id> or dk-<that id>-<suffix>, no Compose or
- * preview label, and older than the grace period. Any app row anywhere keeps it, and a failed removal
- * waits for the next pass. Volumes stay: what a named one holds is not for a sweep to judge.
+ * Removes tenant containers whose app row is gone. One has to prove what it is: the managed label, an app
+ * id in the app label, a name of dk-<that id>[-suffix], no Compose or preview label, and older than the
+ * grace period. Volumes stay: what a named one holds is not for a sweep to judge.
  */
 export async function removeOrphanContainers(db: Db, docker: Pick<DockerApi, "listContainers" | "removeContainer">, now: Date, log: (msg: string, extra?: object) => void = () => {}): Promise<string[]> {
   const rows = await docker.listContainers({ "dockify.managed": "true" });
@@ -224,7 +208,6 @@ export interface JanitorReport {
   bytesFreed: number;
   deploymentsDeleted: number;
   cacheMessage: string;
-  /** Anonymous volumes no container uses: listed in Activity, never removed (data/volumes.ts). Null when not read. */
   unusedVolumes: number | null;
 }
 
@@ -234,7 +217,6 @@ export interface JanitorDeps {
   config: DeployConfig;
   serverId: string;
   builder: Pick<Builder, "trimCache">;
-  /** Every local volume with its usage (GET /system/df?type=volume). Without it, volumes are not reported. */
   volumes?: () => Promise<DiskUsageVolume[]>;
   now?: () => Date;
 }
@@ -242,7 +224,6 @@ export interface JanitorDeps {
 export async function runJanitor(deps: JanitorDeps): Promise<JanitorReport> {
   const { db, docker, config, serverId } = deps;
   const now = deps.now?.() ?? new Date();
-  // Images pulled for image-based apps carry no label; they are known through deployment rows.
   const { plan, referenced: pulledIds } = await loadRetention(db, config, now, serverId);
 
   const gone = await removeDeletedAppImages(db, docker, serverId);
@@ -300,8 +281,6 @@ export async function runJanitor(deps: JanitorDeps): Promise<JanitorReport> {
     cacheMessage = `build cache prune failed: ${reason(e)}`;
   }
 
-  // Volumes are never removed here; unused anonymous ones are reported so none leaks silently, and
-  // each app volume's size is recorded for the Resources page.
   await reportParked(db, docker, serverId, now).catch(() => {
     // Only informs; the next pass reports.
   });

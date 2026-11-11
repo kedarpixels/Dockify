@@ -1,8 +1,4 @@
-/**
- * The deploy_status job: a commit status named "Dockify" on the commit a deploy shipped, through the
- * GitHub App, so main shows the green or red tick a push earned. Previews post their own
- * (preview-feedback.ts). Nothing to tell without an installation that covers the repository: a no-op.
- */
+/** The deploy_status commit status ("Dockify") through the GitHub App; a no-op without an installation. */
 import type { Db, SecretVault } from "@dockify/db";
 import type { HttpClient } from "@dockify/net-guard";
 import { installationCredential } from "../deploy/github.ts";
@@ -21,7 +17,7 @@ export interface DeployStatusDeps {
   publicUrl: string | null;
 }
 
-/** Pure: what the commit says about this deployment. GitHub caps the description at 140 characters. */
+/** GitHub caps the description at 140 characters. */
 export function deployStatusFor(d: { status: string; error: string | null }): { state: "success" | "failure"; description: string } | null {
   if (d.status === "ready") return { state: "success", description: "Deployed" };
   if (d.status !== "failed") return null;

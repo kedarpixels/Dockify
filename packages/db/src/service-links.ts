@@ -1,8 +1,4 @@
-/**
- * Which apps read a managed service through a linked variable. Shared by the api, which lists them
- * before a version change, and the worker, which redeploys them after the switch. A hand typed
- * connection string is not a link and is not found here, which the dashboard says out loud.
- */
+/** A hand typed connection string is not a link and is not found here. */
 import type { SecretAccess, Tx } from "./index.ts";
 import { readSecretValues } from "./index.ts";
 

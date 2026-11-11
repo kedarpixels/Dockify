@@ -1,15 +1,6 @@
-/**
- * Changing a managed database's version. The routes decide what is allowed and queue the one job
- * that does the work (worker data/upgrade.ts). All writes are an elevated session's, typed by name,
- * audited; an API token never reaches them.
- *
- * Refused outright: a downgrade (a dump or a data directory written by a newer server does not read
- * back in an older one), a version Dockify does not offer, and a service with a change running.
- *
- * Nothing here deletes data. "Back" only clears one column and redeploys. The old service stays
- * until its owner deletes it through the ordinary delete, and that is the moment its links are
- * rewritten to the new service for good, so no link is ever left pointing at something gone.
- */
+// Changing a managed database's version. A downgrade is refused: data written by a newer server does not read back in an older one.
+// Nothing here deletes data. The old service stays until its owner deletes it, and only then are its links rewritten to the new
+// service, so no link is ever left pointing at something gone.
 import { randomUUID } from "node:crypto";
 import { apps as Ap, projects as P } from "@dockify/contracts";
 import { enqueueTx, linkedApps, sealServiceCredentials, generateServiceCredentials, type Prisma, type Tx } from "@dockify/db";
@@ -41,9 +32,8 @@ function cmp(a: string, b: string): number {
 }
 
 /**
- * What a service at `current` can move to. The same line is an in-place pull of its newest patch. A
- * newer Postgres major needs a new service, since its data directory does not open in a newer major.
- * A newer Redis reads an older snapshot, so it moves in place, with a dump first. An older one is never offered.
+ * A newer Postgres major needs a new service, since its data directory does not open in a newer major.
+ * A newer Redis reads an older snapshot, so it moves in place, with a dump first. An older version is never offered.
  */
 export function versionOptions(kind: Kind, current: string | null): Option[] {
   if (!current) return [];
@@ -214,7 +204,6 @@ async function createTarget(tx: Prisma.TransactionClient, ctx: Ctx, app: Row, ki
       memoryLimitMb: app.memoryLimitMb, cpuLimit: app.cpuLimit, pidsLimit: app.pidsLimit,
     },
   });
-  // Both backup tiers, as they are: on or off, cron, what they keep and where offsite goes.
   const tiers = await tx.backupSchedule.findMany({ where: { appId: app.id } });
   if (tiers.length) {
     await tx.backupSchedule.createMany({
@@ -227,11 +216,7 @@ async function createTarget(tx: Prisma.TransactionClient, ctx: Ctx, app: Row, ki
   return id;
 }
 
-/**
- * Deleting either side of a version change, from apps.delete. A running change blocks it. The new
- * service cannot go while links lead to it: switch back first. The old one can, and only then do its
- * links become real links to the new service, in the same transaction as the delete.
- */
+/** A running change blocks the delete. The new service cannot go while links lead to it. Deleting the old one makes its links real links to the new service, in the same transaction. */
 export async function assertVersionChangeAllowsDelete(tx: Prisma.TransactionClient, appId: string): Promise<void> {
   await assertNoVersionChangeRunning(tx, appId);
   const from = await tx.app.findFirst({ where: { serviceRedirectId: appId }, select: { name: true } });

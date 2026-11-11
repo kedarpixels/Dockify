@@ -1,8 +1,4 @@
-/**
- * The worker's side of the link to this install's servers, with one server: the listener its agent
- * dials, the one-time token that server joins with, and the facts its agent reports. While the link
- * is down the server's claim loops wait; the Server page says so once it has lasted.
- */
+/** While the link is down the server's claim loops wait; the Server page says so once it has lasted. */
 import { readFile } from "node:fs/promises";
 import type { Db } from "@dockify/db";
 import type { WorkerHealth } from "../health.ts";
@@ -36,7 +32,7 @@ const required = (env: NodeJS.ProcessEnv, name: string): string => {
   return v;
 };
 
-/** What the agent says about itself, on the servers row. Lies only ever concern that one server. */
+/** The agent's own account of itself: a lie only ever concerns that one server. */
 export async function recordAgentFacts(db: Db, session: LinkSession, link: ServerLink): Promise<void> {
   const info = await readAgentInfo(link);
   await db.server.update({

@@ -4,7 +4,7 @@ import { SNOOZE_DAYS, type SnoozeDays } from "@/lib/security-release";
 
 const VERSION_RE = /^v?\d+\.\d+\.\d+(?:-[\w.]+)?$/;
 
-/** POST { version, days: 1 | 3 | 7 }: "Remind me in" for this member. The API caps it by the release's level. */
+/** POST { version, days: 1 | 3 | 7 }. The API caps it by the release's level. */
 export async function POST(req: Request) {
   const refused = guardWrite(req);
   if (refused) return refused;

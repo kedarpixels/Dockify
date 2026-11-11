@@ -2,8 +2,7 @@ import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/components/seo/config";
 import { DOC_PAGES } from "@/lib/docs-nav";
 
-/* Every public page: the marketing routes, the docs home and each docs page in sidebar order.
-   No lastModified: there is no real per-page date to give yet, and a made-up one helps nobody. */
+/* No lastModified: there is no real per-page date to give yet. */
 const ROUTES: { path: string; priority: number }[] = [
   { path: "/", priority: 1 },
   { path: "/install", priority: 0.9 },

@@ -44,7 +44,6 @@ function appendLines(shown: LogLine[], fresh: LogLine[]) {
   return add.length ? [...shown, ...add] : shown;
 }
 
-/** What the page says once a build lands, for screen readers: "Deployment ready". */
 function outcome(d: DeploymentDetail): string | null {
   if (d.status === "ready") return "Deployment ready";
   if (d.status === "cancelled") return "Deployment cancelled";
@@ -53,9 +52,6 @@ function outcome(d: DeploymentDetail): string | null {
   return at ? `Deployment failed at ${STEP_LABEL[at.id]}` : "Deployment failed";
 }
 
-// -------------- Page --------------
-
-/** No deployment to show: the not-found block for an unknown id, else the page's data source state. */
 function Missing({ id, initial, notices, now }: { id: string; initial: DeploymentResult; notices: ReturnType<typeof deriveNotices> | null; now: number }) {
   return (
     <>
@@ -100,7 +96,6 @@ export function DeploymentView({ id, initial, overview }: { id: string; initial:
   const [follow, setFollow] = useState(!!initial.data && IN_FLIGHT.includes(initial.data.status));
   const [pending, setPending] = useState<DeploymentAction | null>(null);
   const busy = pending !== null;
-  /** The action whose confirm dialog is open. */
   const [ask, setAsk] = useState<DeploymentAction | null>(null);
   const tail = useRef<LogLine[]>(initial.previewTail ?? []);
   const preview = initial.source === "preview";
@@ -109,7 +104,6 @@ export function DeploymentView({ id, initial, overview }: { id: string; initial:
   // BuildKit prints its normal progress there.
   const errors = useMemo(() => lines.filter((l) => lineLevel(l) === "error").length, [lines]);
 
-  // Preview: every 2s an in-flight build prints a few more of its fixture lines.
   useEffect(() => {
     if (!preview || !live) return;
     const t = setInterval(() => {
@@ -121,11 +115,8 @@ export function DeploymentView({ id, initial, overview }: { id: string; initial:
     return () => clearInterval(t);
   }, [preview, live]);
 
-  // API: 2s after each answer, ask for the lines after the last one, until the log is done. The
-  // steps refresh every third tick, and once more before the tail stops so the final status lands.
-  // It keys on the log, not the status: a build can finish before its last lines are read. A hidden
-  // tab stops asking and asks again the moment it shows.
-  // Vercel prints to a stream of its own: while that holds, it replaces this tail (below).
+  // Keyed on the log, not the status: a build can finish before its last lines are read. A hidden tab
+  // stops asking. While Vercel's own stream holds, it replaces this tail (below).
   const [streamLost, setStreamLost] = useState(false);
   const streaming = !preview && !!d?.external?.id && !done && !streamLost;
   const tailing = !preview && !!d && !done && !streaming;
@@ -137,7 +128,6 @@ export function DeploymentView({ id, initial, overview }: { id: string; initial:
     let timer: ReturnType<typeof setTimeout> | undefined;
     let tick = 0;
     const base = `/api/deployments/${encodeURIComponent(id)}`;
-    /** The steps and status again; true when they came back. */
     const refresh = async () => {
       const r = await callJson<DeploymentResult>(base);
       if (!r.ok || !r.data?.data) return false;
@@ -180,9 +170,8 @@ export function DeploymentView({ id, initial, overview }: { id: string; initial:
     };
   }, [id, tailing]);
 
-  // A Vercel build's log as Vercel prints it. Lines are added in small batches, so a burst is one
-  // render. The status is read every few seconds, since it comes from the mirror and not this stream.
-  // If the stream ends early or cannot reconnect, the tail above takes over from the last line.
+  // The status comes from the mirror, not this stream, so it is read every few seconds. If the stream
+  // ends early or cannot reconnect, the tail above takes over from the last line.
   useEffect(() => {
     if (!streaming) return;
     const base = `/api/deployments/${encodeURIComponent(id)}`;
@@ -264,9 +253,7 @@ export function DeploymentView({ id, initial, overview }: { id: string; initial:
   const vercel = d.external ?? null;
   const canRollback = d.status === "ready" && !d.current && !vercel;
   const short = d.commit?.slice(0, 7);
-  // The deployment's own name: its commit, or the start of its id when it has none, which fits the
-  // heading on one line. Project and app are its ancestors, named in the crumbs, so two deployments
-  // of one app never share a heading.
+  // Project and app are named in the crumbs, so the heading is the commit, or the start of the id.
   const name = short ?? d.id.slice(0, 8);
   const where = deployWhere(d);
 
@@ -305,14 +292,13 @@ export function DeploymentView({ id, initial, overview }: { id: string; initial:
     return { ok: true };
   };
 
-  /** The live action: a cancel answers with this deployment, now cancelled, which the page takes. */
   const send = async (action: DeploymentAction): Promise<ActionResult> => {
     const body = await sendDeploymentAction(d.id, action);
     if (action === "cancel" && body.deployment) setD((cur) => (cur ? { ...cur, ...body.deployment } : cur));
     return body;
   };
 
-  /** Runs an action with one toast from loading to its answer. Resolves false when it failed. */
+  /** Resolves false when it failed. */
   const act = async (action: DeploymentAction) => {
     const m = ACTION_TOAST[action];
     setPending(action);
@@ -342,13 +328,9 @@ export function DeploymentView({ id, initial, overview }: { id: string; initial:
     if (ask && !(await act(ask))) throw new Error("Action failed");
   };
 
-  // Each action changes what runs, so every one asks first, in the words the rows use too.
   const question = actionQuestion(ask ?? "redeploy", { label, short, ago: timeAgo(d.createdAt, now), queued: d.status === "queued", vercel: !!vercel });
 
-  /**
-   * A head key: it opens the action's confirm and shows its own work. A Viewer cannot act, and a
-   * labelled key shows no tip to say why, so a Viewer does not get the key at all.
-   */
+  /** A Viewer cannot act, and a labelled key has no tip to say why, so a Viewer does not get the key at all. */
   const key = (action: DeploymentAction, text: string) =>
     can.manage ? (
       <PendingButton type="button" className="btn" pending={pending === action} disabled={busy && pending !== action} onClick={() => setAsk(action)}>
@@ -388,9 +370,7 @@ export function DeploymentView({ id, initial, overview }: { id: string; initial:
           title={name}
           className="dpd-head"
           lead={
-            // One line: the status, then what was deployed. Who, which branch and when live in the
-            // Details grid right under it, so the head does not repeat them. The message is text:
-            // View on GitHub is the one way to the commit.
+            // Who, which branch and when live in the Details grid right under it, so the head does not repeat them.
             <span className="dpd-lead">
               <StatusIcon status={d.status} />
               <span className="dpd-status" data-tone={tone}>

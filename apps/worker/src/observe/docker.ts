@@ -1,9 +1,4 @@
-/**
- * The few read-only Docker Engine calls observability needs, over the socket proxy: list containers (Dockify's own, or by a name or label filter for the control
- * plane's containers), inspect, one-shot stats, and a log follow. Every read has a
- * timeout, because a daemon that accepts the connection and never answers would otherwise wedge the
- * sampler. Nothing here creates, starts or changes a container.
- */
+/** Every read has a timeout: a daemon that accepts the connection and never answers would wedge the sampler. */
 import { request, type IncomingMessage } from "node:http";
 import { DockerError, type Endpoint } from "@dockify/engine";
 
@@ -37,7 +32,6 @@ export interface DockerStats {
 
 export interface DockerReader {
   listManaged(): Promise<ContainerSummary[]>;
-  /** Every container, running or not, matching Docker's list filters (name, label). */
   listFiltered(filters: Record<string, string[]>): Promise<ContainerSummary[]>;
   inspect(id: string): Promise<ContainerInspect>;
   stats(id: string): Promise<DockerStats>;
@@ -123,18 +117,13 @@ export function createDockerReader(endpoint: Endpoint): DockerReader {
 /** A parked previous container during a swap is `<name>-prev-<base36>`: never sampled as the app. */
 export const PARKED = /-prev-[0-9a-z]+$/;
 
-/** One container per app: skips one-offs without the app label and parked leftovers, newest wins. */
 export function pickAppContainers(list: ContainerSummary[]): Map<string, ContainerSummary> {
   const byApp = new Map<string, ContainerSummary>();
   for (const c of list) {
     const appId = c.Labels[LABEL_APP];
     if (!appId) continue;
-    // Only the container that serves the app counts: role=app for a deployed app (swap.ts) and
-    // role=service-<kind> for a managed Postgres, Redis or S3 (data/services.ts). Every other role
-    // carries dockify.app too and is newer than the container it belongs to, so it would shadow it:
-    // a preview (role=preview, dockify.app inherited from its image label), a release one-off
-    // (role=release), and the data module's helpers (role=backup-helper, restore-helper and
-    // restore-test, data/pipeline.ts).
+    // Only the serving container counts: role=app or role=service-<kind>. Previews, release one-offs and
+    // data helpers carry dockify.app too and are newer, so they would shadow it.
     const role = c.Labels[LABEL_ROLE] ?? "";
     if (role !== "app" && !role.startsWith("service-")) continue;
     if (c.Names.some((n) => PARKED.test(n.replace(/^\//, "")))) continue;

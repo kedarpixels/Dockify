@@ -3,11 +3,7 @@ import { getProjectExtras, runExtrasMutation, type ExtrasMutation } from "@/lib/
 
 const SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 
-/**
- * GET /api/project-extras?slug=<slug>: the project page's env state, env history, previews
- * and status page, in one answer. Each part carries its own error, so one failing
- * upstream route never blanks the others.
- */
+/** Each part carries its own error, so one failing upstream route never blanks the others. */
 export async function GET(request: Request) {
   const slug = new URL(request.url).searchParams.get("slug") ?? "";
   if (!SLUG.test(slug)) return refuse(400, "That project is not valid");
@@ -15,12 +11,7 @@ export async function GET(request: Request) {
   return json(result, result.notFound ? 404 : 200);
 }
 
-/**
- * POST /api/project-extras: every write those sections make. The body is one typed
- * ExtrasMutation; `runExtrasMutation` checks every field and maps it onto a fixed API route, so
- * the browser can never reach an arbitrary upstream path. A refusal keeps the API's status: 401
- * ends the session, 403 with step_up_required asks for a step-up, 409 is a conflict to reload.
- */
+/** runExtrasMutation maps the typed body onto a fixed API route, so the browser can never reach an arbitrary upstream path. */
 export async function POST(request: Request) {
   const refused = guardWrite(request);
   if (refused) return refused;

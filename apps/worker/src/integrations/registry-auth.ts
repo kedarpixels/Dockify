@@ -1,7 +1,4 @@
-/**
- * The image source's view of registry credentials: the X-Registry-Auth header Docker's
- * /images/create wants for one pull. The token is opened here, for one call, and never logged.
- */
+/** Builds the X-Registry-Auth header for one pull. The token is opened here, for one call, never logged. */
 import { readSecretValue, type Db, type SecretVault } from "@dockify/db";
 
 export interface RegistryAuth {
@@ -15,13 +12,11 @@ export class RegistryAuthError extends Error {}
 /** Docker Hub authenticates against its index URL, everything else against its host. */
 export const serverAddress = (host: string) => (host === "docker.io" ? "https://index.docker.io/v1/" : host);
 
-/** The registry host an image reference pulls from: docker.io when the first part is not a host. */
 export function imageRegistryHost(ref: string): string {
   const first = ref.split("/")[0] ?? "";
   return ref.includes("/") && (first.includes(".") || first.includes(":") || first === "localhost") ? first.toLowerCase() : "docker.io";
 }
 
-/** Credentials for an app's pull, or null for a public pull. Refuses creds for another host. */
 export async function registryAuthFor(db: Db, vault: SecretVault, registryId: string | null, image: string): Promise<RegistryAuth | null> {
   if (!registryId) return null;
   const row = await db.integration.findFirst({ where: { id: registryId, kind: "registry" } });

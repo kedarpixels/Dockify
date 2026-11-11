@@ -1,12 +1,4 @@
-/**
- * One-click templates. Both routes read only the catalog in this folder, which ships with the
- * release: no remote catalog, so nothing fetched at run time can add a container to this server.
- *
- * Deploying one is an ordinary New app: the apps go through createApps, every plain image is pulled
- * by its tag and every managed service records its digest on first pull. Services deploy first, the
- * routed app last: the deploy lane runs one job at a time, in order, so a database is up before the
- * app that reads it starts.
- */
+// Both routes read only the catalog shipped in this folder: with no remote catalog, nothing loaded at run time can add a container to this server.
 import { randomBytes, randomUUID } from "node:crypto";
 import { projects as P, testDomainName, type templates as T } from "@dockify/contracts";
 import type { FastifyRequest } from "fastify";

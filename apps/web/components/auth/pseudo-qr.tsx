@@ -1,10 +1,5 @@
-/*
- * The stand-in QR code for the design preview, shared by setup, invites and Settings. It is drawn
- * from the secret so each key gets its own pattern, laid out like a real version 2 code (25 by 25
- * modules): three finder squares with their light margins, the timing lines and the alignment
- * square. It is not scannable; the setup key and the otpauth link beside it are the real way in,
- * so it stays aria-hidden. A real build shows the API's QR image instead.
- */
+// Design preview only: drawn from the secret and laid out like a version 2 code, but not scannable,
+// so it stays aria-hidden. A real build shows the API's QR image.
 
 const N = 25;
 
@@ -51,7 +46,7 @@ function fixedModule(r: number, c: number): boolean | null {
   return null;
 }
 
-/** 25 by 25 modules on the page colour; `className` sizes it (the module size is a CSS var). */
+/** `className` sizes it (the module size is a CSS var). */
 export function PseudoQr({ secret, className }: { secret: string; className?: string }) {
   const next = bitStream(secret);
   const cells: boolean[] = [];

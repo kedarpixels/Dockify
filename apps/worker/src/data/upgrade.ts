@@ -1,21 +1,7 @@
 /**
- * Changing a managed database's version. One job kind on the data lane, so it never runs beside a
- * backup or a restore of the same service, and never retries on its own (maxAttempts 1): a half done
- * change is resolved by a person, who sees exactly where it stopped.
- *
- *   in_place   a newer patch of the same line, or a newer Redis. A dump first, and it must succeed.
- *              Then the new tag under the same volume through the managed deploy, which puts the
- *              previous container back if the new one does not come up healthy.
- *   prepare    a new Postgres major. A dump of the running service, a new service at the new version
- *              (created by the api), a replay into it, and counts of tables and rows on both. Linked
- *              apps keep running on the old one, nothing about them changes.
- *   switch     the owner's confirmation. The apps of the environment stop, so nothing writes; a fresh
- *              dump replaces the copy; tables and rows must then match exactly, or nothing changes and
- *              the apps start again. Only then the source gets serviceRedirectId, one column: every
- *              link now resolves to the new service, and the api's "switch back" clears it.
- *
- * NEVER here: removing a container, a volume or a database of the source. The old service stays
- * running until its owner deletes it, and data is never destroyed automatically.
+ * Changing a managed database's version: one job on the data lane, never retried (maxAttempts 1), and a dump
+ * always comes first. A new Postgres major copies into a new service that links resolve to only after the
+ * owner confirms. NEVER here: removing a container, a volume or a database of the source.
  */
 import { rm } from "node:fs/promises";
 import { linkedApps, type Prisma } from "@dockify/db";
@@ -231,10 +217,8 @@ async function runSwitch(deps: DataDeps, jobId: string, p: Extract<UpgradePayloa
 const STILL_WORKING = ["backing_up", "upgrading", "copying", "switching"];
 
 /**
- * A worker that died mid-way never reached the handler's catch below, so the state keeps saying a
- * step is running with no job left to run it, and a switch could not be tried again. The job row knows
- * what it was doing. The api writes the phase and the job together, so a working phase with no open
- * job can only be this.
+ * A worker that died mid-way leaves the state saying a step is running with no job left to run it. The
+ * api writes the phase and the job together, so a working phase with no open job can only be this.
  */
 export async function settleAbandonedUpgrades(deps: Pick<DataDeps, "db" | "now">): Promise<number> {
   const stuck = await deps.db.app.findMany({

@@ -3,11 +3,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useInView, useReducedMotion } from "./motion";
 
-/* A tiny timeline engine for the line illustrations. A scene is a pure function of time that
-   returns, per element key, a translate, a scale and an opacity (plus a few text values). One
-   requestAnimationFrame loop applies it while the scene is on screen, touching transform and
-   opacity only. Server render and first paint use frame(0); under reduced motion the scene holds
-   frame(still). */
+/* A scene is a pure function of time that returns, per element key, a translate, a scale and an opacity.
+   Server render and first paint use frame(0); under reduced motion the scene holds frame(still). */
 
 export type Pt = [number, number];
 /** x, y, width and height. */
@@ -27,7 +24,6 @@ export const win = (t: number, a: number, b: number, f = 250) => p(t, a, a + f) 
 /** A horizontal scale that never reaches 0, which would make the matrix singular. */
 export const grow = (u: number) => Math.max(0.0001, u);
 
-/** The length of a polyline. */
 export const lengthOf = (pts: Pt[]) => pts.slice(1).reduce((n, q, k) => n + Math.hypot(q[0] - pts[k]![0], q[1] - pts[k]![1]), 0);
 
 /** A point at distance d along a polyline. */
@@ -49,12 +45,8 @@ export function along(pts: Pt[], d: number): Pt {
 const RESET = 800;
 const pct = (s: string | undefined) => (s && /^\d+%$/.test(s) ? Number(s.slice(0, -1)) : null);
 
-/**
- * Wraps a story into a loop of length T. The story holds its last frame until T - RESET; then
- * every animated key glides back to its frame(0) state so the wrap to 0 is seamless. Outgoing
- * parts fade in the first half and incoming ones in the second, so swapped labels never overlap.
- * Ambient keys keep following time throughout.
- */
+/** Wraps a story into a loop of length T: it holds its last frame until T - RESET, then every animated key
+ *  glides back to frame(0) so the wrap is seamless. Ambient keys keep following time. */
 export function loopStory(T: number, story: (t: number) => Frame, ambient: (k: string) => boolean = () => false) {
   const f0 = story(0);
   const fe = story(T - RESET);
@@ -108,10 +100,7 @@ export function useSvgId() {
   return "il" + useId().replace(/[^a-zA-Z0-9]/g, "");
 }
 
-/**
- * Runs `frame` while the drawing is on screen. Time wraps at T (Infinity plays once). With
- * `hold`, the scene stops for good at that time, so a finished story costs no frames.
- */
+/** Time wraps at T (Infinity plays once). With `hold` the scene stops for good at that time, so a finished story costs no frames. */
 export function useScene(T: number, still: number, frame: (t: number) => Frame, hold?: number) {
   const root = useRef<SVGSVGElement>(null);
   const els = useRef(new Map<string, SVGElement>());
@@ -120,7 +109,6 @@ export function useScene(T: number, still: number, frame: (t: number) => Frame, 
   const time = useRef(0);
   const seen = useInView(root);
   const reduced = useReducedMotion();
-  /* The server render and the first paint use frame(0), computed once. */
   const [first] = useState(() => frame(0));
 
   const apply = useCallback(

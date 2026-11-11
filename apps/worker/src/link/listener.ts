@@ -1,12 +1,7 @@
 /**
- * The worker's end of the link. A WebSocket arrives; inside it the worker is the TLS 1.3 server and
- * asks for the agent's certificate; then it is the H2 client. A hand-made TLSSocket over the stream
- * never finishes setup, so this uses tls.createServer and emits "connection", as the docs allow for any
- * Duplex. No session tickets: every connection is a full handshake.
- *
- * A known key gets a session. An unknown key may send one join line within 10 seconds, and nothing else.
- * A second connection with a known key is refused while the first still answers a ping: that is what a
- * stolen key looks like.
+ * Inside the WebSocket the worker is the TLS 1.3 server asking for the agent's certificate, then the
+ * HTTP/2 client. A hand-made TLSSocket over the stream never finishes setup, hence tls.createServer.
+ * A second connection with a known key is refused while the first answers a ping, as a stolen key would.
  */
 import { constants as cryptoConstants } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
@@ -22,22 +17,16 @@ import type { KnownServer } from "./enroll.ts";
 export interface ListenerDeps {
   key: string | Buffer;
   cert: string | Buffer;
-  /** Which server a key belongs to. */
   serverByPin(pin: string): Promise<KnownServer | null>;
-  /** Takes a join token for a key. True when it matched. */
   enroll(token: string, pin: string, ip: string | null): Promise<boolean>;
-  /** The session the server already has. */
   existing(serverId: string): LinkSession | null;
-  /** A session is up. It lasts until `session.wait()` resolves. */
   onSession(session: LinkSession): void;
   log(msg: string, extra?: object): void;
-  /** Tests shorten it. */
   pingEveryMs?: number;
 }
 
 export interface LinkListener {
   listen(port: number, host: string): Promise<void>;
-  /** The server, for a gateway or a test that hands it a socket. */
   server: Server;
   close(): Promise<void>;
 }
@@ -62,7 +51,6 @@ export function createLinkListener(deps: ListenerDeps): LinkListener {
     handshakeTimeout: L.LINK_LIMITS.handshakeMs,
   };
 
-  /** The first thing an unknown key may do. Anything else closes the connection. */
   const takeJoinLine = (socket: TLSSocket, pin: string, ip: string | null): void => {
     let got = "";
     const timer = setTimeout(() => socket.destroy(), L.LINK_LIMITS.joinLineMs);

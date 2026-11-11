@@ -2,18 +2,8 @@ import "server-only";
 import { isPreviewMode } from "./preview-mode";
 import type { SecurityLevel, SecurityRelease } from "./security-release";
 
-/*
- * Design preview only (DOCKIFY_PREVIEW=1, no API): the pending security release the fixture
- * offers, so the popup, the banner and the bell can be seen on the preview. It is the 0.9.2
- * release the Server page fixture already offers (lib/pages/server-backups.ts).
- *
- *   DOCKIFY_PREVIEW_SECURITY unset       a critical release (Remind me in 1 or 3 days)
- *   DOCKIFY_PREVIEW_SECURITY=important   an important one (1, 3 or 7 days)
- *   DOCKIFY_PREVIEW_SECURITY=0           none (or off, false, no), so screenshot runs of other pages
- *                                        are not covered by the popup
- *
- * A deployed build never reads any of this: every caller checks for the preview first.
- */
+// Design preview only. DOCKIFY_PREVIEW_SECURITY: unset is a critical release, "important" an
+// important one, and 0, off, false or no gives none, so screenshots of other pages stay uncovered.
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -26,13 +16,9 @@ function previewSecurityLevel(env: NodeJS.ProcessEnv = process.env): SecurityLev
   return want === "important" ? "important" : "critical";
 }
 
-/** True when the preview should offer its security release. */
 export const previewSecurityOn = (env: NodeJS.ProcessEnv = process.env) => previewSecurityLevel(env) !== null;
 
-/**
- * The preview's security block. Sample text; the zeros in the CVE id mark it as a placeholder, and
- * the advisory link points at example.com, as the fixture's release notes do.
- */
+/** Sample text: the zeros in the CVE id mark it as a placeholder. */
 export function previewSecurityRelease(now: Date, level: SecurityLevel = previewSecurityLevel() ?? "critical"): SecurityRelease {
   return {
     version: "0.9.2",

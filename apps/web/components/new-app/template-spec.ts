@@ -1,10 +1,7 @@
 import { isRecord } from "@/lib/validation";
 import { hasReservedPrefix, RESERVED_NAME_MESSAGE } from "@/lib/validation";
 
-/*
- * The browser's and the proxy's side of a template: the row the API lists, the draft, and the strict
- * checks both run. Pure, so they share one copy. The API checks everything again.
- */
+/* Pure, so the browser and the proxy share one copy. The API checks everything again. */
 
 export interface TemplateEnvRow {
   key: string;
@@ -52,7 +49,6 @@ export interface TemplateDraft {
 
 export const initialTemplate = (): TemplateDraft => ({ picked: null, name: "", domain: "test", hostname: "", inputs: {} });
 
-/** A fresh draft for a card: its own name, proposed free in this environment. */
 export function draftFor(row: TemplateRow, taken: ReadonlySet<string>, canTest: boolean): TemplateDraft {
   let name = row.id.slice(0, 20).replace(/-+$/, "");
   for (let i = 2; taken.has(name) && i < 100; i++) name = `${row.id.slice(0, 17).replace(/-+$/, "")}-${i}`;
@@ -64,7 +60,6 @@ export const HOSTNAME = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a
 const EMAIL = /^[A-Za-z0-9._+-]{1,64}@[A-Za-z0-9.-]{1,180}\.[A-Za-z]{2,24}$/;
 const TEXT = /^[\p{L}\p{N} ._@:+-]{1,120}$/u;
 
-/** What is wrong with the name, among the apps that already exist here. */
 export function templateNameError(row: TemplateRow, name: string, taken: ReadonlySet<string>): string | undefined {
   if (!name) return "Enter a name";
   if (!TEMPLATE_BASE.test(name)) return "Use lowercase letters, numbers and hyphens, up to 20 characters, not starting or ending with a hyphen";
@@ -99,7 +94,7 @@ export interface DeployTemplateResult {
   warning: string | null;
 }
 
-/** The body the proxy forwards, rebuilt from checked fields only, or the reason it refuses. */
+/** Rebuilt from checked fields only; a string is the reason it refuses. */
 export function readDeployTemplate(body: unknown): DeployTemplateInput | string {
   if (!isRecord(body)) return "That request is not valid";
   const { project, environment, templateId, name, domain, inputs } = body;

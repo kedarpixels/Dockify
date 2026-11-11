@@ -5,10 +5,9 @@ import type { Ctx } from "../../app.ts";
 import { INFRA_POLICIES } from "../../policy.ts";
 import { normalizeHost } from "./logic.ts";
 
-/** The probe's path on every host, with its one parameter. */
 export const DOMAIN_CHECK_ROUTE = `${DOMAIN_CHECK_PREFIX}:token`;
 
-/** The Host header as a domain name: no port, lowercase, no trailing dot; null for anything else. */
+/** The Host header as a domain name, without its port; null for an IP literal or anything malformed. */
 export function hostOf(header: string | undefined): string | null {
   if (!header || header.length > 300 || header.startsWith("[")) return null;
   const h = normalizeHost(header.replace(/:\d{1,5}$/, ""));
@@ -16,15 +15,9 @@ export function hostOf(header: string | undefined): string | null {
 }
 
 /**
- * The domain ownership probe's answer (a domain behind a proxy such as Cloudflare's
- * resolves to the proxy, so DNS alone cannot say it reaches this server). The worker asks
- * http://<host>/.well-known/dockify-check/<token>; Traefik sends that prefix, and only that prefix,
- * to this route on every host (apps/worker/src/edge/routes.ts, the __edge.yml routers), above every
- * tenant route and below the dashboard's, so no tenant app can answer for a domain.
- *
- * It answers only for a domain row (or the dashboard domain being set up) whose own token is in the path, with a value only this server
- * can compute for that host and token (@dockify/crypto domain-check.ts). Anything else gets the
- * same empty 404, so the route says nothing about which domains exist here.
+ * Answers the worker's ownership probe: a proxied domain resolves to the proxy, so DNS alone cannot
+ * say it reaches this server. Traefik routes this prefix here above every tenant route, so no tenant
+ * app can answer for a domain. Every miss is the same empty 404, so it never reveals which domains exist.
  */
 export function registerDomainCheckRoute(app: FastifyInstance, ctx: Ctx): void {
   const secret = internalChannelToken(ctx.ring);
@@ -38,7 +31,7 @@ export function registerDomainCheckRoute(app: FastifyInstance, ctx: Ctx): void {
       if (!sameCheckValue(token, domainCheckToken(secret, d.id, d.hostname))) return miss();
       return reply.code(200).type("text/plain; charset=utf-8").send(domainCheckAnswer(secret, d.hostname, token));
     }
-    // The dashboard's own domain being set up has no domain row; it has its own fixed id in the token.
+    // The dashboard's own pending domain has no domain row; its token uses a fixed id instead.
     const row = await ctx.db.instance.findUnique({ where: { id: 1 }, select: { dashboardDomain: true } });
     const pending = D.readPendingDomain(row?.dashboardDomain);
     if (pending?.host !== host || !sameCheckValue(token, domainCheckToken(secret, D.DASHBOARD_CHECK_ID, host))) return miss();

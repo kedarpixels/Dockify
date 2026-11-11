@@ -7,32 +7,15 @@ import { isPreviewMode } from "@/lib/preview-mode";
 import { contentSecurityPolicy, makeNonce, NONCE_HEADER, securityHeaders } from "@/lib/security-headers";
 
 /*
- * Keeps signed-out visitors out of the console and sets the security headers on every response.
- *
- * A request without the session cookie goes to /login?next=<path>, or gets a 401 for a same-origin
- * API route; the signed-out pages, public status pages (and their /api/status feeds) and static
- * files pass. This only checks that a cookie is present: the Dockify API still validates the
- * session on every call, and a loader that gets 401 sends the visitor to sign in again. Refusing
- * cookieless /api calls here means anonymous traffic never reaches the API through the web.
- *
- * The cookie names are the ones the API issues (`__Host-dockify_sid` on https, `dockify_sid` on
- * plain http), unless DOCKIFY_SESSION_COOKIE names another.
- *
- * Every request that passes carries its path in `x-dockify-path` (PATH_HEADER, lib/forwarded.ts),
- * set here so a client cannot choose it, which loaders use as ?next= when a session ends, and the
- * per-request CSP nonce in `x-nonce`, which the root layout puts on its inline script.
- *
- * A few bare paths that only make sense with an id or a token after them go somewhere useful
- * instead of a 404: /apps lists projects, /invite and /reset start from sign in and forgot.
+ * Only checks that a session cookie is present; the API still validates the session on every call.
+ * PATH_HEADER is set here so a client cannot choose it; loaders use it as ?next= when a session ends.
  */
 
 const COOKIES: readonly string[] = process.env.DOCKIFY_SESSION_COOKIE ? [process.env.DOCKIFY_SESSION_COOKIE] : SESSION_COOKIES;
 
-/* Exact paths and path prefixes that never need a session. /api/icons/mail serves the signed icon
-   links in emails, which a mail client fetches with no cookie; the token itself is the credential. */
+/* Paths that never need a session. A mail client fetches /api/icons/mail with no cookie; the token is the credential. */
 const OPEN = ["/login", "/recover", "/forgot", "/reset", "/setup", "/invite", "/status", "/api/status", "/api/icons/mail"];
 
-/* Files served as they are: the public folder and the app icons. */
 const STATIC_FILE = /\.(?:png|jpe?g|gif|webp|avif|svg|ico|txt|xml|webmanifest|json|woff2?|ttf|otf|mp3|wav|ogg|css|js|map)$/i;
 
 /* Public asset folders. A nested static path is exempt only here; elsewhere a path ending in an
@@ -51,13 +34,8 @@ function hasSession(req: Pick<NextRequest, "cookies">): boolean {
   return COOKIES.some((name) => !!req.cookies.get(name)?.value);
 }
 
-/*
- * The Server Action ids this build has, from Next's own manifest (the server runs from the app
- * folder, so the path is relative to it). An id it does not have (a tab left open across an update,
- * or a probe) answers 404 here with Next's not-found header, which its client reads as an action
- * that is gone; Next itself would answer 409, and older builds 500. Read once. Without a readable
- * manifest the check stands aside and Next decides.
- */
+/* The Server Action ids of this build, read once from Next's manifest. An unknown id (a stale tab or a probe)
+   answers 404 with Next's not-found header; without a readable manifest Next decides. */
 let actionIds: ReadonlySet<string> | null | undefined;
 function knownActions(): ReadonlySet<string> | null {
   if (actionIds !== undefined) return actionIds;

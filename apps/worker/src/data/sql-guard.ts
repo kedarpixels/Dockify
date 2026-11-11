@@ -1,9 +1,6 @@
 /**
- * The read-only SQL console's first gate. The real guarantees are server side: the statement runs
- * inside BEGIN TRANSACTION READ ONLY with a statement timeout, under SET LOCAL ROLE to a role that
- * holds only pg_read_all_data (not a superuser, so no COPY TO PROGRAM and no file functions). This
- * lexer refuses, before anything is sent, what would try to step out of that box: more than one
- * statement, anything that is not a query, and functions that act on the server rather than read.
+ * The real guarantees are server side: a READ ONLY transaction under a role with only pg_read_all_data. This
+ * lexer refuses what would try to step out of that box: a second statement, a non-query, server-side functions.
  */
 
 export class SqlGuardError extends Error {
@@ -103,9 +100,7 @@ function scanSql(sql: string): { masked: string; quoted: Array<{ start: number; 
 }
 
 export interface GuardedSql {
-  /** The statement to run, trailing semicolons removed. */
   text: string;
-  /** True when it can run through a cursor (a plain query). */
   cursor: boolean;
 }
 

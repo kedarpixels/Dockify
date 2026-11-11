@@ -1,15 +1,6 @@
 /**
- * GitHub App plumbing, ported from the old api (github.ts) onto the one secrets table: the App
- * JWT, the webhook HMAC check, signed single-use state for the install and manifest round trips,
- * the manifest code exchange, the REST helper and the in-memory installation token cache.
- *
- * The App lives in the integrations table as kind github_app, name "default":
- *   config        { appId, slug, clientId?, htmlUrl?, owner?, source?, clientSecretId? }
- *   secretId      the private key (github_private_key)
- *   secondSecretId the webhook secret (github_webhook_secret)
- *   clientSecretId the OAuth client secret GitHub hands over once with a manifest App
- *                  (github_client_secret, owned by the row like the other two). Kept sealed for a
- *                  later sign-in with GitHub; nothing reads it today and nothing ever shows it.
+ * GitHub App plumbing: App JWT, webhook HMAC, signed single-use state, manifest exchange, REST and token cache.
+ * On the integration row, secretId is the private key and secondSecretId the webhook secret.
  */
 import { createHash, createHmac, createPrivateKey, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Keyring } from "@dockify/crypto";
@@ -32,11 +23,11 @@ export interface GitHubAppConfig {
   slug: string;
   clientId?: string;
   htmlUrl?: string;
-  /** The account the App was created under, from the manifest exchange. */
+  /** From the manifest exchange. */
   owner?: GitHubAppOwner;
-  /** manifest: created from the dashboard. installer: handed to the installer. */
+  /** manifest: created from the dashboard. installer: supplied through the installer's variables. */
   source?: "manifest" | "installer";
-  /** The sealed OAuth client secret's row. */
+  /** Secret row of the OAuth client secret a manifest App comes with. Sealed, never shown, not read yet. */
   clientSecretId?: string;
 }
 
@@ -71,19 +62,15 @@ export async function requireGitHubApp(db: Tx): Promise<GitHubAppRow> {
   return app;
 }
 
-/**
- * Seeds the App row from the environment on boot when no row exists: DOCKIFY_GITHUB_APP_ID,
- * DOCKIFY_GITHUB_APP_SLUG, DOCKIFY_GITHUB_APP_PRIVATE_KEY(_FILE), DOCKIFY_GITHUB_WEBHOOK_SECRET(_FILE).
- * Returns true when it created the row. Both secrets are sealed on arrival.
- */
+/** Seeds the App row from DOCKIFY_GITHUB_* on boot when none exists. Returns true when it created the row. */
 export async function seedGitHubAppFromEnv(db: Tx, ring: Keyring, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
   const appId = Number(readSecret("DOCKIFY_GITHUB_APP_ID", env));
   const slug = readSecret("DOCKIFY_GITHUB_APP_SLUG", env);
   const pem = readSecret("DOCKIFY_GITHUB_APP_PRIVATE_KEY", env);
   const hook = readSecret("DOCKIFY_GITHUB_WEBHOOK_SECRET", env);
   if (!Number.isInteger(appId) || appId <= 0 || !slug || !pem || !hook) return false;
-  // Only before setup completes. The secret files stay mounted, so seeding on every boot would bring
-  // back an integration the owner disconnected (or a key they rotated away) at the next restart.
+  // Only before setup completes: the secret files stay mounted, so seeding on every boot would bring back
+  // an integration the owner disconnected or a key they rotated away.
   if ((await setupDone(db)) || (await findIntegration(db, "github_app"))) return false;
   const row = await db.integration.create({ data: { kind: "github_app", name: "default", config: asJson({ appId, slug, source: "installer" }) } });
   const pk = await storeSecret(db, ring, { kind: "github_private_key", ownerType: "integration", ownerId: row.id }, pem, null);
@@ -92,18 +79,13 @@ export async function seedGitHubAppFromEnv(db: Tx, ring: Keyring, env: NodeJS.Pr
   return true;
 }
 
-// ------------------------------------------------------------------ manifest (for the create flow)
 
 /** Host labels that say nothing about who runs this server. */
 const GENERIC_LABEL = /^(?:dockify|www|app|apps|dash|dashboard|console|deploy|deploys|paas|panel|admin|cloud|server|host|sslip|nip|xip|localhost)$/;
 
 /**
- * The App's default name, which is also its bot's name on every pull request: dockify-<word>-<hash>,
- * or dockify-<hash> when the host offers no word. GitHub App names are unique across all of GitHub
- * and at most 34 characters, so the hash of the whole host keeps two installs apart, and the word is
- * the first label that names someone: dash.acme.dev reads dockify-acme-3fa9c1. An address never
- * becomes the word, so an IP host (1-2-3-4.sslip.io) does not publish the server's IP in the name.
- * GitHub shows the name before creating the App, so a name that is taken anyway can be changed there.
+ * The name is also the bot's name on every pull request. GitHub App names are globally unique and at most 34
+ * characters, so a hash of the host keeps installs apart. An IP never becomes the word, so it is not published.
  */
 export function manifestAppName(origin: string): string {
   const host = new URL(origin).hostname.toLowerCase();
@@ -113,7 +95,7 @@ export function manifestAppName(origin: string): string {
   return word ? `dockify-${word.slice(0, 18).replace(/-+$/, "")}-${hash}` : `dockify-${hash}`;
 }
 
-/** Least privilege: clone and read (contents), the sticky PR comment (pull_requests), the preview commit status (statuses), metadata. */
+/** Least privilege: contents (clone), pull_requests (sticky comment), statuses (preview status), metadata. */
 export function buildManifest(origin: string): Record<string, unknown> {
   return {
     name: manifestAppName(origin),
@@ -128,7 +110,7 @@ export function buildManifest(origin: string): Record<string, unknown> {
   };
 }
 
-/** A GitHub App page always lives on github.com; anything else becomes the URL the slug predicts. */
+/** Only a github.com link is kept; anything else becomes the URL the slug predicts. */
 export function safeAppHtmlUrl(candidate: string | undefined, slug: string): string {
   const fallback = `${GITHUB_WEB}/apps/${encodeURIComponent(slug)}`;
   try {
@@ -140,17 +122,12 @@ export function safeAppHtmlUrl(candidate: string | undefined, slug: string): str
   return fallback;
 }
 
-/**
- * Where the browser posts the manifest. The App is private, and a private App can only be
- * installed on the account that owns it, so an organization's repositories need the App created
- * under that organization. The login was checked against GitHub's rules by the contract.
- */
+/** A private App installs only on the account that owns it, so an organization's repositories need it created there. */
 export function manifestPostUrl(state: string, organization?: string): string {
   const page = organization ? `${GITHUB_WEB}/organizations/${encodeURIComponent(organization)}/settings/apps/new` : `${GITHUB_WEB}/settings/apps/new`;
   return `${page}?state=${encodeURIComponent(state)}`;
 }
 
-/** What Dockify keeps from GitHub's answer to the manifest code exchange. */
 export interface ManifestConversion {
   appId: number;
   slug: string;
@@ -158,9 +135,9 @@ export interface ManifestConversion {
   htmlUrl: string;
   pem: string;
   webhookSecret: string;
-  /** The OAuth client secret; GitHub shows it only in this answer. Null when it sent none. */
+  /** GitHub shows it only in this answer. Null when it sent none. */
   clientSecret: string | null;
-  /** The account the App belongs to; null when GitHub's answer did not say in a usable form. */
+  /** Null when GitHub's answer did not name the owner in a usable form. */
   owner: GitHubAppOwner | null;
 }
 
@@ -173,7 +150,7 @@ const WEBHOOK_SECRET = /^[\x21-\x7e]{8,256}$/;
 const PEM_HEAD = /^-----BEGIN (?:RSA )?PRIVATE KEY-----\r?\n/;
 const OWNER_LOGIN = /^[A-Za-z\d](?:[A-Za-z\d]|-(?=[A-Za-z\d])){0,38}$/;
 
-/** True for an unencrypted RSA private key in PEM form, the only kind githubAppJwt can sign with. */
+/** Unencrypted RSA PEM is the only kind githubAppJwt can sign with. */
 function isRsaPrivateKeyPem(pem: string): boolean {
   if (pem.length > 16_384 || !PEM_HEAD.test(pem)) return false;
   try {
@@ -184,10 +161,8 @@ function isRsaPrivateKeyPem(pem: string): boolean {
 }
 
 /**
- * Checks every field Dockify stores before anything is written, so a malformed answer can never
- * leave a half usable App behind. The client secret and the owner are optional extras: a malformed
- * one is dropped, never a reason to refuse the App. The page link goes through safeAppHtmlUrl, so
- * only a github.com link is kept.
+ * Validates every stored field before anything is written, so a malformed answer cannot leave a half usable App.
+ * A malformed client secret or owner is dropped, not a reason to refuse.
  */
 export function parseManifestConversion(body: unknown): ManifestConversion | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
@@ -208,15 +183,14 @@ export function parseManifestConversion(body: unknown): ManifestConversion | nul
   };
 }
 
-/** GitHub answers the exchange quickly; past this the owner gets a failure they can retry. */
+/** Past this the owner gets a failure they can retry. */
 export const CONVERSION_TIMEOUT_MS = 10_000;
 
 export type ConversionResult = { ok: true; app: ManifestConversion } | { ok: false; reason: string };
 
 /**
- * Trades the code GitHub put on the redirect for the new App's id, private key and webhook secret.
- * The call takes no credential because the code is the credential: it stays valid for an hour, so
- * it never goes into a reason, an error or a log line, and neither does anything GitHub sends back.
+ * The code is the credential and stays valid for an hour, so it must never reach a reason, an error or a log line.
+ * The same goes for anything GitHub sends back.
  */
 export async function convertManifestCode(http: HttpClient, code: string): Promise<ConversionResult> {
   let res: HttpResponse;
@@ -236,19 +210,15 @@ export async function convertManifestCode(http: HttpClient, code: string): Promi
   return app ? { ok: true, app } : { ok: false, reason: "GitHub answered the code exchange with fields Dockify cannot use" };
 }
 
-// ------------------------------------------------------------------ webhook signature
 
-/**
- * Verifies X-Hub-Signature-256 over the RAW request bytes. sha256 only; the regex pins the length so
- * timingSafeEqual compares equal-length buffers.
- */
+/** MAC over the RAW request bytes, sha256 only. The regex pins the length so timingSafeEqual gets equal buffers. */
 export function verifyGitHubSignature(secret: string, payload: Buffer, header: unknown): boolean {
   if (typeof header !== "string" || !/^sha256=[0-9a-f]{64}$/.test(header)) return false;
   const expected = `sha256=${createHmac("sha256", secret).update(payload).digest("hex")}`;
   return timingSafeEqual(Buffer.from(header, "utf8"), Buffer.from(expected, "utf8"));
 }
 
-/** The JSON text of a delivery, for either hook content type. The MAC is always over the raw bytes. */
+/** Handles both hook content types. The MAC is always over the raw bytes, not this text. */
 export function webhookPayloadText(contentType: string | undefined, raw: Buffer): string | null {
   if (contentType?.toLowerCase().includes("application/x-www-form-urlencoded")) {
     return new URLSearchParams(raw.toString("utf8")).get("payload");
@@ -256,17 +226,9 @@ export function webhookPayloadText(contentType: string | undefined, raw: Buffer)
   return raw.toString("utf8");
 }
 
-// ------------------------------------------------------------------ signed, single-use state
-//
-// GitHub redirects the browser back cross-site, so the SameSite=Strict session cookie is not sent.
-// The state is an HMAC over { nonce, purpose, session, exp } keyed by a key derived from the master
-// key for that purpose (no separate SESSION_SECRET), and its nonce is remembered server side with
-// its purpose: it can be used once, only before it expires, only by the round trip it was minted
-// for, and only while the session that started the flow is still alive.
-//
-// Two round trips use it. "install" returns through git.setup after the App is installed on an
-// account; "manifest" returns through git.app.callback after GitHub created the App. Each purpose
-// has its own key, so an install state cannot open the manifest callback, nor the other way round.
+// Signed, single-use state. GitHub redirects back cross-site, so the SameSite=Strict session cookie is absent.
+// The state is an HMAC over { nonce, purpose, session, exp } and its nonce is kept server side: usable once, before
+// expiry, only while the starting session lives. Each purpose has its own key, so one cannot open the other's callback.
 
 const STATE_TTL_MS = 10 * 60_000;
 const MAX_PENDING = 1_000;
@@ -281,7 +243,7 @@ export interface PendingState {
 
 export interface StateStore {
   put(nonce: string, entry: PendingState): void;
-  /** Removes the nonce and returns what it was minted for, or null when unknown, expired or already used. */
+  /** Single use: removes the nonce. Null when unknown, expired or already used. */
   take(nonce: string, now: number): PendingState | null;
 }
 
@@ -304,7 +266,6 @@ export function memoryStateStore(): StateStore {
   };
 }
 
-// The install label is the one the install state always used, so only the manifest key is new.
 const STATE_LABEL: Record<StatePurpose, string> = {
   install: "dockify.github.install-state.v1",
   manifest: "dockify.github.manifest-state.v1",
@@ -328,9 +289,8 @@ export function signState(ring: Keyring, store: StateStore, purpose: StatePurpos
 }
 
 /**
- * Returns the session id that started this purpose's round trip, or null. The MAC is checked
- * under that purpose's own key before the nonce is touched, so a state minted for the other round
- * trip does not even use up its nonce here. The nonce is consumed once the MAC holds.
+ * Returns the session id that started the round trip, or null. The MAC is checked under the purpose's own key
+ * before the nonce is consumed, so a state minted for the other purpose does not burn its nonce here.
  */
 export function consumeState(ring: Keyring, store: StateStore, purpose: StatePurpose, token: string, now = Date.now()): string | null {
   const dot = token.indexOf(".");
@@ -360,7 +320,6 @@ export function installUrl(slug: string, state: string): string {
   return `${GITHUB_WEB}/apps/${encodeURIComponent(slug)}/installations/new?state=${encodeURIComponent(state)}`;
 }
 
-// ------------------------------------------------------------------ REST
 
 export class GitHubApiError extends HttpError {
   readonly upstreamStatus: number;
@@ -372,7 +331,7 @@ export class GitHubApiError extends HttpError {
 
 export type GitHubAuth = { jwt: string } | { token: string } | { none: true };
 
-/** One JSON call. The error text never echoes the response body, which can quote a credential. */
+/** The error text never echoes the response body, which can quote a credential. */
 export async function githubJson<T>(http: HttpClient, method: "GET" | "POST" | "DELETE" | "PATCH", path: string, auth: GitHubAuth, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
   if ("jwt" in auth) headers.Authorization = `Bearer ${auth.jwt}`;
@@ -386,10 +345,7 @@ export async function githubJson<T>(http: HttpClient, method: "GET" | "POST" | "
   return out;
 }
 
-/**
- * Talks to GitHub as the App and as its installations. Installation tokens are cached in memory
- * only, until five minutes before they expire; the PEM is opened per JWT and never kept.
- */
+/** Installation tokens are cached in memory only, until five minutes before expiry. The PEM is opened per JWT, never kept. */
 export class GitHubClient {
   private readonly tokens = new Map<string, { token: string; expiresAt: number }>();
   private readonly http: HttpClient;

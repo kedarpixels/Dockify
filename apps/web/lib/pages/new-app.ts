@@ -24,20 +24,10 @@ import { toContext } from "./new-app-context";
 import { getProjectExtras, getProjectPage } from "./project-detail";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/*
- * "Host any application": the new app flow on the project page. API contract for the backend
- * rebuild (every call forwards the session cookie, every answer is JSON, nothing is cached, every
- * failure answers `{ error }` with a 4xx or 5xx).
- *
- * The browser never calls the API directly: it goes through app/api/new-app/**, which checks
- * every field with readCreate and readDetect (components/new-app/spec.ts) first. Creating and
- * importing are elevated: without a fresh step-up they answer the shared refusal (lib/step-up.ts)
- * and the dialog confirms it is you and sends again.
- */
+// The new app flow. The browser goes through app/api/new-app/**, which checks every field with
+// readCreate and readDetect (components/new-app/spec.ts) first. Creating and importing are elevated.
 
 export type { CreateAppsInput, CreateAppsResult, DetectInput, DetectResult, NewAppContext };
-
-// -------------- API --------------
 
 
 type Upstream<T> = { ok: true; body: T } | { ok: false; status: number; error: string; code?: string; body?: Record<string, unknown> };
@@ -56,12 +46,7 @@ export interface NewAppRoute<T> {
 
 const NONE = { status: 503, body: { source: "none", data: null, error: "No data source, set DOCKIFY_API_URL for this dashboard" } } as const;
 
-/**
- * Through the API, else the preview fixture, else no data source. The API's own 4xx pass through
- * (401 ends the session, a step-up refusal keeps its code, a link conflict keeps its apps); anything
- * else reads as a bad gateway. `elevated` refuses the preview write outside its step-up window, as
- * the API would.
- */
+/** Through the API, else the preview fixture, else no data source. The API's own 4xx pass through; anything else reads as a bad gateway. */
 async function route<T>(call: () => Promise<Upstream<T>>, demo: () => T, elevated = false): Promise<NewAppRoute<T>> {
   if (process.env.DOCKIFY_API_URL !== undefined) {
     const res = await call();
@@ -137,10 +122,7 @@ const PREVIEW_TEMPLATES: TemplateRow[] = [
   },
 ];
 
-// -------------- Preview fixture --------------
-// Design preview only (DOCKIFY_PREVIEW=1 without an API). Registries and Vercel come from the
-// integrations fixture; detection knows the repositories lib/pages/git.ts lists, so picking
-// acme-labs/horseai reads Next.js and leaderboard-scraper reads its Dockerfile.
+// Preview fixture. Detection knows the repositories lib/pages/git.ts lists.
 
 
 const previewBuild = (framework: string, install: string, build: string, start: string, port: number | null): Omit<DetectResult, "rootDir"> => ({
@@ -165,10 +147,7 @@ function previewDetect(input: DetectInput): DetectResult {
   return { ...hit, rootDir: input.rootDir };
 }
 
-/**
- * The API's link rule against the preview's own variables: a picked app that already has the
- * variable, its own or one shared in its environment, is a conflict until its id is in `replace`.
- */
+/** A picked app that already has the variable, its own or one shared in its environment, is a conflict until its id is in `replace`. */
 async function previewConflict(input: CreateAppsInput): Promise<LinkConflict | null> {
   const source = input.apps[0]?.source;
   const link = input.link;

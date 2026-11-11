@@ -3,11 +3,8 @@
 import { useEffect } from "react";
 import { THEME_KEY } from "@/lib/theme";
 
-/*
- * Keeps the page on the visitor's theme. The top bar switch and the D key store a choice; until
- * one is stored, the page follows prefers-color-scheme live. A choice made in another tab repaints
- * this one too, so two tabs never disagree.
- */
+// Until a choice is stored, the page follows prefers-color-scheme live. A choice made in another
+// tab repaints this one too.
 
 const media = () => window.matchMedia("(prefers-color-scheme: dark)");
 

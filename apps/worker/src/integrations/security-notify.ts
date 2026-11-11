@@ -1,12 +1,7 @@
 /**
- * The security_notify job: the first time the updater sees a security release in the signed feed
- * (apps/api/src/modules/platform/updates/engine.ts noteSecurityRelease), every admin gets one email,
- * the security variant of the update notice. The updater holds no vault, so delivery is the
- * worker's. The bell and the console's banner read the stored feed directly and need no delivery.
- *
- * The payload is checked as strictly as the feed was (release.ts SecurityBlock): a job row is not
- * a place an alert can be made up from. Each admin's message carries an idempotency key named for
- * the release and the admin, so a retry, or the same release queued again, never sends twice.
+ * The security_notify job: one email per admin the first time the updater sees a security release.
+ * The payload is checked as strictly as the feed was: a job row cannot make an alert up. Each message's
+ * idempotency key names the release and the admin, so a retry or a requeue never sends twice.
  */
 import type { Db, SecretVault } from "@dockify/db";
 import { updateNotice, type Mailer } from "@dockify/email";
@@ -19,7 +14,6 @@ export interface SecurityNotify {
   summary: string;
   advisory: string | null;
   cves: string[];
-  /** The version the server ran when the release was first seen. */
   current: string | null;
 }
 
@@ -65,10 +59,7 @@ export interface SecurityNotifyDeps {
   publicUrl: string | null;
 }
 
-/**
- * Emails every enabled admin once. Throws to retry, PermanentJobError to stop. Returns how many
- * messages went out: none when email is not set up or the dashboard has no public URL to link to.
- */
+/** Throws to retry, PermanentJobError to stop. */
 export async function deliverSecurityNotice(deps: SecurityNotifyDeps, raw: unknown): Promise<number> {
   const n = parseSecurityNotify(raw);
   let url: URL | null = null;

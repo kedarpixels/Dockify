@@ -19,12 +19,7 @@ import type { LogLine } from "@/lib/pages/project-detail";
 import type { AppStatus } from "@/lib/types";
 import { notRunning } from "@/lib/derive";
 
-/* A small runtime log surface: the last lines the API returned, an all or errors filter, the
-   shared search field as a text filter, copy and download of the shown lines, and a refresh
-   that re-reads the page on the server. The full deployment log viewer lives with the
-   deployments pages; this one stays deliberately simple. */
-
-/** An error as the start of a sentence: no trailing full stop, so ". Refresh..." never doubles it. */
+/* Deliberately simple: the full log viewer lives with the deployments pages. */
 
 export function LogPanel({ lines, error, status, name }: { lines: LogLine[] | null; error?: string; status: AppStatus; name: string }) {
   const router = useRouter();

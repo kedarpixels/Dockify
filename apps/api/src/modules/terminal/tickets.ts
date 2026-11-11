@@ -1,10 +1,5 @@
-/**
- * Terminal tickets. A ticket is what step-up buys: a random value good for one socket, for this
- * session, this app and this client, for 30 seconds. It lives only in this process: there is one api,
- * a restart ending every ticket is correct, and a database row would be one more place to read it from.
- * Only its hash is kept. Any attempt to use a ticket spends it, right or wrong, so a thief who gets it
- * and tries it first has also burnt it, and the owner just opens the terminal again.
- */
+// A ticket is what step-up buys: good for one socket, bound to a session, app and client, and short-lived. Only its hash is kept, in this process.
+// Any attempt to use a ticket spends it, right or wrong, so a thief who tries it first has also burnt it.
 import { createHash } from "node:crypto";
 import { terminal as T } from "@dockify/contracts";
 import { hashToken, newToken, safeEqual } from "@dockify/crypto";

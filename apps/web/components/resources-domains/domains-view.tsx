@@ -36,10 +36,7 @@ import { DomainHead, DomainRow as DomainLine, tlsState } from "./shared";
 /** A domain needs attention when its certificate is not plainly active, its record does not point here, or Cloudflare's setup breaks it. */
 const hasIssue = (d: DomainRow, now: number, cf: CfHostState | null) => tlsState(d.tls, now).tone !== "ok" || d.dns.status !== "ok" || worstFinding(cf) === "bad";
 
-/** The worst of a domain's states, for the filter's dot: bad when any is bad, else warn. */
 const issueTone = (d: DomainRow, now: number, cf: CfHostState | null): ChipTone => (tlsState(d.tls, now).tone === "bad" || d.dns.status === "mismatch" || worstFinding(cf) === "bad" ? "bad" : "warn");
-
-/* -------------- Page -------------- */
 
 type Filter = "all" | "issues";
 
@@ -49,7 +46,6 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
   const o = result.data;
   const can = useCan();
   const live = initial.source === "api";
-  // Where a domain's records should point: the server's addresses, or the tunnel.
   const target = useMemo(() => domainTargets(initial.data), [initial.data]);
   const [items, setRows] = useState<DomainRow[]>(initial.data?.items ?? []);
   // Counts the changes made here (an add, a remove, a recheck), so a list that was asked for before
@@ -123,7 +119,7 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
     if (!stopped() && fresh.length) setItems((xs) => xs.map((x) => fresh.find((n) => n.id === x.id) ?? x));
   };
 
-  /** One fresh lookup. Resolves to the new row; rejects with the API error, or when the page closes. */
+  /** Rejects with the API error, or when the page closes. */
   const lookup = (d: DomainRow): Promise<DomainRow> => {
     const signal = stop.current?.signal;
     if (!live) {
@@ -175,14 +171,13 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
       .catch(() => {});
   };
 
-  /** Rechecks every domain in view, a few at a time so the resolver is not flooded. */
+  /** A few at a time so the resolver is not flooded. */
   const recheckAll = () => {
     if (checkingAll) return;
     // A row already being checked on its own is left to that check.
     const list = visible.filter((d) => !inflight.current.has(d.id));
     if (!list.length) return;
     setCheckingAll(true);
-    // Cloudflare's own answer for each domain, alongside the DNS lookups.
     void cf.reload();
     const run = (async () => {
       let failed = 0;
@@ -219,11 +214,7 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
       .catch(() => {});
   };
 
-  /**
-   * Resolves once the domain is gone; throws after toasting, so the confirm stays open for another
-   * try. Removing is elevated: "Confirm it is you" asks when the API wants it (components/step-up),
-   * and closing that question keeps the confirm open without a toast.
-   */
+  /** Throws after toasting, so the confirm stays open for another try. Closing "Confirm it is you" keeps it open without a toast. */
   const remove = async (d: DomainRow) => {
     if (live) {
       const r = await elevate(() => callJson(`/api/domains/${encodeURIComponent(d.id)}${keepRecord ? "?keepRecord=1" : ""}`, { method: "DELETE" }), { what: "Removing a domain" });
@@ -253,7 +244,7 @@ export function DomainsView({ overview, initial }: { overview: OverviewResult; i
     void cf.reload();
   };
 
-  /** Creates or fixes a domain's record. Throws after toasting, so the confirm stays open for another try. */
+  /** Throws after toasting, so the confirm stays open for another try. */
   const writeRecord = async (d: DomainRow, body: { proxied: boolean; replace?: string[] }) => {
     const r = await elevate(() => callJson<{ state: CfHostState }>(`/api/domains/${encodeURIComponent(d.id)}/cloudflare`, { method: "POST", body }), { what: "Changing a Cloudflare record" });
     if (!r.ok) {

@@ -3,24 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { plural } from "@/lib/format";
 
-/*
- * What a streaming log says to screen readers. A log prints far faster than speech, so the log box
- * itself stays out of the live region (role="log" with aria-live="off") and this one polite status
- * sums it up instead, at most once every `every` ms: "12 new lines". A `message` (a deployment that
- * just turned ready or failed) is said as soon as it changes. Nothing is said on the first render:
- * the page was just read.
- *
- *   <LogAnnouncer count={lines.length} active={live} message={outcome} />
- */
+// A log prints far faster than speech, so the log box stays out of the live region and this polite
+// status sums it up at most once every `every` ms. Nothing is said on the first render.
 export function LogAnnouncer({
   count,
   active,
   message = null,
   every = 10_000,
 }: {
-  /** Lines shown so far; it only grows while the same log streams, and a drop starts a new count. */
+  /** A drop starts a new count. */
   count: number;
-  /** The log is streaming: only then are new lines summed up. */
   active: boolean;
   /** A change worth hearing at once, such as "Deployment ready". */
   message?: string | null;

@@ -1,11 +1,7 @@
 import { guardWrite, json, readJsonBody, refuse, upstreamStatus } from "@/lib/http";
 import { runIconMutation } from "@/lib/pages/icons";
 
-/**
- * POST /api/icons: the Icon control's one write, `{ target, id | slug, body }`. The mapper checks
- * the id, slug and body, so the browser can only ever reach the two fixed icon routes. A refusal
- * keeps the API's status, so a lapsed session (401) ends the page's session.
- */
+/** POST { target, id | slug, body }. The mapper checks all three, so the browser reaches only the two fixed icon routes. */
 export async function POST(request: Request) {
   const refused = guardWrite(request);
   if (refused) return refused;

@@ -1,6 +1,5 @@
 /* Server-safe theme bits. The client toggle lives in components/ui/theme-switch.tsx. */
 
-/* Storage keys for the visitor's theme choice and sidebar width. */
 export const THEME_KEY = "theme";
 export const SIDEBAR_KEY = "sidebar";
 

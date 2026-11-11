@@ -1,13 +1,7 @@
 /**
- * The updater sidecar: the `updater` service in deploy/docker-compose.yml. It holds the Docker
- * socket and the install folder but never the master key. It is the host helper that swaps the
- * control containers: it recreates api, worker and web, never itself, so the process doing the
- * update is never the one being replaced. Roles (deploy/entrypoint.sh):
- *
- *   updater           the daemon: claims update jobs (leased), and the 6 hour scheduler tick
- *   updater-refresh   one-off: recreates the updater on the newly pinned image after an update
- *   update <cmd>      the host CLI, run by `dockify update ...` in a one-off updater container:
- *                       status | check | apply [version] | rollback [update-id]
+ * The updater sidecar. It holds the Docker socket and the install folder but never the master key,
+ * and recreates api, worker and web, never itself. Roles: `updater` (daemon), `updater-refresh`
+ * (one-off, recreates the updater after an update), `update <cmd>` (the host CLI).
  */
 import { hostname } from "node:os";
 import { createDb, type Db, type ReleaseUpdate } from "@dockify/db";
@@ -27,7 +21,6 @@ const holder = `updater:${hostname()}:${process.pid}`;
 const log = (l: string) => console.log(`dockify-updater: ${l}`);
 
 
-/** The steps' reads of the control-plane database. */
 export function prismaProbe(db: Db): ControlProbe {
   return {
     async databaseOk() {
@@ -67,7 +60,7 @@ function afterSettle(db: Db, cfg: StepsConfig, own: string | null) {
   return async (u: ReleaseUpdate, res: RunResult) => {
     await settleSideEffects(db, u, res);
     const to = (u.toImages as { control?: string } | null)?.control;
-    // The updater runs the control image too: bring it onto the new one last, from outside itself.
+    // The updater runs the control image too, so it moves to the new one last, from outside itself.
     if (res.outcome === "done" && to && own && to !== own) {
       log("recreating the updater on the new image");
       await refreshUpdater(cfg);
@@ -91,7 +84,7 @@ async function daemon(): Promise<void> {
   while (!stop) {
     if (Date.now() - lastTick >= TICK_MS) {
       lastTick = Date.now();
-      // First: the watchdog sits out while a row says running, so a stuck row would turn it off too.
+      // Before the watchdog: it sits out while a row says running, so a stuck row would turn it off too.
       await settleOrphans({ db, log }, orphans).catch((e: unknown) => log(`could not check for stuck updates: ${String(e)}`));
       await watchdog?.tick().catch((e: unknown) => log(`watchdog failed: ${String(e)}`));
       await schedulerTick({ db, env, log }).then((r) => r !== "idle" && r !== "unconfigured" && log(`scheduler: ${r}`)).catch((e: unknown) => log(`scheduler failed: ${String(e)}`));
@@ -102,7 +95,6 @@ async function daemon(): Promise<void> {
         if (n) log(`removed ${n} pre-update dumps older than ${ROLLBACK_DAYS + 1} days`);
       }
     }
-    // A change of the dashboard's address, between updates: this loop holds one job at a time.
     const domainJob = await claimLaneJob(db, holder, "dashboard_domain_apply").catch(() => null);
     if (domainJob) {
       const out = await runDomainSwitch({ db, steps, exec: run, cfg, probe: prismaProbe(db), log }, domainJob, holder).catch((e: unknown) => `failed: ${String(e)}`);
@@ -128,8 +120,6 @@ async function refresh(): Promise<void> {
   await checkInstallTree(cfg.composeDir);
   await run("docker", ["compose", "--project-directory", p.dir, "-f", p.compose, "--env-file", p.env, "--env-file", p.releaseEnv, "up", "-d", "--no-deps", "--force-recreate", "updater"]);
 }
-
-// ------------------------------------------------------------------ the host CLI
 
 const print = (s: string) => process.stdout.write(`${s}\n`);
 

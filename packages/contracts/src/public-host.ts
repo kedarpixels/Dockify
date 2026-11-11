@@ -1,12 +1,6 @@
 /**
- * Names that can never point at a public server, so a domain, a route and a certificate request
- * for one can only fail (metadata.google.internal, say, and the proxy would spend Let's
- * Encrypt's failure budget on it). The api refuses them when a domain is added; the worker never
- * routes one, whatever a row says. The Hostname grammar already keeps out single labels and IP
- * literals; they are refused here too, for callers that skip it.
- *
- * The suffixes: the special-use names (localhost, local, test, invalid, example, onion, alt, arpa,
- * home.arpa, internal) and the private suffixes networks commonly use for themselves.
+ * Names that can never point at a public server, so a certificate request for one can only fail and spend
+ * Let's Encrypt's failure budget. The api refuses them when a domain is added; the worker never routes one.
  */
 export const NON_PUBLIC_SUFFIXES: readonly string[] = [
   "localhost", "local", "internal", "test", "invalid", "example", "onion", "alt", "arpa",

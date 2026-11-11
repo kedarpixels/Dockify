@@ -18,16 +18,8 @@ import type { ContextState } from "./client";
 import { conflictLine, type DetailsDraft } from "./draft";
 import type { AppSpec, DeployTarget, LinkConflict, RunKind } from "./spec";
 
-/*
- * Step 3, shared by every source: what is about to be created in one soft line, then the name,
- * the environment, the kind, and for a frontend built from a repository, where it deploys. A
- * Postgres or Redis also lists the environment's apps, each with a checkbox: a checked app gets
- * DATABASE_URL or REDIS_URL, linked to the new service.
- */
-
 const RUN_KINDS: RunKind[] = ["frontend", "backend", "bot"];
 
-/** "Link to apps", for a new Postgres or Redis. */
 export interface LinkStep {
   /** DATABASE_URL or REDIS_URL. */
   key: string;
@@ -61,7 +53,6 @@ export function DetailsStep({
   manyError?: string;
   showKind: boolean;
   showTarget: boolean;
-  /** A new Postgres or Redis only. */
   link?: LinkStep;
   ctx: ContextState;
   /** The free test domain's choice, when this server can offer one and this app can use it. */
@@ -190,10 +181,7 @@ export function DetailsStep({
   );
 }
 
-/**
- * The environment's apps, each with a checkbox; none is checked unless New app was opened from
- * one. A checked app's line says what it gets, or, after the API answered a conflict, what it has.
- */
+/** None is checked unless New app was opened from one. */
 function LinkApps({ link, draft, set, many }: { link: LinkStep; draft: DetailsDraft; set: (fn: (d: DetailsDraft) => DetailsDraft) => void; many: boolean }) {
   const env = many ? envName(draft.environment) : "this project";
   const service = draft.name || "the new service";

@@ -10,9 +10,7 @@ import { useSettingsDraft } from "./settings-draft";
 import { notificationsPatch, type NotifyDraft } from "./settings-patch";
 import type { SectionProps } from "./settings-view";
 
-/* Settings, Notifications: which instance events notify, and where the channels live. Rules for
-   the server and each app (an app down, memory) are Alerts; this page and that one point at
-   each other. */
+/* Instance events only. Rules for the server and each app live in Alerts. */
 
 const EVENTS: Array<{ id: NotifyEvent; label: string; hint: string }> = [
   { id: "deployFailed", label: "Deploy failed", hint: "A deploy fails, here or on Vercel. Webhooks, and email to who started it." },
@@ -23,7 +21,6 @@ const EVENTS: Array<{ id: NotifyEvent; label: string; hint: string }> = [
   { id: "previewDeployments", label: "Preview deployments", hint: "A preview is ready or fails. Email to who opened the PR, or to admins." },
 ];
 
-/** One event: the label flips the switch, and so does a click anywhere else on the row. */
 function EventRow({ label, hint, checked, disabled, onChange }: { label: string; hint: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
   return (
     <SettingRow
@@ -48,7 +45,6 @@ export function NotificationsSection(props: SectionProps) {
   );
   const on = EVENTS.filter((e) => draft[e.id]).length;
 
-  // Lands on the Webhooks row, the way Set up email lands on the email row.
   const openChannels = () => {
     props.go("integrations");
     requestAnimationFrame(() => document.getElementById("int-webhooks")?.scrollIntoView({ block: "center" }));

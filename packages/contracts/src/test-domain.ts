@@ -1,11 +1,7 @@
 /**
- * Free test domains: <app>-<short id>.<ip-with-dashes>.sslip.io. sslip.io answers such a name with the
- * address it spells, so a domain with no DNS step works, through the normal route and certificate
- * path. These are for trying things out; real traffic belongs on the owner's own domain.
- *
- * Only Dockify generates them, one press at a time (each is a Let's Encrypt certificate), and only for
- * this server's own public address. A name that spells any other address is refused when it is typed:
- * it would lead somewhere else, and on sslip.io anyone can spell any address.
+ * Free test domains: <app>-<short id>.<ip-with-dashes>.sslip.io, which resolves to the address it spells.
+ * Only Dockify generates them, and only for this server's own address: on sslip.io anyone can spell any
+ * address, so a typed name that spells another one is refused.
  */
 
 /** Hosts that answer with the address they spell. */
@@ -45,7 +41,6 @@ export function isPublicIpv4(ip: string | null | undefined): boolean {
   return true;
 }
 
-/** What every test domain on this server ends in. */
 export const testDomainSuffix = (serverIpv4: string): string => `${serverIpv4.replace(/\./g, "-")}.sslip.io`;
 
 /**
@@ -66,12 +61,11 @@ export function testDomainLabel(appName: string, shortId: string): string {
 
 export const testDomainName = (appName: string, shortId: string, serverIpv4: string): string => `${testDomainLabel(appName, shortId)}.${testDomainSuffix(serverIpv4)}`;
 
-/** Whether this server can offer test domains, and why not. Tunnel mode has no public port for the name to reach. */
+/** Tunnel mode has no public port for the name to reach. */
 export function testDomainOffer(o: { ingress: "cloudflare_tunnel" | "direct_tls"; serverIpv4: string | null }): { available: boolean; reason: string | null; suffix: string | null } {
   if (o.ingress !== "direct_tls") return { available: false, reason: "A server behind a Cloudflare tunnel has no public port for a test domain to reach.", suffix: null };
   if (!isPublicIpv4(o.serverIpv4)) return { available: false, reason: "This server's public IPv4 address is not known, so it has no test domain to offer.", suffix: null };
   return { available: true, reason: null, suffix: testDomainSuffix(o.serverIpv4!) };
 }
 
-/** Said on a test domain that does not resolve: sslip.io is someone else's service, and it can be down. */
 export const SSLIP_DOWN_MESSAGE = "sslip.io did not answer for this test domain. It is a free third-party service, so it may be down: the domain cannot be reached or get a certificate until it is back. Dockify checks again on its own.";

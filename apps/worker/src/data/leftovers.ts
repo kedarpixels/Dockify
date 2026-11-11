@@ -1,14 +1,6 @@
 /**
- * What throwaway containers can leave on disk, swept at boot and by the janitor.
- *
- * A restore test replays a backup into a scratch Postgres, so its data volume holds a decrypted copy
- * of the database. It normally goes at the end of the test (runRestoreTest); this catches what a
- * crashed worker or a failed delete left behind, and what versions before that rule left: an
- * anonymous volume per test, no record of which is which, read from what each one holds.
- *
- * An unused anonymous volume with no bytes in it can hold nothing and goes too (a managed deploy's
- * setup helper can leave one). Any other anonymous volume is kept and reported (data/volumes.ts): it may
- * hold an older service's data, and only the owner can say.
+ * A restore test's scratch volume holds a decrypted copy of a database, so one a crashed worker left is removed.
+ * An unused anonymous volume goes only when empty; any other is kept and reported for the owner.
  */
 import { readAll } from "./context.ts";
 import type { Db } from "@dockify/db";
@@ -34,11 +26,7 @@ const CHECK_PREFIX = `${SCRATCH_PREFIX}check-`;
 const CHECK_ROLE = "restore-check";
 const CHECK_MOUNT = "/c";
 
-/**
- * Removes one restore test's scratch container and its decrypted copy. Each part is tried whatever
- * happened to the other; the first failure is rethrown so the caller can say so, and the next sweep
- * tries again.
- */
+/** Each part is tried whatever happened to the other; the first failure is rethrown, and the next sweep tries again. */
 export async function discardRestoreScratch(docker: DockerPort, backupId: string): Promise<void> {
   let failure: unknown = null;
   await docker.remove(restoreTestContainer(backupId), { volumes: true }).catch((e: unknown) => {
@@ -50,20 +38,17 @@ export async function discardRestoreScratch(docker: DockerPort, backupId: string
   if (failure) throw failure;
 }
 
-/** A restore test of this backup is running right now under a live lease. */
 async function liveRestoreTest(db: Db, serverId: string, backupId: string, now: Date): Promise<boolean> {
   const open = await db.job.findFirst({ where: { kind: "restore_test", ...appsHere(serverId), dedupeKey: `restore-test:${backupId}`, completedAt: null, failedAt: null, lockedUntil: { gt: now } }, select: { id: true } });
   return !!open;
 }
 
 /**
- * Prints "scratch" for a volume laid out as a restore test's Postgres: its cluster in pgdata/ (a
- * service of an older version keeps it at the root) with the database named after the test, found in
- * the shared pg_database catalog (file 1262).
+ * Prints "scratch" for a volume laid out as a restore test's Postgres: a cluster in pgdata/ (an older
+ * version's is at the root) whose shared pg_database catalog (file 1262) names the test's database.
  */
 export const CHECK_SCRIPT = `if [ -f ${CHECK_MOUNT}/pgdata/PG_VERSION ] && grep -q ${RESTORE_TEST_NAME} ${CHECK_MOUNT}/pgdata/global/1262; then echo scratch; else echo keep; fi`;
 
-/** A Postgres image already on this server, or the default pulled once. Null when neither can be had. */
 async function checkImage(db: Db, docker: DockerPort, serverId: string): Promise<string | null> {
   const pinned = await db.app.findMany({ where: { kind: "postgres", pinnedImage: { not: null }, ...appsHere(serverId) }, select: { pinnedImage: true }, take: 5 });
   for (const ref of [...pinned.map((a) => a.pinnedImage!), SERVICE_IMAGES.postgres]) {
@@ -98,11 +83,9 @@ export interface LeftoverDeps {
   db: Db;
   serverId: string;
   docker: DockerPort;
-  /** Every local volume with its usage (GET /system/df?type=volume). */
   volumes: () => Promise<DiskUsageVolume[]>;
   log: (msg: string, extra?: object) => void;
   now?: () => Date;
-  /** Anonymous volumes already read and kept, so a pass does not start a helper for them again. */
   kept?: Set<string>;
 }
 

@@ -1,11 +1,7 @@
 /**
- * Env references: a variable whose value is a managed service's credential, read at deploy time
- * instead of copied. The variable stores only "which resource, which field"; the api resolves it
- * when a deployment starts, so rotating a service password reaches every linked app on its next
- * deploy. A reference may only point at a service in the same project as the variable.
- *
- * Stored inside the sealed env value as ENV_REF_MARK + "<resourceId>:<field>". The mark starts
- * with a NUL, which EnvValue refuses, so a typed value can never pass for a reference.
+ * A variable that names a managed service's credential, resolved by the api when a deployment starts, so a
+ * rotated password reaches linked apps on their next deploy. Same project only. Stored as ENV_REF_MARK +
+ * "<resourceId>:<field>"; the mark starts with a NUL, which EnvValue refuses, so no typed value passes for one.
  */
 import { z } from "zod";
 import { ENV_REF_MARK, StatefulKind, Uuid } from "./common.ts";
@@ -45,7 +41,6 @@ export const refFieldAllowed = (kind: Kind, field: EnvRefField): boolean => REF_
 /** The default key of a field, which is also how the dashboard labels it: "DATABASE_URL". */
 export const refFieldLabel = (kind: Kind, field: EnvRefField): string => REF_FIELDS[kind].find((f) => f.field === field)?.key ?? field;
 
-/** What a change sends to link a variable. */
 export const EnvRef = z.strictObject({ resourceId: Uuid, field: EnvRefField });
 export type EnvRef = z.infer<typeof EnvRef>;
 

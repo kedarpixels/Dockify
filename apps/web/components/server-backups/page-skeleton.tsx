@@ -6,9 +6,6 @@ import { Rule, Spacer } from "@/components/ui/rule";
 import { SectionHead } from "@/components/ui/section-head";
 import { Skel, SkelRows } from "@/components/ui/skeleton";
 
-/* Route loading states for /server and /backups: the real heads, cells and cards at their loaded
-   sizes, with bars where the figures and rows will land, so nothing jumps when data arrives. */
-
 const METRICS: Array<{ icon: IconName; label: string }> = [
   { icon: "cpu", label: "CPU" },
   { icon: "layers", label: "Memory" },

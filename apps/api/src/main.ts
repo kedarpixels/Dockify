@@ -11,9 +11,8 @@ const config = loadConfig();
 const ring = loadKeyring();
 const db = createDb();
 
-// After a host reboot Docker starts the api before Postgres takes connections. Wait for it with
-// backoff, saying so once, instead of crashing and logging a stack per restart. The
-// request logger only exists once the app is built, so these few lines are written directly.
+// After a host reboot Docker starts the api before Postgres takes connections, so wait with backoff.
+// The request logger only exists once the app is built, so these lines are written directly.
 const bootLog: WaitLog = {
   info: (msg, extra) => void process.stderr.write(`${JSON.stringify({ level: "info", msg, ...extra })}\n`),
   error: (msg, extra) => void process.stderr.write(`${JSON.stringify({ level: "error", msg, ...extra })}\n`),
@@ -31,9 +30,8 @@ if (!ready) {
 }
 
 await ensureInstance(db, ring, config.publicUrl.origin, config.ingress);
-// Managed services from older installs stored a bare password; rewrite those rows in the JSON
-// shape once. Every reader takes both shapes, so this is tidiness: it never blocks the start, and
-// it says something only when it changed or could not read a row.
+// Rewrites service credentials stored as a bare password into the JSON shape.
+// Every reader takes both shapes, so a failure here never blocks the start.
 const legacy = await upgradeLegacyServiceCredentials(db, ring).catch(() => ({ upgraded: 0, unreadable: [] as string[] }));
 if (legacy.upgraded > 0) bootLog.info("service credentials moved to the current format", { upgraded: legacy.upgraded });
 if (legacy.unreadable.length > 0) bootLog.error("service credentials that could not be read were left as they are", { unreadable: legacy.unreadable });

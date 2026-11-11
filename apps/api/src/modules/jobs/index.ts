@@ -1,10 +1,4 @@
-/**
- * Scheduled jobs on an app, and New app's read of a repository. The route table decided who may call
- * each: anyone with a view reads, an admin session under step-up changes a job (its command runs with
- * the app's secrets), and Run now also takes a deploy token, since it only runs what was approved.
- * These handlers add what needs the row: the token's project limit, the kinds of app with no jobs,
- * and the limits. Every write leaves an audit row, which names a changed command but never its text.
- */
+// Scheduled jobs on an app, and New app's read of a repository. A job's command runs with the app's secrets, so audit rows name a changed command but never its text.
 import { createHash } from "node:crypto";
 import { iso, jobs as J } from "@dockify/contracts";
 import type { Prisma } from "@dockify/db";
@@ -95,8 +89,6 @@ async function listJobs(ctx: Ctx, appId: string) {
 }
 
 const nameTaken = () => new HttpError(409, "This app already has a job with that name", "NAME_TAKEN", { field: "name" });
-
-// ------------------------------------------------------------------ New app's read of a repository
 
 /** New reads one person may have at a time, and on the server: each is a clone and a BuildKit step. */
 const MAX_READS_PER_ACTOR = 10;
@@ -225,11 +217,7 @@ export const jobsHandlers: Handlers = {
     return { ...runView(run), log: run.log };
   },
 
-  /**
-   * A repeat of the same request answers from the row, so the page can simply ask again until it is
-   * done, and a page left polling never queues a second clone. The answer is private to who asked: it
-   * may describe a repository only their pick of installation can read.
-   */
+  /** A repeat of the same request answers from the row, so a polling page never queues a second clone. The answer is private to who asked: it may describe a repository only their installation can read. */
   "apps.detect": async ({ body, actor, ctx }) => {
     const a = requireActor(actor);
     if (isBlockedHost(repoHostOf(body.repoUrl))) throw new HttpError(400, "That repository host is not reachable from Dockify", "REFUSED", { field: "repoUrl" });

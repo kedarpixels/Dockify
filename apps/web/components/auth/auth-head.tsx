@@ -4,11 +4,7 @@ import { useEffect, useRef } from "react";
 import { Icon, type IconName } from "@/components/icon";
 import { IconTile } from "@/components/ui/icon-tile";
 
-/**
- * The title block of an auth card: for a multi-step flow the step bars on their own line first,
- * then one row with the 40px key tile and the pixel title beside it, and a muted lead below.
- * `announce` moves focus to the title, for steps that replace the card in place.
- */
+/** `announce` moves focus to the title, for steps that replace the card in place. */
 export function AuthHead({
   icon,
   step,

@@ -5,11 +5,7 @@ import type { GitInstallation } from "@/lib/pages/git";
 
 const ADD = "__add";
 
-/**
- * The GitHub account picker on the shared Select: a person glyph for a user, a building for an
- * organization, then "Add GitHub account" at the bottom, which starts a new install instead of
- * picking. (Select draws glyphs only, so account pictures wait for a lead slot in the primitive.)
- */
+/** "Add GitHub account" at the bottom starts a new install instead of picking. */
 export function AccountSelect({
   installations,
   value,

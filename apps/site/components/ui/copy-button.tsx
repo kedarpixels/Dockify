@@ -4,18 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 import { cx } from "./cx";
 
-/*
- * The one copy control. Copies never toast: the key itself says Copied for a moment, and one shared
- * polite region tells screen readers ("Copied", "Copy failed") while the key keeps its name.
- *
- *   <CopyButton value={url} what="connection URL" />            icon key, no hover tip, "Copied" after a press
- *   <CopyTextButton value={url} label="Copy link" />            labelled secondary button
- *   const { state, copy } = useCopy();  await copy(text);        anything else (hash chips, log lines)
- */
+// Copies never toast: the key itself says Copied for a moment, and one shared polite region tells
+// screen readers while the key keeps its name.
 
-/* One region for every copy result. It is put in the page when the first copy key mounts, so the
-   first result lands in a region the reader already watches (one created with its text is often
-   skipped). */
+// One region for every result, added when the first copy key mounts: a region created together
+// with its text is often skipped by screen readers.
 let region: HTMLElement | null = null;
 
 function copyRegion(): HTMLElement {
@@ -27,7 +20,7 @@ function copyRegion(): HTMLElement {
   return region;
 }
 
-/** Says a copy result to screen readers; the same words twice in a row are still said. */
+/** The same words twice in a row are still said. */
 function announce(text: string) {
   const r = copyRegion();
   r.textContent = "";
@@ -36,11 +29,8 @@ function announce(text: string) {
   });
 }
 
-/**
- * Puts text on the clipboard. The async API needs a secure context, so a dashboard reached over
- * plain http (a fresh VPS by its IP) falls back to a hidden textarea and execCommand. Focus and the
- * page selection are put back afterwards. Resolves false when both ways fail.
- */
+// The async API needs a secure context, so plain http (a fresh VPS by its IP) falls back to a
+// hidden textarea and execCommand. Resolves false when both ways fail.
 export async function copyText(text: string): Promise<boolean> {
   try {
     if (!navigator.clipboard) throw new Error("No async clipboard");
@@ -68,11 +58,7 @@ export async function copyText(text: string): Promise<boolean> {
 
 export type CopyState = "idle" | "done" | "failed";
 
-/**
- * Copy with a short-lived result: `state` is "done" or "failed" for `ms` after each copy, then
- * "idle" again. A repeat copy restarts the timer; the timer is cleared on unmount. `copy` takes the
- * text, or an async getter for a value fetched on demand (a secret revealed by the API).
- */
+/** `copy` takes the text, or an async getter for a value fetched on demand (a secret revealed by the API). */
 export function useCopy(ms = 1400) {
   const [state, setState] = useState<CopyState>("idle");
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -105,12 +91,8 @@ export function useCopy(ms = 1400) {
   return { state, copy };
 }
 
-/**
- * Icon-only copy key. No hover tip (the glyph says copy); after a press the tip says "Copied" (or
- * "Copy failed") and stays up for the moment even after the pointer leaves, so a keyboard copy is
- * confirmed too, and on touch screens too. `what` names the value for screen readers, "Copy
- * connection URL", and the name stays put: the result is said through the shared region.
- */
+// After a press the tip says "Copied" and stays even after the pointer leaves, so keyboard and
+// touch copies are confirmed too. The accessible name stays put; the result goes to the shared region.
 export function CopyButton({
   value,
   what,
@@ -154,10 +136,7 @@ export function CopyButton({
   );
 }
 
-/**
- * Labelled secondary copy button ("Copy link"). The label reads "Copied" for a moment; both labels
- * share one grid cell, so the button keeps the width of the longer one and never jumps.
- */
+/** Both labels share one grid cell, so the button keeps the width of the longer one and never jumps. */
 export function CopyTextButton({
   value,
   label,

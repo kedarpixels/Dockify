@@ -8,18 +8,12 @@ import { IconTile } from "@/components/ui/icon-tile";
 import { When } from "@/components/ui/when";
 import type { ActivityCategory, ActivityChange, ActivityEvent } from "@/lib/pages/activity-settings";
 
-/* One activity log row, with its diff. The time reads like every day-grouped list: relative, with
-   the absolute moment in the reader's zone in its tip. */
-
 /** Who a row names when Dockify itself acted: backups, prunes, renewals, failed builds. */
 export const SYSTEM_NAME = "Dockify";
 
 const CATEGORY_ICON: Record<ActivityCategory, IconName> = { deploys: "deploy", config: "sliders", access: "key", system: "server" };
 
-/**
- * A glyph per kind of event; anything unknown falls back to its category glyph. Keys are the audit
- * action names the API and worker write, then the few that only the preview fixtures use.
- */
+/** Keys are the audit action names the API and worker write; unknown ones fall back to the category glyph. */
 const ACTION_ICON: Record<string, IconName> = {
   "deployment.redeploy": "refresh",
   "deployment.rollback": "rollback",
@@ -75,15 +69,11 @@ function where(e: ActivityEvent) {
   return [e.ip, e.location].filter(Boolean).join(", ");
 }
 
-/**
- * How the suffix joins the sentence: after a preposition it simply runs on ("to fieldnote / api",
- * "as Viewer"); a fact about the target (a size, a reason) follows a comma ("inkwell / postgres,
- * 412 MB").
- */
+/** After a preposition the suffix runs on ("to fieldnote / api"); any other fact follows a comma. */
 const RUNS_ON = /^(from|to|with|as|for|on|in|into|by|at|via|of)\b/;
 const joinSuffix = (e: ActivityEvent, suffix: string) => (e.target && !RUNS_ON.test(suffix) ? `, ${suffix}` : ` ${suffix}`);
 
-/** Old value, an arrow, the new value. Values arrive masked; a missing side reads added or removed. */
+/** Values arrive masked; a missing side reads added or removed. */
 function Diff({ id, changes }: { id: string; changes: ActivityChange[] }) {
   return (
     <div id={id} className="act-diff">
@@ -113,19 +103,16 @@ export function EventRow({ e, now, open, fresh, onToggle }: { e: ActivityEvent; 
     <li className={fresh ? "act-item act-fresh" : "act-item"} data-open={open || undefined}>
       <div
         className="soft-row act-row"
-        // Only a row that opens something lights up under the pointer: its diff, or its target page.
         data-hover={detail || !!e.target?.href || undefined}
         data-expandable={detail || undefined}
         tabIndex={-1}
         onKeyDown={(ev) => {
-          // Enter on a focused row opens it: the diff when it has one, else the target page.
           if (ev.key !== "Enter" || ev.target !== ev.currentTarget) return;
           ev.preventDefault();
           if (detail) onToggle();
           else if (e.target?.href) router.push(e.target.href);
         }}
         onClick={(ev) => {
-          // The row toggles its diff, except when the click lands on the target link or the key.
           if (detail && !(ev.target instanceof Element && ev.target.closest("a, button"))) onToggle();
         }}
       >
@@ -160,7 +147,6 @@ export function EventRow({ e, now, open, fresh, onToggle }: { e: ActivityEvent; 
               type="button"
               className="btn btn-xs btn-icon act-exp-key"
               aria-expanded={open}
-              // Points at the changes only while they are in the page.
               aria-controls={open ? diffId : undefined}
               aria-label={`${open ? "Hide" : "Show"} changes${e.target ? ` to ${e.target.label}` : ""}`}
               onClick={onToggle}

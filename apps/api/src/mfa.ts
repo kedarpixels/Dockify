@@ -9,7 +9,7 @@ export interface TotpUser {
   totpConfirmedAt: Date | null;
 }
 
-/** Opens a user's TOTP secret, or null when none is stored or it cannot be opened. */
+/** Null when none is stored or it cannot be opened. */
 export async function totpSecretOf(db: Tx, ring: Keyring, user: TotpUser): Promise<string | null> {
   if (!user.totpSecretId) return null;
   try {
@@ -57,11 +57,8 @@ async function lockState(db: Db, userId: string, now: number): Promise<{ wait: n
 }
 
 /**
- * The one check of an authenticator code for a user with MFA on, shared by sign in, step-up and
- * turning two-factor off, so they spend one budget: TOTP_MAX_FAILS wrong codes, then a lockout that
- * doubles each time in a row (ratelimit.ts totpLockMs). The count is on the user row, so a restart
- * keeps it, and only a right code clears it. A lost authenticator is turned off on the host
- * (admin.ts disable-mfa).
+ * The one authenticator check, shared by sign in, step-up and turning two-factor off, so they spend one budget.
+ * The count is on the user row, so a restart keeps it, and only a right code clears it.
  */
 export async function checkTotp(db: Db, ring: Keyring, user: TotpUser, code: string, now = Date.now()): Promise<TotpCheck> {
   // The guess is counted before it is checked, so parallel guesses cannot all pass an unspent count.

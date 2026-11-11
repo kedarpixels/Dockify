@@ -25,7 +25,7 @@ export function mintApiToken(): MintedToken {
   return { secret, hash: hashToken(secret), prefix: secret.slice(0, SHOWN_PREFIX_LEN) };
 }
 
-/** A user may mint a scope only when the scope's role does not exceed their own. */
+/** Nobody mints a scope whose role exceeds their own. */
 export function scopeAllowed(role: Role, scope: TokenScope): boolean {
   return ROLE_RANK[SCOPE_ROLE[scope]] <= ROLE_RANK[role];
 }
@@ -75,10 +75,9 @@ export const tokenHandlers: Handlers = {
 
   "tokens.create": async ({ body, actor, req, ctx }) => {
     const a = requireActor(actor);
-    // The policy has no token scope, so a token can never reach this; the check is belt and braces.
+    // Defence in depth: the route policy already keeps tokens out.
     if (a.kind !== "session") throw forbidden("API tokens cannot mint tokens");
     if (!scopeAllowed(a.role, body.scope)) throw forbidden(`Your role cannot create ${body.scope === "admin" ? "an" : "a"} ${body.scope} token`);
-    // The project scope is a deliberate choice: "all", or named projects. There is no default.
     const all = body.projects === "all";
     const slugs = all ? [] : [...new Set(body.projects)];
     const grants = [...new Set(body.grants ?? [])];

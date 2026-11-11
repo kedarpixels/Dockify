@@ -12,7 +12,6 @@ export const metadata: Metadata = {
   title: "Page not found",
 };
 
-/* 404: the console frame around the one not-found block, and two ways back. */
 export default async function NotFound() {
   const { data, source } = await getOverview();
   const shell: ShellData = { ...buildShell(data), preview: source === "preview" };

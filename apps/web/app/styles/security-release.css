@@ -1,15 +1,6 @@
-/* Security release: the console's slim banner under the top bar, the popup's body and footer, and
-   the note on the Server page's Updates card (components/shell/security-release.tsx,
-   components/server-backups/server-updates.tsx). The popup's red head is the Dialog's own tone
-   (foundation.css, Dialog). Order: base rules, then the tablet-up and phone blocks. */
-
-/* -------------- Banner -------------- */
-/* A band under the top bar, full bleed like the dither bands: a soft red wash and its bottom rule.
-   The page's two rails are redrawn across it with a node where each meets that rule (the bar's
-   own rule above already carries its nodes), on the same whole-pixel geometry as `main.page > *`
-   and `.sep::after` (foundation.css, the ruled frame). The row inside rides the rail, so the glyph
-   lines up with the bar's title and the page content, and the key with the bar's keys. The band
-   makes no layer of its own: tips and menus from the page still open over it. */
+/* Banner */
+/* The page's two rails are redrawn across the band on the same whole-pixel geometry as
+   `main.page > *`. The band makes no layer of its own, so page tips and menus still open over it. */
 .secb {
   position: relative;
   flex: none;
@@ -35,15 +26,13 @@
     linear-gradient(var(--line), var(--line)) calc(100% - 2px) 0 / 1px calc(100% - 2px) no-repeat;
 }
 
-/* With the band on the page, the page column fills what is left of the screen (the shell is at
-   least a screen tall) instead of a full screen under the top bar, so a short page never scrolls by
-   the band's height. */
+/* With the band present, the page column fills what is left of the screen, so a short page never
+   scrolls by the band's height. */
 .shell-main:has(> .secb) > main.page {
   flex: 1 0 auto;
   min-height: 0;
 }
 
-/* Glyph, line, key: 40px for one line, a 28px key 6px from either rule. */
 .secb-rail {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) auto;
@@ -100,7 +89,7 @@
   text-decoration-color: currentColor;
 }
 
-/* -------------- Popup -------------- */
+/* Popup */
 .dlg-security .dlg-body {
   gap: 12px;
 }
@@ -116,7 +105,6 @@
   gap: 8px;
 }
 
-/* A CVE id: the mono face on a small framed chip, on the popover's own veil so it shows in dark. */
 .sec-cve {
   display: inline-flex;
   align-items: center;
@@ -131,7 +119,6 @@
   line-height: 16px;
 }
 
-/* The advisory link (the shared ExternalLink) at the note's size. */
 .sec-link {
   font-size: 13px;
   line-height: 18px;
@@ -144,7 +131,6 @@
   color: var(--ink-muted);
 }
 
-/* The footer: the reminder choices on the left, Update now on the right. */
 .sec-remind {
   display: flex;
   flex-wrap: wrap;
@@ -160,7 +146,7 @@
   color: var(--ink-3);
 }
 
-/* -------------- Server page, Updates card -------------- */
+/* Server page, Updates card */
 .srv-up-sec .callout-text {
   display: flex;
   flex-direction: column;
@@ -175,17 +161,14 @@
   color: var(--ink-2);
 }
 
-/* -------------- Tablet and up -------------- */
-/* The column's left edge line runs on through the band, as it does through the top bar and the page. */
+/* Tablet and up */
 @media (min-width: 761px) {
   .shell-main > .secb {
     box-shadow: inset 1px 0 var(--line), inset 0 -1px var(--line);
   }
 }
 
-/* -------------- Phone -------------- */
-/* No rails and no nodes, the grammar of the phone console: the band runs edge to edge with its
-   hairline. A Viewer's note drops under the line instead of squeezing it. */
+/* Phone */
 @media (max-width: 760px) {
   .secb::after {
     display: none;

@@ -29,10 +29,7 @@ const NONE: RecentDeployment[] = [];
 // Finished days never change, so a fetched day is kept for the session. Today is always refetched.
 const cache = new Map<string, RecentDeployment[]>();
 
-/**
- * The picked day's deployments. Each day and retry is its own request; stepping on aborts the
- * one in flight, so a slow answer for an earlier day can never land on a later one.
- */
+/** Stepping on aborts the request in flight, so a slow answer for an earlier day never lands on a later one. */
 function useDay(day: PickedDay, attempt: number): Load {
   const known = day.total === 0 ? NONE : day.today ? undefined : cache.get(day.date);
   const key = `${day.date}#${attempt}`;
@@ -63,11 +60,7 @@ function fullDate(date: string) {
   return `${dayLabel(date)} ${date.slice(0, 4)}`;
 }
 
-/**
- * The picked heatmap day: pixel date, succeeded and failed totals, prev, next and close keys,
- * then the day's deployments as the same soft rows Recent deployments uses. Left and Right step
- * days from anywhere in the panel.
- */
+/** Left and Right step days from anywhere in the panel. */
 export function DayPanel({
   day,
   at,

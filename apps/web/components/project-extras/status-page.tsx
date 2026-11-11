@@ -16,10 +16,8 @@ import type { StatusPageState } from "@/lib/pages/project-detail";
 import { useCan } from "@/lib/viewer";
 import { send } from "./api";
 
-/* The public status page switch. It flips at once and rolls back with an error toast when the
-   write fails; while the write runs the switch keeps the focus and ignores presses. The page lists
-   only apps with a public domain, with their health and uptime; it never shows logs, variables or
-   internal services. A Viewer sees the setting and the link, not the switch's power. */
+// The switch flips at once and rolls back with an error toast when the write fails. The page lists
+// only apps with a public domain; it never shows logs, variables or internal services.
 
 export function StatusPageCard({
   slug,

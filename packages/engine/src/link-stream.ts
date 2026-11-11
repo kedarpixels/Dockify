@@ -21,10 +21,9 @@ export function capWrites<T extends Duplex>(stream: T, max: number): T {
 }
 
 /**
- * Makes an H2 stream take only Buffers. Written a string, node:http2 hands nghttp2 memory that is freed
- * before nghttp2 reads it: on Node 24.16 the first bytes of a response arrive as heap garbage, which an
- * HTTP client reads as "Expected HTTP/". node:http writes its headers as a string, so every Docker call
- * over the link would be one race from it. A stream's own hooks, so no caller has to remember.
+ * Makes an H2 stream take only Buffers. Written a string, node:http2 hands nghttp2 memory that is freed before
+ * it is read (Node 24.16), so a response starts with heap garbage. node:http writes its headers as a string,
+ * so every Docker call over the link would be one race from it.
  */
 export function writesAsBuffers<T extends Duplex>(stream: T): T {
   const asBuffer = (chunk: unknown, encoding: BufferEncoding): Buffer => (typeof chunk === "string" ? Buffer.from(chunk, encoding) : (chunk as Buffer));

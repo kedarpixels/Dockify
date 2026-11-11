@@ -1,8 +1,4 @@
-/**
- * Preview endpoints: the list with its settings, one preview's detail, the settings (every
- * guardrail), wake, delete and the DNS check. Teardown and wake are worker jobs; these handlers
- * write rows and queue them in the same transaction.
- */
+// Teardown and wake are worker jobs: these handlers write rows and queue them in the same transaction.
 import { iso, projects as P } from "@dockify/contracts";
 import { defaultServerId, enqueuePreviewTx, enqueueTx, type Db, type Tx } from "@dockify/db";
 import type { FastifyRequest } from "fastify";
@@ -47,7 +43,7 @@ async function projectFor(db: Db, actor: Actor | null, slug: string) {
 }
 type Project = Awaited<ReturnType<typeof projectFor>>;
 
-/** What a push would copy (webhook.ts), so settings never read differently from what previews do. */
+/** The same selection the webhook builds from, so settings never read differently from what previews do. */
 function includedApps(p: Project) {
   return pickBaseEnvironment(p.environments, p.previewBaseEnv)?.apps.filter(includedInPreviews) ?? [];
 }
@@ -91,7 +87,6 @@ type Row = Awaited<ReturnType<typeof loadRows>>[number];
 const loadRows = (db: Tx, projectId: string) =>
   db.previewEnv.findMany({ where: { projectId }, orderBy: { createdAt: "desc" }, take: 60, select: ROW_SELECT });
 
-/** The stored owner/name as a URL, or null when it is not one. */
 const repoUrlOf = (ownerName: string): string | null => (/^[\w.-]+\/[\w.-]+$/.test(ownerName) ? `https://github.com/${ownerName}` : null);
 
 export function toRow(r: Row, ttlHours: number): PreviewRow {
@@ -118,7 +113,6 @@ export function toRow(r: Row, ttlHours: number): PreviewRow {
   };
 }
 
-/** Open previews first (newest first), then the 20 newest closed ones. */
 export function orderRows(rows: PreviewRow[]): PreviewRow[] {
   const open = rows.filter((r) => r.status !== "closed");
   const closed = rows.filter((r) => r.status === "closed").slice(0, 20);
@@ -168,7 +162,7 @@ async function stateOf(db: Db, p: Project, ingress: string, serverIpv4: string |
   };
 }
 
-/** The dashboard names a preview by its number alone. Two repositories can share one: the open one first, then the newest. */
+/** Two repositories of a project can share a PR number: the open preview wins, then the newest. */
 const byNumber = (projectId: string, pr: number) => ({
   where: { projectId, prNumber: pr },
   orderBy: [{ closedAt: { sort: "desc" as const, nulls: "first" as const } }, { createdAt: "desc" as const }],
@@ -224,8 +218,8 @@ export const previewHandlers: Handlers = {
     const inst = await instancePreview(ctx.db);
     const before = P.effectivePreviewDomain(p.previewDomain, inst.domain, inst.publicUrl).domain;
     const after = P.effectivePreviewDomain(body.domain, inst.domain, inst.publicUrl).domain;
-    // Turning protection on with no password yet makes one now, so no preview is ever locked behind a
-    // password nobody has seen. The answer below is the only place it ever appears.
+    // Turning protection on with no password yet makes one now, so no preview is locked behind a
+    // password nobody has seen. This response is the only place it ever appears.
     const firstPassword = body.enabled && body.access === "password" && !p.previewPasswordSetAt ? newPreviewPassword() : null;
     const firstHash = firstPassword ? await hashPreviewPassword(firstPassword) : null;
 
@@ -243,19 +237,16 @@ export const previewHandlers: Handlers = {
       // An explicit choice per app, so a later default change never adds or drops one silently.
       for (const x of eligible.values()) await tx.app.update({ where: { id: x.id }, data: { previewEnabled: wanted.has(x.id) } });
       if (body.serverMaxConcurrent !== inst.cap) await tx.instance.update({ where: { id: 1 }, data: { previewServerMax: body.serverMaxConcurrent } });
-      // A comment on an open pull request says whether its URL asks for a password and what it runs
-      // with, so it follows the settings.
+      // The comment on an open pull request states these two settings, so it is refreshed.
       if (body.enabled && (body.access !== p.previewAccess || body.productionAccess !== p.previewProductionAccess)) {
         const open = await tx.previewEnv.findMany({ where: { projectId: p.id, status: { in: ["building", "ready", "asleep", "failed"] } }, select: { id: true } });
         for (const o of open) await enqueuePreviewTx(tx, "preview_feedback", o.id);
       }
-      // A running preview holds its secrets in its container's config, so this setting has to reach
-      // it now, not at the next timed pass. No dedupe key: an open reconcile may have read the old
-      // value already. A preview still building waits for the timed pass (planIsolationDrift).
+      // A running preview holds its secrets in its container's config, so this must reach it now.
+      // No dedupe key: an open reconcile may have read the old value already.
       if (body.enabled && body.productionAccess !== p.previewProductionAccess) {
         await enqueueTx(tx, { kind: "reconcile", lane: "maintenance", serverId: await defaultServerId(tx), payload: {} });
       }
-      // Turned off: every running preview goes now; the janitor would find them anyway.
       if (!body.enabled) {
         const open = await tx.previewEnv.findMany({ where: { projectId: p.id, status: { in: ["building", "ready", "asleep", "failed", "blocked"] } }, select: { id: true } });
         for (const o of open) await retirePreview(tx, o.id, "disabled");

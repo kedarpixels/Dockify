@@ -1,20 +1,5 @@
-/*
- * What the browser knows about the dashboard's address and about a hostname on Cloudflare. The shapes
- * are the API's (packages/contracts/src/dashboard-domain.ts), read through this dashboard's own routes:
- *
- *   GET    /api/settings/domain                  -> DashboardDomain
- *   POST   /api/settings/domain                  { hostname } starts setting a new domain up
- *   POST   /api/settings/domain/check            a fresh check, waited for
- *   POST   /api/settings/domain/record           { proxied, replace } creates its Cloudflare record
- *   POST   /api/settings/domain/switch           moves the dashboard, once the domain is ready
- *   DELETE /api/settings/domain                  stops setting it up
- *   DELETE /api/settings/domain/previous/:host   stops an old address answering
- *   GET    /api/domains/cloudflare               every domain's state on Cloudflare
- *   GET    /api/domains/cloudflare/lookup?hostname=  one hostname's, before it is added
- *   POST   /api/domains/:id/cloudflare           { proxied, replace } creates or fixes its record
- *
- * Pure, so the rules test without Next, and it holds no fixture: previews build theirs on the server.
- */
+// Shapes are the API's (packages/contracts/src/dashboard-domain.ts). Pure, and holds no fixture:
+// previews build theirs on the server.
 
 export type CfSslMode = "off" | "flexible" | "full" | "strict";
 
@@ -117,7 +102,6 @@ export const isSslipHost = (host: string): boolean => /^\d{1,3}(?:-\d{1,3}){3}\.
 /** Any name under such an address: its DNS answers by itself, so there is never a record to create. */
 export const resolvesItself = (host: string): boolean => /(?:^|\.)\d{1,3}(?:-\d{1,3}){3}\.(?:sslip|nip)\.io$/i.test(host);
 
-/** How one proxied or DNS-only record reads. */
 export const recordMode = (r: Pick<CfRecord, "proxied">): string => (r.proxied ? "Proxied" : "DNS only");
 
 export const SSL_LABEL: Record<CfSslMode, string> = { off: "Off", flexible: "Flexible", full: "Full", strict: "Full (strict)" };

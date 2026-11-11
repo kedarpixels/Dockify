@@ -57,7 +57,7 @@ const LIVE_TONE: Record<LivePhase, "live" | "warn" | "bad" | "idle"> = { off: "i
 /** Minutes either side of a line that its permalink opens. */
 const AROUND = 5 * 60_000;
 
-/** Skeleton rows that match the real ones: 20px lines with the same columns. Also the route's loading state. */
+/** Also the route's loading state. */
 export function LoadingRows() {
   const widths = ["62%", "48%", "71%", "39%", "56%", "66%", "44%", "58%", "35%", "69%", "51%", "47%"];
   return (
@@ -90,14 +90,12 @@ export function LogsView({ initial, overview, filters: start }: { initial: LogsR
 
   const patch = (p: Partial<LogFilters>) => setFilters((f) => ({ ...f, ...p }));
 
-  // The search settles for 300ms before it asks the server.
   useEffect(() => {
     const id = setTimeout(() => setFilters((f) => (f.q === text.trim() ? f : { ...f, q: text.trim() })), 300);
     return () => clearTimeout(id);
   }, [text]);
 
-  // The filters live in the address bar, so a reload or a shared link opens the same view. A
-  // line hash only survives while the filters it was opened with stay.
+  // A line hash only survives while the filters it was opened with stay.
   const key = filterKey(filters);
   const [startKey] = useState(() => filterKey(start));
   useEffect(() => {
@@ -107,17 +105,14 @@ export function LogsView({ initial, overview, filters: start }: { initial: LogsR
     window.history.replaceState(window.history.state, "", url);
   }, [filters, key, startKey]);
 
-  // Every app on the server, in the overview's order, which also fixes each app's colour.
+  // The overview's order also fixes each app's colour.
   const catalogue = useMemo(() => ov.data?.resources ?? [], [ov.data]);
   const pickerApps = useMemo<PickerApp[]>(() => {
     const order = catalogue.map((r) => r.id);
-    // The picker reads each app by the name people know it by: its display name when it has one.
     return catalogue.map((r) => ({ id: r.id, name: appTitle(r), kind: r.kind, project: r.projectSlug, env: r.environment, stopped: notRunning(r.status), onVercel: !!r.onVercel, slot: colorSlot(r.id, order) }));
   }, [catalogue]);
   // A picked app on Vercel prints nothing here: its lines are read live on its own page, never stored.
   const pickedOnVercel = pickerApps.filter((a) => a.onVercel && filters.apps.includes(a.id));
-  // A row names its environment off production only, in the compact tag's words ("Dev"), and only
-  // in a project whose apps sit in several environments.
   const meta = useMemo(() => {
     const shows = projectsShowingEnvironments(catalogue);
     const m = new Map<string, AppMeta>();
@@ -126,7 +121,6 @@ export function LogsView({ initial, overview, filters: start }: { initial: LogsR
   }, [pickerApps, catalogue]);
   const nameOf = (id: string) => meta.get(id)?.label ?? id;
 
-  // Why the settled search cannot run. It shows once, in the log box, where its lines would be.
   const patternError = checkPattern(filters.q, filters.regex);
   const re = useMemo(() => compile(filters.q, filters.regex), [filters.q, filters.regex]);
   const tailing = enabled && isLiveRange(filters) && live !== "off";
@@ -137,7 +131,6 @@ export function LogsView({ initial, overview, filters: start }: { initial: LogsR
   const [lastLive, setLastLive] = useState<LivePhase>("connecting");
   if (live !== "off" && live !== lastLive) setLastLive(live);
   const shownLive = live === "off" && isLiveRange(filters) ? lastLive : live;
-  // Filters other than the search: clearing them is "Clear filters", clearing the text alone "Clear search".
   const narrowed = filters.apps.length > 0 || filters.stream !== "all" || filters.level !== "all";
   const filtered = narrowed || !!filters.q;
 
@@ -158,7 +151,6 @@ export function LogsView({ initial, overview, filters: start }: { initial: LogsR
 
   const lead = enabled ? "Output from every app on this server, live or back to 7 days." : "Connect this dashboard to a Dockify API to see your app logs.";
 
-  // The row area: loading, failed, a search that cannot run, nothing found, or the lines.
   const status =
     feed.phase === "loading" ? (
       <LoadingRows />

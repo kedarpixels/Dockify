@@ -1,21 +1,9 @@
 import type { EndpointId, Role, TokenGrant, TokenScope } from "@dockify/contracts";
 
 /**
- * The route policy table. Every route declares who may call it, and one hook (app.ts) enforces it:
- *
- *   anonymous   no credential needed (the handler may still look for one)
- *   session     a signed-in browser session whose team role is at least `role`
- *   elevated    the same, inside a fresh step-up window (5 minutes, this session only)
- *   +token      an API token with at least that scope is accepted too. Tokens are never elevated,
- *               and a token's power is capped by its owner's role. An elevated route lists a token
- *               only together with a grant: the token cannot step up, so it must have been handed
- *               that exact power when it was minted (`+grant`).
- *   internal    the worker, on the control network, with the internal channel token. No actor.
- *
- * The privilege rule: anything that changes what code runs or with what privilege, or destroys
- * data or takes production down is elevated. One exception: reading a single env
- * value (env.reveal, for the eye and the copy button) needs only an Admin session, and is
- * audited and rate limited per session instead.
+ * Route policy table, enforced by one hook in app.ts. Anything that changes what code runs or its privilege,
+ * destroys data or takes production down is elevated (a step-up window on this session). Tokens cannot step up
+ * and are capped by their owner's role, so an elevated route accepts one only with an explicit grant.
  */
 export type Access = "anonymous" | "session" | "elevated" | "internal";
 
@@ -32,7 +20,6 @@ const session = (role: Role, token?: TokenScope): Policy => ({ access: "session"
 const elevated = (role: Role): Policy => ({ access: "elevated", role });
 /** Elevated for a session; a token passes only with this scope and this explicit grant. */
 const elevatedOrGrant = (role: Role, token: TokenScope, grant: TokenGrant): Policy => ({ access: "elevated", role, token, grant });
-/** A session at `role`, no step-up; a token passes only with this scope and this explicit grant. */
 const internal = (): Policy => ({ access: "internal", role: "admin" });
 
 export const ROLE_RANK: Record<Role, number> = { viewer: 0, admin: 1 };
@@ -62,12 +49,9 @@ export const POLICIES = {
   // account: each re-verifies a password or code inside where it matters
   "me.get": session("viewer"),
   "me.patch": session("viewer"),
-  /** Time display and own email choices; the handler keeps security mail on for admins. */
   "me.preferences": session("viewer"),
-  /** Only labels pushes in deploy lists; unique per instance. */
   "me.github": session("viewer"),
   "me.password": session("viewer"),
-  /** Checks the current password inside, then mails the code me.password needs while email is on. */
   "me.password.code": session("viewer"),
   /** A change of address checks the step-up window inside; verifying the current one does not need it. */
   "me.email.code": session("viewer"),
@@ -86,7 +70,6 @@ export const POLICIES = {
   "team.invites.delete": session("admin"),
   "settings.get": session("viewer"),
   "settings.patch": elevated("admin"),
-  /** The dashboard's own address: reading and checking need an Admin session, changing anything a step-up. */
   "settings.domain.get": session("admin"),
   "settings.domain.start": elevated("admin"),
   "settings.domain.check": session("admin"),
@@ -100,9 +83,8 @@ export const POLICIES = {
 
   "activity.list": session("admin"),
   "overview.get": session("viewer", "read"),
-  /** Icons are cosmetic: viewers and read tokens see them, only an Admin session changes one. */
   "icons.list": session("viewer", "read"),
-  /** The signed token in the path is the credential (an HMAC the handler checks); it names one icon and nothing else. */
+  /** The signed token in the path is the credential; it names one icon and nothing else. */
   "icons.mail.get": anonymous(),
 
   // projects
@@ -117,21 +99,12 @@ export const POLICIES = {
   "templates.list": session("viewer", "read"),
   /** Secret values are always masked in a listing; env.reveal opens one at a time. */
   "env.get": session("admin"),
-  /**
-   * Env writes change what code runs with (NODE_OPTIONS, LD_PRELOAD, a swapped DATABASE_URL), so
-   * they are elevated like a code change. A token needs the admin scope plus the env:write grant,
-   * and even then the handler refuses secret values and loader-hook keys to it.
-   */
+  /** Env writes change what code runs with (NODE_OPTIONS, LD_PRELOAD). Even with env:write, the handler refuses a token secret values and loader-hook keys. */
   "env.put": elevatedOrGrant("admin", "admin", "env:write"),
   "env.delete": elevatedOrGrant("admin", "admin", "env:write"),
   "env.state": session("admin"),
   "env.apply": elevatedOrGrant("admin", "admin", "env:write"),
-  /**
-   * A signed-in Admin reads one value without re-prompting. Viewers and
-   * API tokens are refused: the create-token dialog promises an env:write token cannot read
-   * secrets, so only a session reaches plaintext. The handler audits every call (never the value)
-   * and rate limits it per session.
-   */
+  /** Session only, so an env:write token never reads plaintext. Audited (never the value) and rate limited per session. */
   "env.reveal": session("admin"),
   "env.versions": session("admin"),
   "env.rollback": elevatedOrGrant("admin", "admin", "env:write"),
@@ -139,8 +112,7 @@ export const POLICIES = {
   "environments.patch": elevated("admin"),
   "environments.delete": elevated("admin"),
   "previews.get": session("viewer", "read"),
-  // Enables fork-PR builds on the host and writes the instance-wide preview cap, so it is elevated
-  // like previews.delete rather than a plain admin write.
+  /** Enables fork-PR builds on the host and sets the instance-wide preview cap. */
   "previews.settings": elevated("admin"),
   "previews.delete": elevated("admin"),
   /** Hands out a password once and locks out every browser the old one let in. */
@@ -167,7 +139,6 @@ export const POLICIES = {
   "apps.jobs.run.get": session("viewer", "read"),
   "apps.get": session("viewer", "read"),
   "apps.patch": elevated("admin"),
-  /** The name people read, an app setting like the rest: the same step-up as apps.patch and projects.patch. */
   "apps.rename": elevated("admin"),
   "apps.delete": elevated("admin"),
   "apps.logs": session("viewer", "read"),
@@ -210,12 +181,10 @@ export const POLICIES = {
   "git.installUrl": session("admin"),
   // GitHub's redirect back: the signed, single-use state bound to a live session authenticates it
   "git.setup": anonymous(),
-  /** Mints the single-use state the App creation round trip returns with; the App holds repository access once installed. */
   "git.app.manifest": elevated("admin"),
-  // GitHub's redirect after it created the App: same as git.setup, the signed single-use manifest
-  // state bound to a live Admin session authenticates it, because no session cookie rides along
+  // Like git.setup: no cookie rides along, so the signed single-use state bound to a live Admin session authenticates it
   "git.app.callback": anonymous(),
-  /** Drops the App's private key, webhook secret and client secret, and every installation: elevated like the creation. */
+  /** Drops the App's private key, webhook secret, client secret and every installation. */
   "git.app.delete": elevated("admin"),
   "git.repos": session("admin"),
   "git.branches": session("admin"),
@@ -233,7 +202,7 @@ export const POLICIES = {
   "integrations.cloudflare.delete": elevated("admin"),
   "integrations.cloudflare.zones": session("admin"),
   "integrations.cloudflare.zone": elevated("admin"),
-  /** Reads only zones the owner switched on. Writing a record is elevated: it can replace one, with a go-ahead. */
+  /** Reads only zones the owner switched on. Writing a record is elevated because it can replace an existing one. */
   "integrations.cloudflare.domains": session("admin"),
   "integrations.cloudflare.lookup": session("admin"),
   "integrations.cloudflare.record": elevated("admin"),
@@ -252,9 +221,8 @@ export const POLICIES = {
   "integrations.webhooks.create": elevated("admin"),
   "integrations.webhooks.patch": elevated("admin"),
   "integrations.webhooks.delete": elevated("admin"),
-  /** Sends one fixed test message through net-guard; nothing is stored. Rate limited like any write. */
+  /** Sends one fixed test message through net-guard; nothing is stored. */
   "integrations.webhooks.test": session("admin"),
-  /** Logos are cosmetic: viewers see them next to the rules they can read. */
   "integrations.webhooks.icon": session("viewer"),
   /** Email sends password resets and codes in this instance's name: admin only, under step-up. */
   "integrations.email.connect": elevated("admin"),
@@ -276,11 +244,7 @@ export const POLICIES = {
   // server and updates
   "server.get": session("viewer", "read"),
   "server.metrics": session("viewer", "read"),
-  /**
-   * No step-up: a prune removes only what the janitor removes on its own timer (images no rollback
-   * needs, unused build cache), never a volume or anything of the control plane, so it changes no
-   * code and destroys no data. The page's Prune button asks for no step-up either.
-   */
+  /** No step-up: a prune removes only what the janitor removes on its own timer, never a volume or control plane data. */
   "server.prune": session("admin"),
   "server.updates": session("viewer"),
   "server.updates.check": session("admin"),
@@ -291,12 +255,12 @@ export const POLICIES = {
   "server.updates.pause": elevated("admin"),
   /** Turning automatic installs on decides what code runs without a click. */
   "server.updates.policy": elevated("admin"),
-  /** Every member sees the security release banner; it reads the stored signed feed only. */
+  /** Reads the stored signed feed only. */
   "server.updates.security": session("viewer"),
-  /** Only Admins get the popup, so only they put it off. It changes nothing but their own reminder. */
+  /** Changes nothing but the Admin's own reminder. */
   "server.updates.security.snooze": session("admin"),
 
-  // backups: retention, restore, download and delete are elevated
+  // backups
   "backups.list": session("viewer", "read"),
   "backups.schedules": session("viewer", "read"),
   "backups.config": session("viewer"),
@@ -326,13 +290,11 @@ export const POLICIES = {
   /** Read only toward Vercel. The handler keeps plain values and comments to admins; nothing is ever decrypted. */
   "apps.vercel.project": session("viewer", "read"),
   "apps.vercel.env": session("viewer", "read"),
-  /** The same reader rule as every other log, whichever server the lines come from. */
   "apps.vercel.logs": session("viewer", "read"),
   "apps.vercel.logs.stream": session("viewer", "read"),
   /** Each stores or drops a signing secret and changes what is registered on the owner's Vercel account. */
   "integrations.vercel.webhook.create": elevated("admin"),
   "integrations.vercel.webhook.delete": elevated("admin"),
-  /** Only reads Vercel and writes the mirror's rows. */
   "integrations.vercel.sync": session("admin"),
   /** Authenticated by the Vercel HMAC signature, checked by the handler; it only ever queues a mirror sync. */
   "webhooks.vercel": anonymous(),
@@ -342,18 +304,16 @@ export const POLICIES = {
 export const INFRA_POLICIES = {
   "GET /healthz": anonymous(),
   "GET /readyz": anonymous(),
-  /** The domain ownership probe's answer on every host Traefik sends the prefix for (modules/domains/check-route.ts). */
+  /** The domain ownership probe, on every host Traefik sends the prefix for (modules/domains/check-route.ts). */
   "GET /.well-known/dockify-check/:token": anonymous(),
-  /** The page a sleeping preview's hosts show; static, and it says nothing about the preview (modules/previews/asleep-route.ts). */
+  /** Static page a sleeping preview's hosts show; it says nothing about the preview (modules/previews/asleep-route.ts). */
   "GET /.well-known/dockify-preview-asleep": anonymous(),
   /**
-   * The preview password gate (modules/previews/gate.ts). forwardAuth's check is outside the public
-   * prefix, so only the edge network reaches it, and it says only yes or shows the password page. The form
-   * reaches the api through a preview's own router, which fixes the id; it has per-preview limits.
+   * The preview password gate (modules/previews/gate.ts). The forwardAuth check sits outside the public prefix,
+   * so only the edge network reaches it; the form arrives through the preview's own router, which fixes the id.
    */
   "GET /internal/preview-gate/:id": anonymous(),
   "POST /.well-known/dockify-preview-gate/:id": anonymous(),
-  /** The secret-opening service for the worker; see internal/secrets.ts. */
   "POST /internal/secrets/open": internal(),
   "POST /internal/secrets/seal": internal(),
   "POST /internal/secrets/escrow": internal(),

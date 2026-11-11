@@ -4,7 +4,6 @@ import { openBuildLogStream } from "@/lib/pages/vercel-logs";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/deployments/:id/logs/stream?after=<seq>: a Vercel build's log as it prints, as server-sent events. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isDeploymentId(id)) return json({ error: "Unknown deployment" }, 404);

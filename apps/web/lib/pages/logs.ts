@@ -24,39 +24,8 @@ import { hex } from "@/lib/preview-random";
 
 export type { LogQuery, RuntimeLogLine } from "@/components/logs/model";
 
-/*
- * Runtime logs loader: every app's container output on this server. API contract for the backend
- * rebuild (every call forwards the session cookie, nothing is cached).
- *
- * Shared query parameters
- *   apps    comma separated app ids, at most 64. Absent means every app the viewer can see.
- *   q       free text, at most 200 characters, matched case-insensitively against the line text.
- *   regex   "1" makes q a regular expression. The API matches it with a linear time engine (RE2
- *           or similar) and answers 400 for a pattern it cannot run. It also refuses nested
- *           repeats and back references, the same rule as components/logs/model.ts checkPattern.
- *   stream  stdout or stderr; absent means both.
- *   level   error, warn, info or debug: the parsed level, else the rule in model.ts inferLevel.
- *
- *   from, to: ISO times; to absent means now. Retention is 7 days, so an older from is clamped.
- *   -> { lines: RuntimeLogLine[], nextCursor: string | null }
- *   The newest 500 matching lines at or before `to` (or before the cursor), oldest first.
- *   nextCursor asks for the 500 before those; null when nothing older matches inside the window.
- *
- *   text/event-stream of lines printed from now on (after `since`, a line id, when given; the
- *   Last-Event-ID header does the same on a reconnect and wins over since).
- *     event: lines   data: { "lines": RuntimeLogLine[] }   id: the last line's id
- *                    Batched, at most four a second, oldest first.
- *     event: gap     data: { "dropped": number }   lines skipped because the client fell behind
- *     event: ping    data: {}   every 15s, so proxies keep the connection open
- *   The server closes a stream after 30 minutes; the browser reconnects on its own.
- *   400 for a bad filter, 401 without a session.
- *
- * RuntimeLogLine: { id, ts, appId, stream: "stdout" | "stderr", level?: LogLevel | null, text }
- *   id is opaque, unique, URL safe and at most 128 characters. It is the line permalink: the UI
- *   links to /logs?apps=<appId>&from&to#L-<id>, a window around the line's ts.
- */
-
-// -------------- Types --------------
+// Runtime logs loader: every app's container output. A line id is opaque, URL safe and is the
+// line's permalink. The API closes a stream after 30 minutes and the browser reconnects.
 
 export interface LogPage {
   lines: RuntimeLogLine[];
@@ -75,10 +44,7 @@ const PAGE = 500;
 
 type Parsed = { ok: true; query: LogQuery; since?: string } | { ok: false; error: string };
 
-/**
- * Strict validation of a proxy request: anything malformed is refused before the API sees it.
- * `from` is required for history and ignored by the stream.
- */
+/** Refuses anything malformed before the API sees it. `from` is required for history and ignored by the stream. */
 export function parseLogQuery(p: URLSearchParams, { stream = false }: { stream?: boolean } = {}): Parsed {
   const apps = (p.get("apps") ?? "").split(",").filter(Boolean);
   if (apps.length > MAX_APPS || apps.some((a) => !isToken(a))) return { ok: false, error: "Invalid apps" };
@@ -112,8 +78,6 @@ export function parseLogQuery(p: URLSearchParams, { stream = false }: { stream?:
   };
 }
 
-// -------------- API --------------
-
 /** One GET to the Dockify API (lib/api.ts) with the viewer's cookie, never cached, always bounded. */
 async function api<T>(path: string, search: URLSearchParams): Promise<{ ok: true; body: T } | { ok: false; status: number; error: string }> {
   const r = await apiRequest<T>(`${path}?${search.toString()}`);
@@ -121,7 +85,6 @@ async function api<T>(path: string, search: URLSearchParams): Promise<{ ok: true
   return r.data === null ? { ok: false, status: 502, error: UNREADABLE } : { ok: true, body: r.data };
 }
 
-/** One history page of runtime logs. */
 export async function getLogs(query: LogQuery): Promise<LogsResult> {
   await connection();
   const fetchedAt = new Date().toISOString();
@@ -145,10 +108,7 @@ const SSE_HEADERS = {
   "x-accel-buffering": "no",
 };
 
-/**
- * The live tail. With an API it pipes the upstream event stream through untouched, forwarding the
- * cookie and Last-Event-ID; `signal` (the browser's request) closes the upstream when the tab goes.
- */
+/** The live tail: pipes the upstream event stream through untouched. `signal` (the browser's request) closes the upstream when the tab goes. */
 export async function openLogStream(query: LogQuery, since: string | undefined, lastEventId: string | null, signal: AbortSignal): Promise<Response> {
   if (process.env.DOCKIFY_API_URL) {
     // The timeout covers the wait for the stream to open; the stream itself runs until the tab goes.
@@ -164,13 +124,8 @@ export async function openLogStream(query: LogQuery, since: string | undefined, 
   return json({ error: "No data source" }, 503);
 }
 
-// -------------- Preview --------------
-
-/*
- * Preview lines are a pure function of (app, minute): every minute of every running app has its own
- * seeded generator, so history pages, the live tail and a permalink opened later all agree. Line
- * ids carry the time in base 36, so the preview can read a cursor back into a moment.
- */
+// Preview lines are a pure function of (app, minute), so history pages, the live tail and a permalink
+// all agree. Line ids carry the time in base 36, so a cursor reads back into a moment.
 
 type Rnd = () => number;
 type Voice = [stream: LogStream, weight: number, make: (r: Rnd) => string | string[]];

@@ -42,12 +42,7 @@ function rows(d: StatusDay, today: string): TooltipRow[] {
 const spoken = (d: StatusDay, today: string, isToday: boolean) =>
   `${isToday ? "Today" : dayLabel(d.date)}, ${STATE_TEXT[d.state]}${d.state === "none" ? "" : `, ${pctText(dayPct(d, today))} uptime`}`;
 
-/**
- * Ninety days of one component as a row of small round-cornered squares, the heatmap material.
- * Hover or focus a day for its tooltip; with the bar focused, Left and Right step a day, Home and
- * End jump to the ends. Narrow screens show the most recent days only (CSS), and the arrow keys
- * stay inside the visible ones.
- */
+/** Narrow screens show the most recent days only (CSS), and the arrow keys stay inside the visible ones. */
 export function UptimeBar({ name, days, summary }: { name: string; days: StatusDay[]; summary: string }) {
   const barRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);

@@ -4,7 +4,6 @@ import { openVercelRuntimeStream } from "@/lib/pages/vercel-logs";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/apps/:id/vercel/logs/stream?deployment=<id>: Vercel's runtime logs as server-sent events. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const deployment = new URL(request.url).searchParams.get("deployment");

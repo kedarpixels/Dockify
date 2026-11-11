@@ -1,14 +1,7 @@
 /**
- * A managed service's credentials: one sealed JSON value { user, password, database? } on
- * App.passwordSecretId. The api writes it when the service is created; the worker reads it to
- * deploy the service, back it up, restore it and resolve a linked variable such as REDIS_URL. This
- * file is the one place the shape is written and read, so both sides always agree. The web never
- * imports this package.
- *
- * Installs from before 2026-11-06 stored a bare generated password instead of the JSON.
- * parseServiceCredentials still reads that shape, completing it with the user and database the
- * service gets today, and upgradeLegacyServiceCredentials rewrites such rows as JSON. Only the api
- * can do that rewrite (it holds the master key); the worker reads either shape.
+ * One sealed JSON value { user, password, database? } on App.passwordSecretId; this file is the one place
+ * the shape is written and read. Legacy rows hold a bare password: the worker reads either shape, and only
+ * the api, which holds the master key, rewrites them as JSON.
  */
 import { randomBytes } from "node:crypto";
 import type { Keyring } from "@dockify/crypto";
@@ -25,10 +18,7 @@ export interface ServiceCredentials {
   database?: string;
 }
 
-/**
- * Credentials that cannot be read. Permanent: a retry reads the same value. Carries
- * `permanent: true`, which the worker's job loop already treats as "do not retry".
- */
+/** Permanent: a retry reads the same value. `permanent: true` tells the worker's job loop not to retry. */
 export class ServiceCredentialsError extends Error {
   readonly permanent = true;
   constructor(message: string) {
@@ -38,8 +28,8 @@ export class ServiceCredentialsError extends Error {
 }
 
 /**
- * The shape of every password Dockify generates (24 random bytes, base64url) and of the bare
- * values older installs stored. Safe unquoted in a config file, a URL and a shell word.
+ * Every password Dockify generates (24 random bytes, base64url), and legacy bare values. Safe unquoted in a
+ * config file, a URL and a shell word.
  */
 export const GENERATED_PASSWORD = /^[A-Za-z0-9_-]{16,128}$/;
 
@@ -48,7 +38,6 @@ const newPassword = () => randomBytes(24).toString("base64url");
 /** The Postgres database a service gets: its app name, with dashes made Postgres friendly. */
 export const databaseNameFor = (appName: string): string => appName.replace(/-/g, "_");
 
-/** Fresh credentials for a new service. */
 export function generateServiceCredentials(kind: ServiceKindName, appName: string): ServiceCredentials {
   if (kind === "postgres") return { user: "dockify", password: newPassword(), database: databaseNameFor(appName) };
   if (kind === "redis") return { user: "default", password: newPassword() };
@@ -99,12 +88,11 @@ export function parseServiceCredentials(raw: string, svc: { kind: ServiceKindNam
   throw damaged();
 }
 
-/** Seals credentials as a new secret row owned by the app. Returns the row id for App.passwordSecretId. */
+/** Returns the new row's id, for App.passwordSecretId. */
 export function sealServiceCredentials(tx: Tx, access: SecretAccess, appId: string, c: ServiceCredentials): Promise<string> {
   return storeSecret(tx, access, { kind: "database_password", ownerType: "app", ownerId: appId }, serializeServiceCredentials(c), null);
 }
 
-/** The app columns credentials are read through. */
 export interface CredentialHolder {
   id: string;
   name: string;
@@ -125,9 +113,8 @@ export async function openServiceCredentials(tx: Tx, access: SecretAccess, app: 
 }
 
 /**
- * Rewrites one legacy row as JSON: a new sealed row, the app pointed at it only if it still points
- * at the old one (a concurrent upgrade wins once), then the old row deleted. The password is the
- * same value, so nothing running needs to change.
+ * Rewrites one legacy row as JSON. The app is repointed only if it still points at the old row, so a
+ * concurrent upgrade wins once. The password is the same value, so nothing running needs to change.
  */
 export async function upgradeServiceCredentials(db: Db, ring: Keyring, app: CredentialHolder & { passwordSecretId: string }, c: ServiceCredentials): Promise<boolean> {
   return db.$transaction(async (tx) => {
@@ -142,11 +129,7 @@ export async function upgradeServiceCredentials(db: Db, ring: Keyring, app: Cred
   });
 }
 
-/**
- * The one-time upgrade for installs that stored bare passwords: every managed service whose row
- * is still the old shape is rewritten as JSON. Idempotent and safe to run at every api start; a
- * service whose row cannot be read is left as it is and reported back.
- */
+/** Idempotent and safe to run at every api start. A row that cannot be read is left as it is and reported back. */
 export async function upgradeLegacyServiceCredentials(db: Db, ring: Keyring): Promise<{ upgraded: number; unreadable: string[] }> {
   const apps = await db.app.findMany({
     where: { kind: { in: [...SERVICE_KIND_NAMES] }, passwordSecretId: { not: null } },

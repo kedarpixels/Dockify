@@ -29,16 +29,10 @@ import { useCan } from "@/lib/viewer";
 import { TabCard, TabFailed } from "./states";
 import { useAppTab } from "./use-tab";
 
-/* Backups: this database's schedule, destination, encryption and restore tests, then its history.
-   The rows, the restore dialog and the writes are the Backups page's own, so both pages always
-   behave the same; only the summary on top is drawn here. */
+/* The rows, the restore dialog and the writes are the Backups page's own, so both pages behave the same. */
 
 const restorable = (r: BackupRun) => r.status === "ready" && !r.expired;
 
-/**
- * One tier as a fact: its schedule and what it keeps in words, where the copies go, then the next
- * run and the last result. A tier that is off says so; offsite with no storage says how to add it.
- */
 function TierFact({ t, runs, resourceId, now, onEdit }: { t: BackupTierSchedule; runs: BackupRun[]; resourceId: string; now: number; onEdit?: () => void }) {
   const utcAt = useUtcAt();
   const last = lastOf(runs, resourceId, t.tier);
@@ -280,8 +274,7 @@ export function BackupsTab({ app, now }: { app: AppDetail; now: number }) {
     }
   };
 
-  // Busy keys keep the focus (PendingButton); a key with nothing to act on yet is disabled. A
-  // Viewer gets neither: labelled write keys are not rendered for a Viewer.
+  // Busy keys keep the focus (PendingButton); a key with nothing to act on yet is disabled.
   const actions = can.manage ? (
     <>
       <PendingButton className="btn btn-sm" pending={restoringId !== null} disabled={!newest} onClick={() => newest && setRestoreRun(newest)}>

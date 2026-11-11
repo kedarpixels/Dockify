@@ -1,32 +1,7 @@
 "use server";
 
-/*
- * Auth pages: the server actions for /login, /login/verify, /recover, /forgot, /reset/[token],
- * /setup and /invite/[token] (their loaders are in auth-loaders.ts). Everything runs on the web server and talks to the Dockify API; passwords pass
- * straight through to the API and are never logged, stored or echoed back to the browser.
- *
- * Auth model: email plus password, plus an optional authenticator app (TOTP).
- * Email is optional per install: once an admin connects their own mail server (Settings,
- * Integrations), setup-status says `emailEnabled` and Forgot password sends a one-time link. A
- * lost authenticator, or a lost password without email, is reset by whoever runs the server, over
- * SSH: `sudo dockify admin disable-mfa <email>` or `sudo dockify admin reset-password <email>`
- * (/recover shows both).
- *
- * API contract (packages/contracts/src/endpoints.ts, apps/api/src/routes/auth.ts). All bodies are JSON. The session
- * is an httpOnly cookie set by the API; every Set-Cookie it answers with is forwarded to the
- * browser unchanged, and the browser's cookies are forwarded on every call.
- *
- * Errors share one body shape: { error: string, field?: "email" | "password" | "code" | "name",
- * retryAfter?: number }. Every call is bounded (lib/api.ts), sign in included.
- *
- * Design preview (DOCKIFY_PREVIEW=1, no DOCKIFY_API_URL): email is on; reset token
- * "expired-token-preview-0000" shows the expired state, "used-token-preview-00000" the used one,
- * and the email code 123456 passes. Any email with password "dockify"
- * signs in; an email containing "2fa" goes to the verify step, where code 123456 passes; an email
- * containing "limit" shows the rate-limit state; anything else shows the error state. Invite token
- * "expired" shows the expired state. Without the API or the preview flag every action answers
- * "API not configured".
- */
+// Server actions for the sign-in pages. Passwords pass straight through to the API and are never
+// logged, stored or echoed back; every Set-Cookie the API answers with is forwarded unchanged.
 
 import { cookies } from "next/headers";
 import type { ApiFailure } from "@/lib/api";
@@ -38,11 +13,8 @@ import { isPreviewMode } from "@/lib/preview-mode";
 import { previewElevate } from "@/lib/preview-step-up";
 import { authCall as call, PREVIEW_RESET, RESET_TOKEN, UNREACHABLE } from "./auth-api";
 
-/* -------------- Types -------------- */
-
 export type AuthField = "email" | "password" | "code" | "name" | "instanceName";
 
-/** A refused action: one error, optionally tied to a field, with the wait on a rate limit. */
 export interface AuthFailure {
   ok: false;
   error: string;
@@ -52,7 +24,6 @@ export interface AuthFailure {
   code?: string;
 }
 
-/** Every action answers with this: ok plus its payload, or one failure. */
 export type AuthResult<T extends object = object> = ({ ok: true } & T) | AuthFailure;
 
 export interface SetupStatus {
@@ -106,8 +77,6 @@ export interface TotpSecret {
   preview?: boolean;
 }
 
-/* -------------- Plumbing -------------- */
-
 const PREVIEW_PASSWORD = "dockify";
 const PREVIEW_CODE = "123456";
 
@@ -147,11 +116,7 @@ function failure(r: ApiFailure, fallback: string, on401?: AuthField, miss?: stri
   return { ok: false, error: said ? r.error : fallback, field, code: r.code };
 }
 
-/**
- * POSTs, forwards the API's cookies (on failures too, so a cleared pending 2FA cookie reaches the
- * browser), and reads the JSON payload, every field of which may be missing. A 401 lands on `on401`.
- * The headers stay on the server: only `result` may go back to the browser.
- */
+/** Forwards the API's cookies on failures too, so a cleared pending 2FA cookie reaches the browser. Only `result` may go back to the browser. */
 async function send<T extends object>(path: string, body: unknown, fallback: string, on401?: AuthField, miss?: string): Promise<{ result: AuthResult<Partial<T>>; headers?: Headers }> {
   const r = await call<Partial<T>>(path, "POST", body);
   await forwardCookies(r.headers);
@@ -160,11 +125,7 @@ async function send<T extends object>(path: string, body: unknown, fallback: str
 
 const post = async <T extends object>(path: string, body: unknown, fallback: string, on401?: AuthField, miss?: string) => (await send<T>(path, body, fallback, on401, miss)).result;
 
-/**
- * Opens a step-up window on the session the API just started (setup, an accepted invite), with the
- * password just chosen. The optional authenticator step that follows calls elevated routes, and the
- * person has only just proven the password. Best effort: when it fails, that step asks for it.
- */
+/** Opens a step-up window on the session the API just started, because the authenticator step that follows calls elevated routes. Best effort. */
 async function stepUpNewSession(headers: Headers | undefined, password: string) {
   const names: readonly string[] = process.env.DOCKIFY_SESSION_COOKIE ? [process.env.DOCKIFY_SESSION_COOKIE] : SESSION_COOKIES;
   // The raw name=value pair, exactly as the API set it.
@@ -190,12 +151,7 @@ function randomFrom(alphabet: string, n: number) {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 
-/* -------------- Actions -------------- */
-
-/**
- * Forgot password: asks the API to email a reset link. The answer never says whether the address
- * has an account, so the page shows one message either way.
- */
+/** The answer never says whether the address has an account, so the page shows one message either way. */
 export async function requestPasswordReset(input: { email: string }): Promise<AuthResult> {
   const email = input.email.trim();
   const bad = checkEmail(email);
@@ -233,7 +189,6 @@ export async function sendVerifyCode(): Promise<AuthResult<{ email: string }>> {
   return { ok: true, email: r.email ?? "" };
 }
 
-/** Confirms the emailed code; the address is then marked verified. */
 export async function confirmVerifyCode(input: { code: string }): Promise<AuthResult> {
   const code = input.code.replace(/\D/g, "");
   if (code.length !== 6) return { ok: false, field: "code", error: "Enter all 6 digits" };
@@ -274,7 +229,6 @@ export async function verifySecondFactor(input: { code: string; remember?: boole
   return post("/api/v1/auth/verify", { code, remember: Boolean(input.remember) }, CODE_MISS, "code", CODE_MISS);
 }
 
-/** First run: creates the first admin account and signs them in. */
 export async function createAdmin(input: { instanceName: string; name: string; email: string; password: string; setupToken: string }): Promise<AuthResult> {
   if (!input.instanceName.trim()) return { ok: false, field: "instanceName", error: "Name this instance" };
   if (!input.name.trim()) return { ok: false, field: "name", error: "Enter your name" };
@@ -297,7 +251,6 @@ export async function createAdmin(input: { instanceName: string; name: string; e
   return r.result;
 }
 
-/** Accepts a team invite: sets the name and password, then signs in. */
 export async function acceptInvite(input: { token: string; name: string; password: string }): Promise<AuthResult> {
   if (!input.name.trim()) return { ok: false, field: "name", error: "Enter your name" };
   const bad = checkNewPassword(input.password);
@@ -310,7 +263,6 @@ export async function acceptInvite(input: { token: string; name: string; passwor
   return r.result;
 }
 
-/** Starts authenticator enrolment for the signed-in user: a fresh secret and its otpauth link. */
 export async function startTotp(): Promise<AuthResult<TotpSecret>> {
   if (isPreviewMode()) {
     const secret = randomFrom("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", 32);
@@ -323,7 +275,6 @@ export async function startTotp(): Promise<AuthResult<TotpSecret>> {
   return { ok: true, secret: r.secret, uri: r.otpauthUrl, qrDataUrl: r.qrDataUrl ?? null };
 }
 
-/** Confirms enrolment with a first code; two-factor is on once it passes. */
 export async function enableTotp(input: { code: string }): Promise<AuthResult> {
   const code = input.code.replace(/\D/g, "");
   if (code.length !== 6) return { ok: false, field: "code", error: "Enter all 6 digits" };
@@ -336,12 +287,7 @@ export async function enableTotp(input: { code: string }): Promise<AuthResult> {
   return r.ok ? { ok: true } : r;
 }
 
-/**
- * Sign out: POST /api/v1/auth/logout with the visitor's cookie, so the API revokes the session and
- * writes its audit row, then the API's clearing Set-Cookie is copied onto the browser. The session
- * cookie is also dropped here, so a browser is never left holding it. A refusal is reported, never
- * swallowed: the caller shows it instead of pretending the visitor signed out.
- */
+/** The session cookie is also dropped here, so a browser is never left holding it. A refusal is reported, never swallowed. */
 export async function signOut(): Promise<AuthResult> {
   if (isPreviewMode()) return { ok: true };
   const r = await call("/api/v1/auth/logout", "POST", {});

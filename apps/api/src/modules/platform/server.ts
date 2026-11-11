@@ -30,8 +30,8 @@ const pct = (part: number, whole: number) => (whole > 0 ? Math.min(100, Math.max
 const round = (n: number) => Math.round(n * 10) / 10;
 
 /**
- * Host samples as chart points: cpu, memory and disk in percent, network as outbound Mbps from the
- * delta of the cumulative tx counter. A counter reset (negative delta) reads as 0, never negative.
+ * Cpu, memory and disk in percent; network as outbound Mbps from the delta of the cumulative tx
+ * counter. A counter reset (negative delta) reads as 0.
  */
 export function toPoints(samples: HostSample[], totals: { memoryBytes: number; diskBytes: number }) {
   return samples.map((s, i) => {
@@ -63,13 +63,13 @@ export const CONTAINER_STATE: Record<AppStatus, "running" | "restarting" | "unhe
   missing: "exited",
   failed: "exited",
 };
-/** Apps with no container to list: it never ran (failed, unknown) or the daemon has none (missing). */
+/** Statuses with no container to list, whatever id the app last had. */
 export const NO_CONTAINER: ReadonlySet<AppStatus> = new Set<AppStatus>(["missing", "failed", "unknown"]);
 
 type Service = ResponseOf<"server.get">["services"][number];
 type ServiceId = Service["id"];
 
-/** "45 s", "12 min", "5 h", "3 d": how long ago, or how long up. */
+/** "45 s", "12 min", "5 h", "3 d". */
 export function spanText(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s} s`;
@@ -79,10 +79,8 @@ export function spanText(ms: number): string {
 }
 
 /**
- * The worker, judged from outside it: it stamps workerSeenAt every 30 seconds, so a stamp
- * older than WORKER_SILENT_MS means it is not running, whatever the worker last said of itself. A
- * live worker that reports an issue with its heartbeat (Instance.workerIssues, such as a work folder
- * it cannot write) is degraded, with the issue as its detail. A row that does not parse is dropped.
+ * The worker is judged from outside: a stale heartbeat means down, whatever it last said of itself.
+ * A live worker that reports issues with its heartbeat is degraded.
  */
 export function workerService(seenAt: Date | null, now: number, issues: unknown = null): Service {
   if (!seenAt) return { id: "worker", status: "down", latencyMs: null, detail: "has not reported since Dockify started" };
@@ -97,19 +95,15 @@ export function workerService(seenAt: Date | null, now: number, issues: unknown 
   return { id: "worker", status: "ok", latencyMs: null, detail: `reported ${spanText(age)} ago` };
 }
 
-/** Compose services as the server page names them; api, worker and postgres come from the api's own checks. */
+/** Compose service name to page id. api, worker and postgres come from the api's own checks instead. */
 const CONTROL_PLANE_ID: Record<string, ServiceId> = {
   web: "web", proxy: "proxy", "proxy-direct": "proxy", buildkit: "buildkit", "socket-proxy": "socketProxy", updater: "updater", cloudflared: "cloudflared",
 };
 const SERVICE_ORDER: readonly ServiceId[] = ["api", "worker", "postgres", "web", "proxy", "buildkit", "socketProxy", "updater", "cloudflared"];
-/** The worker writes the control plane's containers every minute; a reading older than this is not shown. */
+/** The worker writes this reading every minute; an older one is not shown. */
 export const CONTROL_PLANE_MAX_AGE_MS = 3 * 60_000;
 
-/**
- * The control plane's other services from the worker's last reading (Instance.controlPlane, written
- * by apps/worker/src/observe/control-plane.ts). A row that does not parse is dropped, and a stale
- * reading is no reading: the worker row already says why.
- */
+/** From the worker's last reading. A stale reading yields nothing: the worker row already says why. */
 export function controlPlaneServices(raw: unknown, at: Date | null, now: number): Service[] {
   if (!at || now - at.getTime() > CONTROL_PLANE_MAX_AGE_MS || !Array.isArray(raw)) return [];
   const out = new Map<ServiceId, Service>();
@@ -127,21 +121,18 @@ export function controlPlaneServices(raw: unknown, at: Date | null, now: number)
   return [...out.values()];
 }
 
-/** Every service in one fixed order. */
 export const orderServices = (list: Service[]): Service[] => [...list].sort((a, b) => SERVICE_ORDER.indexOf(a.id) - SERVICE_ORDER.indexOf(b.id));
 
 export type DiskSlice = ResponseOf<"server.get">["disk"][number];
 
-/** The worker samples every five minutes (deploy/disk.ts); a breakdown this old no longer describes the disk. */
+/** The worker samples every five minutes; a breakdown this old no longer describes the disk. */
 export const DISK_SAMPLE_MAX_AGE_MS = 60 * 60_000;
 const SLICE_ORDER: readonly DiskSlice["id"][] = ["images", "buildCache", "volumes", "logs"];
 const whole = (n: number) => (Number.isFinite(n) && n > 0 ? Math.round(n) : 0);
 
 /**
- * The worker-written breakdown (Instance.hostDisk) as the contract's slices. A row that does not
- * match the contract is dropped rather than trusted, each slice counts once, its reclaimable part
- * never exceeds it, and volumes are never reclaimable here whatever the row says. A missing or
- * stale sample is an empty list, which the page reads as not reported yet.
+ * The worker-written rows are validated, not trusted: reclaimable never exceeds the slice, and
+ * volumes are never reclaimable whatever the row says. Empty means not reported yet.
  */
 export function diskSlices(raw: unknown, at: Date | null, now: number): DiskSlice[] {
   if (!at || now - at.getTime() > DISK_SAMPLE_MAX_AGE_MS || !Array.isArray(raw)) return [];
@@ -161,13 +152,12 @@ export function diskSlices(raw: unknown, at: Date | null, now: number): DiskSlic
 
 export const reclaimableOf = (slices: readonly DiskSlice[]): number => slices.reduce((n, s) => n + s.reclaimableBytes, 0);
 
-/** The freed bytes the worker's prune job left on its own row (apps/worker/src/deploy/disk.ts, runPrune). */
 export function prunedBytes(payload: unknown): number {
   const r = (payload as { result?: { reclaimedBytes?: unknown } } | null)?.result?.reclaimedBytes;
   return typeof r === "number" ? whole(r) : 0;
 }
 
-/** CPU busy share across all cores over a short window, from the kernel's own counters. */
+/** Busy share across all cores, in percent, sampled over `windowMs`. */
 async function cpuBusyPct(windowMs = 200): Promise<number> {
   const snap = () => os.cpus().reduce((acc, c) => {
     const t = c.times;
@@ -204,10 +194,8 @@ async function postgresProbe(ctx: Ctx) {
 }
 
 /**
- * What a caller may see of the host. A token limited to projects lists only their apps; any token
- * gets no Docker container ids, no host identity (address, kernel, Docker version, hostname) and
- * no Docker disk breakdown (image, cache and volume totals across every project), which only a
- * signed-in session needs. A token keeps the empty breakdown it always had, so it reads as not reported.
+ * A project-limited token lists only its projects' apps. No token gets container ids, host
+ * identity (address, kernel, Docker version, hostname) or the cross-project disk breakdown.
  */
 export function snapshotView(actor: Actor | null) {
   const limit = projectLimit(actor);
@@ -234,7 +222,6 @@ async function snapshot(ctx: Ctx, env: PlatformEnv, actor: Actor | null) {
     }),
     ctx.db.metricSample.findMany({ where: { appId: null, resolution: "raw", at: { gte: since } }, orderBy: { at: "desc" }, take: 2 }),
     ctx.db.instance.findUnique({ where: { id: 1 }, select: { releaseVersion: true, hostDisk: true, hostDiskAt: true, workerSeenAt: true, workerIssues: true, controlPlane: true, controlPlaneAt: true } }),
-    // The newest control-plane dump: the updater takes one before every update.
     ctx.db.backup.findFirst({ where: { kind: "control_plane" }, orderBy: { createdAt: "desc" }, include: { destination: { include: { integration: true } } } }),
   ]);
   const totalMem = os.totalmem();
@@ -242,13 +229,11 @@ async function snapshot(ctx: Ctx, env: PlatformEnv, actor: Actor | null) {
   const net = h0 && h1 ? toPoints([h1, h0], { memoryBytes: totalMem, diskBytes: disk.totalBytes })[1]?.network ?? 0 : 0;
   const now = Date.now();
   const breakdown = view.hostDetails ? diskSlices(inst?.hostDisk, inst?.hostDiskAt ?? null, now) : [];
-  // An app the daemon has no container for is not a container row, whatever id it last had.
   const listed = apps.filter((a) => !NO_CONTAINER.has(a.status));
 
   return {
     host: {
-      // The api's own hostname is its container id; the installer records the server's (DOCKIFY_HOST_NAME),
-      // and an install from before that falls back to the name the dashboard answers on.
+      // os.hostname() here would be the api's container id, so the installer records the server's name.
       name: view.hostDetails ? (env.hostName ?? ctx.config.publicUrl.hostname) : "",
       region: env.region,
       uptimeSeconds: Math.round(os.uptime()),
@@ -256,7 +241,7 @@ async function snapshot(ctx: Ctx, env: PlatformEnv, actor: Actor | null) {
       load1: round(os.loadavg()[0] ?? 0),
       cpu: { usedPct: cpu, cores: os.cpus().length },
       memory: { usedBytes: totalMem - os.freemem(), totalBytes: totalMem },
-      // What the worker last measured as safe to prune; only it can read Docker and BuildKit.
+      // Measured by the worker: only it can read Docker and BuildKit.
       disk: { usedBytes: disk.usedBytes, totalBytes: disk.totalBytes, reclaimableBytes: reclaimableOf(breakdown) },
       network: { outMbps: net, capacityMbps: env.networkCapacityMbps },
     },
@@ -306,16 +291,12 @@ async function snapshot(ctx: Ctx, env: PlatformEnv, actor: Actor | null) {
   };
 }
 
-/**
- * How long server.prune waits for the worker before it answers. The page's request also crosses
- * the web server and, in tunnel mode, Cloudflare, which gives up on an origin after 100 seconds.
- */
+/** How long server.prune waits for the worker. Kept under Cloudflare's 100 second origin timeout (tunnel mode). */
 export interface PruneWait {
   waitMs: number;
   pollMs: number;
 }
 export const PRUNE_WAIT: PruneWait = { waitMs: 75_000, pollMs: 1_000 };
-/** The worker stamps workerSeenAt every 30 seconds, so two minutes of silence means it is not running. */
 export const WORKER_SILENT_MS = 2 * 60_000;
 
 const PRUNE_ORDER = ["images", "buildCache", "logs"] as const;
@@ -337,12 +318,9 @@ export function serverHandlers(env: PlatformEnv = loadPlatformEnv(), wait: Prune
     "server.get": async ({ ctx, actor }) => snapshot(ctx, env, actor),
 
     /**
-     * The api holds no Docker socket, so the worker prunes (deploy/disk.ts): the request queues a
-     * prune job and waits for it, then answers with the freed bytes the job left on its row and the
-     * breakdown it sampled right after. Past the wait it answers 504 and the job carries on; the
-     * page's next poll shows the result. Admin without step-up: it removes only what the janitor
-     * removes on its own timer (images no rollback needs, unused build cache), never volumes or
-     * anything of the control plane, so it changes no code and destroys no data.
+     * The api holds no Docker socket, so it queues a prune job for the worker and waits; past the
+     * wait it answers 504 and the job carries on. No step-up: it removes only what the janitor
+     * removes on its own timer, never volumes or anything of the control plane.
      */
     "server.prune": async ({ body, actor, req, ctx }) => {
       const a = requireActor(actor);

@@ -1,11 +1,7 @@
 import type { ActorRef, AppKind, GitAuthor } from "./types";
 
-/*
- * What a deployment shipped and who is behind it, read the same on every row and on the deployment
- * page. Pure, so the tests read it without a browser.
- */
+// Pure, so the tests read it without a browser.
 
-/** The fields of a deployment these rules read. */
 export interface DeployFacts {
   status?: string;
   commit: string | null;
@@ -35,10 +31,7 @@ function serviceLabel(name: string, image: string | null | undefined): string {
   return version ? `${name} ${version}` : name;
 }
 
-/**
- * What a deployment with no commit ran, for the message column: "Postgres 17", "traefik/whoami:v1".
- * Null for a Git deployment, which has a commit or is still to find its commit.
- */
+/** What a deployment with no commit ran: "Postgres 17", "traefik/whoami:v1". Null for a Git deployment. */
 export function deploySource(d: DeployFacts): string | null {
   if (d.commit) return null;
   const service = d.app.kind ? SERVICE_NAME[d.app.kind] : undefined;
@@ -92,7 +85,6 @@ export function deployTip(d: DeployFacts): string {
   return other ? `${actorTip(author)}, deployed by ${actorTip(other).replace(/^By /, "")}` : actorTip(author);
 }
 
-/** One person on the Details grid: the label over their face and name. */
 export interface DeployPerson {
   label: "Commit by" | "Deployed by";
   person: ActorRef | null;
@@ -100,10 +92,7 @@ export interface DeployPerson {
   text: string;
 }
 
-/**
- * Who the Details grid names. `deployedBy` only when it is someone other than the author; the Trigger
- * cell gives way to it, and says how it started beside the name, so the grid keeps its nine cells.
- */
+/** `deployedBy` is set only when someone other than the author started it; the Trigger cell gives way to it. */
 export function deployPeople(d: DeployFacts): { main: DeployPerson; deployedBy: DeployPerson | null } {
   const started = (person: ActorRef | null | undefined): DeployPerson => ({ label: "Deployed by", person: person ?? null, text: actorTip(person).replace(/^By /, "") });
   if (deploySource(d)) return { main: started(d.actor), deployedBy: null };

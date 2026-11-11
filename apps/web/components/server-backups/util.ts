@@ -26,10 +26,7 @@ function upFor(seconds: number): string {
   return `${m}m`;
 }
 
-/**
- * Running time that visibly ticks: "12d 4h 7m" past a day, then "3h 12m 08s", "9m 04s", "42s".
- * Seconds are padded so the width holds still while it counts.
- */
+/** Seconds are padded so the width holds still while it counts. */
 export function upLive(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
   if (s >= 86_400) return upFor(s);
@@ -51,19 +48,14 @@ export function dueIn(iso: string, now: number): string {
   return `in ${upLive(s)}`;
 }
 
-/** "horseai / postgres", the way deploy rows name an app. */
 /** "horseai / Main database": the service as people read it, its display name when it has one. */
 export const dbLabel = (db: BackupDatabase) => `${db.projectSlug} / ${dbName(db)}`;
-/** The service's own part of that label. */
 export const dbName = (db: BackupDatabase) => db.displayName || db.name;
 
 /** What the operator types to confirm a restore: "horseai/postgres". */
 export const dbRef = (db: BackupDatabase) => `${db.projectSlug}/${db.name}`;
 
-/**
- * A five field cron in plain words: "Every day at 03:00", "Every 12 hours", "Every Sunday at
- * 03:00". Anything it does not recognise comes back as the expression itself.
- */
+/** Anything it does not recognise comes back as the expression itself. */
 export function cronText(cron: string): string {
   const f = cron.trim().split(/\s+/);
   if (f.length !== 5) return cron;
@@ -99,7 +91,6 @@ export function cronText(cron: string): string {
   return cron;
 }
 
-/** How each kind of run reads in the history. */
 export const KIND_LABEL: Record<BackupKind, string> = {
   scheduled: "Scheduled",
   manual: "Manual",
@@ -107,7 +98,6 @@ export const KIND_LABEL: Record<BackupKind, string> = {
   preUpdate: "Pre-update",
 };
 
-/** Where a run or schedule keeps its file, in words: the destination's name, or this server. */
 export const placeName = (storage: BackupStorageRef | null) => (storage ? storage.name : "This server");
 
 /** Off-server only when an S3 destination holds it; local backups are lost with the disk. */

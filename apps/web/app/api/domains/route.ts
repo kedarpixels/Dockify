@@ -1,7 +1,6 @@
 import { guardWrite, refuse } from "@/lib/http";
 import { forward, readAddDomain } from "@/lib/pages/resources-domains";
 
-/** POST /api/domains: attaches a hostname to an app through POST /api/v1/domains. */
 export async function POST(request: Request) {
   const refused = guardWrite(request);
   if (refused) return refused;

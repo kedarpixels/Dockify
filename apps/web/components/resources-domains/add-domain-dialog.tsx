@@ -46,7 +46,6 @@ function previewDomain(host: string, target: Resource, test = false): DomainRow 
   };
 }
 
-/** Two steps: the hostname and its app, then the DNS records to create before the certificate can issue. */
 export function AddDomainDialog({
   targets,
   existing,
@@ -61,7 +60,6 @@ export function AddDomainDialog({
   /** Apps left out of `targets` because Vercel serves them: the hint says where their domains go. */
   vercelApps?: number;
   existing: DomainRow[];
-  /** Where the records point: the server's addresses, or the tunnel. */
   target: DomainTargets;
   live: boolean;
   /** Cloudflare is connected: pick from its zones, and offer to create the record. */
@@ -103,7 +101,6 @@ export function AddDomainDialog({
       : existing.some((d) => d.hostname === host)
         ? `${host} is already on this server`
         : null;
-  // One option per app, "project / app" with the environment as the hint, grouped by project.
   const appOptions = useMemo<SelectOption<string>[]>(
     () =>
       [...targets]
@@ -172,7 +169,6 @@ export function AddDomainDialog({
 
   // On a managed zone with nothing at the name, Dockify offers to add it. In a tunnel it does so on add.
   const offerCreate = !tunnel && !!lookup?.managed && !lookup.records.length && !!lookup.expected;
-  // The records the mode needs (an A, and an AAAA with IPv6; or the tunnel's CNAME), then the apex alternative.
   const base = recordsFor(host, to);
   const records: DnsRecord[] = [...base, ...(apexHere && base.length ? [{ type: "CNAME", name: rec.name, value: rec.apex, alt: true }] : [])];
 

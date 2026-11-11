@@ -1,8 +1,4 @@
-/**
- * Whether a service version change holds a service's data open. Its own file, with nothing from the
- * resources module, because the projects module asks this before a delete and the resources module
- * imports the projects module.
- */
+// Its own file, importing nothing from resources: projects asks this before a delete, and resources imports projects.
 import type { Prisma, Tx } from "@dockify/db";
 import { HttpError } from "../../errors.ts";
 

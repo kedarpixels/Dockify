@@ -1,7 +1,6 @@
 /**
- * What runs against a server: its Docker client and the body rules, BuildKit builds, route files, host
- * readings and connections. The agent runs it for real; the worker uses its types and its Docker
- * client, whose connection goes over the link. Holds no secret and reaches no database.
+ * The agent runs this for real; the worker uses its types and its Docker client over the link.
+ * Holds no secret and reaches no database.
  */
 export * from "./build.ts";
 export * from "./build-shared.ts";

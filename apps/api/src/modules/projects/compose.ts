@@ -1,14 +1,5 @@
-/**
- * Docker Compose as an import only (PRODUCT-STRATEGY cut 4): each service becomes one Dockify app
- * spec, and anything Compose can express that Dockify never runs is a refusal, not a silent drop.
- * The import is all or nothing: one refusal and no app is created.
- *
- * Refused: privileged, cap_add, security_opt, devices, network_mode, pid, ipc, uts, userns_mode,
- * cgroup and cgroup_parent, sysctls, extra_hosts, dns, host-path or socket mounts, tmpfs, build
- * (the git source replaces it), env_file (the file is not here), and an unpinned postgres or redis
- * version. Ignored with a warning: host ports (Dockify never publishes one; use a domain),
- * container_name, restart, depends_on, networks, labels, healthcheck, resource limits.
- */
+// Compose is an import format only: each service becomes one app spec. Anything Compose can express
+// that Dockify never runs is a refusal, not a silent drop, and one refusal means no app is created.
 import { parse as parseYaml } from "yaml";
 import { projects as P, unreservedServiceName } from "@dockify/contracts";
 import { checkSpec, SERVICE_IMAGES, STORAGE_UNAVAILABLE, type AppSpec, type Refusal } from "./app-source.ts";
@@ -44,7 +35,6 @@ const REFUSED_KEYS: Record<string, string> = {
   init: "the init process is fixed by Dockify",
   user: "the container user comes from the image",
 };
-/** Dropped with a warning. Limits are set on the app after import. */
 const IGNORED_KEYS = new Set([
   "container_name", "restart", "depends_on", "networks", "labels", "healthcheck", "expose", "stop_grace_period", "logging",
   "mem_limit", "cpus", "deploy", "working_dir",
@@ -53,7 +43,7 @@ const KNOWN_KEYS = new Set(["image", "command", "environment", "ports", "volumes
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** postgres:16-alpine and friends map to the managed service of that version. */
+/** postgres:16-alpine and friends map to the managed service of that version; null version means unpinned. */
 function serviceOf(image: string): { service: keyof typeof SERVICE_IMAGES; version: string | null } | null {
   const m = /^(?:docker\.io\/)?(?:library\/)?(postgres|redis|minio\/minio)(?::([\w.-]+))?$/.exec(image);
   if (!m) return null;
@@ -107,7 +97,7 @@ function commandOf(raw: unknown, field: string, refusals: Refusal[]): string | n
   return null;
 }
 
-/** The container port of the first published port, and a warning when a host port was asked for. */
+/** Only the first container port is routed. Host ports are never published, so they only warn. */
 function portOf(raw: unknown, field: string, refusals: Refusal[], warnings: string[], name: string): number | null {
   if (raw === undefined) return null;
   if (!Array.isArray(raw)) {
@@ -184,7 +174,6 @@ function volumesOf(raw: unknown, field: string, refusals: Refusal[], named: Set<
 
 const appNameOf = (s: string): string => s.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32).replace(/-+$/, "");
 
-/** Maps a parsed Compose document to app specs. Pass the result of a YAML or JSON parse. */
 export function composeToSpecs(doc: unknown): ComposeResult {
   const refusals: Refusal[] = [];
   const warnings: string[] = [];
@@ -247,7 +236,6 @@ export function composeToSpecs(doc: unknown): ComposeResult {
         continue;
       }
       if (command) refusals.push({ field: `${at}.command`, reason: "A managed service runs its own command" });
-      // A managed service runs with what Dockify gives it; the file's values would never reach it.
       if (env.length) warnings.push(`${rawName}: Dockify generates its credentials and sets its configuration; its environment values are not imported`);
       if (volumes.length) warnings.push(`${rawName}: Dockify keeps its data on its own volume and backs it up; its volumes are not imported`);
       const serviceName = unreservedServiceName(name);
@@ -288,7 +276,6 @@ export function composeToSpecs(doc: unknown): ComposeResult {
 
 const MAX_FLOW_DEPTH = 64;
 
-/** The deepest run of open `[` and `{` in the text. */
 function flowDepth(text: string): number {
   let depth = 0;
   let max = 0;
@@ -300,10 +287,7 @@ function flowDepth(text: string): number {
   return max;
 }
 
-/**
- * Parses Compose text, YAML or JSON (JSON is YAML). Anchors are capped so an alias bomb cannot
- * expand, duplicate keys are refused, and only the core schema is used (no custom tags).
- */
+/** Untrusted input: aliases are capped against an alias bomb, duplicate keys refused, core schema only. */
 export function parseComposeText(text: string): ComposeResult {
   if (text.length > 256 * 1024) return { specs: [], refusals: [{ field: "compose", reason: "The file is larger than 256 KB" }], warnings: [] };
   // Deep flow nesting overflows the parser's stack on Linux and kills the process, so it is

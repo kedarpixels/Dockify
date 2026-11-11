@@ -4,11 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Heading } from "@/lib/docs";
 import { cx } from "@/components/ui/cx";
 
-/**
- * On this page: h2 and h3 links, one line each. The section in view is marked while you scroll. A
- * heading too long for the column ends in an ellipsis, and only such a link carries its full text as
- * a tooltip.
- */
+/** Only a heading too long for the column carries its full text as a tooltip. */
 export function Toc({ headings, editHref }: { headings: Heading[]; editHref?: string }) {
   const [active, setActive] = useState(headings[0]?.id);
   const list = useRef<HTMLUListElement>(null);

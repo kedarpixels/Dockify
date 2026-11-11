@@ -1,23 +1,7 @@
 /**
- * The one way Dockify sends mail: SMTP over TLS, with the owner's own server and login. No provider
- * code; a provider is only the host, port and login the owner enters.
- *
- *   The address rule  the host is resolved once through net-guard, every answer must be public and
- *                     not this server's own, and the checked address is what the socket dials. The
- *                     name stays for SNI and certificate verification, so DNS rebinding cannot move
- *                     the connection and a certificate for another name is refused.
- *   TLS               implicit TLS or STARTTLS, nothing else. Mail and credentials never cross an
- *                     unencrypted connection: a server that will not upgrade is a failed send.
- *   Time              connect, greeting and each quiet gap have limits, and a deadline covers the
- *                     whole exchange, so a server that drips a byte at a time cannot hold a worker
- *                     lane or an api request.
- *   Failures          every failure is a MailError saying what went wrong in plain words, whether a
- *                     retry can help and whether the stored settings are at fault. Nothing from the
- *                     server reaches the error without the password taken out.
- *   Retries           SMTP has no idempotency. A send with an idempotency key carries a Message-ID
- *                     made from it, so a repeat is recognisable, and this process remembers the keys
- *                     a server accepted, so a retried job skips those. A repeat is still possible
- *                     when the reply to DATA is lost or the process restarts between attempts.
+ * SMTP over TLS only (implicit or STARTTLS): mail and credentials never cross an unencrypted connection.
+ * The host is resolved once through net-guard and that checked address is dialed, with the name kept for SNI
+ * and certificate checks. SMTP has no idempotency: a keyed send can still repeat if the DATA reply is lost.
  */
 import { createHash } from "node:crypto";
 import { isIP, Socket } from "node:net";
@@ -41,7 +25,6 @@ export interface SmtpServer {
   password: string;
 }
 
-/** The non-secret half of the email integration row. */
 export interface EmailConfig {
   host: string;
   port: number;
@@ -79,18 +62,9 @@ export interface OutgoingEmail {
   idempotencyKey?: string;
 }
 
-// ------------------------------------------------------------------ failures
-
 /**
- *   auth        the server refused the login (530, 534, 535, 538): nothing can send until it changes
- *   blocked     the settings point somewhere the address rule refuses: same
- *   recipient   a refused recipient (550, 551, 553 and so on): that send's failure only
- *   sender      the server refused the from address: every send would fail, but the login is fine
- *   rejected    the server refused this message for another reason
- *   busy        a 4xx answer: try again later
- *   unreachable no connection, or the connection dropped or timed out
- *   dns         the host has no address
- *   tls         no secure connection: a refused STARTTLS, a bad certificate, a wrong mode for the port
+ * auth: login refused (530, 534, 535, 538). blocked: the address rule refuses the host. recipient: 550, 551,
+ * 553. sender: the from address is refused, so every send fails. busy: a 4xx. unreachable: no connection.
  */
 export type MailFailure = "auth" | "blocked" | "recipient" | "sender" | "rejected" | "busy" | "unreachable" | "dns" | "tls";
 export type MailField = "host" | "port" | "tlsMode" | "username" | "password" | "fromAddress";
@@ -98,7 +72,6 @@ export type MailField = "host" | "port" | "tlsMode" | "username" | "password" | 
 const NEVER_RETRY = new Set<MailFailure>(["auth", "blocked", "recipient", "sender", "rejected"]);
 const NO_CONNECTION = new Set<MailFailure>(["blocked", "unreachable", "dns", "tls"]);
 
-/** The card's words when the stored login stops working. */
 export const LOGIN_REFUSED = "The mail server refused the stored username or password";
 const HOST_REFUSED = "The stored mail server is not allowed: it points at a private address or at this server";
 
@@ -106,7 +79,6 @@ export class MailError extends Error {
   readonly kind: MailFailure;
   /** The form field to fix, when one is at fault. */
   readonly field: MailField | null;
-  /** The server's reply code, when it answered. */
   readonly smtpCode: number | null;
   /** The server's own words with the password taken out. May name an address. */
   readonly detail: string | null;
@@ -119,7 +91,6 @@ export class MailError extends Error {
     this.detail = o.detail ?? null;
   }
 
-  /** Whether trying again later can help. */
   get retry(): boolean {
     return !NEVER_RETRY.has(this.kind);
   }
@@ -129,7 +100,6 @@ export class MailError extends Error {
     return this.kind === "auth" || this.kind === "blocked";
   }
 
-  /** Why the card is red, when settingsRefused. */
   get cardError(): string {
     return this.kind === "blocked" ? HOST_REFUSED : LOGIN_REFUSED;
   }
@@ -167,7 +137,7 @@ function scrub(words: string | undefined, username: string, password: string): s
   return new Redactor().line(out).slice(0, 300) || null;
 }
 
-/** What a nodemailer failure means. Exported for the wire tests. */
+/** Exported for the wire tests. */
 export function classify(e: unknown, host: string, port: number, username: string, password: string): MailError {
   if (e instanceof MailError) return e;
   const err = (e ?? {}) as NodemailerError;
@@ -193,8 +163,6 @@ export function classify(e: unknown, host: string, port: number, username: strin
   return new MailError("unreachable", unreachable(host, port), { field: "port" });
 }
 
-// ------------------------------------------------------------------ the address rule
-
 export interface MailPolicy {
   /** Names of this control plane: the dashboard's host and the reserved system hosts. */
   ownHosts: ReadonlySet<string>;
@@ -205,7 +173,6 @@ export interface MailPolicy {
 
 const normal = (host: string) => host.trim().toLowerCase().replace(/\.$/, "");
 
-/** The policy from the environment both the api and the worker run with. */
 export function mailPolicyFromEnv(env: NodeJS.ProcessEnv = process.env): MailPolicy {
   const hosts = (env.DOCKIFY_RESERVED_HOSTS ?? "").split(",").map(normal).filter(Boolean);
   try {
@@ -243,8 +210,6 @@ export async function pinServer(host: string, port: number, policy: MailPolicy):
   return address;
 }
 
-// ------------------------------------------------------------------ the exchange
-
 /** One resolved server: the address to dial, the name to verify it against. */
 export interface SmtpTarget extends SmtpServer {
   address: string;
@@ -270,7 +235,6 @@ const ADDRESS = /^[^\s@<>"(),:;\\[\]\p{Cc}]+@[^\s@<>"(),:;\\[\]\p{Cc}]+$/u;
 const oneLine = (s: string, max: number) => s.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, max);
 const cleanName = (s: string) => oneLine(s.replace(/["<>\\]/g, ""), 120);
 
-/** The domain part of an address, lowercased. */
 export const domainOf = (address: string) => address.slice(address.lastIndexOf("@") + 1).toLowerCase();
 
 /** `"Name" <address>`, with anything that could break the header taken out of the name. */
@@ -308,7 +272,6 @@ function transportFor(t: SmtpTarget, ehlo: string, socket: Socket, o: SmtpTiming
   } as Parameters<typeof nodemailer.createTransport>[0]);
 }
 
-/** Runs one exchange under the deadline, and turns whatever goes wrong into a MailError. */
 async function exchange<T>(t: SmtpTarget, ehlo: string, o: SmtpTimings, work: (tx: ReturnType<typeof nodemailer.createTransport>) => Promise<T>): Promise<T> {
   const socket = new Socket();
   // A socket error is reported by the exchange; this keeps a late one from being unhandled.
@@ -329,7 +292,7 @@ async function exchange<T>(t: SmtpTarget, ehlo: string, o: SmtpTimings, work: (t
   }
 }
 
-/** Sends one message over a resolved target. Answers its Message-ID. */
+/** Answers its Message-ID. */
 export function deliver(t: SmtpTarget, email: OutgoingEmail, o: SmtpTimings = {}): Promise<{ id: string }> {
   if (!ADDRESS.test(email.to)) return Promise.reject(new MailError("recipient", "The recipient's address is not valid."));
   if (email.replyTo && !ADDRESS.test(email.replyTo)) return Promise.reject(new MailError("rejected", "The reply-to address is not valid."));
@@ -357,11 +320,8 @@ export function verify(t: SmtpTarget, o: SmtpTimings = {}): Promise<void> {
   });
 }
 
-// ------------------------------------------------------------------ the mailer
-
 export interface Mailer {
   send(server: SmtpServer, email: OutgoingEmail): Promise<{ id: string }>;
-  /** Checks that the settings work, without sending anything. */
   verify(server: SmtpServer): Promise<void>;
 }
 

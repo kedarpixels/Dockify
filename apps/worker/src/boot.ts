@@ -1,16 +1,4 @@
-/**
- * The worker's start-up, in an order that keeps the edge working whatever else is down:
- *
- *   1. the database, waited for with backoff and logged once per state change (@dockify/db
- *      waitUntilReachable): which server this is comes from there
- *   2. the system routes on that server (edge/routes.ts ensureSystemRoutes), then Docker, waited for
- *      the same way. Traefik keeps serving the files it has until then
- *   3. every route resynced against the live containers, before any job runs
- *   4. the work folder checked: a worker that cannot write it still starts, reports the problem as
- *      a health issue and refuses only the jobs that stage files there (health.ts)
- *
- * main.ts runs these in order, then starts the timers and the job lanes.
- */
+/** Start-up in an order that keeps the edge working whatever else is down. main.ts runs these in order. */
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -20,7 +8,6 @@ export interface Logger {
   error(msg: string, extra?: object): void;
 }
 
-/** One JSON line per entry on stderr, the shape the rest of the worker already logs. */
 export function jsonLogger(write: (line: string) => void = (l) => void process.stderr.write(l)): Logger {
   const at = (level: string) => (msg: string, extra?: object) => write(`${JSON.stringify({ level, msg, ...extra })}\n`);
   return { info: at("info"), warn: at("warn"), error: at("error") };
@@ -29,11 +16,7 @@ export function jsonLogger(write: (line: string) => void = (l) => void process.s
 /** A connection that dropped, as Node and node-postgres (57P0x: the server ended the session) report it. */
 const DROPPED = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT", "ECONNREFUSED", "ECONNABORTED", "EHOSTUNREACH", "ENETUNREACH", "ERR_STREAM_PREMATURE_CLOSE", "57P01", "57P02", "57P03"]);
 
-/**
- * True for an error the process is sound after: a connection lost with nobody listening for it. The
- * operation that owned it has failed and nothing else is touched. Anything else is a bug whose
- * damage is unknown.
- */
+/** True for a dropped connection whose owning operation already failed. Anything else is a bug whose damage is unknown. */
 export function survivable(e: unknown): boolean {
   const code = (e as { code?: unknown } | null)?.code;
   if (typeof code === "string" && DROPPED.has(code)) return true;
@@ -46,9 +29,8 @@ interface Proc {
 }
 
 /**
- * The last word on an error nothing caught (an unhandled rejection arrives here too). A dropped
- * connection is logged and survived: exiting would take every running deploy, backup and restore
- * with it. Anything else stops the worker as before, with the cause as the last line logged.
+ * The last word on an uncaught error or unhandled rejection. A dropped connection is logged and survived,
+ * because exiting would take every running deploy, backup and restore with it. Anything else stops the worker.
  */
 export function guardProcess(log: Logger, proc: Proc = process): void {
   proc.on("uncaughtException", (e, origin) => {

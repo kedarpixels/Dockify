@@ -1,7 +1,6 @@
 /**
- * One notification, before it is shaped for a provider. Plain JSON on purpose: a queued
- * webhook_send job carries it as it is. Every string here is already redacted by its producer;
- * the formatters still escape each one for their provider's markup.
+ * Plain JSON on purpose: a queued webhook_send job carries it as it is. Every string is already redacted by
+ * its producer; the formatters still escape each one.
  */
 export type Severity = "critical" | "warning" | "info" | "success";
 
@@ -19,16 +18,12 @@ export interface NotifyMessage {
   title: string;
   /** One paragraph of plain text. */
   text: string;
-  /** Where the dashboard shows it, or null. */
   url: string | null;
   fields: NotifyField[];
   /** ISO time the event happened. */
   at: string;
   instance: { name: string; url: string | null };
-  /**
-   * Structured data for the generic webhook only, merged into the top of its JSON: an alert's
-   * { alert, app, service } (the shape earlier versions sent), or an update's { update }.
-   */
+  /** For the generic webhook only, merged into the top of its JSON: { alert, app, service } or { update }. */
   data?: Record<string, unknown>;
 }
 
@@ -59,7 +54,6 @@ export function parseNotifyMessage(raw: unknown): NotifyMessage | null {
   };
 }
 
-/** The message "Send test" posts. */
 export function testMessage(id: string, instance: { name: string; url: string | null }, now = new Date()): NotifyMessage {
   return {
     id,

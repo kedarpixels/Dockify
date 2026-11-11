@@ -23,7 +23,7 @@ function release() {
   requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove("theme-switching")));
 }
 
-/** Flip the theme instantly. Every theme control calls this. */
+/** Every theme control calls this. */
 function toggleTheme() {
   const toDark = !document.documentElement.classList.contains("dark");
   applyTheme(toDark);
@@ -48,11 +48,7 @@ const subscribeTheme = (onChange: () => void) => {
   return () => watch.disconnect();
 };
 
-/**
- * Theme switch: a square knob on a slim 52 by 28 track, role="switch".
- * Position reads html.dark, so it is right before hydration. Mounting one also arms the D key.
- * `tipAlign="end"` lines the tooltip's right edge up with the switch, for a switch at a column edge.
- */
+/** Position reads html.dark, so it is right before hydration. Mounting one also arms the D key. */
 export function ThemeSwitch({
   className,
   tipSide = "bottom",

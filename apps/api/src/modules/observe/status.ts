@@ -1,10 +1,5 @@
-/**
- * Status pages. The public endpoint needs no auth, so it is built from a whitelist: the page title
- * and logo, each item's public label (never an internal app name), its state (componentState), day
- * bars from app_uptime_days, and the incidents the operator wrote. The result is parsed through the contract schema, which
- * strips anything not in it, and cached for 30 seconds per slug. A missing and an unpublished page
- * both answer the same 404, so the endpoint does not reveal which projects exist.
- */
+// The public endpoint needs no auth, so its payload is built from a whitelist and parsed through the contract schema, which strips the rest.
+// A missing and an unpublished page answer the same 404, so the endpoint does not reveal which projects exist.
 import { server as S } from "@dockify/contracts";
 import type { Db } from "@dockify/db";
 import type { Actor } from "../../actor.ts";
@@ -34,10 +29,8 @@ const DEGRADED: ReadonlySet<string> = new Set(["degraded", "restarting"]);
 export const REACH_FRESH_MS = 5 * 60_000;
 
 /**
- * One component's state: the app's observed status (the worker's observe pass writes it
- * from the daemon), the worker's last request through the proxy (a running container behind a
- * broken route is still an outage for a visitor), then any open alert: a down alert is an outage,
- * anything else degrades it.
+ * Observed status first, then the worker's last request through the proxy: a running container behind a
+ * broken route is still an outage for a visitor. A down alert is an outage; any other open alert degrades.
  */
 export function componentState(openMetrics: string[], app: { status: string; reachable: boolean | null; reachableAt: Date | null }, now: number): CompState {
   if (openMetrics.includes("down") || OUTAGE.has(app.status)) return "outage";
@@ -46,10 +39,7 @@ export function componentState(openMetrics: string[], app: { status: string; rea
   return "operational";
 }
 
-/**
- * What the page lists until someone chooses: every app with a verified public domain, under that
- * domain's name, which the world can already see. An internal app name never appears this way.
- */
+/** Default listing: apps with a verified public domain, under that domain's name, so an internal app name never appears. */
 async function defaultItems(db: Db, projectId: string) {
   const apps = await db.app.findMany({
     where: { environment: { projectId }, domains: { some: { dnsStatus: "ok" } } },

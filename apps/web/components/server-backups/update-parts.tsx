@@ -12,8 +12,6 @@ import type { UpdateJob, UpdateStepId, UpdateStepRow } from "@/lib/pages/server-
 import type { RecentDeployment } from "@/lib/types";
 import { v } from "./util";
 
-/* The read-only pieces of the Updates card: the live step list, release notes and past updates. */
-
 const HISTORY_SHOWN = 3;
 
 export const STEP: Record<UpdateStepId, string> = {
@@ -49,7 +47,6 @@ export function stepText(job: UpdateJob) {
   return `Step ${at + 1} of ${job.steps.length}, ${(step ? stepLabel(job, step.id) : STEP[job.phase]).toLowerCase()}`;
 }
 
-/** The steps of the job, as the server reports them: done, running, failed, skipped or waiting. */
 export function Steps({ job }: { job: UpdateJob }) {
   return (
     <ol className="srv-up-steps" aria-label={job.kind === "rollback" ? `Roll back to ${v(job.version)}` : `Update to ${v(job.version)}`}>
@@ -77,10 +74,7 @@ const RESULT: Record<UpdateJob["state"], { label: string; tone: "ok" | "bad" | "
   waiting: { label: "Waiting", tone: "pending" },
 };
 
-/**
- * Release notes: the summary (the first paragraph, after any version heading) always shows; the
- * rest folds behind "Show notes", so the card never grows an inner scroller.
- */
+/** The rest of the notes folds behind "Show notes", so the card never grows an inner scroller. */
 export function Notes({ source, label }: { source: string; label: string }) {
   const [open, setOpen] = useState(false);
   const blocks = parseMarkdown(source);
@@ -109,7 +103,6 @@ export function Notes({ source, label }: { source: string; label: string }) {
   );
 }
 
-/** Past updates and rollbacks, newest first: versions, when, who, how long, and how it ended. */
 export function History({ jobs, now }: { jobs: UpdateJob[]; now: number }) {
   const [all, setAll] = useState(false);
   if (!jobs.length) return null;

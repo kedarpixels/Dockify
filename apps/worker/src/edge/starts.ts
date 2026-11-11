@@ -2,11 +2,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { IncomingMessage } from "node:http";
 
 /**
- * Docker start events for Dockify's own app containers, the fast path of the route resync
- *: a container Docker restarted (a reboot, its restart policy, a power action) gets its
- * route checked at once instead of at the next reconcile. Routes name containers, not addresses,
- * so this mostly finds nothing to change; it repairs whatever drifted.
- *
  * The socket proxy allows exactly this one events query (deploy/socket-proxy/haproxy.cfg), so the
  * worker never sees other containers' events, exec commands included.
  */
@@ -15,7 +10,6 @@ export const START_EVENTS_PATH = `/events?filters=${encodeURIComponent(START_EVE
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** The app a start event belongs to, or null for anything else (a release one-off, a preview, a service helper). */
 export function appStarted(line: string): string | null {
   try {
     const e = JSON.parse(line) as { Type?: string; Action?: string; Actor?: { Attributes?: Record<string, string> } };
@@ -33,11 +27,7 @@ export interface StartsSource {
   raw(method: string, path: string, body?: unknown, opts?: { signal?: AbortSignal }): Promise<IncomingMessage>;
 }
 
-/**
- * Follows the events stream and calls `onStart` for every app container that starts. Reconnects
- * with backoff (1 s doubling to 60 s) when the stream ends or fails, and logs only when it goes
- * from connected to not and back. Stop ends the stream and waits for the loop.
- */
+/** Reconnects with backoff (1 s doubling to 60 s). Stop ends the stream and waits for the loop. */
 export function watchStarts(docker: StartsSource, onStart: (appId: string) => Promise<void>, log: (msg: string, extra?: object) => void): { stop(): Promise<void> } {
   const ac = new AbortController();
   let healthy = true;

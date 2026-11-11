@@ -1,8 +1,4 @@
-/**
- * The worker's job handler tables and timers, assembled from every module: what touches a server
- * takes a ServerRuntime and nothing else of it (server/runtime.ts), what reaches none takes no runtime.
- * Kept out of main.ts so a test can check the table covers every job kind without starting the loops.
- */
+/** Kept out of main.ts so a test can check the table covers every job kind without starting the loops. */
 import path from "node:path";
 import type { Db, JobKind, SecretVault } from "@dockify/db";
 import { enqueue, enqueuePreviewTx, readSecretValue } from "@dockify/db";
@@ -64,10 +60,7 @@ import { jobsTick, pruneJobHistory, settleOrphanRuns } from "./jobs/tick.ts";
 
 export type JobHandler = (job: ClaimedJob, signal: AbortSignal) => Promise<void>;
 
-/**
- * Job kinds this worker deliberately does not claim a handler for. self_update and
- * dashboard_domain_apply run in the updater on its own lane; the rest have no producer yet and fail permanently with a clear message.
- */
+/** self_update and dashboard_domain_apply run in the updater's own lane; the rest have no producer and fail permanently. */
 export const UNHANDLED_KINDS: readonly JobKind[] = ["self_update", "dashboard_domain_apply", "cancel_deploy", "factory_reset"];
 
 export interface WorkerDeps {
@@ -79,9 +72,7 @@ export interface WorkerDeps {
   deployConfig?: DeployConfig;
   edge?: EdgeSettings;
   env?: NodeJS.ProcessEnv;
-  /** Start-up's logger (boot.ts), for the work folder's state changes. */
   logger?: Logger;
-  /** The file the compose healthcheck reads (main.ts keeps it fresh); told of each heartbeat that lands. */
   alive?: AliveFile;
 }
 
@@ -92,43 +83,31 @@ export interface WorkerShared extends WorkerDeps {
   deployConfig: DeployConfig;
   edge: EdgeSettings;
   logger: Logger;
-  /** What the worker reports about itself with each heartbeat (health.ts). */
   health: WorkerHealth;
-  /** Backup keys, stores and service credentials, which no server holds. */
   stores: DataStores;
   http: HttpClient;
   mail: Mailer;
-  /** The webhook targets this process has opened, for an api outage. */
   webhookTargets: WebhookTargets;
   publicUrl: string | null;
 }
 
 export interface ServerWired {
   handlers: JobTable;
-  /** The disk breakdown's sampler and the prune job share these. */
   disk: DiskDeps;
   data: DataDeps;
-  /** The edge jobs' dependencies; boot uses them for the route resync before the lanes start. */
   edgeDeps: EdgeDeps;
   previews: PreviewRuntimeDeps;
-  /** Scratch copies, empty volumes and orphaned networks: run by the janitor, and once after a boot. */
   sweep: () => Promise<void>;
 }
 
-/** One server's wiring, with the table its claim loops read: its handlers and the global ones. */
 export type Wired = ServerWired;
 
 /** Past the job lease, so a test that a dead worker was running no longer counts as live. */
 const BOOT_SWEEP_DELAY_MS = 90_000;
 
 /**
- * Where an app's route points (edge/jobs.ts syncAppRoute): its container's route alias on the
- * environment network, or for a container made before route aliases existed, the app's canonical
- * name, which only the live container holds outside a deploy. Never an address: Docker hands out
- * new ones on a reboot. A container that is not running yet still gets its route: after a
- * reboot the worker can resync before Docker has started every app, and a name answers again as
- * soon as its container is back, where removing the route would leave the site down until the
- * next sync. Null when the app has no container.
+ * Where an app's route points: its route alias, or the canonical name of a container made before aliases
+ * existed. Never an address (Docker hands out new ones on a reboot). A stopped container keeps its route.
  */
 export function routeTargetFor(db: Db, docker: DockerApi) {
   return async (appId: string): Promise<RouteTargetInfo | null> => {
@@ -146,7 +125,6 @@ export function routeTargetFor(db: Db, docker: DockerApi) {
   };
 }
 
-/** The port the image of an app's live container says it listens on, read as a deploy reads it. */
 export function imagePortFor(docker: DockerApi) {
   return async (appId: string): Promise<number | null> => {
     try {
@@ -160,10 +138,7 @@ export function imagePortFor(docker: DockerApi) {
   };
 }
 
-/**
- * A preview member's container, by name (its alias too), for a route an older version wrote with
- * its address. Running first; one that is not started yet answers by that name once it is.
- */
+/** A preview member's container, by name, for a route an older version wrote with its address. */
 export function previewTargetFor(docker: DockerApi) {
   return async (previewDeploymentId: string): Promise<RouteTargetInfo | null> => {
     const found = await docker.listContainers({ [PREVIEW_LABEL.member]: previewDeploymentId, [PREVIEW_LABEL.role]: "preview" });
@@ -177,10 +152,8 @@ export function previewTargetFor(docker: DockerApi) {
 }
 
 /**
- * The secret values an app's container was given, for literal redaction of its runtime logs: its
- * secret env vars, and for a managed Postgres, Redis or S3 its own generated password, which the
- * service gets in its environment (data/services.ts) rather than as an env var. Each part is read
- * on its own, so one value that cannot be opened never empties the whole list.
+ * Secret values for literal redaction of runtime logs: secret env vars and a managed service's generated
+ * password. Each is read on its own, so one unreadable value never empties the list.
  */
 export function secretsFor(db: Db, vault: SecretVault) {
   return async (appId: string): Promise<string[]> => {
@@ -197,7 +170,6 @@ export function secretsFor(db: Db, vault: SecretVault) {
   };
 }
 
-/** A managed service's generated password from its sealed credentials, or null when unreadable. */
 async function servicePassword(db: Db, vault: SecretVault, secretId: string): Promise<string | null> {
   const raw = await readSecretValue(db, vault, secretId).catch(() => null);
   if (!raw) return null;
@@ -208,7 +180,6 @@ async function servicePassword(db: Db, vault: SecretVault, secretId: string): Pr
   }
 }
 
-/** Maps a module's own permanent errors onto the queue's. */
 const permanentWhen = (h: JobHandler, isPerm: (e: unknown) => boolean): JobHandler => async (job, signal) => {
   try {
     await h(job, signal);
@@ -222,10 +193,7 @@ const permanentWhen = (h: JobHandler, isPerm: (e: unknown) => boolean): JobHandl
 export const API_WAIT_MS = 3 * 86_400_000;
 const API_RETRY_MS = 30_000;
 
-/**
- * A notification that needs the api and finds it down spends no attempt: it stays queued and goes as
- * soon as the api answers, so an outage longer than the retries does not lose the alert.
- */
+/** A notification that finds the api down spends no attempt, so a long outage does not lose the alert. */
 export const waitForApi = (h: JobHandler): JobHandler => async (job, signal) => {
   try {
     await h(job, signal);
@@ -236,7 +204,6 @@ export const waitForApi = (h: JobHandler): JobHandler => async (job, signal) => 
   }
 };
 
-/** What one worker process has once, however many servers it serves. */
 export function workerShared(deps: WorkerDeps): WorkerShared {
   const env = deps.env ?? process.env;
   const { db, vault } = deps;
@@ -280,7 +247,6 @@ const tableBuilder = () => {
   return { handlers, add };
 };
 
-/** Everything that touches a server: its containers, images, networks, routes, builder or disk. */
 export function buildServerHandlers(runtime: ServerRuntime, deps: WorkerShared): ServerWired {
   const { db, vault, deployConfig, edge, logger } = deps;
   const { docker, serverId, routes, mode, dial, builder, host } = runtime;
@@ -378,7 +344,6 @@ export function buildServerHandlers(runtime: ServerRuntime, deps: WorkerShared):
   return { handlers, disk, data, edgeDeps, previews, sweep };
 }
 
-/** What the edge handlers of either table share. The route files and ingress are one server's. */
 const edgeBase = (deps: WorkerShared, server: Pick<ServerRuntime, "routes" | "mode">): EdgeGlobalDeps => ({
   db: deps.db, vault: deps.vault, settings: deps.edge, routes: server.routes, mode: server.mode,
   dns: publicResolver(),
@@ -388,10 +353,7 @@ const edgeBase = (deps: WorkerShared, server: Pick<ServerRuntime, "routes" | "mo
   ...(deps.internalToken ? { probe: (host: string, domainId: string) => probeDomain({ host, domainId, secret: deps.internalToken! }) } : {}),
 });
 
-/**
- * Everything that reaches no server: mail, notices, Vercel, webhooks, icons and DNS checks. The
- * dashboard's domain does write route files, always on the server the dashboard answers on: `primary`.
- */
+/** Everything that reaches no server. The dashboard's domain does write route files, always on `primary`. */
 export function buildGlobalHandlers(deps: WorkerShared & { primary: Pick<ServerRuntime, "routes" | "mode"> }): JobTable {
   const { db, vault, http, mail, env, publicUrl, deployConfig, edge, webhookTargets, stores } = deps;
   const integ = integrationJobHandlers({
@@ -424,23 +386,18 @@ export function buildGlobalHandlers(deps: WorkerShared & { primary: Pick<ServerR
     deploy_notify: async (job) => {
       await deliverDeployFailed({ db, vault, mail, publicUrl, internalToken: deps.internalToken }, job.payload);
     },
-    // The green or red tick on the commit a deploy shipped.
     deploy_status: async (job) => {
       await runDeployStatus({ db, vault, http, apiBase: deployConfig.githubApiBase, publicUrl }, job.payload);
     },
-    // One instance event with no rule behind it: a failed scheduled backup, a certificate near expiry.
     event_notify: async (job) => {
       await deliverEventNotice({ db, vault, mail, publicUrl }, job.payload);
     },
-    // A preview became ready or failed: mail for its author, or the admins.
     preview_notify: async (job) => {
       await deliverPreviewNotice({ db, vault, mail, publicUrl }, job.payload);
     },
-    // Self-update notices from the updater: email to admins, and a webhook_send job per webhook that takes them.
     update_notify: async (job) => {
       await deliverUpdateNotice({ db, vault, mail, publicUrl }, job.payload, job.id);
     },
-    // One prepared message to one notification webhook, retried on its own.
     webhook_send: waitForApi(async (job) => {
       await runWebhookSend({ db, vault, http, targets: webhookTargets }, job.payload, job.id);
     }),
@@ -448,7 +405,6 @@ export function buildGlobalHandlers(deps: WorkerShared & { primary: Pick<ServerR
     backup_delete: async (job) => {
       await deleteOrphanedBackups(stores, job.id, job.payload);
     },
-    // A newly seen security release from the updater: one email to every admin.
     security_notify: async (job) => {
       await deliverSecurityNotice({ db, vault, mail, publicUrl }, job.payload);
     },
@@ -457,7 +413,6 @@ export function buildGlobalHandlers(deps: WorkerShared & { primary: Pick<ServerR
   return handlers;
 }
 
-/** The one table a runtime's claim loops read. */
 export function buildHandlers(runtime: ServerRuntime, deps: WorkerShared): Wired {
   const server = buildServerHandlers(runtime, deps);
   const { handlers, add } = tableBuilder();
@@ -482,11 +437,7 @@ const everyFor = (log: (msg: string, extra?: object) => void) => (name: string, 
   return t;
 };
 
-/**
- * Periodic work on one server: its sweeps, its observe loops and disk breakdown, and the Docker
- * start-event watch. The boot route resync ran before this (main.ts). Every enqueue names the server,
- * so its dedupe key does too.
- */
+/** Periodic work on one server. Every enqueue names the server, so its dedupe key does too. */
 export function startServerTimers(runtime: ServerRuntime, deps: WorkerShared & ServerWired, log: (msg: string, extra?: object) => void): Timers {
   const { db, vault, data } = deps;
   const { serverId, docker } = runtime;
@@ -522,10 +473,7 @@ export function startServerTimers(runtime: ServerRuntime, deps: WorkerShared & S
   };
 }
 
-/**
- * Periodic work that belongs to no server: the clocks over the database, DNS checks, notices and this
- * process's own health. The first heartbeat goes out at once, so readiness shows as soon as work starts.
- */
+/** The first heartbeat goes out at once, so readiness shows as soon as work starts. */
 export async function startGlobalTimers(deps: WorkerShared, log: (msg: string, extra?: object) => void): Promise<Timers> {
   const { db, vault, stores } = deps;
   const beat = () => heartbeat(db, deps.health).then((r) => {
@@ -539,7 +487,6 @@ export async function startGlobalTimers(deps: WorkerShared, log: (msg: string, e
   void diskReserve.tick();
   const timers = [
     every("data tick", 60_000, () => dataTick(stores)),
-    // Scheduled jobs: what is due, and how much history is kept (jobs/).
     every("scheduled jobs", 20_000, () => jobsTick(db)),
     every("scheduled job history", 15 * 60_000, () => pruneJobHistory(db)),
     every("edge checks", 15 * 60_000, () => enqueue(db, { kind: "dns_check", lane: "maintenance", payload: {}, dedupeKey: "dns_check:all" })),
@@ -550,15 +497,13 @@ export async function startGlobalTimers(deps: WorkerShared, log: (msg: string, e
     every("preview dns", 3 * 60_000, async () => {
       for (const d of await staleDnsDomains(db)) await db.$transaction((tx) => enqueuePreviewTx(tx, "preview_dns", d));
     }),
-    // Vercel deployments stay current without a webhook: this is the backstop that says so plainly.
+    // The backstop that keeps Vercel deployments current without a webhook.
     every("vercel mirror", 30_000, () => queueVercelMirrorIfDue(db)),
-    // Liveness for the server page and the worker-down rule, read by the api, with the worker's issues.
     every("heartbeat", 30_000, beat),
-    // Free space: refuses builds near full and keeps the reserve (deploy/disk-guard.ts).
     every("disk guard", 60_000, () => diskReserve.tick()),
     // The work folder again, so a fixed folder clears its issue without waiting for a backup.
     every("work folder", 60_000, () => checkWorkFolder({ health: deps.health, dir: stores.tmpDir, log: deps.logger })),
-    // What the event switches in Settings, Notifications announce with no job of their own to hook.
+    // Events with no job of their own to hook, announced when their switch in Settings is on.
     every("backup notices", 60_000, () => announceFailedBackups(db)),
     every("certificate notices", 6 * HOUR, () => announceExpiringCertificates(db)),
     // Fresh copies of what would announce an api outage, for when that outage comes.
@@ -574,10 +519,7 @@ export async function startGlobalTimers(deps: WorkerShared, log: (msg: string, e
   };
 }
 
-/**
- * The data browser's and the web terminal's channel, for the one runtime passed in: bound to the
- * control-plane address only, never 0.0.0.0.
- */
+/** The data browser's and the web terminal's channel: bound to the control-plane address only, never 0.0.0.0. */
 export function startChannel(runtime: ServerRuntime, deps: WorkerShared & ServerWired, log: (msg: string, extra?: object) => void): Timers {
   const { env } = deps;
   const bind = env.DOCKIFY_DATA_CHANNEL_BIND?.trim();
@@ -594,7 +536,6 @@ export function startChannel(runtime: ServerRuntime, deps: WorkerShared & Server
     connectPg,
     dial: runtime.dial,
   });
-  // The web terminal shares this control-network listener and its token.
   const terminals = attachTerminalChannel(server, { db: deps.db, docker: new EngineTerminalPort(runtime.docker), token: deps.internalToken, log });
   server.listen(port, bind);
   return {

@@ -1,13 +1,4 @@
-/**
- * The worker's observability module. main.ts wires it with two calls:
- *
- *   const stopObserve = startObserve(runtime, { db, vault });  // one server: sampler, status, alerts, logs
- *   const stopCare = startObserveMaintenance({ db });          // rollups and retention, once per worker
- *   Object.assign(handlers, observeJobHandlers({ db, vault })); // the alert_notify job
- *
- * Every loop is single-flight (a slow pass skips the overlapping tick) and stop() waits out the
- * pass in flight. A failed pass is logged and the next tick tries again.
- */
+/** Loops are single-flight (a slow pass skips the overlapping tick); stop() waits out the pass in flight. */
 import { stderrLog } from "../errors.ts";
 import type { Db, JobKind, SecretVault } from "@dockify/db";
 import { AGENT_CONTAINER } from "../deploy/containers.ts";
@@ -33,11 +24,8 @@ export interface ObserveDeps {
   vault: SecretVault;
   config?: ObserveConfig;
   docker?: DockerReader;
-  /** The app's resolved secret values, for literal log redaction. Defaults to none. */
   secretsFor?: SecretsFor;
-  /** The SMTP sender for alert email; the worker passes its one sender. */
   mail?: Mailer;
-  /** The status page reachability probe; tests pass a fake. */
   reachProbe?: ReachProbe;
   log?: (msg: string, extra?: object) => void;
 }
@@ -81,15 +69,13 @@ export function startObserve(runtime: Pick<ServerRuntime, "serverId" | "docker" 
   const stops = [
     loop("metrics", cfg.sampleMs, async () => {
       await sampler.tick();
-      // App.status is what this tick saw. A listing older than two ticks is not trusted.
+      // A listing older than two ticks is not trusted.
       await reconcileAppStatus(deps.db, serverId, sampler.state, { maxAgeMs: 2 * cfg.sampleMs })
         .catch((e: unknown) => log("app status pass failed", { error: e instanceof Error ? e.message : String(e) }));
       await logs.sync(sampler.state);
     }, log),
     loop("alerts", cfg.alertMs, () => alerts.tick(), log),
-    // Status page apps through the proxy, as a visitor reaches them.
     loop("reachability", cfg.reach.everyMs, () => probeReachability(deps.db, serverId, probe, reach), log),
-    // The control plane's own containers, for the server page's service list.
     loop("control plane", 60_000, () => recordControlPlane(deps.db, docker, AGENT_CONTAINER), log),
     loop("uptime", 60_000, () => recordUptimeMinute(deps.db, serverId, sampler.state, Date.now(), reach), log),
   ];
@@ -105,14 +91,12 @@ export function startObserveMaintenance(deps: Pick<ObserveDeps, "db" | "config" 
   const log = deps.log ?? stderrLog;
   const stops = [
     loop("metrics rollup", 5 * 60_000, () => metricsMaintenance(deps.db, cfg), log),
-    // The owner's Log retention setting, read each pass (logRetentionDays); the caps still apply.
     loop("log retention", 10 * 60_000, async () => {
       await pruneLogs(deps.db, await logRetentionDays(deps.db, cfg.logRetentionDays));
       await enforceLogCaps(deps.db, cfg.logCaps);
     }, log),
     // The size cap is checked more often than age: a flood fills a disk in minutes, not days.
     loop("log size cap", 60_000, () => enforceLogCaps(deps.db, cfg.logCaps), log),
-    // AlertEvent is kept 90 days (the model comment); open events are never pruned.
     loop("alert retention", 3_600_000, () => deps.db.alertEvent.deleteMany({
       where: { state: "resolved", resolvedAt: { lt: new Date(Date.now() - 90 * 86_400_000) } },
     }), log),
@@ -124,7 +108,6 @@ export function startObserveMaintenance(deps: Pick<ObserveDeps, "db" | "config" 
 
 export type ObserveJobHandler = (job: ClaimedJob, signal: AbortSignal) => Promise<void>;
 
-/** Job handlers this module owns, keyed by kind. */
 export function observeJobHandlers(deps: { db: Db; vault: SecretVault; publicUrl?: string | null; internalToken?: string | undefined; targets?: WebhookTargets; mail?: Mailer }): Partial<Record<JobKind, ObserveJobHandler>> {
   const publicUrl = deps.publicUrl ?? process.env.DOCKIFY_PUBLIC_URL ?? null;
   return {

@@ -10,7 +10,6 @@ import { renderDoc } from "./mdx";
 import { Pager } from "./pager";
 import { Toc } from "./toc";
 
-/** One docs page: the article, prev and next at its foot, and the TOC in the right rail. */
 export async function DocPage({ slug }: { slug: string }) {
   const source = await readDoc(slug);
   if (source === null) notFound();

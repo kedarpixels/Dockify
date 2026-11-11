@@ -1,12 +1,8 @@
-/* Logs: the runtime log explorer at /logs (the filters, the app picker, the live bar and the
-   virtualised log box). The box's columns follow the box's own width (the `lx-log` container), the
-   toolbars follow the viewport on the shared scale (520, 760, 1100). */
+/* The box's columns follow the box's own width (the `lx-log` container); the toolbars follow the viewport. */
 
-/* -------------- App colours --------------
-   Eight identity colours, one per app: steps of the blue scale and of ink, alternating so the apps
-   next to each other in the list never look alike. Red and amber stay out of the set: they mean an
-   error or a warning line, never an app. Each is a theme token or an srgb mix of two, so both
-   themes hold. */
+/* App colours */
+/* Eight identity colours, alternating blue and ink steps so neighbours never look alike. Red and
+   amber stay out: they mean an error or a warning line, never an app. */
 .lx {
   --lx-c0: var(--blue);
   --lx-c1: var(--ink-2);
@@ -26,9 +22,7 @@
   background: var(--lx-app, var(--ink-3));
 }
 
-/* -------------- Filters -------------- */
-/* The regex key sits inside the search, before its clear key. It reads ".*" in the colours of an
-   icon key: muted at rest, ink on hover, blue while on. */
+/* Filters */
 .lx-regex {
   flex: none;
   font-size: 13px;
@@ -44,7 +38,6 @@
   color: var(--blue);
 }
 
-/* The search never pushes past the toolbar, however narrow the screen. */
 .lx-search {
   min-width: 0;
   max-width: 100%;
@@ -71,7 +64,7 @@
   gap: 16px;
 }
 
-/* -------------- App picker panel -------------- */
+/* App picker panel */
 .lx-pick-panel {
   display: flex;
   flex-direction: column;
@@ -91,8 +84,7 @@
   outline: 0;
 }
 
-/* Project rows head their apps; an app row's icon sits under its project's name (the option's
-   10px inset, then the project's 20px icon and its 8px gap). */
+/* An app row's icon sits under its project's name: the 10px inset, the 20px icon and its 8px gap. */
 .lx-pick-opt[data-kind="project"] {
   color: var(--ink);
   font-weight: 500;
@@ -121,7 +113,7 @@
   color: var(--ink-muted);
 }
 
-/* -------------- Viewer bar -------------- */
+/* Viewer bar */
 .lx-live {
   display: inline-flex;
   align-items: center;
@@ -145,7 +137,7 @@
   margin-left: auto;
 }
 
-/* -------------- Surface -------------- */
+/* Surface */
 .lx-stage {
   container: lx-log / inline-size;
   position: relative;
@@ -171,8 +163,8 @@
   outline-offset: -2px;
 }
 
-/* Empty or failed, the box is only as tall as what it says, like the build log's. Loading keeps its
-   size, so nothing jumps when a filter changes. */
+/* Empty or failed, the box is only as tall as what it says. Loading keeps its size, so nothing
+   jumps when a filter changes. */
 .lx-box:has(.lx-status):not(:has(.lx-skel)) {
   height: auto;
   min-height: 0;
@@ -185,7 +177,6 @@
   font-family: var(--font-sans);
 }
 
-/* A search that cannot run: the shared callout, on the page gutter. */
 .lx-callout {
   padding: 16px var(--gutter);
 }
@@ -195,7 +186,6 @@
   gap: 8px;
 }
 
-/* The top edge: Load older lines, or where the range starts. */
 .lx-edge {
   position: sticky;
   left: 0;
@@ -223,8 +213,7 @@
   width: auto;
 }
 
-/* A row's tint lives in --lx-tint so the opaque sticky time can paint the same tint over --mass.
-   The build log (deployments.css) takes the same tints. */
+/* A row's tint lives in --lx-tint so the opaque sticky time can paint the same tint over --mass. */
 .lx-line {
   --lx-tint: transparent;
   display: flex;
@@ -255,13 +244,12 @@
   --lx-tint: color-mix(in srgb, var(--warn) 11%, transparent);
 }
 
-/* The line a #L- link points at: a soft blue band that stays. */
 .lx-line[data-target] {
   --lx-tint: color-mix(in srgb, var(--blue) 10%, transparent);
 }
 
-/* The time is the permalink and stays pinned while the text scrolls sideways under it. The
-   doubled selector keeps it sticky over the tooltip rule's position: relative. */
+/* Pinned while the text scrolls sideways. The doubled selector keeps it sticky over the tooltip
+   rule's position: relative. */
 .lx-line > .lx-ts {
   position: sticky;
   left: 0;
@@ -282,7 +270,7 @@
   color: var(--ink-2);
 }
 
-/* Flush on the box's left edge, under the next line's sticky stamp: the ring draws inside. */
+/* Flush on the box's left edge, under the next line's sticky stamp, so the ring draws inside. */
 .lx-line > .lx-ts:focus-visible {
   outline-offset: -2px;
   border-radius: 6px;
@@ -292,7 +280,6 @@
   color: var(--blue);
 }
 
-/* "Link copied" shows by itself for a moment, above the rows below it. */
 .lx-line > .lx-ts[data-copied] {
   z-index: var(--z-node);
 }
@@ -363,7 +350,6 @@
   color: inherit;
 }
 
-/* Loading rows match the real ones: 20px lines in the same columns. */
 .lx-skel {
   padding: 44px 0 8px;
 }
@@ -380,7 +366,7 @@
   margin-right: 104px;
 }
 
-/* -------------- Responsive -------------- */
+/* Responsive */
 @media (max-width: 1100px) {
   .lx-range {
     margin-left: 0;
@@ -417,7 +403,6 @@
   }
 }
 
-/* A narrow box gives the text its room: the day and then the level go, the app column narrows. */
 @container lx-log (width < 760px) {
   .lx-day {
     display: none;

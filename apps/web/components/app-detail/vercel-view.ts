@@ -1,8 +1,4 @@
-/*
- * The plain rules behind an app on Vercel's tabs (vercel-tabs.tsx), apart from the markup so the
- * tests can hold them: which Variables tab it gets, what stands in for a value never shown, and
- * Vercel's framework names as people say them.
- */
+/* Apart from the markup so the tests can hold these rules. */
 
 /** A followed app's variables live on Vercel; a deploy target's are Dockify's, sent there on deploy. */
 export function variablesOnVercel(target: { kind: "server" | "vercel"; mode?: "follow" | "deploy" } | null | undefined): boolean {
@@ -28,7 +24,7 @@ const FRAMEWORK: Record<string, string> = {
   express: "Express",
 };
 
-/** Vercel's framework slug as people say it; an unknown slug reads as Vercel wrote it, none as Other. */
+/** An unknown slug reads as Vercel wrote it, none as Other. */
 export const frameworkLabel = (f: string | null) => (f ? (FRAMEWORK[f] ?? f) : "Other");
 
 /** What stands in for a value Dockify does not show, and why. `values` is whether this reader gets plain ones. */

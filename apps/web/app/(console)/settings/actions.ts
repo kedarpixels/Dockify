@@ -24,33 +24,18 @@ import { stepUpRefusal } from "@/lib/step-up";
 import { TIME_ZONE_RE } from "@/lib/time-zones";
 import { BRANCH_NAME, isRecord } from "@/lib/validation";
 
-/*
- * Settings writes. Each one calls the documented /api/v1 endpoint (see lib/pages/activity-settings.ts)
- * with the visitor's cookie. In the design preview they answer as the API would without storing
- * anything, so a reload shows the fixture again. With no data source they refuse.
- *
- * A server action is a public endpoint: its arguments arrive from the network whatever the
- * TypeScript types say. Every input is checked for shape here, and only the checked fields are
- * forwarded, so a crafted call can neither crash the action nor smuggle extra keys to the API.
- * Nothing here logs, so passwords, codes and secrets never reach the server output.
- *
- * The elevated writes (team, invites, instance settings, tokens, two-factor setup, a change
- * of email) answer the shared step-up refusal (lib/step-up.ts) without a fresh step-up; the page
- * confirms it is you (components/step-up) and calls again. The preview refuses them the same way
- * outside its own step-up window (lib/preview-step-up.ts).
- */
+// A server action is a public endpoint: check every input's shape and forward only the checked fields.
+// Never log here: passwords, codes and secrets pass through.
 
 const NONE: Outcome<never> = { ok: false, error: "No data source, set DOCKIFY_API_URL for this dashboard" };
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE = /^\d{6}$/;
-/** A branch name, as packages/contracts Branch: no leading or trailing slash, no "//" or "..". */
 const AVATAR = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
 const TEAM_ROLES = ["admin", "viewer"] as const;
 const SCOPES: TokenScope[] = ["read", "deploy", "admin"];
 const EXPIRY_DAYS = [7, 30, 90, 365];
 const EVENTS: NotifyEvent[] = ["deployFailed", "appDown", "backupFailed", "tlsExpiring", "previewDeployments", "jobFailed"];
 
-/** The two roles: what a team change or an invite may set. */
 export type TeamRole = (typeof TEAM_ROLES)[number];
 
 const bad = (error: string): Outcome<never> => ({ ok: false, error });
@@ -72,8 +57,6 @@ const isTimeZone = (v: string) => {
     return false;
   }
 };
-
-/* ---------- Profile ---------- */
 
 export async function updateProfile(input: { name: string; email: string; avatar?: string | null }): Promise<Outcome<Me>> {
   if (!isRecord(input) || !str(input.name, 80) || !str(input.email, 200)) return bad("Name or email is not valid");
@@ -100,7 +83,7 @@ export async function updateProfile(input: { name: string; email: string; avatar
 
 export type PreferencesPatch = { timeZone?: string | null; hour12?: boolean; notify?: { deployFailed?: boolean; security?: boolean } };
 
-/** Time display and email choices. Only the keys present change. */
+/** Only the keys present change. */
 export async function updatePreferences(input: PreferencesPatch): Promise<Outcome<Me>> {
   if (!isRecord(input)) return bad("Nothing to save");
   const body: PreferencesPatch = {};
@@ -138,8 +121,6 @@ export async function updatePreferences(input: PreferencesPatch): Promise<Outcom
   }
   return NONE;
 }
-
-/* ---------- Email codes ---------- */
 
 export type EmailCodeSent = { email: string; purpose: "verify" | "change"; expiresAt: string };
 
@@ -179,14 +160,9 @@ export async function confirmEmailCode(code: string, email?: string): Promise<Ou
   return NONE;
 }
 
-/* ---------- Security ---------- */
-
 export type PasswordCodeSent = { email: string; expiresAt: string };
 
-/**
- * Step one of a password change while email is on: the API checks the current password, then
- * mails a 6-digit code to the account address. Answers with that address masked.
- */
+/** Step one of a password change while email is on: the API checks the current password, then mails a code. */
 export async function requestPasswordCode(input: { current: string }): Promise<Outcome<PasswordCodeSent>> {
   if (!isRecord(input) || !str(input.current, 1024) || !input.current) return bad("Enter your current password");
   const source = dataSource();
@@ -256,13 +232,8 @@ export async function revokeOtherSessions(): Promise<Outcome> {
   return NONE;
 }
 
-/* ---------- Lists read again ---------- */
-
-/*
- * A write elsewhere changes these lists: a password change signs the other sessions out, a removed
- * member's tokens go with the member, the worker settles a queued invite email. Each answers null in
- * the preview, which stores nothing, so the page keeps what it shows.
- */
+/* Other writes change these lists: a password change ends the other sessions, a removed member's tokens
+   go with the member. Each answers null in the preview, which stores nothing. */
 
 async function readList<T>(path: string): Promise<Outcome<T | null>> {
   const source = dataSource();
@@ -282,8 +253,6 @@ export async function readTeam(): Promise<Outcome<SettingsData["team"] | null>> 
 export async function readTokens(): Promise<Outcome<ApiToken[] | null>> {
   return readList<ApiToken[]>("/api/v1/tokens");
 }
-
-/* ---------- Team ---------- */
 
 /** `githubVerified` approves (true) or withdraws (false) a member's GitHub login; `githubLogin: null` removes it. */
 export type TeamChange =
@@ -358,8 +327,6 @@ export async function revokeInvite(id: string): Promise<Outcome> {
   return NONE;
 }
 
-/* ---------- Instance and notification events ---------- */
-
 const PREVIEW_HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const int = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 
@@ -403,11 +370,7 @@ function cleanPatch(s: unknown): SettingsPatch | string {
   return out;
 }
 
-/**
- * Saves the fields one section changed, never the whole object: an unsent field keeps its stored
- * value, so the preview domain stays derived and another admin's newer values stay put. Answers the
- * stored settings, or null in the preview, which stores nothing.
- */
+/** Saves only the fields one section changed, so another admin's newer values stay put. Answers null in the preview. */
 export async function saveSettings(patch: SettingsPatch): Promise<Outcome<InstanceSettings | null>> {
   const clean = cleanPatch(patch);
   if (typeof clean === "string") return bad(clean);
@@ -416,8 +379,6 @@ export async function saveSettings(patch: SettingsPatch): Promise<Outcome<Instan
   if (source === "preview") return previewStepUp() ?? done(null);
   return NONE;
 }
-
-/* ---------- API tokens ---------- */
 
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
 

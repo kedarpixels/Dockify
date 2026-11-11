@@ -1,9 +1,5 @@
-/**
- * Row to contract mappers and patch builders for the app routes. Pure, so the response shapes and
- * the refusals are tested without a database. The App row is the one store: AppSettings and
- * AppConfig read and write the same columns (healthCheckPath, cpuLimit, memoryLimitMb), so the two
- * tabs can never disagree.
- */
+// AppSettings and AppConfig read and write the same App columns (healthCheckPath, cpuLimit,
+// memoryLimitMb), so the two tabs can never disagree.
 import type { z } from "zod";
 import type { apps as Ap } from "@dockify/contracts";
 
@@ -16,7 +12,6 @@ type ConfigPatch = z.infer<typeof Ap.AppConfigPatch>;
 
 export const STATEFUL = new Set(["postgres", "redis", "s3"]);
 
-/** The columns the settings and config routes read. */
 export interface AppRow {
   id: string;
   name: string;
@@ -24,7 +19,7 @@ export interface AppRow {
   image: string | null;
   gitRepository: string | null;
   gitBranch: string | null;
-  /** The GitHub repository id picked for this app, or its project's. What Vercel is told to build. */
+  /** This app's GitHub repository id, or its project's. What Vercel is told to build. */
   gitRepoId?: string | null;
   deployTarget: "server" | "vercel";
   vercelProjectId: string | null;
@@ -61,9 +56,8 @@ export interface Change {
 }
 
 /**
- * An app's public address: its primary domain, else its oldest domain. Nothing sets a primary when
- * the first domain is added, and removing the primary clears it, so the primary alone left apps
- * that serve a domain reading "No public domain". `domains` is oldest first.
+ * The primary domain, else the oldest one: nothing sets a primary when the first domain is added.
+ * `domains` must be oldest first.
  */
 export function publicUrlOf(primary: { hostname: string } | null, domains: ReadonlyArray<{ hostname: string }>): string | null {
   const host = primary?.hostname ?? domains[0]?.hostname;
@@ -82,7 +76,6 @@ export const settingsOf = (a: AppRow): Settings => ({
   memoryLimitMb: a.memoryLimitMb,
 });
 
-/** The settings for a caller who may not read commands (actor.ts readsCommands). */
 export const withoutCommands = (s: Settings): Settings => ({ ...s, installCommand: "", buildCommand: "", startCommand: "" });
 
 export const healthOf = (a: AppRow): HealthCheck => ({
@@ -96,9 +89,8 @@ export const healthOf = (a: AppRow): HealthCheck => ({
 export const limitsOf = (a: AppRow): Limits => ({ cpuCores: a.cpuLimit, memoryMb: a.memoryLimitMb, pids: a.pidsLimit });
 
 /**
- * Why a deploy of this app stops the old container first. The worker's swapStrategy() makes the
- * same call at deploy time; a managed service owns its data like a volume does. Dockify never
- * publishes a host port, so "fixed-port" cannot come up today.
+ * Must agree with the worker's swapStrategy(), which makes the same call at deploy time. Dockify
+ * never publishes a host port, so "fixed-port" cannot come up today.
  */
 export function zeroDowntimeOf(kind: string, volumes: number): { possible: boolean; blockers: Array<"volume" | "fixed-port"> } {
   const blockers: Array<"volume" | "fixed-port"> = volumes > 0 || STATEFUL.has(kind) ? ["volume"] : [];
@@ -107,11 +99,7 @@ export function zeroDowntimeOf(kind: string, volumes: number): { possible: boole
 
 const empty = (v: string | undefined): string | null => (v === undefined || v === "" ? null : v);
 
-/**
- * The column update for a settings patch, its refusals, and the audit changes. Commands can carry
- * a token someone pasted inline, so the audit names a changed command without its text. `src`
- * changes what the app runs: an image app's image or a git app's branch, from the next deploy.
- */
+/** Commands can carry a token someone pasted inline, so the audit names a changed command without its text. */
 export function settingsUpdate(a: AppRow, s: Settings, adv: Advanced | undefined, src?: Source): { data: Record<string, unknown>; refusals: Refusal[]; changes: Change[] } {
   const refusals: Refusal[] = [];
   const stateful = STATEFUL.has(a.kind);
@@ -184,10 +172,9 @@ export function settingsUpdate(a: AppRow, s: Settings, adv: Advanced | undefined
 }
 
 /**
- * What a target in a patch means for one app. A Vercel link follows unless the body asks to deploy.
- * `startsPushing`: this change makes Dockify send the app's variables and secrets to a Vercel project
- * it was not sending them to, so it needs the owner's confirmation and step-up. Moving the same
- * deploy target nowhere, following, or going back to the server sends nothing.
+ * A Vercel link follows unless the body asks to deploy. `startsPushing` means this change makes
+ * Dockify send the app's variables and secrets to a Vercel project that was not getting them, so
+ * the caller must require confirmation and step-up.
  */
 export function targetPlan(a: Pick<AppRow, "deployTarget" | "vercelProjectId" | "vercelFollowOnly">, t: { kind: "server" | "vercel"; vercelProjectId: string | null; mode?: "follow" | "deploy" | undefined }): { followOnly: boolean; startsPushing: boolean } {
   if (t.kind === "server") return { followOnly: false, startsPushing: false };
@@ -196,7 +183,6 @@ export function targetPlan(a: Pick<AppRow, "deployTarget" | "vercelProjectId" | 
   return { followOnly, startsPushing: !followOnly && !already };
 }
 
-/** The column update for a config patch, its refusals, and the audit changes. */
 export function configUpdate(a: AppRow, p: ConfigPatch): { data: Record<string, unknown>; refusals: Refusal[]; changes: Change[] } {
   const refusals: Refusal[] = [];
   const data: Record<string, unknown> = {};
@@ -218,7 +204,6 @@ export function configUpdate(a: AppRow, p: ConfigPatch): { data: Record<string, 
     const plan = targetPlan(a, p.target);
     if (p.target.kind === "vercel" && a.kind !== "frontend") refusals.push({ field: "target", reason: "Only a frontend can link to a Vercel project" });
     else if (plan.followOnly === false && p.target.kind === "vercel" && !a.gitRepository) refusals.push({ field: "target", reason: "Only a frontend built from git can deploy to Vercel" });
-    // Refused here rather than at the first deploy, and before any variable is pushed.
     else if (plan.startsPushing && !a.gitRepoId) refusals.push({ field: "target", reason: "Vercel builds a repository picked through the GitHub App, and this app has none. Create it from a repository the GitHub App can see." });
     data.deployTarget = p.target.kind;
     data.vercelProjectId = p.target.vercelProjectId;

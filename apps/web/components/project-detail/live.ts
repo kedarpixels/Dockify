@@ -1,4 +1,4 @@
-/* What the project page watches in the polled data, kept free of React so it can be tested. */
+/* Kept free of React so it can be tested. */
 
 /** The apps' states as one comparable string: when it changes, the page's own snapshot is stale. */
 export const statusKey = (apps: ReadonlyArray<{ id: string; status: string }>) => apps.map((a) => `${a.id}:${a.status}`).join(" ");

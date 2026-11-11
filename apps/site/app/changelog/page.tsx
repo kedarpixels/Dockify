@@ -8,11 +8,8 @@ import { pageMetadata } from "@/components/seo/metadata";
 
 export const metadata = pageMetadata({ path: "/changelog", title: "Changelog", description: "Versioned releases, newest first. Each entry links its signed release." });
 
-/*
- * Entries come from the release notes (docs/releases/<version>.md in the repository, copied
- * into content/releases/ before the build), the same files the signed release feed is built from.
- * An unreleased version stays marked so, with no date and no release link. Never backfill history.
- */
+/* Entries come from the release notes, the same files the signed release feed is built from. An unreleased
+   version stays marked so, with no date and no release link. */
 
 const FORMAT = `## 1.1.0 (YYYY-MM-DD)
 

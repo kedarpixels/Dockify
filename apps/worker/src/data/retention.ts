@@ -1,19 +1,7 @@
 /**
- * Which stored dumps retention may remove. Pure, so the api can preview exactly what the worker
- * will do. Retention runs per tier (a backup counts in the tier its destination names), and its
- * rules exist because a lowered retention is how backup history gets destroyed:
- *
- *   - Only ready backups with a stored object are candidates; running and failed rows hold nothing,
- *     so a failed run is never counted and never pushes a good one out.
- *   - Manual backups are never removed and never counted. Someone took them on purpose.
- *   - The newest `keep` automatic backups always stay, whatever their age, so a stopped schedule or
- *     a long outage never ages out the last good copies. With `keepDays`, every one newer than that
- *     stays too.
- *   - The newest one whose restore test did not fail stays as well, so the only good copy of a tier
- *     is never removed in favour of one known to be broken.
- *   - A backup a restore or restore test is reading is never removed under it.
- *   - Everything else expires. The row stays (expiredAt is set) so the history still shows it;
- *     only the object is deleted.
+ * Which stored dumps retention may remove, per tier. Pure, so the api can preview what the worker will do.
+ * Never removed: manual backups, the newest `keep` automatic ones whatever their age, the newest one whose
+ * restore test did not fail, and one a restore is reading. An expired row stays; only its object is deleted.
  */
 
 /** Failed rows carry no object; they are deleted after this long so the list does not fill up. */
@@ -55,7 +43,6 @@ export function failedRowsToDelete<T extends RetentionCandidate>(backups: readon
   return backups.filter((b) => b.status === "failed" && b.createdAt.getTime() < cutoff);
 }
 
-/** True when a schedule change would let retention remove more than it does today. */
 export function isRetentionDecrease(before: RetentionPolicy & { enabled: boolean }, after: RetentionPolicy & { enabled: boolean }): boolean {
   const days = (p: RetentionPolicy) => p.keepDays ?? 0;
   return after.keep < before.keep || days(after) < days(before) || (before.enabled && !after.enabled);

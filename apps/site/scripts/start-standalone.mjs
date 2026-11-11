@@ -1,11 +1,5 @@
-// Runs the standalone build: the one start command for a Dockify app, a container or a plain host.
-//
-//   npm ci && npm run build && npm run start:standalone
-//
-// `output: "standalone"` traces the server from the repository root, so the server lands in
-// .next/standalone/apps/site/server.js, and it serves static files only from the folders next to
-// it. This copies .next/static and public there first (the build never does), then starts it with
-// PORT (default 3007) and HOSTNAME (default 0.0.0.0).
+// The standalone server serves static files only from the folders next to server.js, and the build never copies
+// them. This copies .next/static and public there, then starts it with PORT (default 3007) and HOSTNAME.
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";

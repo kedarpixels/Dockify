@@ -8,10 +8,6 @@ import { ProjectCard } from "@/components/projects/project-card";
 import { Empty } from "@/components/ui/empty";
 import type { ProjectCard as ProjectSummary } from "@/lib/derive";
 
-/**
- * The Overview's project strip: the Projects page's card (carousel variant), three to a view,
- * snapping, with arrow keys in the head while it can scroll and the way to the full list beside them.
- */
 export function ProjectCarousel({ projects, now, empty }: { projects: ProjectSummary[]; now: number; empty?: string }) {
   const track = useRef<HTMLDivElement>(null);
   const prevKey = useRef<HTMLButtonElement>(null);
@@ -51,7 +47,6 @@ export function ProjectCarousel({ projects, now, empty }: { projects: ProjectSum
     el.scrollBy({ left: dir * (cell.offsetWidth + 1), behavior: reduced ? "auto" : "smooth" });
   };
 
-  // The arrows show only while the strip can scroll; at either end the key that cannot move is disabled.
   const movable = projects.length > 0 && !(edges.start && edges.end);
 
   return (

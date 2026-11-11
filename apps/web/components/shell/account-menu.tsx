@@ -18,10 +18,7 @@ const roleLabel = (role: string) => (role.toLowerCase() === "viewer" ? "Viewer" 
 
 type Viewer = NonNullable<ShellData["viewer"]>;
 
-/*
- * Sign out through the signOut server action, which revokes the session on the API and clears the
- * cookie before the login page opens. A failure stays on screen: the session is still live.
- */
+/* A failure stays on screen: the session is still live. */
 async function signOutHere(preview: boolean) {
   if (!preview) {
     const r = await settle(signOut());
@@ -33,12 +30,7 @@ async function signOutHere(preview: boolean) {
   window.location.assign("/login?reason=signed-out");
 }
 
-/**
- * The account rows, shared by the sidebar popover (as a menu) and the phone menu (inline). The theme
- * lives on the top bar's switch only. `menu` makes the list an ARIA menu, described by `describedBy`
- * (the popover's name and email); `onPick` runs after any row is used. `pages={false}` leaves out
- * Settings and Activity, for a menu that already lists them as pages.
- */
+/** `menu` makes the list an ARIA menu described by `describedBy`. `pages={false}` leaves out Settings and Activity. */
 export function AccountRows({
   preview = false,
   menu = false,
@@ -100,13 +92,7 @@ export function AccountRows({
   );
 }
 
-/**
- * Sidebar account row: avatar, name and role, then a "more" key that opens the account menu
- * above the row (or to the right of a collapsed sidebar, where the avatar is the trigger). A
- * pointer can open it from anywhere on the open row, the name included.
- * Menu keys: arrows, Home and End move; Escape closes; focus returns to the trigger, after a row
- * is used too, so it never falls to the page while a sign out or a navigation runs.
- */
+/** Focus returns to the trigger after a row is used too, so it never falls to the page while a sign out or navigation runs. */
 export function AccountMenu({ viewer, preview, collapsed }: { viewer: Viewer; preview?: boolean; collapsed: boolean }) {
   const path = usePathname();
   const headId = useId();

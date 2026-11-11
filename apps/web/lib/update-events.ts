@@ -1,16 +1,7 @@
 import type { UpdateJob } from "./pages/server-backups";
 
-/*
- * One Dockify update started outside the Server page (the security release popup or banner), handed
- * to the Server page's Updates card so it follows the job from its first step, and the card's news
- * about a job (each step, the end) sent back to the banner. In memory: a client-side navigation
- * keeps it, and after a reload the Server page reads the job from the API instead.
- *
- *   updateStarted(job)                   the popup started it, then goes to /server#updates
- *   useSyncExternalStore(subscribeStarted, startedUpdate, () => null)   the card adopts it
- *   updateChanged(job)                   the card's next step or end
- *   onUpdateJob(fn)                      the banner hears both
- */
+// Hands an update started outside the Server page to its Updates card, and the card's news back to the
+// banner. In memory: a client navigation keeps it; after a reload the page reads the job from the API.
 
 type Listener = (job: UpdateJob) => void;
 

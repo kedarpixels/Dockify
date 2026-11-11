@@ -1,5 +1,3 @@
-/* Shared pieces for the line illustrations. */
-
 import { Icon, type IconName } from "@/components/icon";
 
 export function HatchDefs({ id }: { id: string }) {

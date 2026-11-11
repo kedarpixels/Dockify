@@ -5,7 +5,6 @@ import { Spacer } from "@/components/ui/rule";
 
 export const metadata: Metadata = { title: "Page not found" };
 
-/* The dashboard's 404: the ruled frame, a centred pixel 404, and one way back. */
 export default function NotFound() {
   return (
     <main id="main" className="page">

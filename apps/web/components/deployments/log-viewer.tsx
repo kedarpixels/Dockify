@@ -15,21 +15,9 @@ import { LogKeys } from "@/components/logs/log-keys";
 import { useLogWindow } from "@/components/logs/use-log-window";
 import { lineLevel, LogChunk, matcher } from "./log-chunk";
 
-/*
- * Build log viewer. Lines render in chunks of 200 and only the chunks near the viewport are
- * mounted; the rest are spacers sized from measured (or estimated) heights, so a 5,000 line log
- * scrolls as smoothly as a 50 line one, wrapped or not. A chunk re-renders only when its own lines
- * change (LogChunk compares them), so appending re-renders the last chunk alone.
- *
- * Line numbers are permalinks: a click copies the page URL with #L120 and marks the line, and a
- * URL that arrives with #L120 opens scrolled to it. A selection across rows copies only the log
- * text, one line per row, without the gutter.
- *
- * The box is a log for assistive tech but not a live region: a build prints faster than speech, so
- * LogAnnouncer sums the new lines up every few seconds and says the outcome once.
- */
+// Only the chunks near the viewport are mounted; the rest are spacers sized from measured or
+// estimated heights. Not a live region: a build prints faster than speech, so LogAnnouncer sums it up.
 
-/** "#L120" -> 120. */
 const hashLine = (hash: string) => {
   const m = /^#L(\d+)$/.exec(hash);
   return m ? Number(m[1]) : undefined;
@@ -72,11 +60,9 @@ export function LogViewer({
   const count = Math.ceil(lines.length / CHUNK);
   // Chunks by index; one not measured yet is estimated from its lines.
   const { setHeights, onSize, offsets, total, first, last, before, after, scrollBox, centreRow, userScrolled } = useLogWindow(box, count, (i) => i, (i) => Math.min(CHUNK, lines.length - i * CHUNK) * ROW);
-  /** The lines of the mounted chunks only. */
   const shown: Array<{ index: number; lines: LogLine[] }> = [];
   if (count) for (let i = first; i <= last; i++) shown.push({ index: i, lines: lines.slice(i * CHUNK, (i + 1) * CHUNK) });
 
-  // Search hits, one per matching line, oldest first.
   const hits = useMemo(() => (re ? lines.filter((l) => re.test(l.text)).map((l) => l.seq) : []), [lines, re]);
   const activeSeq = hits.length ? hits[Math.min(active, hits.length - 1)] : undefined;
 
@@ -86,12 +72,10 @@ export function LogViewer({
     // A follow pin or a jump to a line never pauses or resumes the tail; only the user does.
     if (!userScrolled(el)) return;
     const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < ROW * 2;
-    // Scrolling up while live pauses the tail; scrolling back to the end resumes it.
     if (live && follow && !atEnd) onFollow(false);
     else if (live && !follow && atEnd && !q) onFollow(true);
   };
 
-  // Follow the tail: after every append or remeasure, pin the view to the last line.
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || !follow || !mounted) return;
@@ -124,7 +108,7 @@ export function LogViewer({
     scrollBox(el, Math.max(0, offsets[Math.floor(idx / CHUNK)]! + (idx % CHUNK) * ROW - el.clientHeight / 2));
   });
 
-  /** Moves the view to a line, pausing the tail first so the next append does not pull it away. */
+  /** Pauses the tail first so the next append does not pull the view away. */
   const reveal = (seq: number) => {
     if (follow) onFollow(false);
     jumpTo(seq);
@@ -136,8 +120,7 @@ export function LogViewer({
     if (activeSeq !== undefined) revealLater(activeSeq);
   }, [activeSeq]);
 
-  // The first error line, the usual place a failed build explains itself. Stderr alone does not
-  // count: BuildKit prints its normal progress there, so a clean build has no key to jump with.
+  // Stderr alone does not count: BuildKit prints its normal progress there.
   const firstError = useMemo(() => lines.find((l) => lineLevel(l) === "error")?.seq, [lines]);
   const [flash, setFlash] = useState<number | undefined>(undefined);
   const toError = () => {
@@ -146,8 +129,7 @@ export function LogViewer({
     setFlash(firstError);
   };
 
-  // #L120 in the URL marks that line and, once it exists (a live log may still be printing it),
-  // scrolls to it. A link to a line beats the open-at-error landing, so this runs first.
+  // A link to a line beats the open-at-error landing, so this runs first. A live log may still be printing the line.
   const opened = useRef(false);
   const [target, setTarget] = useState<number | undefined>(undefined);
   const wanted = useRef<number | undefined>(undefined);
@@ -169,7 +151,6 @@ export function LogViewer({
     revealLater(seq);
   }, [mounted, lines, target]);
 
-  // Opening a failed build lands on its first error.
   const openError = useEffectEvent(toError);
   useEffect(() => {
     if (!mounted || opened.current || !openAtError || firstError === undefined) return;
@@ -177,7 +158,6 @@ export function LogViewer({
     openError();
   }, [mounted, openAtError, firstError]);
 
-  // Clicking a line number copies its permalink and marks the line, without a page jump.
   const link = useCopy();
   const [linkSeq, setLinkSeq] = useState<number | undefined>(undefined);
   const copiedSeq = link.state === "done" ? linkSeq : undefined;
@@ -195,8 +175,7 @@ export function LogViewer({
     void link.copy(url);
   };
 
-  // A selection across rows copies only the text column. A selection inside one row is left to
-  // the browser.
+  // A selection across rows copies only the text column, without the gutter.
   const onCopy = (e: React.ClipboardEvent) => {
     const sel = window.getSelection();
     if (!sel || !box.current || sel.isCollapsed || !sel.rangeCount) return;
@@ -206,21 +185,18 @@ export function LogViewer({
     e.preventDefault();
   };
 
-  // While follow is paused on a live log, count what printed since, for the "N new lines" pill.
   const paused = live && !follow;
   const [pausedAt, setPausedAt] = useState<number | null>(null);
   if (paused && pausedAt === null) setPausedAt(lines.length);
   if (!paused && pausedAt !== null) setPausedAt(null);
   const fresh = paused && pausedAt !== null ? Math.max(0, lines.length - pausedAt) : 0;
 
-  // The error row flash fades after a moment.
   useEffect(() => {
     if (flash === undefined) return;
     const t = setTimeout(() => setFlash(undefined), 2400);
     return () => clearTimeout(t);
   }, [flash]);
 
-  /** Moves to the next or previous hit; a single hit is brought back into view. */
   const step = (by: number) => {
     if (!hits.length) return;
     const next = (Math.min(active, hits.length - 1) + by + hits.length) % hits.length;
@@ -228,14 +204,13 @@ export function LogViewer({
     if (hits[next] === activeSeq) reveal(hits[next]!);
   };
 
-  /** Enter in the search moves to the next hit, Shift Enter to the previous one. */
   const onFindKey = (e: React.KeyboardEvent) => {
     if (e.key !== "Enter" || e.target !== field.current) return;
     e.preventDefault();
     step(e.shiftKey ? -1 : 1);
   };
 
-  /** The log text for Copy all, joined only when it is pressed. */
+  /** Joined only when Copy all is pressed. */
   const allText = async () => lines.map((l) => l.text).join("\n");
 
   const download = () => downloadText(fileName, lines.map((l) => `${l.ts} ${l.stream === "stderr" ? "ERR" : "OUT"} ${l.text}`).join("\n"));

@@ -7,21 +7,15 @@ import { useChunkHeight } from "@/components/logs/use-log-window";
 import type { LogLine } from "@/lib/pages/deployments";
 import { useTimeFormat } from "@/lib/time-prefs";
 
-/**
- * A build log line's level from its own words. BuildKit prints its normal progress on stderr, so
- * the stream alone never makes a line an error here.
- */
+/** BuildKit prints its normal progress on stderr, so the stream alone never makes a line an error. */
 export const lineLevel = (l: LogLine) => inferLevel(l, { stderrIsError: false });
 
 const SPECIAL = /[.*+?^${}()|[\]\\]/g;
 
-/**
- * A case-insensitive matcher for the literal text `q`: regex characters in it match themselves.
- * Not global, so `test` keeps no state between lines; the group lets `split` keep each hit.
- */
+/** Not global, so `test` keeps no state between lines; the group lets `split` keep each hit. */
 export const matcher = (q: string) => (q ? new RegExp(`(${q.replace(SPECIAL, "\\$&")})`, "i") : null);
 
-/** The text with every hit of `re` wrapped in a mark; split puts the hits at the odd indexes. */
+/** `split` puts the hits at the odd indexes. */
 function highlight(text: string, re: RegExp | null, active: boolean) {
   if (!re) return text;
   const parts = text.split(re);
@@ -46,7 +40,6 @@ type ChunkProps = {
   flashSeq?: number;
   /** The line the URL points at (#L120). */
   targetSeq?: number;
-  /** The line whose link was just copied; its number shows a short "Link copied" tip. */
   copiedSeq?: number;
   index: number;
   onSize: (index: number, height: number) => void;
@@ -63,7 +56,7 @@ const sameChunk = (a: ChunkProps, b: ChunkProps) =>
   a.index === b.index &&
   a.onSize === b.onSize;
 
-/** Up to CHUNK rows, memoised so an append re-renders only the chunk it lands in. */
+/** Memoised so an append re-renders only the chunk it lands in. */
 export const LogChunk = memo(function LogChunk({
   lines,
   re,

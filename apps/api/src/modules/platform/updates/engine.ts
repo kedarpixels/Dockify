@@ -1,12 +1,6 @@
 /**
- * The update engine: the `update` job lane, leased, claimed only by the updater sidecar (and by
- * the `dockify update` CLI, which runs one job in a one-off updater container). The api enqueues;
- * the scheduler tick here checks the feed every 6 hours with jitter and enqueues automatic
- * installs in the maintenance window.
- *
- * Lease: a claim holds the job for LEASE_SECONDS and a heartbeat renews it while the job runs. If
- * the updater dies, the next claimant takes the job over once the lease lapses and resumes the
- * journal from its recorded phase (runner.ts). A job may be taken over MAX_ATTEMPTS times.
+ * The `update` job lane: the api enqueues, only the updater claims. A claim is a lease renewed by
+ * heartbeat; if the updater dies, the next claimant resumes the journal from its recorded phase.
  */
 import { defaultServerId, enqueue, enqueueTx, type Db, type Prisma, type ReleaseUpdate } from "@dockify/db";
 
@@ -23,14 +17,12 @@ export const MAX_ATTEMPTS = 3;
 export const WAIT_RETRY_MS = 60_000;
 export const UPDATE_DEDUPE_KEY = "self_update";
 
-/** The job payload. Everything else lives in the release_updates row (the journal). */
+/** Everything else lives in the release_updates row (the journal). */
 export interface SelfUpdatePayload {
   updateId: string;
 }
 
 export type Trigger = "manual" | "auto" | "cli";
-
-// ------------------------------------------------------------------ enqueueing (api, scheduler, CLI)
 
 export class UpdateRefused extends Error {
   readonly code: string;
@@ -72,8 +64,6 @@ export async function startUpdateTx(tx: Tx, input: StartInput): Promise<ReleaseU
   return row;
 }
 
-// ------------------------------------------------------------------ claiming
-
 export interface Claimed {
   id: string;
   payload: unknown;
@@ -81,12 +71,10 @@ export interface Claimed {
   maxAttempts: number;
 }
 
-/** Claims the oldest runnable update job (or exactly `jobId`), taking over a lapsed lease. */
 export async function claimUpdateJob(db: Db, holder: string, jobId?: string): Promise<Claimed | null> {
   return claimLaneJob(db, holder, "self_update", jobId);
 }
 
-/** The same claim for any job kind on the update lane. */
 export async function claimLaneJob(db: Db, holder: string, kind: "self_update" | "dashboard_domain_apply", jobId?: string): Promise<Claimed | null> {
   const rows = jobId
     ? await db.$queryRaw<Claimed[]>`
@@ -117,8 +105,6 @@ export function heartbeat(db: Db, jobId: string, holder: string, every = HEARTBE
   return () => clearInterval(t);
 }
 
-// ------------------------------------------------------------------ recording
-
 const STEP_LABEL: Record<StepId, string> = {
   preflight: "preflight checks", pull: "pull and verify the signed images", backup: "back up the control-plane database",
   migrate: "run migrations", swap_api: "swap the api", swap_worker: "swap the worker", swap_web: "swap the web",
@@ -126,12 +112,9 @@ const STEP_LABEL: Record<StepId, string> = {
 };
 
 /**
- * Writes the journal with an upsert after every transition and one audit row per step. Around a
- * dump restore it keeps the update history: release_updates rows and the update audit rows are
- * read before the restore and written back after, so the record of what happened survives the
- * database going back in time. The running job comes back with them, still leased to its holder:
- * RESTORE_SCRIPT closes every update job in the dump, and a rollback's own job is newer than the dump,
- * but minutes of swaps are still to come and a crash during them must leave a job to take over.
+ * Around a dump restore the update history (release_updates and update audit rows) is read before
+ * and written back after, so it survives the database going back in time. The running job is
+ * written back too, still leased, so a crash during the swaps that follow leaves a job to take over.
  */
 export function dbRecorder(db: Db, meta: { trigger: Trigger; actorName: string | null; lease?: { job: Claimed; holder: string } }, log: (l: string) => void = (l) => console.log(`dockify-updater: ${l}`), now: () => Date = () => new Date()): UpdateRecorder {
   let kept: { updates: ReleaseUpdate[]; activity: Prisma.ActivityLogCreateManyInput[] } | null = null;
@@ -197,20 +180,17 @@ export function dbRecorder(db: Db, meta: { trigger: Trigger; actorName: string |
   };
 }
 
-// ------------------------------------------------------------------ running one job
-
 export interface ProcessDeps {
   db: Db;
   steps: UpdateSteps;
   holder: string;
   log?: (l: string) => void;
   now?: () => Date;
-  /** After a job settles: the offsite copy, notifications, and recreating the updater itself. */
   afterSettle?: (row: ReleaseUpdate, res: RunResult) => Promise<void>;
   heartbeatMs?: number;
 }
 
-/** Runs one claimed job to its next stop: settled, or waiting for a busy server. Idempotent on takeover. */
+/** Runs until the job settles or waits for a busy server. Idempotent on takeover. */
 export async function processJob(d: ProcessDeps, job: Claimed): Promise<RunResult> {
   const { db } = d;
   const p = job.payload as Partial<SelfUpdatePayload> | null;
@@ -268,8 +248,6 @@ export async function processJob(d: ProcessDeps, job: Claimed): Promise<RunResul
   return res;
 }
 
-// ------------------------------------------------------------------ notifications and the offsite copy
-
 export type NotifyEvent = "available" | "updated" | "failed" | "rolled_back";
 
 export interface UpdateNotifyPayload {
@@ -291,16 +269,15 @@ export async function enqueueNotify(db: Db, p: UpdateNotifyPayload): Promise<voi
   });
 }
 
-/** The security_notify job: one email to every admin about a newly seen security release (worker, security-notify.ts). */
+/** One email to every admin about a newly seen security release, sent by the worker. */
 export interface SecurityNotifyPayload extends PendingSecurity {
   /** The version this install ran when the updater first saw the release. */
   current: string;
 }
 
 /**
- * Records that the admins were told about `sec` and queues their email, in one transaction, so a
- * crash between the two neither loses the email nor sends it twice. The bell needs no delivery:
- * the api derives its notice from the stored feed (notices.ts).
+ * Marks the release as announced and queues the email in one transaction, so a crash neither loses
+ * the email nor sends it twice. The bell needs no delivery: the api derives it from the stored feed.
  */
 export async function noteSecurityRelease(db: Db, sec: PendingSecurity, current: string): Promise<void> {
   const payload: SecurityNotifyPayload = { ...sec, current: bare(current) };
@@ -313,10 +290,7 @@ export async function noteSecurityRelease(db: Db, sec: PendingSecurity, current:
 /** The nil uuid stands for "the control plane" where a backup row needs an app id. */
 export const CONTROL_PLANE_SOURCE = "00000000-0000-0000-0000-000000000000";
 
-/**
- * Once the stack is back, the pre-update dump goes to the backup destination too: a Backup row
- * with the dump's id, copied (encrypted, like every backup) by the worker from the shared volume.
- */
+/** The pre-update dump also goes offsite: the worker copies it, encrypted, from the shared volume. */
 export async function enqueueOffsiteCopy(db: Db, u: ReleaseUpdate): Promise<void> {
   if (!u.dumpBackupId || !u.dumpSha256) return;
   if (await db.backup.findUnique({ where: { id: u.dumpBackupId }, select: { id: true } })) return;
@@ -338,7 +312,6 @@ export async function enqueueOffsiteCopy(db: Db, u: ReleaseUpdate): Promise<void
   });
 }
 
-/** The default after-settle: audit the outcome, copy the dump offsite, notify. */
 export async function settleSideEffects(db: Db, u: ReleaseUpdate, res: RunResult): Promise<void> {
   const label = u.kind === "rollback" ? "rolled back to" : "updated to";
   await audit(db, {
@@ -358,8 +331,6 @@ export async function settleSideEffects(db: Db, u: ReleaseUpdate, res: RunResult
   await enqueueNotify(db, { event, version: u.version, from: u.fromVersion, error: res.error ?? null, updateId: u.id });
 }
 
-// ------------------------------------------------------------------ the scheduler tick
-
 export interface TickDeps {
   db: Db;
   env: UpdateEnv;
@@ -368,11 +339,7 @@ export interface TickDeps {
   log?: (l: string) => void;
 }
 
-/**
- * Every minute in the updater: check the feed when it is due (6 hours plus jitter), notify once per
- * new version, email every admin once per new security release, and enqueue an automatic install
- * when the policy and the window say so. Returns what it did, for the log and the tests.
- */
+/** Runs every minute in the updater. Returns what it did, for the log and the tests. */
 export async function schedulerTick(d: TickDeps): Promise<"unconfigured" | "idle" | "notified" | "installing" | "waiting" | "check-failed"> {
   const { db, env } = d;
   const now = d.now ?? new Date();
@@ -400,8 +367,7 @@ export async function schedulerTick(d: TickDeps): Promise<"unconfigured" | "idle
   const offer = chooseRelease(feed, current);
 
   let did: "idle" | "notified" = "idle";
-  // The first sight of a security release (from the signed feed only) emails every admin once,
-  // even when no release can be installed straight away.
+  // A security release emails every admin once, even when nothing can be installed yet.
   const sec = pendingSecurity(feed, current);
   if (sec && bare(inst.securityNoticeVersion ?? "") !== sec.version) {
     await noteSecurityRelease(db, sec, current);
@@ -440,14 +406,10 @@ export async function schedulerTick(d: TickDeps): Promise<"unconfigured" | "idle
   return "installing";
 }
 
-// ------------------------------------------------------------------ a live row with no job
-
 /**
- * Settles a journal row that says running with no open job behind it: nothing would ever finish it,
- * and it blocks every later update and the watchdog. It takes a crash in the moment between a restore
- * and its job coming back, or a row an older updater left stuck. It is settled, never replayed: the
- * row may be days old, and repeating its restore would discard everything since. `seen` holds when
- * each row was first found so, because a run with a live process crosses that moment in a second.
+ * Fails a row that says running with no open job behind it, which would block every later update.
+ * Never replayed: the row may be days old and repeating its restore would discard everything since.
+ * `seen` holds when each row was first found orphaned; a live run closes that gap within one lease.
  */
 export async function settleOrphans(d: { db: Db; log?: (l: string) => void; now?: Date }, seen: Map<string, number>): Promise<number> {
   const { db } = d;
@@ -476,8 +438,6 @@ export async function settleOrphans(d: { db: Db; log?: (l: string) => void; now?
   return settled;
 }
 
-// ------------------------------------------------------------------ starting an update or a rollback
-
 /** Validates `version` against the stored, verified feed and starts it. Shared by the api and the CLI. */
 export async function beginApply(tx: Tx, env: UpdateEnv, input: { version: string; trigger: Trigger; actorName: string | null }): Promise<ReleaseUpdate> {
   await lockUpdates(tx);
@@ -490,7 +450,7 @@ export async function beginApply(tx: Tx, env: UpdateEnv, input: { version: strin
   return startUpdateTx(tx, { kind: "update", trigger: input.trigger, actorName: input.actorName, from: current, version: picked.rel.version, manifestSha256: feed!.sha256 });
 }
 
-/** Starts a rollback of `updateId`: its pre-update dump and its previous images. Last good version only, within 7 days. */
+/** Rolls back `updateId` with its pre-update dump and previous images. Last update only, within ROLLBACK_DAYS. */
 export async function beginRollback(tx: Tx, env: UpdateEnv, input: { updateId: string; trigger: Trigger; actorName: string | null; now?: Date }): Promise<ReleaseUpdate> {
   await lockUpdates(tx);
   const rows = await tx.releaseUpdate.findMany({ orderBy: { startedAt: "desc" }, take: 50 });
@@ -500,9 +460,8 @@ export async function beginRollback(tx: Tx, env: UpdateEnv, input: { updateId: s
     throw new UpdateRefused(`Only the last update, within ${ROLLBACK_DAYS} days and with its pre-update dump, can be rolled back`, "ROLLBACK_UNAVAILABLE");
   }
   const u = rows.find((r) => r.id === input.updateId)!;
-  // The recorded fromImages is a DB field, so a tampered row could pin an attacker image through
-  // the updater (which holds docker.sock). Pin the signed feed's own digests for that version
-  // instead, and refuse if the version is no longer verifiable.
+  // fromImages is a DB field, so a tampered row could pin an attacker image through the updater,
+  // which holds docker.sock. Pin the signed feed's digests for that version, or refuse.
   const inst = await tx.instance.findFirst({ select: { latestRelease: true } });
   const rel = storedFeed(inst?.latestRelease)?.releases.find((r) => bare(r.version) === bare(u.fromVersion));
   if (!rel) {

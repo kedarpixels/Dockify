@@ -1,8 +1,4 @@
-/**
- * One live link to one server's agent: an H2 session the worker is the client of. Every call is one
- * stream. PING every 15 s; two misses end the session, and with it every call on it. Answers are
- * capped, because a node's answers are hostile input.
- */
+/** Every call is one HTTP/2 stream. PING every 15 s; two misses end the session and every call on it. */
 import { constants as h2c, type ClientHttp2Session, type ClientHttp2Stream, type OutgoingHttpHeaders } from "node:http2";
 import { link as L } from "@dockify/contracts";
 import { writesAsBuffers } from "@dockify/engine";
@@ -81,7 +77,7 @@ export class LinkSession {
     });
   }
 
-  /** One stream, open for both directions. Throws LinkDownError when there is no session. */
+  /** Throws LinkDownError when there is no session. */
   stream(path: string, headers: OutgoingHttpHeaders = {}, method = "POST"): ClientHttp2Stream {
     if (!this.alive) throw new LinkDownError();
     if (this.infoOnly && path !== "/v1/info") throw new AgentRefusal("this server has not been approved");
@@ -94,7 +90,7 @@ export class LinkSession {
     return st;
   }
 
-  /** One JSON exchange. A 4xx is a refusal; anything else that fails is the link. */
+  /** A 4xx is a refusal; anything else that fails is the link. */
   async call<T>(method: "GET" | "POST", path: string, body?: unknown, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<T> {
     const st = this.stream(path, { "content-type": "application/json" }, method);
     return new Promise<T>((resolve, reject) => {
@@ -164,7 +160,6 @@ export class ServerLink {
     return !!this.session?.alive;
   }
 
-  /** The session already here, if there is one. */
   peek(): LinkSession | null {
     return this.session;
   }
@@ -178,7 +173,6 @@ export class ServerLink {
     if (this.session === session) this.session = null;
   }
 
-  /** Resolves once a live session is here. Rejects when the signal fires first. */
   whenUp(signal?: AbortSignal): Promise<void> {
     if (this.up) return Promise.resolve();
     return new Promise((resolve, reject) => {

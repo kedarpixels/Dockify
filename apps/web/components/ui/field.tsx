@@ -6,19 +6,8 @@ import { useSlashFocus } from "@/lib/hooks";
 import { cx } from "./cx";
 import { useSingleKeyShortcuts } from "./shortcuts";
 
-/*
- * Form fields. One skin: 36px, radius 10, the soft mass fill with an inset line ring, the shared
- * blue focus ("Field focus" in foundation.css) and a red ring when invalid.
- *
- *   <Field label="Domain" hint="Point an A record at this server first." error={err}>
- *     {(ids) => <TextInput ids={ids} value={host} onChange={(e) => setHost(e.target.value)} />}
- *   </Field>
- *   <SearchField value={q} onChange={setQ} label="Search deployments" placeholder="Search by app, branch or commit" />
- *
- * Controls that are not text inputs take the same `ids`: Select, DateTimePicker, Switch and
- * Segmented put the hint or error on aria-describedby and the error on aria-invalid, and Select and
- * Segmented name themselves by the visible label (labelId).
- */
+// Controls that are not text inputs take the same `ids`: Select, DateTimePicker, Switch and
+// Segmented put the hint or error on aria-describedby and the error on aria-invalid.
 
 /** Wiring a Field hands to its control: the id its label points at, the label's own id, the note id, the invalid flag. */
 export interface FieldIds {
@@ -29,10 +18,7 @@ export interface FieldIds {
   invalid: boolean;
 }
 
-/**
- * Label, the control, then a muted hint or an inline error (the error replaces the hint and is
- * announced). `children` is a render prop that receives the ids, or a plain node that wires itself.
- */
+/** The error replaces the hint and is announced. `children` is a render prop that receives the ids, or a plain node that wires itself. */
 export function Field({
   label,
   hint,
@@ -73,10 +59,9 @@ export function Field({
   );
 }
 
-/** Props a Field-wired control accepts on top of its native ones. */
 type Wired = { ids?: FieldIds; invalid?: boolean };
 
-/** 36px text input in the field skin. Spread `ids` from a Field, or set `id` and `invalid` yourself. */
+/** Spread `ids` from a Field, or set `id` and `invalid` yourself. */
 export function TextInput({ ids, invalid, className, ...rest }: React.ComponentProps<"input"> & Wired) {
   const bad = invalid ?? ids?.invalid;
   return (
@@ -90,7 +75,6 @@ export function TextInput({ ids, invalid, className, ...rest }: React.ComponentP
   );
 }
 
-/** Multi-line field in the same skin. Grows with `rows`; resizes vertically only. */
 export function TextArea({ ids, invalid, className, rows = 4, ...rest }: React.ComponentProps<"textarea"> & Wired) {
   const bad = invalid ?? ids?.invalid;
   return (
@@ -105,16 +89,8 @@ export function TextArea({ ids, invalid, className, rows = 4, ...rest }: React.C
   );
 }
 
-/**
- * The one search field: glyph, input, then the "/" key hint while empty or a clear key once there
- * is a query. "/" focuses it from anywhere (see useSlashFocus) while single-key shortcuts are on.
- * Esc clears the query and keeps the focus; an Esc in an empty field is left to whatever holds it,
- * so a dialog around it closes. Toolbar and in-card searches are both 36px.
- *
- * The input is named by `label` alone: extras (a match count, previous and next keys) and the
- * clear key sit beside it in the box, never inside a <label>, so they do not join its name. Point
- * `describedBy` at a match count to have it read with the field.
- */
+// Esc clears the query and keeps the focus; an Esc in an empty field is left to whatever holds it.
+// Extras and the clear key sit beside the input, never inside a <label>, so they do not join its name.
 export function SearchField({
   value,
   onChange,
@@ -143,7 +119,7 @@ export function SearchField({
   invalid?: boolean;
   /** Id of a note read with the field, such as the "3 of 12" match count. */
   describedBy?: string;
-  /** Extra keys, such as Enter for next match. Esc stays owned by the field. */
+  /** Esc stays owned by the field. */
   onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
   /** Inline extras at the right, before the clear key, such as a match count. */
   children?: React.ReactNode;

@@ -4,11 +4,7 @@ import { DomainFlow, useDashboardDomain } from "@/components/dashboard-domain/fl
 import { Callout } from "@/components/ui/callout";
 import { AuthHead } from "./auth-head";
 
-/**
- * Setup's last, optional step on an install that started on its sslip.io name: use your own domain. The
- * same flow as Settings, Instance. Skipping loses nothing: the address the server started on keeps
- * working, and the domain can be set later in Settings.
- */
+/** Optional: skipping loses nothing, the address the server started on keeps working. */
 export function DomainSetupStep({ step, onSkip, preview }: { step: [number, number]; onSkip: () => void; preview: boolean }) {
   const { state, setState, error } = useDashboardDomain();
   return (

@@ -12,20 +12,8 @@ import { endSession } from "@/lib/hooks";
 import { isStepUpCancel, isStepUpRefusal, STEP_UP_CANCELLED, STEP_UP_MESSAGE, STEP_UP_MINUTES } from "@/lib/step-up";
 import { confirmStepUp, stepUpMethod, type StepUpAnswer, type StepUpMethod } from "./actions";
 
-/*
- * "Confirm it is you": the one step-up for every elevated write (apps/api/src/policy.ts).
- *
- *   const r = await elevate(() => mutate(m), { what: "Opening a terminal" });
- *
- * `elevate` runs the call. When the answer is the step-up refusal (lib/step-up.ts) it asks for the
- * authenticator code when two-factor is on, else the password, then runs the call once more. A
- * closed dialog resolves to the refusal marked cancelled, which `report` (lib/feedback.ts) leaves
- * without a toast. The API decides when a step-up is needed and how long it holds (5 minutes); the
- * page never guesses. Concurrent writes that hit the refusal share one question.
- *
- * The dialog lives in a small root of its own, made on first use, so any client code can ask,
- * a plain helper such as `mutate` included, on every page, with nothing to mount.
- */
+// The API decides when a step-up is needed and how long it holds; the page never guesses.
+// The dialog lives in a root of its own, made on first use, so any client code can ask with nothing to mount.
 
 export interface StepUpOptions {
   /** What needs the check, as the dialog says it: "Opening a terminal", "Changing variables". */
@@ -40,8 +28,6 @@ interface Question {
   method: StepUpMethod | null;
   resolve: (ok: boolean) => void;
 }
-
-/* -------------- The question, shared by every caller on the page -------------- */
 
 let question: Question | null = null;
 let asking: Promise<boolean> | null = null;
@@ -58,11 +44,8 @@ const subscribe = (fn: () => void) => {
   };
 };
 
-/**
- * While the question is up it is the only popup on screen: `html.step-up-open` sets any dialog it
- * interrupted out of view (still mounted, so what was typed stays), and it returns once the check is
- * answered (foundation.css, "Step-up stands alone"). Owner rule: never two popups stacked.
- */
+// While the question is up it is the only popup on screen: `html.step-up-open` sets any dialog it
+// interrupted out of view, still mounted so what was typed stays (foundation.css).
 function setQuestion(next: Question | null) {
   question = next;
   if (typeof document !== "undefined") document.documentElement.classList.toggle("step-up-open", next !== null);
@@ -79,7 +62,7 @@ function mountHost() {
   host.render(<StepUpHost />);
 }
 
-/** Asks once; a caller arriving while the question is open waits for the same answer. */
+/** A caller arriving while the question is open waits for the same answer. */
 function ask(what: string): Promise<boolean> {
   if (asking) return asking;
   asking = (async () => {
@@ -92,17 +75,11 @@ function ask(what: string): Promise<boolean> {
   return asking;
 }
 
-/** The refusal, marked as closed by the operator. */
 function cancelled<R>(r: R): R {
   return r && typeof r === "object" ? { ...r, error: STEP_UP_MESSAGE, code: STEP_UP_CANCELLED } : r;
 }
 
-/* -------------- The API -------------- */
-
-/**
- * Runs `call`; on a step-up refusal asks, then runs it once more. Resolves with the last answer, or
- * with the refusal marked cancelled when the dialog was closed.
- */
+/** On a step-up refusal asks, then runs `call` once more. A closed dialog resolves with the refusal marked cancelled. */
 export async function elevate<R>(call: () => Promise<R>, opts: StepUpOptions = {}): Promise<R> {
   const first = await call();
   if (!isStepUpRefusal(first)) return first;
@@ -121,10 +98,7 @@ export async function elevateThrowing<T>(call: () => Promise<T>, opts: StepUpOpt
   }
 }
 
-/**
- * Asks before an elevated action that cannot be retried from here, such as a file download: true
- * at once inside a window this page opened, else after a confirmed check.
- */
+/** For an elevated action that cannot be retried from here, such as a file download. True at once inside a window this page opened. */
 export function ensureStepUp(opts: StepUpOptions = {}): Promise<boolean> {
   return Date.now() < freshUntil ? Promise.resolve(true) : ask(opts.what ?? DEFAULT_WHAT);
 }
@@ -141,8 +115,6 @@ export function useStepUp() {
   return STEP_UP;
 }
 
-/* -------------- The dialog -------------- */
-
 function StepUpHost() {
   const q = useSyncExternalStore(subscribe, () => question, () => null);
   if (!q) return null;
@@ -153,10 +125,7 @@ function StepUpHost() {
   return <StepUpDialog key={q.id} what={q.what} method={q.method} onDone={done} />;
 }
 
-/**
- * The question itself. With two-factor on it takes the 6-digit authenticator code, else the
- * password; when the account could not be read it takes either, and 6 digits reads as a code.
- */
+/** When the account's method could not be read it takes either, and 6 digits reads as a code. */
 function StepUpDialog({ what, method: known, onDone }: { what: string; method: StepUpMethod | null; onDone: (ok: boolean) => void }) {
   const [method, setMethod] = useState(known);
   const [secret, setSecret] = useState("");

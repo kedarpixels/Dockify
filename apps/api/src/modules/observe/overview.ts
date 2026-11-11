@@ -1,15 +1,4 @@
-/**
- * GET /api/v1/overview: counts, the latest deployments, every app as a resource tile, a daily deploy
- * trend for the calendar year (from Jan 1 through Dec 31, reaching back 59 days before today in
- * January and February so the 30 day comparisons stay whole), a 30 day app health strip from
- * app_uptime_days, and the host card. A token limited to some projects sees only those projects'
- * rows; host data is server-wide by nature.
- *
- * The trend counts calendar days in `trendZone` (the viewer's saved zone, else the `tz` their
- * browser sent, else UTC), the same days the dashboard groups its deployment lists by, so "today"
- * means one day everywhere on the page. The health strip stays on UTC days: app_uptime_days stores
- * whole UTC days, which cannot be split by another zone.
- */
+// GET /api/v1/overview. The deploy trend counts days in the viewer's zone; the health strip stays on UTC because app_uptime_days stores whole UTC days.
 import type { Db, Prisma } from "@dockify/db";
 import type { Actor } from "../../actor.ts";
 import { actorRef, deploymentSource, loadPeople } from "../../actor-view.ts";
@@ -37,8 +26,7 @@ export async function overview(db: Db, actor: Actor | null, now = Date.now(), op
   const depWhere: Prisma.DeploymentWhereInput = limit ? { app: { environment: { projectId: { in: limit } } } } : {};
   const healthStart = new Date(Math.floor(now / DAY_MS) * DAY_MS - (HEALTH_DAYS - 1) * DAY_MS);
 
-  // The viewer's saved zone decides which calendar days the trend counts, so only the trend query
-  // waits for that row; everything else runs alongside it.
+  // Only the trend query waits for the viewer row, whose zone picks the calendar days; everything else runs alongside it.
   const viewerRow = actor
     ? db.user.findUnique({ where: { id: actor.userId }, select: { name: true, email: true, avatarUrl: true, timeZone: true, hour12: true } })
     : Promise.resolve(null);
@@ -77,7 +65,6 @@ export async function overview(db: Db, actor: Actor | null, now = Date.now(), op
     db.instance.findUnique({ where: { id: 1 }, select: { name: true } }),
     viewerRow,
     zoneOf,
-    // The bell's update notices; no dependency on the rows above, so it rides the same batch.
     updateNotices(db, runningVersion(), now).catch(() => []),
     // Every active project, apps or not: a new project starts empty and must still be listed.
     db.project.findMany({ where: { ...projectWhere, archivedAt: null }, select: { slug: true, name: true }, orderBy: { slug: "asc" }, take: 500 }),
@@ -92,7 +79,6 @@ export async function overview(db: Db, actor: Actor | null, now = Date.now(), op
     : [];
   const last = lastIds.length ? await db.deployment.findMany({ where: { id: { in: lastIds.map((r) => r.id) } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], include: DEPLOYMENT_ROW }) : [];
 
-  // loadPeople needs these rows, hostSnapshot needs `instance`: both from the batch above, run in parallel.
   const [people, host] = await Promise.all([loadPeople(db, actor, [...recent, ...last]), hostSnapshot(db, instance?.name ?? "Dockify", now)]);
   const row = (d: (typeof recent)[number]) => ({
     id: d.id,
@@ -160,11 +146,9 @@ export async function overview(db: Db, actor: Actor | null, now = Date.now(), op
       ...(a.deployTarget === "vercel" ? { onVercel: true as const } : {}),
     })),
     deployTrend: [...trendMap].map(([date, v]) => ({ date, ...v })),
-    /** The IANA zone deployTrend's days are counted in. */
     trendZone: zone,
     appHealth: [...healthMap].map(([date, v]) => ({ date, ...v })),
     host,
-    // The bell's update notices; server-wide like the host card.
     system,
   };
 }

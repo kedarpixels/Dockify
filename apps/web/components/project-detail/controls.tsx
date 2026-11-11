@@ -10,19 +10,7 @@ import { report } from "@/lib/feedback";
 import type { Mutation, MutationResult } from "@/lib/pages/project-detail";
 import type { OverviewSource } from "@/lib/types";
 
-/* The project detail write kit: the same-origin mutation call, a tracked write toast, the section
-   switch guard, a switch row on the shared Switch and a checkbox row on the global checkbox.
-   Fields, dialogs, pending labels, copy keys and the unsaved-changes guard (leave-guard.tsx) are
-   the shared primitives in components/ui. */
-
-/**
- * The same question for a section strip that switches in place (no link, no unload): switching
- * away from `guarded` while it reports unsaved edits asks "Leave without saving" first. The tab
- * reports through `onDirty`; render `dialog` once.
- *
- *   const guard = useTabSwitchGuard(tab, "settings", setTab);
- *   <Tabs onChange={guard.change} ... />  <SettingsTab onDirty={guard.onDirty} />  {guard.dialog}
- */
+/** For a strip that switches in place: leaving `guarded` with unsaved edits asks first. Render `dialog` once. */
 export function useTabSwitchGuard<T extends string>(tab: T, guarded: T, setTab: (next: T) => void) {
   const [dirty, setDirty] = useState(false);
   const [asked, setAsked] = useState<T | null>(null);
@@ -53,7 +41,6 @@ export function useTabSwitchGuard<T extends string>(tab: T, guarded: T, setTab: 
   return { change, onDirty: setDirty, dialog };
 }
 
-/** What an elevated write needs the check for, as "Confirm it is you" says it. */
 const WHAT: Partial<Record<Mutation["type"], string>> = {
   "app.settings": "Changing app settings",
   "app.config": "Changing app settings",
@@ -76,18 +63,12 @@ async function post(m: Mutation): Promise<MutationResult> {
   return { ok: false, source, error: r.error, code: r.code, status: r.status };
 }
 
-/**
- * Sends one write through the same-origin proxy (app/api/project-detail). An elevated write the API
- * refuses for a missing step-up asks "Confirm it is you" and is sent once more. Never throws.
- */
+/** Never throws. An elevated write refused for a missing step-up asks "Confirm it is you" and is sent once more. */
 export function mutate(m: Mutation): Promise<MutationResult> {
   return elevate(() => post(m), { what: whatOf(m) });
 }
 
-/**
- * A write that takes time: a loading toast at once, replaced in place by the result. Unlike
- * toast.promise this keeps the description (and an action) on the finished toast.
- */
+/** Unlike toast.promise this keeps the description (and an action) on the finished toast. */
 export async function track(
   p: Promise<MutationResult>,
   m: { loading: string; success: string; error: string; what?: string; action?: (r: MutationResult) => { label: string; onClick: () => void } | undefined },
@@ -97,7 +78,6 @@ export async function track(
   return report(r, { id, success: m.success, error: m.error, what: m.what, action: r.ok ? m.action?.(r) : undefined });
 }
 
-/** A labelled row with a switch at its end, for settings like auto-deploy. */
 export function ToggleRow({
   title,
   body,
@@ -125,7 +105,6 @@ export function ToggleRow({
   );
 }
 
-/** A checkbox row: the global checkbox, a title and one muted line. The whole row toggles it. */
 export function CheckRow({
   checked,
   onChange,

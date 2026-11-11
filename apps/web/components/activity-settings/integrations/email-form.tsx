@@ -12,12 +12,7 @@ import { isStepUpCancel } from "@/lib/step-up";
 import { intFetch } from "./client";
 import { EMAIL_ERROR_FIELD, EMAIL_PORTS, EMAIL_PRESETS, emailFormErrors, keepsPassword, presetOfHost, tlsModeFor, type EmailFormField, type EmailTlsMode } from "./email-rules";
 
-/*
- * Connecting email, one form wherever it is asked: the Settings card puts it in a dialog, first-run
- * setup in its step. The caller supplies the frame and the keys; this holds the fields, their checks,
- * the test send and the save, which are elevated (a new session starts with a step-up, see
- * lib/pages/auth.ts). Saving tries the settings first; a refusal lands on the field it names.
- */
+/* One form for the Settings dialog and first-run setup: the caller supplies the frame and the keys. */
 
 const TLS_OPTIONS: { value: EmailTlsMode; label: string }[] = [
   { value: "implicit", label: "Implicit TLS" },
@@ -29,12 +24,7 @@ const PRESET_OPTIONS = [{ value: CUSTOM, label: "Another server" }, ...EMAIL_PRE
 
 type Elevate = ReturnType<typeof useStepUp>["elevate"];
 
-/**
- * Sends the test email to the signed-in user, with its toast; the caller's key shows the wait.
- * Elevated, as a save is. `body` is the form's unsaved values, whose failure the form places on the
- * field it names, so the toast only says it failed. Left out, the stored settings, with no field to
- * place it on, so the toast says why.
- */
+/** With `body` the form places the failure on its field and the toast only says it failed; without, the toast says why. */
 export async function sendTestEmail(elevate: Elevate, preview: boolean, body?: EmailInput): Promise<{ ok: boolean; code?: string; error?: string }> {
   const r = await elevate(() => intFetch<{ to: string }>("/email/test", { method: "POST", body: body ?? {} }), { what: "Sending a test email" });
   if (r.ok) {
@@ -47,11 +37,7 @@ export async function sendTestEmail(elevate: Elevate, preview: boolean, body?: E
   return { ok: false, ...(r.code ? { code: r.code } : {}), error: r.error };
 }
 
-/**
- * The form's state, fields and save. `editing` is what is stored already: its values fill the
- * fields, and an empty password keeps the stored one for the same host and username. A field that
- * opens the form focuses by `data-autofocus` in a dialog; `autoFocus` is for a form on the page itself.
- */
+/** An empty password keeps the stored one for the same host and username. `autoFocus` is for a form outside a dialog. */
 export function useEmailForm({ editing, onDone, preview, autoFocus = false }: { editing: EmailIntegration | null; onDone: (v: EmailIntegration) => void; preview: boolean; autoFocus?: boolean }) {
   const { elevate } = useStepUp();
   const [host, setHost] = useState(editing?.host ?? "");

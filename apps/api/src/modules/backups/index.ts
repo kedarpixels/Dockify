@@ -1,10 +1,5 @@
-/**
- * Backups: schedules, runs, restore, restore tests, orphans and download. Long work (dumps,
- * restores, tests) is queued on the worker's data lane; these handlers validate, queue and report.
- *
- * The route policies live in policy.ts; every handler here also re-checks role-independent facts (the app is a
- * service, the backup is restorable, a token's project limit).
- */
+// Long work (dumps, restores, tests) runs on the worker's data lane; these handlers validate, queue and report.
+// Route policies live in policy.ts. Handlers here re-check role-independent facts: the app is a service, the backup is restorable, a token's project limit.
 import { randomUUID } from "node:crypto";
 import { pipeline } from "node:stream";
 import { defaultServerId, enqueue, generateServiceCredentials, readSecretValue, sealServiceCredentials, type Db, type Prisma, type Tx } from "@dockify/db";
@@ -54,14 +49,12 @@ function fromRequestError(e: unknown): never {
   throw e;
 }
 
-/** How far back the Backups page's history reads, and the most runs of that window one answer carries. */
 const HISTORY_MS = 30 * 86_400_000;
 const HISTORY_CAP = 1000;
 
 /** Destination names, buckets, provider errors and the key fingerprint are an admin's (a read token acts as a Viewer). */
 const readsStorage = (a: Actor | null): boolean => !!a && roleAtLeast(a.role, "admin");
 
-/** A token limited to projects sees only those projects' backups. */
 function projectFilter(actor: Actor | null): string[] | null {
   return tokenProjectLimit(actor);
 }
@@ -73,7 +66,6 @@ async function instanceFingerprint(ctx: Ctx): Promise<{ fingerprint: string | nu
   return { fingerprint: raw ? backupKeyFingerprint(parseBackupKey(raw)) : null, createdAt: inst.backupKey.createdAt };
 }
 
-/** What every schedule in one answer is read against (map.ts ScheduleContext). */
 async function scheduleContext(ctx: Ctx, env: NodeJS.ProcessEnv, fingerprint?: string | null): Promise<ScheduleContext> {
   const s3 = (await ctx.db.backupDestination.findMany({ where: { type: "s3" }, include: { integration: true }, orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }] })) as DestinationRow[];
   const def = await ctx.db.backupDestination.findFirst({ where: { isDefault: true }, select: { type: true } });
@@ -142,12 +134,7 @@ async function configPayload(ctx: Ctx, fingerprint: { fingerprint: string | null
   };
 }
 
-/**
- * Creates a managed service app for a restore into a new database: fresh credentials sealed in the
- * shared JSON shape (@dockify/db), its named volume row, and the image tag the backup's server ran,
- * so the dump replays into the same Postgres or Redis version. The restore job then starts it
- * through the managed deploy (worker data/managed.ts), like every service.
- */
+/** For a restore into a new database. It takes the image tag the backup's server ran, so the dump replays into the same Postgres or Redis version. */
 export async function createServiceApp(tx: Tx, ring: Ctx["ring"], input: { environmentId: string; name: string; kind: ServiceKind; image?: string | null }): Promise<string> {
   if (input.kind === "s3") throw new HttpError(409, STORAGE_UNAVAILABLE, "KIND_UNAVAILABLE");
   // No two apps of an environment look alike: another one may already show this name.
@@ -195,7 +182,6 @@ async function createRestoreTarget(ctx: Ctx, backup: { kind: string; appId: stri
   }
 }
 
-/** What the worker's backup_delete job left on its own row. */
 function deleteResult(payload: unknown): { deleted: number; freedBytes: number; failed: number } {
   const r = (payload as { result?: { deleted?: unknown; freedBytes?: unknown; failed?: unknown } } | null)?.result;
   const n = (v: unknown) => (typeof v === "number" && v >= 0 ? v : 0);
@@ -212,7 +198,6 @@ async function waitForJob(db: Db, jobId: string, opts: BackupsOptions): Promise<
   }
 }
 
-/** What a finished restore answers, by the database that now holds the data. */
 async function restoreOutcome(ctx: Ctx, snap: Partial<AppSnapshot>, targetAppId: string, finishedAt: Date) {
   const target = await ctx.db.app.findUnique({ where: { id: targetAppId }, include: { environment: { include: { project: { select: { slug: true } } } } } });
   return {
@@ -233,7 +218,6 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
 
   // The control plane's own pre-update dumps belong to the Server page, not to a database's runs.
   const NOT_OWN: Prisma.BackupWhereInput = { kind: { not: "control_plane" } };
-  /** `take` null reads every match. */
   const listRuns = async (ctx: Ctx, where: Prisma.BackupWhereInput, take: number | null = 200) =>
     (await ctx.db.backup.findMany({ where: { AND: [where, NOT_OWN] }, include: BACKUP_INCLUDE, orderBy: { createdAt: "desc" }, take: take ?? undefined })).map((b) => toRun(b as unknown as BackupRowIn));
 
@@ -336,7 +320,6 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
       if (body.enabled !== undefined) next.enabled = body.enabled;
       if (next.enabled && !next.cron) next.cron = DEFAULT_CRON;
       if (tier === "local" && (body.destination === "local" || (next.enabled && !before.enabled)) && !c.localAllowed) {
-        // The same rule a manual run follows: this server's disk unless the owner turned it off.
         throw new HttpError(409, `Local backups are turned off on this server (${LOCAL_FLAG}=0). Remove that setting to allow them.`, "LOCAL_DISABLED", { field: "destination" });
       }
       if (tier === "offsite" && next.enabled && !c.s3.length) throw new HttpError(409, "Add an S3 compatible storage destination first", "NO_DESTINATION", { field: "destination" });
@@ -372,14 +355,12 @@ export function createBackupsHandlers(opts: BackupsOptions = defaultBackupsOptio
 
     "backups.run": async ({ ctx, actor, body, req }) => {
       let ids: string[];
-      // Databases of a bulk run that did not start, each with why.
       const skipped: string[] = [];
       const label = new Map<string, string>();
       if (body.resourceId) {
         ids = [(await loadServiceApp(ctx, actor, body.resourceId)).id];
       } else {
         const projects = projectFilter(actor);
-        // "Every enabled database" is every one with a tier turned on, as the dialog counts them.
         const apps = await ctx.db.app.findMany({
           where: { kind: { in: [...SERVICE_KINDS] }, backupSchedules: { some: { enabled: true } }, ...(projects ? { environment: { projectId: { in: projects } } } : {}) },
           select: { id: true, name: true, displayName: true, desiredState: true, environment: { select: { project: { select: { slug: true } } } } },

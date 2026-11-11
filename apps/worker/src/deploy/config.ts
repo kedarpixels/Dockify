@@ -1,9 +1,7 @@
 import { readSecret } from "@dockify/crypto";
 
 export interface DeployConfig {
-  /** Throwaway checkouts live under here: the work volume in production (DOCKIFY_BUILD_ROOT). */
   buildRoot: string;
-  /** Where the control plane's own disk guard reads free space. */
   diskPath: string;
   /** The dashboard hostname, never routable to a tenant. */
   dashboardHost: string;
@@ -11,11 +9,8 @@ export interface DeployConfig {
   buildTimeoutMs: number;
   releaseTimeoutMs: number;
   maxRepoBytes: number;
-  /** Ready deployments per app whose images the janitor keeps (rollback targets). */
   keepReady: number;
-  /** BuildKit cache cap the janitor prunes down to. */
   buildCacheBytes: number;
-  /** Deployments older than this beyond the kept ready ones are deleted with their logs. */
   deploymentRetentionDays: number;
   githubApiBase: string;
 }

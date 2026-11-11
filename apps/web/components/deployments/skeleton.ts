@@ -1,7 +1,4 @@
-/*
- * Loading shapes for the deployment pages, shared by the views and their route loading files. A
- * plain module (no "use client"), so a server loading.tsx reads the values themselves.
- */
+/* A plain module (no "use client"), so a server loading.tsx reads the values themselves. */
 
 import type { SkelCol } from "@/components/ui/skeleton";
 

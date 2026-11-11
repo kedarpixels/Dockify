@@ -12,7 +12,6 @@ import type { ControlPlaneBackup, JanitorStatus } from "@/lib/pages/server-backu
 import { useCan } from "@/lib/viewer";
 import { Countdown } from "./live";
 
-/** One row: a tile, a two-line label, then the reading at the right end. */
 function Row({ icon, title, sub, subTone, children }: { icon: IconName; title: string; sub: React.ReactNode; subTone?: "bad" | "warn"; children: React.ReactNode }) {
   return (
     <li className="soft-row srv-mt-row">
@@ -30,12 +29,7 @@ function Row({ icon, title, sub, subTone, children }: { icon: IconName; title: s
 
 const CPB_STATUS = { ready: "Backed up", running: "Running", failed: "Failed", none: "Never run" } as const;
 
-/**
- * What Dockify does to keep the disk from filling and to keep itself recoverable: the build cache
- * against its size cap (with a prune), the rollback images it pins, the next cleanup run, and the
- * backup of its own database. An API that reports neither gets no card at all, rather than a tall
- * empty one that says nothing about this server.
- */
+/** With nothing reported by the API there is no card at all, rather than a tall empty one. */
 export function MaintenanceCard({
   janitor,
   cpb,

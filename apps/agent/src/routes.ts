@@ -1,15 +1,7 @@
 /**
- * Every route file the worker sends is checked before it reaches the folder Traefik watches. A file
- * can send a site's traffic anywhere Traefik can reach, so a backend must be a tenant's reserved name,
- * or, on a server that holds the dashboard, one of the control plane's fixed addresses. Exact keys and
- * types, in the shape edge/routes.ts writes: JSON (which is valid YAML), only http.routers, services and
- * middlewares. Traefik reads nothing else from a file, and nothing else may ever get there.
- *
- * What lands on disk is what this module writes, never the caller's text, and it holds no template:
- * Traefik's file provider runs every file through Go's text/template before it decodes it, so a check of
- * the text it was sent says nothing about what it reads unless no action can be in it. And a directory
- * provider reads all its files as one: a file its decoder refuses can stop every route on the server, so
- * a type that could not have come from the worker never gets as far as the folder.
+ * Checks every route file before it reaches the folder Traefik watches: a backend must be a tenant's reserved
+ * name or, on the dashboard's server, a fixed control plane address. What lands on disk is this module's own
+ * rendering with no template action in it, because Traefik runs each file through Go's text/template first.
  */
 import { isIP } from "node:net";
 import { foldedKeyProblem, isObject, isStrings } from "./strict-json.ts";
@@ -49,10 +41,8 @@ const SYSTEM_FILES = ["__dashboard.yml", "__edge.yml", "__dashboard-next.yml", "
 const SYSTEM_KEY = /^(?:dashboard|dockify-)/;
 
 /**
- * The route a swap pins while it replaces a container made before route aliases existed: an address, for
- * that moment only, and only one a tenant's container holds right now on a tenant's network. Docker's
- * pools can be any private range, so no range says it: 10.x and 192.168.x are as often the host's own
- * LAN. Nothing else writes an address, and tenant networks have no IPv6, so IPv6 is never one.
+ * The address a swap pins while it replaces a container made before route aliases existed: only one a tenant
+ * container holds right now. Docker's pools overlap the host's LAN, so no private range can stand for it.
  */
 function allowedAddress(host: string, held: ReadonlySet<string> | undefined): boolean {
   if (isIP(host) !== 4) return false;
@@ -63,7 +53,6 @@ function allowedAddress(host: string, held: ReadonlySet<string> | undefined): bo
 }
 
 export interface RouteRules {
-  /** The control plane's upstreams a file on this server may name. Empty on a server without the dashboard. */
   upstreams: readonly string[];
   /** The addresses tenant containers hold now (tenantAddresses). Without it no address passes. */
   heldAddresses?: ReadonlySet<string>;
@@ -173,10 +162,7 @@ function checkNothingEmpty(v: unknown): void {
   }
 }
 
-/**
- * The text to write for a route file the worker could have written, or a RouteRefusal. It reads byte for
- * byte as edge/routes.ts rendered it, which that module relies on: an unchanged file is never rewritten.
- */
+/** Reads byte for byte as edge/routes.ts rendered it, which that module relies on: an unchanged file is never rewritten. */
 export function validateRouteFile(text: string, rules: RouteRules, fileName = "route.yml"): string {
   const system = fileName.startsWith("__");
   if (system && !SYSTEM_FILES.includes(fileName)) refuse(`${fileName.slice(0, 80)} is not one of the system files`);
@@ -234,8 +220,8 @@ const namesIn = (text: string): Array<[string, string]> => {
 };
 
 /**
- * Traefik keeps only the first of two routers of one name in a folder, and drops the rest with a warning,
- * so a name in two files takes one of them off the air, the dashboard's as readily as anyone's.
+ * Traefik keeps only the first of two routers of one name in a folder, so a name in two files takes one of
+ * them off the air, the dashboard's as readily as anyone's.
  */
 export function refuseCollidingNames(existing: Record<string, string>, writes: Record<string, string>, removes: readonly string[]): void {
   const owner = new Map<string, string>();
@@ -253,7 +239,6 @@ export function refuseCollidingNames(existing: Record<string, string>, writes: R
   }
 }
 
-/** The addresses tenant containers hold right now, on tenant networks, from a list of containers. */
 export function tenantAddresses(containers: ReadonlyArray<{ NetworkSettings?: { Networks?: Record<string, unknown> | null } | null }>): Set<string> {
   const out = new Set<string>();
   for (const c of containers) {

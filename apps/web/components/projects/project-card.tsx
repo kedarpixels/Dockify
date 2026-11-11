@@ -14,28 +14,19 @@ import { appTitle, plural } from "@/lib/format";
 import { commitHref, githubRepo } from "@/lib/git-links";
 import type { AppStatus, RecentDeployment } from "@/lib/types";
 
-/*
- * One project card and the last deployment block, shared by the Overview strip, the Projects grid
- * and list, and the app cards on a project's page, so a project and its latest build read the same
- * on every page: the status dot and message, then branch, hash and app, the time on the caption.
- *
- *   <ProjectCard p={p} now={now} variant="grid" />        Projects: identity, last deployment, apps
- *   <ProjectCard p={p} now={now} variant="carousel" />    Overview strip: the whole card opens it
- *   <LastDeployment d={app.lastDeployment} now={now} />   an app card, which is the app itself
- */
+/* Shared by the Overview strip, the Projects pages and a project's app cards, so a project and its latest build read the same everywhere. */
 
-/** When a deployment ran, relative with the moment in the tip; "Now" while it builds or deploys. */
+/** "Now" while it builds or deploys. */
 export function DeployTime({ d, now }: { d: RecentDeployment; now: number }) {
   return <When iso={d.createdAt} now={now} live={DEPLOY_TONE[d.status] === "live"} tipAlign="end" className="num" />;
 }
 
-/** A deployment's round status dot, its state spoken and in the tip. */
 export function DeployDot({ d }: { d: RecentDeployment }) {
   const tone = DEPLOY_TONE[d.status];
   return <span className={tone === "live" ? "dot pulse" : "dot"} data-tone={tone} role="img" aria-label={DEPLOY_LABEL[d.status]} data-tip={DEPLOY_LABEL[d.status]} />;
 }
 
-/** Branch, short hash, then the app when the card is not the app itself. The hash opens the commit. */
+/** The hash opens the commit. */
 export function DeployRefs({ d, withApp = false }: { d: RecentDeployment; withApp?: boolean }) {
   const repo = githubRepo(d.repo);
   return (
@@ -55,7 +46,6 @@ export function DeployRefs({ d, withApp = false }: { d: RecentDeployment; withAp
   );
 }
 
-/** The card section: "Last deployment" and its time, the dot and message, then the refs. */
 export function LastDeployment({ d, now, withApp = false }: { d?: RecentDeployment; now: number; withApp?: boolean }) {
   return (
     <div className="pj-sec pj-last">
@@ -80,11 +70,7 @@ export function LastDeployment({ d, now, withApp = false }: { d?: RecentDeployme
   );
 }
 
-/**
- * The line under a project's name: how many apps it holds, and how many environments when its apps
- * sit in more than one (lib/environments.ts). Words, not a row of tags: a project is a folder of
- * apps, and its environments are a detail of it.
- */
+/** Environments show only when the project's apps sit in more than one (lib/environments.ts). */
 export function Envs({ envs, apps }: { envs: string[]; apps: number }) {
   return (
     <span className="two-sub num">
@@ -114,12 +100,7 @@ function Pips({ apps }: { apps: ProjectSummary["apps"] }) {
 /** How many apps a card lists before it hands over to the project page. */
 const SHOWN = 5;
 
-/**
- * A ruled project cell: the identity head (40px icon, name, environments, state), the last
- * deployment, on the grid its apps too, then the running count over a ruled foot. The grid card
- * opens the project from its head (its app rows open each app); the carousel card is one link.
- * The name is an h2 on the Projects page and an h3 under the Overview's Projects card.
- */
+/** The grid card opens the project from its head; the carousel card is one link. The name is an h2 on Projects, an h3 on the Overview. */
 export function ProjectCard({ p, now, variant, delay = 0 }: { p: ProjectSummary; now: number; variant: "grid" | "carousel"; delay?: number }) {
   const href = `/projects/${p.slug}`;
   const H = variant === "carousel" ? "h3" : "h2";
@@ -169,9 +150,7 @@ export function ProjectCard({ p, now, variant, delay = 0 }: { p: ProjectSummary;
               ))}
               {p.apps.length > SHOWN ? (
                 <li>
-                  {/* A row of the list like the apps above it (owner: no empty-looking row): a quiet
-                      tile where their icons sit, the label in the names' column, an arrow where
-                      their status dots are. It opens the project, where every app is listed. */}
+                  {/* Shaped like the app rows above it, so it never looks like an empty row. It opens the project, where every app is listed. */}
                   <Link href={href} className="soft-row pj-app pj-app-more">
                     <span className="pj-more-tile" aria-hidden="true">
                       <Icon name="more" size={12} />

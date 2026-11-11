@@ -13,9 +13,7 @@ interface SectionMeta {
   icon: IconName;
 }
 
-/** The sub-nav: what is yours (Account), then what the whole instance shares (Workspace). Instance
-    reset is not here on purpose: it is `sudo dockify admin factory-reset` over SSH, so no web session
-    can ever erase the server. */
+/** Instance reset is not here on purpose: it is an SSH command, so no web session can erase the server. */
 export const SECTION_GROUPS: Array<{ label: string; sections: SectionMeta[] }> = [
   {
     label: "Account",
@@ -47,10 +45,7 @@ interface TabMeta {
   group: string;
 }
 
-/**
- * The sections too long for the fixed panel, split into segments behind one strip. The open segment
- * lives in ?tab=, and the first one is the bare URL, so every older ?section= link still lands well.
- */
+/** The open segment lives in ?tab= and the first one is the bare URL, so plain ?section= links still land. */
 export const SECTION_TABS: Partial<Record<SectionId, readonly TabMeta[]>> = {
   preferences: [
     { value: "time", label: "Time and date", group: "set-time" },
@@ -78,7 +73,7 @@ export const SECTION_TABS: Partial<Record<SectionId, readonly TabMeta[]>> = {
 
 export const firstTab = (section: SectionId): string | null => SECTION_TABS[section]?.[0]?.value ?? null;
 
-/** The segment to open: the one asked for when the section has it, else the first; null for a section without segments. */
+/** Null for a section without segments. */
 export const tabFor = (section: SectionId, asked: unknown): string | null => SECTION_TABS[section]?.find((t) => t.value === asked)?.value ?? firstTab(section);
 
 /** Where a #set-2fa style link lands, or null when the hash names no segmented block. */

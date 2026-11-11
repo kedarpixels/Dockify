@@ -1,13 +1,4 @@
-/**
- * GET /api/v1/resources: every container on the server as a resource row (apps, databases, caches
- * and storage) with its latest live sample. A token limited to some projects sees only those
- * projects' rows.
- *
- * POST /api/v1/resources: a bare Postgres or Redis in a project environment, created exactly as New
- * app creates a service (projects createApps: sealed credentials in the shared shape, its named
- * volume row) and then deployed through the worker's managed path (data/managed.ts) by its first
- * deploy job, queued here. Storage is refused: MinIO no longer publishes an image.
- */
+// GET lists every container on the server as a resource row with its latest live sample. POST creates a bare Postgres or Redis exactly as New app creates a service.
 import { defaultCpuCores, projects as P } from "@dockify/contracts";
 import os from "node:os";
 import type { Db, Prisma } from "@dockify/db";
@@ -59,8 +50,7 @@ export function toResourceRow(app: AppRow, sample: { cpuPct: number | null; memo
       reservedBytes: (app.memoryLimitMb ?? DEFAULT_MEMORY_MB) * 1024 * 1024,
     },
     volume: volume ? { name: volume.name, sizeBytes: Number(volume.sizeBytes ?? 0n) } : null,
-    // When the container itself last started, as the worker read it from the daemon: a restart or a
-    // crash resets it, which a deploy's finish time never did. Null while the app is not up.
+    // The container's own start time, which a restart or a crash resets. Null while the app is not up.
     startedAt: UP.has(app.status) && app.containerStartedAt ? app.containerStartedAt.toISOString() : null,
   };
 }
@@ -70,7 +60,6 @@ const APP_INCLUDE = {
   volumes: { select: { name: true, sizeBytes: true } },
 } as const;
 
-/** The latest raw sample per app in the freshness window, reduced from one query (no N+1). */
 async function latestSamples(db: Db, appIds: string[], now: number): Promise<Map<string, { cpuPct: number | null; memoryBytes: bigint | null }>> {
   if (appIds.length === 0) return new Map();
   const rows = await db.metricSample.findMany({

@@ -17,17 +17,8 @@ import type { RouteStore } from "../server/runtime.ts";
 import { checkTls, type TlsProbe } from "./tls.ts";
 
 /**
- * Edge job handlers, one table for what acts on a server and one for what reaches none. Kinds:
- *
- *   edge_route_sync  { appId }                                  rewrite one app's route file
- *   reconcile        {}                                         system routes, orphan sweep, a
- *                                                               route sync for every app here, the
- *                                                               tunnel's api rule
- *   edge_cf_wire     { domainId, ruleIntent? }                  record + tunnel rule for a domain
- *   edge_cf_unwire   { hostname, zoneId, recordId, tunnelId }   remove exactly what was recorded
- *   dns_check        { domainId } or {}                         DNS and TLS state, one or all
- *   dashboard_domain see edge/dashboard.ts
- *
+ * Payloads: edge_route_sync { appId }; edge_cf_wire { domainId, ruleIntent? }; edge_cf_unwire
+ * { hostname, zoneId, recordId, tunnelId }; dns_check { domainId } or {} for all; reconcile {}.
  */
 
 /** Where an app's route sends traffic: a container name only that container answers to, on its network. */
@@ -36,41 +27,30 @@ export interface RouteTargetInfo {
   network: string;
 }
 
-/** What the handlers that reach no server need. */
 export interface EdgeGlobalDeps {
   db: Db;
   vault: SecretVault;
   settings: EdgeSettings;
-  /** The route files of the server the dashboard answers on, and that server's ingress. */
   routes: RouteStore;
   mode: EdgeMode;
   dns: DnsLookup;
-  /** The zone's own nameservers, for the dashboard's new name (edge/dashboard.ts). */
   zoneDns?: ZoneDns;
   tls: TlsProbe;
-  /**
-   * The ownership probe (edge/probe.ts), direct mode: asks the domain itself whether it reaches this
-   * server, for a domain whose DNS names a proxy. Absent: DNS alone decides.
-   */
+  /** Direct mode: asks the domain itself whether it reaches this server. Absent: DNS alone decides. */
   probe?: (host: string, domainId: string) => Promise<ProbeResult>;
   fetch?: Fetch;
   now?: () => Date;
 }
 
-/** One server's: its route files, its ingress and its containers. */
 export interface EdgeDeps extends EdgeGlobalDeps {
   serverId: string;
   /**
-   * The app's container as a route target: its route alias, or for a container made before route
-   * aliases existed, the app's canonical name (dk-<app id>, which only the live container holds
-   * outside a deploy). Null when the app has no container. Owned by the deploy module.
+   * The app's route alias, or for a container made before route aliases existed, the canonical name
+   * dk-<app id>. Null when the app has no container.
    */
   routeTarget: (appId: string) => Promise<RouteTargetInfo | null>;
-  /** The port the image of the app's container says it listens on, as a deploy reads it. Null when it says none or there is no container. */
   imagePort: (appId: string) => Promise<number | null>;
-  /** A running preview container's name for a preview member, for re-keying an old route. */
   previewTarget?: (previewDeploymentId: string) => Promise<RouteTargetInfo | null>;
-  /** Joins Traefik to a network so it can reach a backend there. Idempotent. */
   joinProxy: (network: string) => Promise<void>;
 }
 
@@ -109,9 +89,8 @@ async function system(db: Db, action: string, verb: string, target: { type: stri
 }
 
 /**
- * Queues a route sync for one app on the deploy lane, where it runs between deploys and never
- * during a swap. Collapses onto a queued sync only while nobody has claimed it yet, so a change
- * made while one already runs still gets its own pass (the api's enqueueEdge does the same).
+ * Runs on the deploy lane, so never during a swap. Collapses onto a queued sync only while nobody has
+ * claimed it, so a change made while one already runs still gets its own pass.
  */
 export async function enqueueRouteSync(db: Db, appId: string): Promise<void> {
   const key = `edge.route:${appId}`;
@@ -127,14 +106,8 @@ export async function enqueueRouteSync(db: Db, appId: string): Promise<void> {
 }
 
 /**
- * Brings one app's route file in line with the database and its live container. The hosts are the
- * app's domains whose DNS points here (edge/hosts.ts), primary first. The backend is the live
- * container's route alias, never an address, so this is safe to run at any time: at
- * boot, on a Docker start event, on every reconcile.
- *
- * While a deploy of the app is under way its swap owns the backend (the canonical name may hold a
- * new container that is not ready yet), so only the hosts are brought up to date and the backend
- * stays what the file says.
+ * The backend is the live container's route alias, never an address, so this is safe to run at any
+ * time. While a deploy of the app is under way its swap owns the backend: only the hosts are updated.
  */
 export async function syncAppRoute(deps: EdgeDeps, appId: string): Promise<WriteResult | "kept"> {
   const { db, settings, routes, mode } = deps;
@@ -146,12 +119,10 @@ export async function syncAppRoute(deps: EdgeDeps, appId: string): Promise<Write
       domains: { select: { hostname: true, dnsStatus: true }, orderBy: { createdAt: "asc" } },
     },
   });
-  // Deleted, not meant to run, or by now on another server: this server has nothing to route for it.
   if (!app || app.serverId !== deps.serverId || app.desiredState !== "running" || !(ROUTED_KINDS as readonly string[]).includes(app.kind)) {
     await removeRoute(routes, appId);
     return "removed";
   }
-  // The dashboard's own address, a domain being set up for it and the addresses it left: never a tenant's.
   const reserved = reservedHosts(settings.dashboardHost, await dashboardReservedHosts(db));
   const primary = app.primaryDomain?.hostname;
   const domains = primary ? [...app.domains.filter((d) => d.hostname === primary), ...app.domains.filter((d) => d.hostname !== primary)] : app.domains;
@@ -178,9 +149,8 @@ export async function syncAppRoute(deps: EdgeDeps, appId: string): Promise<Write
 }
 
 /**
- * The deploy's rule for an app with a domain and no port, on the container already running: the port
- * its image says it listens on settles the app's, for good. An image that says none leaves the app with
- * no port and no route, and the domain's row says so. A person's own value, saved meanwhile, stands.
+ * The port the running container's image says it listens on settles the app's, for good. An image that
+ * says none leaves the app with no route. A person's own value, saved meanwhile, stands.
  */
 async function learnPort(deps: EdgeDeps, app: { id: string; name: string }): Promise<number | null> {
   const port = await deps.imagePort(app.id);
@@ -192,10 +162,8 @@ async function learnPort(deps: EdgeDeps, app: { id: string; name: string }): Pro
 }
 
 /**
- * Re-points every route at its container by name, then clears what can no longer be routed. Runs
- * once at worker boot, before the job lanes start, so a host reboot (new container addresses)
- * leaves no route on an old address, including routes written by a version that used addresses.
- * Returns how many apps were synced and how many preview routes were re-keyed or dropped.
+ * Runs once at worker boot, before the job lanes start, so a host reboot (new container addresses)
+ * leaves no route on an old address.
  */
 export async function resyncRoutes(deps: EdgeDeps, log: (msg: string, extra?: object) => void = () => {}): Promise<{ apps: number; previews: number }> {
   const apps = await deps.db.app.findMany({ where: { kind: { in: [...ROUTED_KINDS] }, ...appsHere(deps.serverId) }, select: { id: true } });
@@ -236,7 +204,7 @@ async function wire(deps: EdgeGlobalDeps, job: ClaimedJob): Promise<void> {
   const domainId = uuidField(payload, "domainId");
   const domain = await db.domain.findUnique({ where: { id: domainId }, select: { id: true, hostname: true, cfRecordId: true } });
   if (!domain) return; // deleted before the job ran: nothing to wire
-  if (domain.cfRecordId) return; // already wired
+  if (domain.cfRecordId) return;
   const label = { type: "domain", id: domain.id, label: domain.hostname };
   if (settings.mode.ingress !== "cloudflare_tunnel") return;
 
@@ -310,22 +278,15 @@ async function unwire(deps: EdgeGlobalDeps, job: ClaimedJob): Promise<void> {
   await system(db, "domain.cloudflare.unwire", "removed Cloudflare wiring for", label, !outcome.ok, outcome.message);
 }
 
-/** This server's addresses for the DNS check: the configured ones, plus the dashboard host's in direct mode. */
 export function addressesFor(deps: Pick<EdgeGlobalDeps, "settings" | "dns">): Promise<ServerAddresses> {
   const s = deps.settings;
   return serverAddresses(deps.dns, { serverIpv4: s.serverIpv4, serverIpv6: s.serverIpv6 ?? null, dashboardHost: s.mode.ingress === "direct_tls" ? s.dashboardHost : null });
 }
 
 /**
- * One domain's DNS and TLS, written back to its row. A lookup that failed outright says nothing
- * about the records, so it never overwrites an earlier verdict: a resolver hiccup must not take a
- * live domain's router away. When the verdict moves into or out of "points here", the app's route
- * is synced, which adds or drops the domain's router.
- *
- * DNS is the fast path. In direct mode, a domain whose records name somewhere else (a proxy such as
- * Cloudflare's) or cannot be compared is then asked itself (edge/probe.ts); a domain that answers
- * with this server's value points here. Only then does it get a router, so Traefik asks Let's
- * Encrypt for a certificate only once the name leads to this server, proxy or not.
+ * A lookup that failed outright never overwrites an earlier verdict: a resolver hiccup must not take a
+ * live domain's router away. In direct mode a domain whose records name a proxy is asked itself
+ * (edge/probe.ts) and gets a router, and so a certificate request, only once it answers as this server.
  */
 export async function checkDomain(deps: Pick<EdgeGlobalDeps, "db" | "settings" | "dns" | "tls" | "now" | "probe">, domainId: string, here?: ServerAddresses): Promise<void> {
   const { db, settings } = deps;
@@ -336,7 +297,6 @@ export async function checkDomain(deps: Pick<EdgeGlobalDeps, "db" | "settings" |
   const dns = await checkDns(deps.dns, d.hostname, settings.mode.ingress, server);
   const keepVerdict = dns.lookupFailed && d.dnsStatus !== "unchecked";
   if (keepVerdict) {
-    // A live test domain stays live; one still waiting says what it is waiting for.
     await db.domain.update({ where: { id: d.id }, data: { dnsCheckedAt: now, ...(d.testDomain && d.dnsStatus !== "ok" ? { dnsDetail: SSLIP_DOWN_MESSAGE } : {}) } });
     return;
   }
@@ -351,7 +311,6 @@ export async function checkDomain(deps: Pick<EdgeGlobalDeps, "db" | "settings" |
     if (d.dnsStatus === "ok") await enqueueRouteSync(db, d.appId);
     return;
   }
-  // The records exist but do not name this server (or cannot be compared): ask the domain.
   // A test domain's records are sslip.io's answer: there is no proxy to ask through.
   const askDomain = !d.testDomain && settings.mode.ingress === "direct_tls" && !!deps.probe && !dns.lookupFailed && (dns.status === "mismatch" || dns.status === "unchecked");
   const probe = askDomain ? await deps.probe!(d.hostname, d.id).catch((e: unknown): ProbeResult => ({ status: "failed", detail: `The check could not run: ${e instanceof Error ? e.message : String(e)}` })) : null;
@@ -391,15 +350,10 @@ export async function checkDomain(deps: Pick<EdgeGlobalDeps, "db" | "settings" |
 
 export { dnsRecheckDelayMs };
 
-/** Due when never checked, or when its delay has passed since the last check. */
 export const dnsRecheckDue = (createdAt: Date, checkedAt: Date | null, now: number): boolean =>
   !checkedAt || now - checkedAt.getTime() >= dnsRecheckDelayMs(now - createdAt.getTime());
 
-/**
- * Queues a check for each domain still waiting for its DNS (anything but "points here") or for its
- * certificate, which follows the DNS by seconds to minutes, on the backoff above. Domains older than two days are left to the 15 minute sweep. At most `limit` per
- * call, longest waiting first.
- */
+/** Domains older than two days are left to the 15 minute sweep. Longest waiting first. */
 export async function queueWaitingDnsChecks(db: Db, now = Date.now(), limit = 25): Promise<number> {
   const rows = await db.domain.findMany({
     where: { OR: [{ dnsStatus: { not: "ok" } }, { tlsStatus: "pending" }], createdAt: { gt: new Date(now - 2 * 86_400_000) } },
@@ -422,11 +376,7 @@ export async function queueWaitingDnsChecks(db: Db, now = Date.now(), limit = 25
   return n;
 }
 
-/**
- * Tunnel mode, with Cloudflare connected: adds the dashboard's api rule to a tunnel made before
- * it existed. Without a stored Cloudflare token it cannot; `install.sh --upgrade --cf-token-file`
- * adds the same rule.
- */
+/** Needs a stored Cloudflare token; `install.sh --upgrade --cf-token-file` adds the same rule. */
 async function ensureTunnelApiRule(deps: EdgeDeps): Promise<void> {
   const { db, settings } = deps;
   if (settings.mode.ingress !== "cloudflare_tunnel") return;
@@ -456,8 +406,6 @@ export function edgeServerHandlers(deps: EdgeDeps): Record<string, EdgeJobHandle
       // Preview route files (pv-<id>) belong to the preview reconcile; routed ones are kept here.
       const previews = await db.previewDeployment.findMany({ where: { env: { status: { in: ["building", "ready", "failed", "asleep"] } }, app: appsHere(serverId) }, select: { id: true } });
       await sweepRoutes(deps.routes, [...apps.map((a) => a.id), ...previews.map((p) => `pv-${p.id}`)]);
-      // Every app's route again, on the deploy lane so a sync never runs during a swap: catches a
-      // container Docker restarted, a file edited by hand, a start event the worker missed.
       for (const a of apps) await enqueueRouteSync(db, a.id);
       await ensureTunnelApiRule(deps).catch(() => {});
       await syncDashboardEdge({ ...deps, tunnelLock: tunnelLock(deps.db) }).catch(() => {});

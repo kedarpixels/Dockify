@@ -1,12 +1,7 @@
 /**
- * Outgoing email from the api. Email is optional per install: nothing here sends unless the owner
- * connected a mail server in Settings, Integrations, and every caller keeps working without it.
- *
- * A message is rendered here, sealed whole (recipient, subject and body) into one email_message
- * secret, and handed to the worker as an email_send job that names only the secret id. So the
- * jobs table, its lastError and every log line stay free of addresses, codes and links; the worker
- * opens the message through the audited secrets route, sends it over SMTP, retries on the queue
- * with a stable Message-ID, and deletes the sealed row once it is settled.
+ * Outgoing email. It is optional per install, so every caller must keep working without it.
+ * A message is sealed whole into one email_message secret and the email_send job names only its id,
+ * so the jobs table, its lastError and every log line stay free of addresses, codes and links.
  */
 import { randomUUID } from "node:crypto";
 import { hashToken, type Keyring } from "@dockify/crypto";
@@ -32,17 +27,14 @@ export async function instanceName(db: Tx): Promise<string> {
   return (await db.instance.findUnique({ where: { id: 1 }, select: { name: true } }))?.name ?? "Dockify";
 }
 
-/**
- * Per-recipient budget, keyed by a hash so the limiter never holds an address. False means this
- * address had enough mail for now; the caller decides whether that is an error or a quiet skip.
- */
+/** Per-recipient budget, keyed by a hash so the limiter never holds an address. False: this address had enough for now. */
 export function allowRecipient(limits: RateLimits, to: string): boolean {
   return limits.recipient.take(hashToken(to.trim().toLowerCase())) === null;
 }
 
 /**
- * Seals one message and enqueues its send inside the caller's transaction. Returns the job id. With
- * inviteId the worker writes the outcome on that invite, so a refused address does not read as sent.
+ * Seals and enqueues inside the caller's transaction; returns the job id. With inviteId the worker
+ * writes the outcome on that invite, so a refused address does not read as sent.
  */
 export async function queueEmailTx(tx: Prisma.TransactionClient, ring: Keyring, to: string, message: EmailMessage, about: { inviteId?: string } = {}): Promise<string> {
   const ownerId = randomUUID();
@@ -51,7 +43,6 @@ export async function queueEmailTx(tx: Prisma.TransactionClient, ring: Keyring, 
   return enqueueTx(tx, { kind: "email_send", lane: "maintenance", payload: { messageId, ...about }, maxAttempts: EMAIL_JOB_ATTEMPTS });
 }
 
-/** queueEmailTx in its own transaction. */
 export async function queueEmail(db: Db, ring: Keyring, to: string, message: EmailMessage): Promise<string> {
   return db.$transaction((tx) => queueEmailTx(tx, ring, to, message));
 }

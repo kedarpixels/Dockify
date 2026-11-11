@@ -17,12 +17,7 @@ import { useCan } from "@/lib/viewer";
 import { Group, isUtc, SaveBar, SettingRow, zoneLabel } from "./form";
 import type { SectionProps } from "./settings-view";
 
-/*
- * Settings, Updates: how Dockify installs its own signed releases. It loads the update status from
- * /api/server/updates on its own and saves through PUT /api/server/updates/policy, which needs
- * step-up. Checking for a release and installing it live on the Server page. A viewer reads the
- * policy as text: only an admin can change it.
- */
+/* Loads its own status and saves through a step-up. Checking and installing live on the Server page. */
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -50,17 +45,13 @@ function toBody(d: Draft): UpdatePolicyBody {
 
 const same = (a: Draft, b: Draft) => JSON.stringify(toBody(a)) === JSON.stringify(toBody(b));
 
-/** The days a window covers, as a viewer reads them: "Every day", or "Mon, Wed and Fri". */
 function dayList(days: number[]) {
   if (days.length === 7) return "Every day";
   const names = days.map((d) => DAYS[d]!);
   return names.length < 2 ? (names[0] ?? "No days") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
-/**
- * Every zone this browser knows, UTC first; the list fills after mount so server and client agree.
- * UTC is listed once, in the spelling the policy holds (Etc/UTC unless it says UTC).
- */
+/** The list fills after mount so server and client agree. UTC is listed once, in the spelling the policy holds. */
 function useTimeZones(current: string) {
   const list = useZoneList();
   const zones = [isUtc(current) ? current : UTC, ...(list.at === "ready" ? list.zones.filter((z) => !isUtc(z)) : [])];
@@ -75,7 +66,6 @@ export function UpdatesSection({ preview, onDirty, onMode }: SectionProps & { on
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
-  // Try again bumps this; the load below runs once per value.
   const [attempt, setAttempt] = useState(0);
 
   // Results land only in the promise callback; a load that a newer one replaced is ignored.
@@ -136,7 +126,6 @@ export function UpdatesSection({ preview, onDirty, onMode }: SectionProps & { on
     setSaving(true);
     const sent = draft;
     try {
-      // `send` asks "Confirm it is you" when the API wants a step-up (components/step-up).
       const next = await send<UpdateStatus>("/api/server/updates/policy", "PUT", toBody(sent));
       setStatus(next);
       // Edits typed while the save ran stay; otherwise the draft takes the stored values.

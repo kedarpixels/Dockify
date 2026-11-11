@@ -1,12 +1,5 @@
-/*
- * A tiny Markdown reader for release notes from the signed update manifest. It returns a plain
- * tree that components/ui/markdown.tsx turns into React elements, so nothing is ever parsed as HTML:
- * raw tags stay literal text. Supported: headings, paragraphs, bullet and numbered lists, bold,
- * inline code and links. A link is kept only when it is https: or a same-origin path; any other
- * target (javascript:, data:, http:, protocol relative) leaves just its text.
- *
- * Pure and dependency free so tests/markdown.test.mjs can run it under plain `node --test`.
- */
+// A Markdown reader for release notes. It returns a plain tree, so nothing is ever parsed as HTML.
+// A link is kept only when it is https: or a same-origin path; any other target leaves just its text.
 
 export type MdInline =
   | { t: "text"; v: string }

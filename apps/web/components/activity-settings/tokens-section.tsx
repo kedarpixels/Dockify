@@ -38,7 +38,6 @@ const EXPIRY: Array<{ value: string; label: string }> = [
   { value: "never", label: "Never" },
 ];
 
-/** This dashboard's own origin, for the example request. */
 const origin = () => (typeof window === "undefined" ? "" : window.location.origin);
 
 type Reach = "" | "all" | "selected";
@@ -62,7 +61,6 @@ const parseSlugs = (text: string): string[] => [
   ),
 ];
 
-/** The named projects for a row: up to three by name, then a count. */
 function projectsLabel(t: ApiToken): string {
   const list = t.projects ?? [];
   if (list.length === 0) return "No projects";
@@ -71,12 +69,7 @@ function projectsLabel(t: ApiToken): string {
 
 const WEEK_MS = 7 * 86_400_000;
 
-/**
- * One token as a 56px table row: the name over a mono chip of the stored prefix plus one fixed
- * ellipsis (never a dot per hidden character) and its created time; the scope chip (Admin a touch
- * stronger) and any grant over the projects it reaches; last use over expiry, warn under 7 days;
- * then the more key with Revoke, the same as Team. Narrow columns stack it.
- */
+/** The prefix chip ends in one fixed ellipsis, never a dot per hidden character. */
 function TokenRow({ t, now, onRevoke }: { t: ApiToken; now: number; onRevoke: () => void }) {
   const left = t.expiresAt === null ? Infinity : Date.parse(t.expiresAt) - now;
   const expired = left <= 0;
@@ -144,11 +137,7 @@ function TokenRow({ t, now, onRevoke }: { t: ApiToken; now: number; onRevoke: ()
   );
 }
 
-/**
- * The new token form, then its one-time secret. Mounted only while open: the secret is shown once
- * and must not stay in memory after Done. `projects` lists this instance's project names, picked
- * with checkboxes; without them (the list did not load) the names are typed, comma-separated.
- */
+/** Mounted only while open: the secret is shown once and must not stay in memory after Done. */
 function CreateDialog({
   onClose,
   onCreated,
@@ -170,7 +159,6 @@ function CreateDialog({
   const scopes = admin ? SCOPES : SCOPES.filter((x) => x.id === "read");
   const [scope, setScope] = useState<TokenScope>(admin ? "deploy" : "read");
   const [expiry, setExpiry] = useState("90");
-  // The project scope is a deliberate choice: nothing is selected until the creator picks.
   const [reach, setReach] = useState<Reach>("");
   const [picked, setPicked] = useState<string[]>([]);
   const [slugText, setSlugText] = useState("");
@@ -199,8 +187,7 @@ function CreateDialog({
     setBusy(true);
     const res = await settle(elevate(() => createToken({ name, scope, expiresInDays: expiry === "never" ? null : Number(expiry), projects: reach === "all" ? "all" : slugs, grants }), { what: "Creating a token" }));
     setBusy(false);
-    // Input problems stay under the field. The secret shows once in this dialog, so the toast
-    // only confirms; it needs no "View" action.
+    // The secret shows once in this dialog, so the toast only confirms.
     if (!res.ok) return /project/i.test(res.error) ? setReachError(res.error) : setError(res.error);
     toast.success("Token created", { description: describe(`${res.data.token.name}, ${SCOPE_LABEL[res.data.token.scope]}`, { preview }) });
     setSecret(res.data.secret);

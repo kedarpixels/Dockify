@@ -1,13 +1,7 @@
 import type { AppKind, OverviewSource } from "@/lib/types";
 import type { WebhookRef } from "@/lib/webhooks";
 
-/*
- * The client-safe half of the Alerts page: types, the metric, channel and threshold lists, and the
- * pure checks the rule and mute dialogs use. The loader (lib/pages/alerts.ts) re-exports all of it;
- * client components import from here, so no server code or preview fixture reaches the browser.
- */
-
-// -------------- Types --------------
+// Client-safe half of the Alerts page: client components import from here, so no server code or preview fixture reaches the browser.
 
 export type AlertMetric = "disk" | "service" | "down" | "crashLoop" | "memory";
 /** Where a rule sends besides its webhooks (AlertRule.webhooks): email to the admins, the in-app bell. */
@@ -36,7 +30,6 @@ export const THRESHOLD: Partial<Record<AlertMetric, { min: number; max: number; 
 export interface AlertApp {
   id: string;
   name: string;
-  /** What people read as the app's name, when it has one. */
   displayName?: string;
   kind: AppKind;
   projectSlug: string;
@@ -57,7 +50,6 @@ export interface AlertRule {
   /** The webhooks it sends to, by id; AlertsPayload.webhooks names them. */
   webhooks: string[];
   enabled: boolean;
-  /** True while one of its events is firing. */
   firing: boolean;
   lastFiredAt: string | null;
   createdAt: string;

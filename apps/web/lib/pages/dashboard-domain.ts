@@ -6,12 +6,8 @@ import type { CfDomains, CfHostState, CfLookup, DashboardDomain, PendingDomain }
 import { json, refuse } from "@/lib/http";
 import { PREVIEW_ZONES } from "./integrations";
 
-/*
- * The design preview's answers for the dashboard's address and for hostnames on Cloudflare. Nothing is
- * real and nothing reaches Cloudflare: a small state machine in this process walks the same steps the
- * API does, so every screen of the flow can be seen. Only behind DOCKIFY_PREVIEW (the route handlers
- * ask), and server only, so no fixture reaches a client bundle.
- */
+// Design preview answers for the dashboard's address and Cloudflare hostnames. Nothing reaches
+// Cloudflare: a small in-process state machine walks the same steps the API does. Server only.
 
 const IPV4 = "203.0.113.24";
 const IPV6 = "2001:db8::24";
@@ -62,7 +58,6 @@ function seedRecords() {
   s.records.set("www.brightlane.example", [a("f", "www.brightlane.example", IPV4, true, true)]);
 }
 
-/** Every domain's state, for GET /api/domains/cloudflare. */
 export function previewCfDomains(): Response {
   seedRecords();
   const domains = previewDomainsForCloudflare();

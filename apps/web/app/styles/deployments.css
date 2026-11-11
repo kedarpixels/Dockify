@@ -1,22 +1,16 @@
-/* Deployments: the /deployments list (the shared KPI strip and toolbar over the overview's deploy
-   rows, .dep-*, in overview-data.css) and one deployment's page (the Details grid, the steps and
-   the build log viewer). Layouts inside a card follow that card's width (named containers), so a
-   collapsed or open sidebar never changes how they wrap; the page head and toolbars follow the
-   viewport on the shared scale (520, 760, 1100). */
+/* Layouts inside a card follow that card's width (named containers), so the sidebar never changes
+   how they wrap; the page head and toolbars follow the viewport. */
 
-/* ============== /deployments ============== */
+/* /deployments */
 
-/* -------------- Toolbar -------------- */
-/* Project filter: the shared Select, pushed to the right end of the toolbar. */
+/* Toolbar */
 .dpl-select {
   flex: 0 1 220px;
   max-width: 220px;
   margin-left: auto;
 }
 
-/* -------------- Feed -------------- */
-/* The deploy rows size their columns off the `deps` container (overview-data.css), as they do in
-   every card that holds them. */
+/* Feed */
 .dpl-feed {
   container: deps / inline-size;
   display: flex;
@@ -24,7 +18,6 @@
   background: var(--bg);
 }
 
-/* The shared card foot: the count at the left, Load more at the right. */
 .dpl-foot {
   justify-content: space-between;
   gap: 12px;
@@ -42,7 +35,6 @@
     flex-basis: 100%;
     max-width: none;
   }
-  /* The status filter spans the toolbar: five even options, the dots dropped so every label fits. */
   .dpl-tools .seg2 {
     display: flex;
     width: 100%;
@@ -56,9 +48,9 @@
   }
 }
 
-/* ============== /deployments/[id] ============== */
+/* /deployments/[id] */
 
-/* -------------- Head -------------- */
+/* Head */
 .dpd-lead {
   display: flex;
   flex-wrap: wrap;
@@ -88,8 +80,7 @@
   justify-content: flex-end;
 }
 
-/* Phones: the title, then the status line, then the keys, so wrapped rows of buttons never sit
-   between the title and the status. The row's title and keys join the head's own column. */
+/* Phones: title, status line, then keys, so wrapped buttons never sit between the title and the status. */
 @media (max-width: 760px) {
   .dpd-head {
     display: flex;
@@ -108,9 +99,7 @@
   }
 }
 
-/* -------------- Details grid -------------- */
-/* Ruled cells painted on the line colour, like the KPI strip, with a node on every cell corner:
-   3 columns, then one row per fact when the card is narrow. */
+/* Details grid */
 .dpd-meta-card {
   container: dpd-meta / inline-size;
 }
@@ -129,7 +118,6 @@
   background: var(--bg);
 }
 
-/* The value row holds glyphs and chips, so it centres them on a 24px line. */
 .dpd-meta-value {
   display: flex;
   align-items: center;
@@ -150,7 +138,6 @@
   transition: color 150ms var(--ease);
 }
 
-/* How it started, beside who started it. */
 .dpd-meta-note {
   flex: none;
   font-weight: 400;
@@ -166,7 +153,6 @@
   color: var(--blue);
 }
 
-/* The environment reads like every other value: 14px medium ink, a 16px glyph 8px from its name. */
 .dpd-meta-value .env-tag {
   gap: 8px;
   height: 24px;
@@ -198,8 +184,7 @@
   }
 }
 
-/* -------------- Steps -------------- */
-/* Why a build failed: the shared callout, on the gutter between the card head and the steps. */
+/* Steps */
 .dpd-note {
   padding: 16px var(--gutter);
   border-bottom: 1px solid var(--line);
@@ -209,10 +194,8 @@
   container: dpd-steps / inline-size;
 }
 
-/* Every step on one row when the card is wide (the component sets --steps to the step count), ruled
-   by a 1px gap over the line colour, a node on every cell corner. A single row reads in order, so it
-   drops the step numbers and tightens the sides to 12px, which keeps "Health check" whole; the
-   first cell keeps the page gutter. */
+/* The component sets --steps to the step count. A single row reads in order, so it drops the step
+   numbers and tightens the sides to 12px, which keeps "Health check" whole. */
 .dpd-steps {
   display: grid;
   grid-template-columns: repeat(var(--steps, 7), minmax(0, 1fr));
@@ -238,7 +221,6 @@
   padding-left: var(--gutter);
 }
 
-/* The mark is keyed on the step's status: a new state settles in from a slightly smaller tile. */
 .dpd-step-mark {
   display: grid;
   flex: none;
@@ -259,7 +241,6 @@
   color: var(--ink-3);
 }
 
-/* Name and meta of the shared two-line cell, kept to one line each. */
 .dpd-step-name,
 .dpd-step-meta {
   overflow: hidden;
@@ -273,7 +254,6 @@
   color: var(--ink-3);
 }
 
-/* A step that has not run: the status tile, empty, holding one round dot. */
 .dpd-wait-dot {
   width: 6px;
   height: 6px;
@@ -286,8 +266,7 @@
   box-shadow: inset 0 0 0 1px var(--ink-4);
 }
 
-/* Narrower cards wrap the steps 4, then 3 across, each cell on the page gutter with its number.
-   The last step stretches over whatever its row has left, so a short last row never shows bare
+/* The last step stretches over whatever its row has left, so a short last row never shows bare
    line-coloured filler cells. */
 @container dpd-steps (width < 1024px) {
   .dpd-steps {
@@ -326,7 +305,6 @@
   }
 }
 
-/* Phones: one compact row per step. */
 @container dpd-steps (width < 520px) {
   .dpd-steps {
     grid-template-columns: minmax(0, 1fr);
@@ -340,8 +318,7 @@
   }
 }
 
-/* ============== Log viewer ============== */
-/* The timestamp column and the search follow the viewer's own width. */
+/* Log viewer */
 .lg {
   container: lg / inline-size;
 }
@@ -363,8 +340,7 @@
   margin-left: auto;
 }
 
-/* The surface: mono face on the mass colour, its own scroll in both directions. It is as tall as its
-   lines up to a cap, then scrolls, so a seven-line build log is not a mostly empty 640px box. */
+/* As tall as its lines up to a cap, then scrolls, so a short build log is not a mostly empty box. */
 .lg-box {
   position: relative;
   max-height: min(640px, 70vh);
@@ -413,8 +389,7 @@
   width: auto;
 }
 
-/* A row's tint lives in --lg-tint so the opaque sticky gutter can paint the same tint over --mass,
-   and an error, warning or active row reads as one band from the left edge to the right. */
+/* A row's tint lives in --lg-tint so the opaque sticky gutter can paint the same tint over --mass. */
 .lg-line {
   --lg-tint: transparent;
   display: flex;
@@ -429,9 +404,7 @@
   --lg-tint: color-mix(in srgb, var(--ink) 5%, transparent);
 }
 
-/* Tinted by what a line says, not by its stream: BuildKit prints normal progress on stderr. Errors,
-   warnings and the line a link points at take the same tints as the runtime logs (logs.css); the
-   active search hit, which only this viewer has, takes a stronger 12% blue. */
+/* Tinted by what a line says, not by its stream: BuildKit prints normal progress on stderr. */
 .lg-line[data-level="error"] {
   --lg-tint: color-mix(in srgb, var(--bad) 7%, transparent);
 }
@@ -448,7 +421,6 @@
   --lg-tint: color-mix(in srgb, var(--warn) 11%, transparent);
 }
 
-/* The line a #L link points at: a soft blue band that stays. */
 .lg-line[data-target] {
   --lg-tint: color-mix(in srgb, var(--blue) 10%, transparent);
 }
@@ -457,8 +429,8 @@
   --lg-tint: color-mix(in srgb, var(--blue) 12%, transparent);
 }
 
-/* Line numbers stay pinned while the text scrolls sideways under them. They are permalinks; the
-   doubled selector keeps them sticky over the tooltip rule's position: relative. */
+/* Pinned while the text scrolls sideways. The doubled selector keeps them sticky over the tooltip
+   rule's position: relative. */
 .lg-line > .lg-no {
   position: sticky;
   left: 0;
@@ -480,8 +452,7 @@
   color: var(--ink-2);
 }
 
-/* The gutter key sits flush on the box's left edge and the next line paints over its bottom, so
-   its focus ring is drawn inside it. */
+/* The next line paints over the gutter key's bottom, so its focus ring is drawn inside it. */
 .lg-line > .lg-no:focus-visible {
   outline-offset: -2px;
   border-radius: 6px;
@@ -492,7 +463,6 @@
   color: var(--blue);
 }
 
-/* "Link copied" shows by itself for a moment, above the rows below it. */
 .lg-line > .lg-no[data-copied] {
   z-index: var(--z-node);
 }
@@ -504,13 +474,11 @@
   transition-delay: 0ms;
 }
 
-/* Holds the scroll box and the "N new lines" pill, which floats over its bottom edge. */
 .lg-stage {
   position: relative;
 }
 
-/* The shared .new-pill, placed: centred over the box's bottom edge, above the pinned gutter or
-   times. Centred by layout, not by a -50% shift, so its 1px ring lands on whole pixels at any width. */
+/* Centred by layout, not by a -50% shift, so its 1px ring lands on whole pixels at any width. */
 .lg-new,
 .lx-new {
   position: absolute;
@@ -569,7 +537,6 @@
   }
 }
 
-/* A phone screen is short: the box gives the page some room around it. */
 @media (max-width: 520px) {
   .lg-box {
     max-height: 60vh;

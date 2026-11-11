@@ -15,19 +15,9 @@ export interface WebOrigin {
 export const TUNNEL_HOST_HEADER = "x-dockify-loopback-host";
 
 /**
- * The origin and cookies that request gets: its own, plain http, so `__Host-` cookies (which need
- * https) and the origin check both work through the tunnel. Everything else keeps the public origin.
- *
- * Why this cannot be used against a browser that is not on the tunnel:
- *   - A page cannot set this header on a cross-origin call without a CORS preflight, which the api
- *     never answers, and a plain form or link cannot set it at all.
- *   - The web sets it from the Host the browser sent, so it says what the address bar says. DNS
- *     rebinding gets the attacker's Host, and the public proxy routes only the dashboard's hostnames.
- *   - The csrf check still wants the browser's Origin to equal exactly this one, and Sec-Fetch-Site
- *     to be same-origin. A page on another local port has another Origin.
- *   - Cookies follow the same choice, and the bare name is read only here. A sibling subdomain that
- *     plants a bare cookie over https is still ignored, which is what the prefix is for.
- * A client that forges the header holds no ambient cookie, so it gains nothing a token would not give.
+ * A tunnel request gets its own plain-http origin and bare cookie names, since `__Host-` cookies need https.
+ * Safe against other browsers: a page cannot set this header cross-origin without a preflight the api never
+ * answers, the csrf check still demands this exact Origin, and a client that forges it holds no ambient cookie.
  */
 export function webFor(req: Pick<FastifyRequest, "headers">, web: WebOrigin): WebOrigin {
   if (!web.loopback || req.headers[TUNNEL_HOST_HEADER] !== web.loopback) return web;
@@ -70,7 +60,7 @@ function serialize(web: WebOrigin, kind: CookieKind, value: string, maxAgeSecond
   return parts.join("; ");
 }
 
-/** Appends a Set-Cookie line; several cookies can be set on one reply. */
+/** Appends, so several cookies can be set on one reply. */
 export function setCookie(reply: FastifyReply, web: WebOrigin, kind: CookieKind, value: string, maxAgeMs: number): void {
   appendSetCookie(reply, serialize(webFor(reply.request, web), kind, value, Math.floor(maxAgeMs / 1000)));
 }

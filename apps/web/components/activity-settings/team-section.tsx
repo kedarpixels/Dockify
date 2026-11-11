@@ -23,17 +23,11 @@ import { Segment, SectionTabs } from "./section-tabs";
 import type { SectionProps } from "./settings-view";
 import type { Elevate } from "@/components/step-up/step-up";
 
-/*
- * Settings, Team. Two roles only: Admin does everything, Viewer reads. Changes act at once (a role
- * pick, a confirmed remove), so this section has no save bar. There is always at least one admin:
- * the API refuses the change (409 LAST_ADMIN) and the UI never offers it. Your own row shows your
- * role in a quiet read-only box, so you cannot lock yourself out. A viewer's GitHub link stays
- * unverified (and attributes no pushes) until an admin approves it. An admin can remove any
- * member's link.
- */
+// Changes act at once, so there is no save bar. The API refuses removing the last admin (409
+// LAST_ADMIN) and the UI never offers it.
 
 const ROLE_LABEL: Record<Role, string> = { admin: "Admin", viewer: "Viewer" };
-/** A queued invite email is followed this often, for about two minutes: the worker sends within seconds. */
+/** Polled for about two minutes: the worker sends within seconds. */
 const INVITE_POLL_MS = 4_000;
 const INVITE_POLLS = 30;
 const ROLE_OPTIONS: Array<{ value: TeamRole; label: string }> = [
@@ -46,7 +40,6 @@ const ROLE_HINT: Record<TeamRole, string> = {
 };
 const LAST_ADMIN = "At least one admin is required";
 
-/** The member's linked GitHub login, with an Unverified chip until an admin approves it. */
 function GitHubLink({ login, verified }: { login: string; verified: boolean }) {
   return (
     <>
@@ -63,11 +56,7 @@ function GitHubLink({ login, verified }: { login: string; verified: boolean }) {
   );
 }
 
-/**
- * One member, 56px: a 32px avatar, the name with a "You" chip over email and joined time, then a
- * fixed role cell (the Select, or the read-only box) and a fixed key cell, so columns line up. A
- * list with no key in any row drops the key cell (see .set-tm-list in the stylesheet).
- */
+/** A list with no key in any row drops the key cell (see .set-tm-list in the stylesheet). */
 function MemberRow({
   m,
   now,
@@ -159,12 +148,7 @@ function MemberRow({
   );
 }
 
-/**
- * One open invite, 56px: a blank avatar (nobody has joined yet), the email with a Pending chip over
- * role and expiry, then New link, and Resend (with email) plus Revoke behind the more key. The raw
- * link is never stored, so New link mints a fresh one and copies it; the previous link stops
- * working, which its toast says.
- */
+/** The raw link is never stored, so New link mints a fresh one and the previous link stops working. */
 function InviteRow({
   inv,
   now,
@@ -260,7 +244,6 @@ function InviteDialog({
     setBusy(true);
     const res = await settle(elevate(() => createInvite({ email, role, send: mailing }), { what: "Inviting a member" }));
     setBusy(false);
-    // Input problems stay under the field; the link itself is the dialog's next step.
     if (!res.ok) return setError(res.error);
     const who = `${res.data.invite.email}, ${ROLE_LABEL[res.data.invite.role]}`;
     if (res.data.emailed) toast.success("Invite email queued", { description: describe([who, "The team list shows if it fails. The copy link works too"], { preview }) });
@@ -368,8 +351,7 @@ export function TeamSection({ data, update, onDirty, now, preview, emailEnabled,
     update({ team });
   };
 
-  // An emailed invite reads Pending while its email is queued. The worker settles it to sent or
-  // failed, so the list is read again until none is queued.
+  // An emailed invite stays queued until the worker settles it, so the list is read again until none is.
   const queued = invites.filter((i) => i.emailStatus === "queued").map((i) => i.id).join(",");
   const follow = useEffectEvent(async () => {
     if (document.hidden || busy) return;

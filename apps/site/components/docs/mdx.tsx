@@ -8,9 +8,7 @@ import { repoHref } from "@/lib/site";
 import { CodeBlock } from "./code-block";
 import { remarkPipeTables } from "./remark-tables";
 
-/* MDX rendering for docs pages: anchored headings, copyable code blocks, internal links through
-   next/link, wrapped tables, and a few docs blocks (Note, Soon, Steps, DocGrid). Content is ours
-   (content/docs), compiled on the server at build time. JS expressions stay blocked, so every
+/* Content is ours (content/docs), compiled on the server at build time. JS expressions stay blocked, so every
    block takes string props and children only. */
 
 function textOf(node: ReactNode): string {
@@ -77,10 +75,7 @@ function Soon({ children }: { children?: ReactNode }) {
   );
 }
 
-/**
- * A link into the repository (lib/site.ts REPO), such as <RepoLink path="issues/new">Open an
- * issue</RepoLink>. While the repository is not set it renders the words alone, with no dead link.
- */
+/** A link into the repository (lib/site.ts REPO). While the repository is not set it renders the words alone. */
 function RepoLink({ path, children }: { path?: string; children?: ReactNode }) {
   const href = repoHref(path);
   if (!href) return <>{children}</>;
@@ -91,12 +86,10 @@ function RepoLink({ path, children }: { path?: string; children?: ReactNode }) {
   );
 }
 
-/** Numbered steps: an ordered list drawn as a ruled rail with square markers. */
 function Steps({ children }: { children?: ReactNode }) {
   return <div className="dsteps">{children}</div>;
 }
 
-/** A ruled grid of page links with nodes on the joins, for the docs home. */
 function DocGrid({ children }: { children?: ReactNode }) {
   return (
     <div className="dgrid">

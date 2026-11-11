@@ -1,8 +1,4 @@
-/**
- * Vercel's Logs tab for a deployment, from its inspector address. Inspector pages live at
- * vercel.com/<team>/<project>/<id> and the tab at vercel.com/<team>/<project>/logs. Null when the
- * address is not of that form; the API only stores https addresses on vercel.com.
- */
+/** Inspector pages live at vercel.com/<team>/<project>/<id>, the logs at .../logs. Null for any other form. */
 export function vercelLogsHref(inspector: string | null): string | null {
   if (!inspector) return null;
   try {

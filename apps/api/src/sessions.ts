@@ -4,7 +4,7 @@ import type { Tx } from "@dockify/db";
 import { SESSION_ABSOLUTE_MS, SESSION_IDLE_MS } from "./actor.ts";
 import { setCookie, type WebOrigin } from "./cookies.ts";
 
-/** Mints a session row and sets its cookie. The raw token only ever lives in the cookie. */
+/** The raw token only ever lives in the cookie; the row keeps its hash. */
 export async function startSession(
   db: Tx,
   reply: FastifyReply,
@@ -30,18 +30,16 @@ export async function startSession(
   return session.id;
 }
 
-/** Voids the open password reset links of a user: a link mailed before a password or address change must not outlive it. */
+/** A link mailed before a password or address change must not outlive it. */
 export async function voidResetLinks(db: Tx, userId: string, now = new Date()): Promise<void> {
   await db.passwordReset.updateMany({ where: { userId, usedAt: null }, data: { usedAt: now } });
 }
 
-/** Revokes every live API token of a user. Returns how many. */
 export async function revokeApiTokens(db: Tx, userId: string, now = new Date()): Promise<number> {
   const r = await db.apiToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } });
   return r.count;
 }
 
-/** Ends every session of a user, optionally keeping one. Returns how many were ended. */
 export async function revokeSessions(db: Tx, userId: string, keepSessionId?: string): Promise<number> {
   const r = await db.session.updateMany({
     where: { userId, revokedAt: null, ...(keepSessionId ? { id: { not: keepSessionId } } : {}) },

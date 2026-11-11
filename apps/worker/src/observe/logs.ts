@@ -1,16 +1,4 @@
-/**
- * Runtime log collection: one Docker log follow per running app container, demuxed, timestamped,
- * level-guessed, REDACTED (the app's own secret values plus the pattern pass), and written in
- * batches to runtime_log_lines, the table the api's history and SSE endpoints read. Followers are
- * reconciled with the sampler's container view on every tick. A noisy app is capped per app by
- * lines and bytes per wall-clock second and by bytes per day (LogBudget), counted independently of
- * flushes, so it cannot flood the database; dropped lines are counted in one marker line. The table
- * itself is capped too (enforceLogCaps): a per-app row ceiling and a total size budget, shed from
- * the noisiest app first, because Postgres shares the server's disk with everything else.
- *
- * A batch that cannot be written (the database is down, say) is dropped, and the failure is logged
- * at most once a minute.
- */
+/** Lines are redacted before they are stored. A batch that cannot be written is dropped. */
 import { link as L } from "@dockify/contracts";
 import type { Db } from "@dockify/db";
 import { DockerError, isNotFound } from "@dockify/engine";
@@ -34,7 +22,6 @@ export const MAX_LINES_PER_SEC = 300;
 export const MAX_BYTES_PER_SEC = 256 * 1024;
 /** Per app, per UTC day: with 7 days of retention one app holds at most about 7 GiB. */
 export const MAX_BYTES_PER_DAY = 1024 ** 3;
-/** Runtime lines are cut shorter than build logs. */
 export const RUNTIME_MAX_LINE = 4 * 1024;
 const RETENTION_BATCH = 10_000;
 
@@ -57,9 +44,8 @@ export interface BudgetLimits {
 }
 
 /**
- * Admission per app. The windows roll on the wall clock (second and UTC day boundaries), never on
- * a flush, so a size-triggered flush cannot reset what an app has already spent, and every
- * container of one app shares that app's budget.
+ * Windows roll on the wall clock, never on a flush, so a size-triggered flush cannot reset what an app
+ * has spent. Every container of one app shares that app's budget.
  */
 export class LogBudget {
   private readonly apps = new Map<string, Window>();
@@ -99,7 +85,7 @@ export class LogBudget {
     return true;
   }
 
-  /** Dropped counts since the last call, per app. Resets only the dropped counters. */
+  /** Resets only the dropped counters. */
   takeDropped(): Array<{ appId: string; dropped: number; reason: DropReason }> {
     const out: Array<{ appId: string; dropped: number; reason: DropReason }> = [];
     for (const [appId, w] of this.apps) {
@@ -132,10 +118,8 @@ export async function insertLogRows(db: Db, rows: LogRow[]): Promise<void> {
 }
 
 /**
- * One batch can hold lines from several apps, and a line of an app deleted meanwhile fails the foreign
- * key for the whole batch, taking every other app's lines with it. Those lines go, checked first
- * because a refused insert prints a Prisma error even when handled, and once more if a delete wins the
- * race after the check.
+ * A line of an app deleted meanwhile fails the foreign key for the whole batch, so such lines go first
+ * (a refused insert prints a Prisma error even when handled), and once more if a delete wins the race.
  */
 export async function insertLiveLogRows(db: Db, rows: LogRow[]): Promise<void> {
   const onlyLive = async (list: LogRow[]) => {
@@ -154,14 +138,12 @@ export async function insertLiveLogRows(db: Db, rows: LogRow[]): Promise<void> {
 export interface LogCaps {
   /** Total size budget for runtime_log_lines, in bytes (table, indexes and toast). */
   maxTableBytes: number;
-  /** Rows any one app may keep. */
   maxRowsPerApp: number;
 }
 
 /**
- * How many rows to shed so the live part of the table fits the budget. Postgres does not give
- * space back on DELETE, so the relation size is scaled by the live fraction: rows already deleted
- * are reusable space, not a reason to delete more.
+ * Postgres does not give space back on DELETE, so the relation size is scaled by the live fraction:
+ * rows already deleted are reusable space, not a reason to delete more.
  */
 export function rowsToShed(s: { totalBytes: number; liveRows: number; deadRows: number }, maxBytes: number): number {
   const rows = s.liveRows + s.deadRows;
@@ -173,7 +155,6 @@ export function rowsToShed(s: { totalBytes: number; liveRows: number; deadRows: 
   return Math.min(s.liveRows, Math.ceil((liveBytes - maxBytes * 0.9) / Math.max(1, perRow)));
 }
 
-/** Which apps give up how many rows: the per-app ceiling first, then the noisiest app first. */
 export function planShed(counts: Array<{ appId: string; rows: number }>, caps: Pick<LogCaps, "maxRowsPerApp">, overBudgetRows: number): Map<string, number> {
   const plan = new Map<string, number>();
   const left = new Map<string, number>();
@@ -192,7 +173,6 @@ export function planShed(counts: Array<{ appId: string; rows: number }>, caps: P
   return plan;
 }
 
-/** Deletes the oldest rows of one app, in batches. */
 async function shedOldest(db: Db, appId: string, rows: number): Promise<number> {
   let total = 0;
   while (total < rows) {
@@ -205,10 +185,6 @@ async function shedOldest(db: Db, appId: string, rows: number): Promise<number> 
   return total;
 }
 
-/**
- * The hard caps on top of age retention: no app keeps more than maxRowsPerApp rows, and when the
- * live table is over maxTableBytes the oldest rows of the noisiest app go first.
- */
 export async function enforceLogCaps(db: Db, caps: LogCaps): Promise<number> {
   const counts = (await db.$queryRaw<{ appId: string; n: bigint }[]>`
     SELECT "appId", count(*) AS n FROM runtime_log_lines GROUP BY "appId"`).map((c) => ({ appId: c.appId, rows: Number(c.n) }));
@@ -222,12 +198,7 @@ export async function enforceLogCaps(db: Db, caps: LogCaps): Promise<number> {
   return shed;
 }
 
-/**
- * How many days runtime logs are kept: Settings, Instance, Log retention (Instance.logRetentionDays,
- * 1 to 365), read on every pass so a change applies without a restart. `fallback`
- * (DOCKIFY_RUNTIME_LOG_DAYS) counts only when the row holds no usable value. However long the
- * setting, enforceLogCaps still bounds the table by size and rows per app.
- */
+/** Read on every pass, so a change applies without a restart. */
 export async function logRetentionDays(db: Db, fallback: number): Promise<number> {
   const row = await db.instance.findUnique({ where: { id: 1 }, select: { logRetentionDays: true } });
   const d = row?.logRetentionDays;
@@ -245,16 +216,11 @@ export async function pruneLogs(db: Db, days: number, now = Date.now()): Promise
   }
 }
 
-/** Secret values the app's containers were given, for the literal redaction pass. */
 export type SecretsFor = (appId: string) => Promise<string[]>;
 
 /**
- * How long one container's secret values stay in memory. A follow ends each time its container
- * stops, so a crash-looping app restarted the follow, and opened and audited its secrets, on every
- * sampler tick: about 130 secret.open rows an hour on one server. A container's variables
- * cannot change while it lives (a change means a new deployment, so a new container, which opens
- * its own), so one open per container is the real access. The limit bounds how long a value a read
- * got wrong, or an unrelated edit of a shared variable, can stay in use.
+ * A container's variables cannot change while it lives, so its secrets are opened once, not on every
+ * follow a crash loop restarts. The limit bounds how long a misread or since-edited value stays in use.
  */
 export const SECRETS_TTL_MS = 60 * 60_000;
 
@@ -325,7 +291,6 @@ export function createLogCollector(
   }
 
   async function flush(): Promise<void> {
-    // Only the dropped counts are taken here; the admission windows roll on the clock.
     for (const d of budget.takeDropped()) {
       pending.push({ appId: d.appId, ts: new Date(), stream: "stderr", level: "warn", text: droppedMarker(d) });
     }

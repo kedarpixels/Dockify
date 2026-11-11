@@ -1,9 +1,4 @@
-/* Text out of the page: a multi-row selection read as plain lines, and a text file download. */
-
-/**
- * The selected text, one line per row and without any gutter, or null when the selection stays
- * inside one row (the browser copies that itself). `row` and `text` select a row and its text cell.
- */
+/** One line per row, without the gutter; null when the selection stays inside one row (the browser copies that itself). */
 export function selectedText(range: Range, box: HTMLElement, row: string, text: string): string | null {
   const rows = Array.from(box.querySelectorAll<HTMLElement>(row)).filter((r) => range.intersectsNode(r));
   if (rows.length < 2) return null;
@@ -22,7 +17,6 @@ export function selectedText(range: Range, box: HTMLElement, row: string, text: 
   return out.join("\n");
 }
 
-/** Saves text as a file through a short-lived object URL. */
 export function downloadText(fileName: string, text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
   const a = document.createElement("a");

@@ -11,10 +11,7 @@ import { useHydrated } from "@/lib/hooks";
 import { useTimeFormat, type TimeFormat } from "@/lib/time-prefs";
 import { RANGE_LABEL, RETENTION_MS, type LogFilters, type LogRange } from "./model";
 
-/*
- * The time range: four relative windows that keep tailing, or a fixed custom window picked in a
- * dialog. The custom fields take the user's zone; the filters keep ISO strings.
- */
+/* The custom fields take the user's zone; the filters keep ISO strings. */
 
 /** "30 Oct 2026, 14:05 to 14:35", with the end's date only when it is another day. */
 function span(from: string, to: string, fmt: TimeFormat) {

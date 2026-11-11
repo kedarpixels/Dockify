@@ -6,29 +6,8 @@ import { webhookRefOf, type Webhook, type WebhookRef } from "@/lib/webhooks";
 import { isPreviewMode } from "@/lib/preview-mode";
 import type { EmailTlsMode } from "@/components/activity-settings/integrations/email-rules";
 
-/*
- * Integrations loader: the outside services this Dockify instance talks to. API contract
- * (packages/contracts/src/endpoints.ts; every call forwards the session cookie, every answer is
- * JSON, nothing is cached, every call is bounded, every failure answers `{ error }` with a 4xx or
- * 5xx; a write that stores or drops a credential is elevated and answers the shared step-up
- * refusal, lib/step-up.ts, without a fresh step-up).
- *
- * Secrets are write-only. A token, key or webhook URL goes in through a POST, PUT or PATCH body
- * and never comes back: answers carry only a hint (the last four characters, plus the host for a
- * URL). An empty or missing secret on a PATCH keeps the stored one.
- *
- * GitHub stays on its own endpoints (lib/pages/git.ts); the summary counts its accounts and says
- * whether this server has its GitHub App yet. Creating the App and forgetting it go through this
- * proxy (app/api/integrations/github/...).
- *
- * Notification webhooks (lib/webhooks.ts has the shapes; lib/webhook-providers.ts recognises a URL).
- *
- * Email is optional per install: each install brings its own mail server, over SMTP with TLS always
- * on. Without it nothing is sent, invites stay copy links, and lost access is reset on the host
- * (`dockify admin`, over SSH).
- */
-
-// -------------- Types --------------
+// Integrations loader. Secrets are write-only: a token, key or webhook URL never comes back, only a
+// hint (its last four characters). An empty or missing secret on a PATCH keeps the stored one.
 
 export type IntegrationStatus = "connected" | "disconnected" | "error";
 
@@ -60,10 +39,7 @@ export interface VercelIntegration {
   mirror?: VercelMirrorState;
 }
 
-/**
- * The deployment webhook. active: Vercel calls Dockify on each deployment event. unavailable: Vercel
- * refused one, usually the plan, and the reason says. off: none registered. Dockify polls in both.
- */
+/** active: Vercel calls Dockify on each deployment event. unavailable: Vercel refused one, usually the plan. off: none registered. Dockify polls in both. */
 export interface VercelWebhookState {
   state: "active" | "unavailable" | "off";
   /** Linked Vercel projects it covers, and those it does not cover yet. */
@@ -250,7 +226,6 @@ export interface IntegrationsResult {
   fetchedAt: string;
 }
 
-/** What every route under app/api/integrations answers. */
 export interface IntegrationsAnswer<T> {
   source: OverviewSource;
   data: T | null;
@@ -259,15 +234,11 @@ export interface IntegrationsAnswer<T> {
   code?: string;
 }
 
-// -------------- Validation --------------
-
 /** Ids are opaque but short and URL safe; anything else is refused before the API. */
 export const isIntegrationId = (v: unknown): v is string => typeof v === "string" && /^[\w-]{1,64}$/.test(v);
 
 /** Hint for a secret: its last four characters. */
 export const hintOf = (secret: string) => secret.slice(-4);
-
-// -------------- API --------------
 
 export function integrationsSource(): OverviewSource {
   if (process.env.DOCKIFY_API_URL) return "api";
@@ -279,11 +250,7 @@ export const NO_API = "No data source, set DOCKIFY_API_URL for this dashboard";
 
 export type ApiAnswer<T> = { ok: true; body: T } | { ok: false; status: number; error: string; code?: string };
 
-/**
- * One call to the Dockify API (lib/api.ts) with the viewer's cookie, never cached, always bounded.
- * A test send (email, a channel, a storage destination) reaches an outside service, so it may wait
- * up to a minute.
- */
+/** A test send reaches an outside service, so it may wait up to a minute. */
 export async function integrationsApi<T>(method: Method, path: string, body?: unknown): Promise<ApiAnswer<T>> {
   if (!process.env.DOCKIFY_API_URL) return { ok: false, status: 503, error: NO_API };
   const r = await apiRequest<T>(path, { method, body, timeoutMs: method === "GET" ? undefined : 60_000 });
@@ -328,10 +295,7 @@ export async function getIntegrations(): Promise<IntegrationsResult> {
   return { source, data: EMPTY, fetchedAt };
 }
 
-// -------------- Preview fixture --------------
-// Design preview only (DOCKIFY_PREVIEW=1 without an API). The GitHub accounts match lib/pages/git.ts,
-// the zones match the tenants in lib/preview-fixture.ts, and the R2 bucket is the "S3" destination
-// the Backups page shows.
+// Preview fixture. Accounts, zones and the R2 bucket match lib/pages/git.ts, lib/preview-fixture.ts and the Backups page.
 
 const DAY = 86_400_000;
 const ago = (now: Date, days: number) => new Date(now.getTime() - days * DAY).toISOString();

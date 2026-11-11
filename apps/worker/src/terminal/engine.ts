@@ -1,4 +1,3 @@
-/** The web terminal's Docker calls over the worker's Engine client, behind the socket proxy. */
 import type { Duplex } from "node:stream";
 import { hijackDocker } from "../data/engine-port.ts";
 import { DockerError, isNotFound, type ContainerInfo, type DockerClient } from "@dockify/engine";

@@ -1,12 +1,4 @@
-// Copies the installer into public/ so dockify.sh serves it:
-//   /install.sh          the POSIX bootstrap (installer/bootstrap.sh), the one-liner target
-//   /installer.sh        the full installer (installer/install.sh)
-//   /installer.sh.sha256 its SHA-256, which the bootstrap checks before running it
-//   /uninstall.sh        the uninstall bootstrap (installer/uninstall-bootstrap.sh)
-//   /uninstaller.sh      the full uninstaller (installer/uninstall.sh)
-//   /uninstaller.sh.sha256 its SHA-256, checked by both bootstraps and by `dockify uninstall`
-// It also copies the release notes (docs/releases/*.md in the repository) into
-// content/releases/, so the standalone build carries them for /changelog.
+// Copies the installer scripts, each with its SHA-256, into public/ and the release notes into content/releases/.
 // Runs before every build (npm "prebuild"), so the site never serves a stale script or stale notes.
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";

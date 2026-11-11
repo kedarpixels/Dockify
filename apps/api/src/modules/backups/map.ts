@@ -1,7 +1,4 @@
-/**
- * Database rows to contract shapes. Pure, so the shapes are pinned by tests against the zod
- * schemas the web parses with.
- */
+// Database rows to contract shapes. Pure.
 import { iso, type backups as B } from "@dockify/contracts";
 import type { z } from "zod";
 import { bothTiers, DEFAULT_CRON, LOCAL_WARNING, localTierWarning, nextRun, primaryTier, tierOfType, type TierRow } from "./shared.ts";
@@ -53,10 +50,7 @@ export function storageRef(d: DestinationRow | null): StorageRef | null {
   return { id: d.id, name: d.name, provider, bucket: cfg.bucket ?? "" };
 }
 
-/**
- * `deletedAt` comes from the snapshot (markBackupsOrphaned writes it when the app is deleted). A row
- * orphaned without that call still reads as deleted, dated by its own time as a lower bound.
- */
+/** A row orphaned without markBackupsOrphaned has no `deletedAt` in its snapshot: it still reads as deleted, dated by its own time as a lower bound. */
 export function database(snapshot: unknown, deletedSince: Date | null): BackupRun["database"] {
   const s = (snapshot ?? {}) as { name?: string; projectSlug?: string; environment?: string; deletedAt?: string | null };
   return {
@@ -67,7 +61,6 @@ export function database(snapshot: unknown, deletedSince: Date | null): BackupRu
   };
 }
 
-/** The contract's camelCase kinds for the schema's snake_case triggers. */
 const KIND: Record<BackupRowIn["trigger"], BackupRun["kind"]> = {
   schedule: "scheduled",
   manual: "manual",
@@ -111,10 +104,7 @@ export function toRun(b: BackupRowIn): BackupRun {
   };
 }
 
-/**
- * What a Viewer (and a read token) gets: that the backup exists, when, where in kind and how it
- * went. Destination names, buckets, the key fingerprint and error text are an admin's.
- */
+/** A Viewer or read token learns that a backup exists, when, and how it went. Destination names, buckets, the key fingerprint and error text are an admin's. */
 const limitedRef = (s: StorageRef | null): StorageRef | null => (s ? { id: s.id, name: "Offsite storage", provider: "custom", bucket: "" } : null);
 
 export function limitRun(r: BackupRun): BackupRun {
@@ -135,7 +125,6 @@ export interface ScheduleAppIn {
   backupSchedules: TierRow[];
 }
 
-/** What every schedule of one answer reads alike: the key, the S3 destinations and the defaults. */
 export interface ScheduleContext {
   fingerprint: string | null;
   /** Every S3 destination, the default first, then the oldest: the order an offsite tier picks in. */
@@ -193,11 +182,7 @@ export function toTier(row: TierRow, c: ScheduleContext, now = new Date()): Back
   };
 }
 
-/**
- * A service's backups, both tiers, and the flat fields an older client reads: the tier that is on
- * (offsite first) for cron, retention and destination, on when any tier is, the soonest next run of
- * the tiers that are on, and the latest run of either.
- */
+/** Both tiers, plus the flat fields an older client reads, taken from the tier that is on (offsite first). */
 export function toSchedule(app: ScheduleAppIn, c: ScheduleContext, now = new Date()): BackupSchedule {
   const rows = bothTiers(app.backupSchedules);
   const offsite = toTier(rows.offsite, c, now);

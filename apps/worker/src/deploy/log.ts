@@ -1,8 +1,6 @@
 /**
- * The deploy log. Every line a deployment stores goes through one DeployLog: redacted, split with
- * a byte cap, batched, gzipped into deployment_log_chunks. Sequence numbers are allocated in the
- * database by bumping deployments."logSeq", so the api (cancel notes) and the worker can both
- * write to one deployment and never collide.
+ * Every stored line is redacted, capped, batched and gzipped. Sequence numbers are allocated in the database
+ * (deployments."logSeq"), so the api and the worker can both write to one deployment and never collide.
  */
 import { gzipSync, gunzipSync } from "node:zlib";
 import type { Db } from "@dockify/db";
@@ -34,7 +32,6 @@ export function decodeChunk(gz: Uint8Array): LogLine[] {
 }
 
 
-/** Allocates n sequence numbers for a deployment; returns the first. */
 export async function allocateSeq(db: Db, deploymentId: string, n: number): Promise<number> {
   const rows = await db.$queryRaw<Array<{ logSeq: number }>>`
     UPDATE deployments SET "logSeq" = "logSeq" + ${n} WHERE id = ${deploymentId}::uuid RETURNING "logSeq"`;
@@ -74,7 +71,6 @@ export class DeployLog {
     this.now = now;
   }
 
-  /** A line from Dockify itself. */
   system(text: string): void {
     this.add("stdout", `==> ${text}`);
   }
@@ -100,7 +96,6 @@ export class DeployLog {
     return text;
   }
 
-  /** A splitter that feeds this log, for a process or container output stream. */
   splitter(stream: Stream): LineSplitter {
     return new LineSplitter((t) => this.add(stream, t));
   }

@@ -12,7 +12,6 @@ import { isReserved, jobsForCreate, jobsForDelete, normalizeHost, reservedHosts,
 
 const withApp = { app: { select: { id: true, name: true, displayName: true, port: true, serverId: true, environment: { select: { name: true, project: { select: { slug: true, id: true } } } } } } } as const;
 
-/** A token limited to projects sees and touches only those; the limit is never implied by an empty list. */
 const projectFilter = (a: Actor): Prisma.DomainWhereInput => {
   const limit = tokenProjectLimit(a);
   return limit ? { app: { environment: { projectId: { in: limit } } } } : {};
@@ -31,16 +30,14 @@ async function dashboardHosts(ctx: Ctx): Promise<Set<string>> {
   return new Set([...(row?.dashboardPreviousHosts ?? []), ...(pending ? [pending.host] : [])]);
 }
 
-/** The list envelope: ingress mode and the targets a DNS record should point at. */
 const envelope = (ctx: Ctx) => ({
   ingress: ctx.config.ingress,
   server: { ipv4: ctx.config.serverIpv4, ipv6: ctx.config.serverIpv6 ?? null, tunnelTarget: ctx.config.tunnelTarget },
 });
 
 /**
- * Enqueues an edge job. Collapses onto an open job with the same key only while that job has not
- * been claimed yet, so a change made while a sync is already running still gets its own run. A DNS
- * check reads the world from the control plane; the rest run on the app's server's deploy lane.
+ * Collapses onto an open job with the same key only while that job is unclaimed, so a change made
+ * while a sync is already running still gets its own run.
  */
 export async function enqueueEdge(tx: Tx, job: Extract<EdgeJob, { kind: "dns_check" }>): Promise<void>;
 export async function enqueueEdge(tx: Tx, job: EdgeJob, serverId: string): Promise<void>;
@@ -64,19 +61,12 @@ async function loadRow(ctx: Ctx, id: string, a: Actor) {
   return d;
 }
 
-/**
- * Long enough for the slowest check: the DNS lookup, then for a domain behind a proxy the ownership
- * probe (two requests of 5 s at most, apps/worker/src/edge/probe.ts) and the TLS read (5 s).
- */
+/** Covers the slowest check: the DNS lookup, the worker's ownership probe (two requests of 5 s at most) and the TLS read (5 s). */
 const CHECK_WAIT_MS = 16_000;
 const CHECK_POLL_MS = 400;
-/** Let's Encrypt limits new certificates, and these are for trying things out. */
+/** Each test domain is a certificate, and Let's Encrypt rate-limits new ones. */
 const MAX_TEST_DOMAINS = 20;
 
-/**
- * A hostname an app may take, normalized, or the reason it may not. Also asked by a template before
- * it creates anything, so a bad name refuses the whole install rather than half of it.
- */
 export async function usableHostname(ctx: Ctx, raw: string): Promise<string> {
   const hostname = normalizeHost(raw);
   if (isReserved(hostname, reserved(ctx))) {
@@ -91,15 +81,14 @@ export async function usableHostname(ctx: Ctx, raw: string): Promise<string> {
   if ((await dashboardHosts(ctx)).has(hostname)) {
     throw new HttpError(400, "The dashboard answers on this hostname, so it cannot be added to an app. Stop its old address in Settings, Instance first.", "RESERVED_HOSTNAME", { field: "hostname" });
   }
-  // Preview hostnames live in a separate table, so the domain unique index alone would let one
-  // steal a running preview's traffic. Refuse a hostname a preview already serves.
+  // Preview hostnames live in a separate table, so the domain unique index alone would let a
+  // domain steal a running preview's traffic.
   if (await ctx.db.previewDeployment.findUnique({ where: { hostname }, select: { id: true } })) {
     throw new HttpError(409, "That hostname is already in use", "DOMAIN_TAKEN", { field: "hostname" });
   }
   return hostname;
 }
 
-/** Refuses when the server cannot give out one more test domain. A template asks before it creates anything. */
 export async function assertTestDomainRoom(ctx: Ctx): Promise<void> {
   const offer = testDomainOffer({ ingress: ctx.config.ingress, serverIpv4: ctx.config.serverIpv4 });
   if (!offer.available) throw new HttpError(409, offer.reason ?? "This server has no test domain to offer", "TEST_DOMAIN_UNAVAILABLE");
@@ -108,7 +97,7 @@ export async function assertTestDomainRoom(ctx: Ctx): Promise<void> {
   }
 }
 
-/** Adds the test domain of a name already chosen: the row, its primary claim, its jobs and the audit row. */
+/** Throws a unique violation when the hostname is taken; the caller retries with another name. */
 export async function insertTestDomain(ctx: Ctx, a: Actor, req: FastifyRequest, app: { id: string; name: string }, hostname: string): Promise<string> {
   return ctx.db.$transaction(async (tx) => {
     const d = await tx.domain.create({ data: { appId: app.id, hostname, testDomain: true }, select: { id: true, appId: true } });
@@ -123,7 +112,7 @@ export async function insertTestDomain(ctx: Ctx, a: Actor, req: FastifyRequest, 
   });
 }
 
-/** Nothing of a Vercel app runs here, so a domain on it would route nowhere and ask for a certificate it cannot use. */
+/** Nothing of a Vercel app runs here, so a domain on it would route nowhere. */
 function assertOnServer(app: { deployTarget: string }): void {
   if (app.deployTarget === "vercel") throw new HttpError(400, "This app is hosted on Vercel, so its domains stay on Vercel", "NOT_ON_SERVER", { field: "appId" });
 }
@@ -162,8 +151,7 @@ export const domainHandlers: Handlers = {
     try {
       id = await ctx.db.$transaction(async (tx) => {
         const d = await tx.domain.create({ data: { appId: app.id, hostname }, select: { id: true, appId: true } });
-        // An app with no primary takes its oldest domain: the one its route and links lead with. That
-        // is the new one for a first domain; a later add never moves a card to its new name.
+        // An app with no primary takes its oldest domain, so a later add never moves its links.
         const oldest = await tx.domain.findFirst({ where: { appId: app.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
         await tx.app.updateMany({ where: { id: app.id, primaryDomainId: null }, data: { primaryDomainId: oldest?.id ?? d.id } });
         // A real domain takes over from a test domain: an app's links never lead with a test name.
@@ -195,11 +183,8 @@ export const domainHandlers: Handlers = {
     return testDomainOffer({ ingress: ctx.config.ingress, serverIpv4: ctx.config.serverIpv4 });
   },
 
-  /**
-   * One free test domain for an app, on an explicit press: each one is a Let's Encrypt certificate, so
-   * nothing creates these on its own, an app has one at most, and a server a bounded number. The name
-   * comes from here alone. From then on it is an ordinary domain: route sync, DNS check, certificate.
-   */
+  // Each test domain is a Let's Encrypt certificate: created only on an explicit request, one per
+  // app, a bounded number per server. The name is generated here, never taken from the caller.
   "domains.test.create": async ({ body, actor, req, ctx }) => {
     const a = requireActor(actor);
     await assertTestDomainRoom(ctx);
@@ -224,11 +209,8 @@ export const domainHandlers: Handlers = {
     throw new HttpError(409, "Could not find a free test name. Try again", "DOMAIN_TAKEN");
   },
 
-  /**
-   * The DNS check, the ownership probe and the TLS read run in the worker (dns_check). The request
-   * queues one and waits for the row to move; past CHECK_WAIT_MS it answers with the current row and
-   * the result lands on the next list.
-   */
+  // The check runs in the worker (dns_check). The request queues one and waits for the row to
+  // move; past CHECK_WAIT_MS it answers with the current row.
   "domains.check": async ({ params, actor, ctx }) => {
     const a = requireActor(actor);
     const before = await loadRow(ctx, params.id, a);
@@ -248,10 +230,9 @@ export const domainHandlers: Handlers = {
     const a = requireActor(actor);
     const d = await loadRow(ctx, params.id, a);
     await ctx.db.$transaction(async (tx) => {
-      // The primary pointer is SetNull in the schema; the row and its wiring go together.
       const gone = await tx.domain.deleteMany({ where: { id: d.id } });
       if (gone.count === 0) return;
-      // The primary pointer went to null with the row: the app's oldest remaining domain takes over.
+      // The schema nulls the primary pointer with the row: the app's oldest remaining domain takes over.
       const next = await tx.domain.findFirst({ where: { appId: d.appId }, orderBy: { createdAt: "asc" }, select: { id: true } });
       if (next) await tx.app.updateMany({ where: { id: d.appId, primaryDomainId: null }, data: { primaryDomainId: next.id } });
       // keepRecord: the owner chose to leave the Cloudflare record Dockify made.

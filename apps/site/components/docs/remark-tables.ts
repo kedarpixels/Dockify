@@ -1,7 +1,5 @@
-/* Pipe tables for the docs, without pulling in remark-gfm. MDX parses a pipe table as a plain
-   paragraph; this plugin finds paragraphs whose second line is a delimiter row (|---|:--:|) and
-   rewrites them into mdast table nodes, which mdast-util-to-hast already renders as <table>.
-   Pipes inside inline code are separate nodes, so they never split a cell. */
+/* Pipe tables without remark-gfm: MDX parses one as a plain paragraph, so a paragraph whose second line is a
+   delimiter row becomes an mdast table node. Pipes inside inline code are separate nodes and never split a cell. */
 
 type MdNode = { type: string; value?: string; children?: MdNode[]; [key: string]: unknown };
 type Align = "left" | "right" | "center" | null;

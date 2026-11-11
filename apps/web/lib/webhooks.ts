@@ -1,15 +1,8 @@
 import type { IconName } from "@/components/icon";
 import { WEBHOOK_PROVIDER_INFO, type WebhookProviderId } from "./webhook-providers";
 
-/*
- * The client-safe half of notification webhooks: the shapes the API answers (packages/contracts,
- * integrations.ts) and what each provider shows. Detection lives in lib/webhook-providers.ts, a
- * byte-identical copy of packages/contracts/src/webhooks.ts that a contracts test keeps equal.
- *
- * Secrets are write-only: a URL, a bot token, a signing secret or an access token goes in through a
- * body and only its host and last four characters come back. A signing secret Dockify makes is
- * answered once, by the save that made it.
- */
+// lib/webhook-providers.ts is a byte-identical copy of packages/contracts/src/webhooks.ts; a test keeps them equal.
+// Secrets are write-only: only the host and the last four characters of one ever come back.
 
 export type { WebhookProviderId };
 
@@ -31,7 +24,6 @@ export interface WebhookIcon {
   favicon: { origin: string | null; fetchedAt: string | null; checkedAt: string | null; error: string | null } | null;
 }
 
-/** A webhook as alert rules and the integrations row name it. */
 export interface WebhookRef {
   id: string;
   name: string;

@@ -1,5 +1,2 @@
-/**
- * The registry rule the gate applies to a pull. It lives in @dockify/contracts, where the api's check
- * at save time reads the same copy, and that file says what it refuses and what it cannot.
- */
+/** Re-exported from @dockify/contracts, so the gate and the api's save-time check apply one registry rule. */
 export { CONTROL_SUBNETS, refusedHost, refusedPull, registryHost } from "@dockify/contracts";

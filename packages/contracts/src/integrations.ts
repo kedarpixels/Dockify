@@ -3,8 +3,6 @@ import { Cursor, Email, EnvName, ExternalId, Hostname, HttpsUrl, Iso, SafeLabel,
 import { FaviconFacts, IconChoice, IconImageRef, LogoBase64 } from "./icons.ts";
 import { TELEGRAM_CHAT, TELEGRAM_TOKEN, WEBHOOK_PROVIDERS, WEBHOOK_URL_MAX } from "./webhooks.ts";
 
-// ------------------------------------------------------------------ git (GitHub App)
-
 export const GitInstallation = z.object({
   id: z.string(),
   account: z.object({ login: z.string(), type: z.enum(["User", "Organization"]), avatarUrl: z.string().nullable() }),
@@ -19,30 +17,23 @@ export const GitSetupQuery = z.strictObject({
   setup_action: z.enum(["install", "update", "request"]).optional(),
   state: z.string().max(512).optional(),
 });
-/**
- * A GitHub organization login, by GitHub's rules: letters, digits and single hyphens, not starting
- * or ending with a hyphen, at most 39 characters. It goes into a github.com path, so nothing else passes.
- */
+/** GitHub's organization login rules. It goes into a github.com path, so nothing else passes. */
 export const GitHubLogin = z
   .string()
   .regex(/^[A-Za-z\d](?:[A-Za-z\d]|-(?=[A-Za-z\d])){0,38}$/, "Use the organization's GitHub login: letters, digits and single hyphens");
 /** Where to create the App: the signed-in GitHub account when left out, or this organization. */
 export const GitAppManifestBody = z.strictObject({ organization: GitHubLogin.optional() }).optional();
-/** The form the web posts to GitHub to create this instance's GitHub App from a manifest. */
 export const GitAppManifest = z.object({ postUrl: z.string(), manifest: z.record(z.string(), z.unknown()) });
 /**
- * GitHub's redirect after it created the App; the signed single-use state is the authentication.
- * Both fields are optional and unknown ones are dropped, so even a malformed redirect lands on the
- * settings page with a failure instead of a bare JSON error. The handler checks the values.
+ * GitHub's redirect after it created the App; the signed single-use state is the authentication. Fields are
+ * optional so a malformed redirect lands on the settings page with a failure, not a bare JSON error.
  */
 export const GitAppCallbackQuery = z.object({ code: z.string().max(2048).optional(), state: z.string().max(2048).optional() });
-/** The GitHub App this instance created or was given; null until there is one. */
 export const GitHubAppSummary = z.object({
   slug: z.string(),
   htmlUrl: z.string(),
   /** The account the App was created under; null for an App the installer was given. */
   owner: z.object({ login: z.string(), type: z.enum(["User", "Organization"]) }).nullable(),
-  /** How it got here: created from the dashboard, or handed to the installer. */
   source: z.enum(["manifest", "installer"]),
   createdAt: Iso,
 });
@@ -62,8 +53,6 @@ export const GitRepoPage = z.object({ items: z.array(GitRepo), nextCursor: z.str
 export const GitBranch = z.object({ name: z.string(), default: z.boolean() });
 export const GitRef = z.strictObject({ installationId: ExternalId, repoId: ExternalId });
 
-// ------------------------------------------------------------------ integrations
-//
 // Secrets are write-only: they go in through a body and only a hint ever comes back.
 
 const Secret = z.string().min(1).max(4096);
@@ -73,25 +62,20 @@ export const VercelTeam = z.object({ id: z.string(), name: z.string(), slug: z.s
 export const VercelAccount = z.object({ username: z.string(), name: z.string().nullable() });
 export const VercelCheck = z.object({ account: VercelAccount, teams: z.array(VercelTeam) });
 /**
- * The deployment webhook Dockify registered with Vercel. active: Vercel calls Dockify on every
- * deployment event and the mirror syncs at once. unavailable: Vercel refused one (webhooks need a
- * Pro or Enterprise plan), so the mirror polls only. off: none registered; the mirror polls.
+ * active: Vercel calls Dockify on every deployment event. unavailable: Vercel refused the webhook (it needs
+ * Pro or Enterprise), so the mirror polls. off: none registered; the mirror polls.
  */
 export const VercelWebhookState = z.object({
   state: z.enum(["active", "unavailable", "off"]),
-  /** Linked Vercel projects the webhook covers. */
   projects: z.number(),
   /** Linked Vercel projects it does not cover yet; registering again adds them. */
   missingProjects: z.number(),
   registeredAt: Iso.nullable(),
-  /** Why Vercel refused it, when it did. */
   reason: z.string().nullable(),
 });
-/** The worker's deployment mirror: when it last read Vercel, and the last problem it hit. */
 export const VercelMirrorState = z.object({
   syncedAt: Iso.nullable(),
   error: z.string().nullable(),
-  /** Vercel projects linked to at least one app, which the mirror follows. */
   projects: z.number(),
 });
 export const VercelIntegration = z.object({
@@ -111,11 +95,9 @@ export const VercelLogRetention = z.object({
   plan: z.enum(["pro_or_enterprise", "unknown"]),
   /** The shortest window the known plan guarantees, in hours; null when it depends on the plan. */
   minHours: z.number().nullable(),
-  /** One sentence for the page, saying exactly that. */
   note: z.string(),
   /** Vercel's published windows, in hours. */
   byPlanHours: z.object({ hobby: z.number(), pro: z.number(), enterprise: z.number(), observabilityPlus: z.number() }),
-  /** Lines Vercel returns per request. */
   linesPerRequest: z.number(),
 });
 export const VercelConnectBody = z.strictObject({ token: Secret, teamId: ExternalId.nullable().optional(), check: z.literal(true).optional() });
@@ -136,23 +118,16 @@ export const VercelImportResult = z.object({
   domainsSkipped: z.number(),
 });
 
-/**
- * One Vercel deployment as an app that follows a Vercel project shows it, read live from Vercel.
- * `deploymentId` is Dockify's mirrored row of it, when the mirror has one, so the page can link there.
- */
+/** `deploymentId` is Dockify's mirrored row of it, when the mirror has one. */
 export const VercelDeploymentView = z.object({
   id: z.string(),
-  /** Its own https address on Vercel. */
   url: z.string().nullable(),
-  /** Vercel's inspector page, https on vercel.com. */
   inspectorUrl: z.string().nullable(),
   status: z.enum(["queued", "building", "ready", "failed", "cancelled"]),
   target: z.enum(["production", "preview"]),
   branch: z.string().nullable(),
   commit: z.string().nullable(),
-  /** The commit message's first line. */
   message: z.string().nullable(),
-  /** The commit on its Git host, https only. */
   commitUrl: z.string().nullable(),
   /** The Git login that wrote the commit, else the Vercel user that started it. */
   author: z.string().nullable(),
@@ -168,16 +143,13 @@ export const VercelDeploymentView = z.object({
 export const VercelProjectDomain = z.object({
   name: z.string(),
   verified: z.boolean(),
-  /** Where it redirects to, when it is a redirect. */
   redirect: z.string().nullable(),
   redirectStatusCode: z.number().nullable(),
   /** Set when the domain serves one branch's preview rather than production. */
   gitBranch: z.string().nullable(),
   createdAt: Iso.nullable(),
 });
-/** Links into the Vercel dashboard for this project, https on vercel.com. */
 export const VercelProjectLinks = z.object({ project: z.string(), deployments: z.string(), domains: z.string(), env: z.string(), settings: z.string() });
-/** What Vercel knows about the project an app follows, for its Overview and Domains tabs. */
 export const VercelProjectView = z.object({
   id: z.string(),
   name: z.string(),
@@ -217,7 +189,6 @@ export const VercelEnvList = z.object({
   hiddenProductionCount: z.number(),
   /** Whether plain values are included for this caller. */
   values: z.boolean(),
-  /** The project's environment variables page on vercel.com. */
   manageUrl: z.string(),
   fetchedAt: Iso,
 });
@@ -295,12 +266,8 @@ export const StoragePatchBody = z.strictObject({
 });
 export const StorageTestResult = z.object({ latencyMs: z.number() });
 
-// ------------------------------------------------------------------ notification webhooks
-//
-// A list of named webhooks, each with a provider that decides the message format (webhooks.ts has
-// the providers and how a URL is recognised). The URL, a Telegram bot token, a generic webhook's
-// signing secret and an ntfy access token are write-only: only the host and a four character hint
-// come back. A generated signing secret is answered once, by the call that made it.
+// The URL, a Telegram bot token, a signing secret and an ntfy access token are write-only: only the host and
+// a four character hint come back. A generated signing secret is answered once, by the call that made it.
 
 export const WebhookProvider = z.enum(WEBHOOK_PROVIDERS);
 export type WebhookProvider = z.infer<typeof WebhookProvider>;
@@ -313,9 +280,8 @@ const SigningSecret = z.string().regex(/^[\x21-\x7e]{16,256}$/, "Use 16 to 256 p
 const AccessToken = z.string().trim().regex(/^[\x21-\x7e]{8,256}$/, "Paste the access token as ntfy shows it");
 
 /**
- * A generic webhook's logo: auto is its site's favicon, url a link Dockify downloads once and keeps,
- * upload an image sent here. PNG, JPEG, WebP, GIF, ICO or SVG, at most 128 KB; an SVG is rebuilt
- * from an allowlist before it is stored. Built-in providers always show their own mark.
+ * auto: the site's favicon. url: a link Dockify downloads once and keeps. upload: an image sent here.
+ * At most 128 KB; an SVG is rebuilt from an allowlist before it is stored.
  */
 export const WebhookLogoBody = z.discriminatedUnion("choice", [
   z.strictObject({ choice: z.literal("auto") }),
@@ -347,7 +313,6 @@ export type WebhookCreateBody = z.infer<typeof WebhookCreateBody>;
 export const WebhookPatchBody = z.strictObject({
   name: WebhookName.optional(),
   provider: WebhookProvider.optional(),
-  /** A new endpoint replaces the stored one. */
   url: WebhookUrl.optional(),
   botToken: TelegramToken.optional(),
   chatId: TelegramChat.optional(),
@@ -364,11 +329,9 @@ export type WebhookPatchBody = z.infer<typeof WebhookPatchBody>;
 export const WebhookIcon = z.object({
   /** auto: the provider's mark, or a generic webhook's favicon. upload: a logo the owner gave. */
   choice: IconChoice,
-  /** The stored image a generic webhook shows (integrations.webhooks.icon); null draws the provider's mark or the webhook glyph. */
+  /** The stored image a generic webhook shows; null draws the provider's mark or the webhook glyph. */
   image: IconImageRef.nullable(),
-  /** The link a logo was downloaded from, when it came from one. */
   logoUrl: z.string().nullable(),
-  /** A generic webhook's last favicon fetch while automatic. */
   favicon: FaviconFacts.nullable(),
 });
 export type WebhookIcon = z.infer<typeof WebhookIcon>;
@@ -382,18 +345,14 @@ export const Webhook = z.object({
   host: z.string(),
   /** The last four characters of the URL's secret part (token, signature or topic); "" when too short to show. */
   hint: z.string(),
-  /** Telegram: the chat the bot posts to. */
   chatId: z.string().nullable(),
-  /** Generic: the signing secret's last four characters. */
   signingSecretHint: z.string().nullable(),
-  /** ntfy: the access token's last four characters, when one is stored. */
   accessTokenHint: z.string().nullable(),
   /** ok: the last delivery got through. failing: it did not, and error says why. never: nothing sent yet. */
   status: z.enum(["ok", "failing", "never"]),
   error: z.string().nullable(),
   lastSentAt: Iso.nullable(),
   lastFailedAt: Iso.nullable(),
-  /** How many alert rules send here. */
   rules: z.number(),
   icon: WebhookIcon,
   createdAt: Iso,
@@ -421,10 +380,7 @@ export const WebhookTestBody = z.union([
 ]);
 export const WebhookTestResult = z.object({ provider: WebhookProvider, status: z.number(), latencyMs: z.number() });
 
-// ------------------------------------------------------------------ email (SMTP)
-//
-// Optional per install: each self-hoster brings their own mail server and login. Without it Dockify
-// keeps the copy-link invites and the host CLI reset (dockify admin), and sends nothing.
+// Optional per install. Without it Dockify keeps the copy-link invites and the host CLI reset, and sends nothing.
 
 /** How the connection is encrypted. There is no plain option: mail and credentials never cross one. */
 export const EmailTlsMode = z.enum(["implicit", "starttls"]);

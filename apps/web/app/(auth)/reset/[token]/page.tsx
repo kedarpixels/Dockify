@@ -31,7 +31,6 @@ const DEAD: Record<NonNullable<ResetResult["reason"]>, { icon: IconName; title: 
   },
 };
 
-/** /reset/[token]: the link from a Forgot password email. The token is hashed at rest by the API. */
 export default async function ResetPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const result = await getReset(token);

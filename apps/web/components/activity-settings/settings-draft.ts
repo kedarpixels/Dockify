@@ -8,15 +8,9 @@ import { settle } from "./form";
 import { applyPatch, type SettingsPatch } from "./settings-patch";
 import type { SectionProps } from "./settings-view";
 
-/* A draft of the instance settings object, shared by Notifications and Instance. */
-
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/**
- * Both sections edit one settings object, so a save in either changes the other's saved copy;
- * a draft without edits follows it, a draft with edits keeps them. Each sends only its own
- * changed fields (settings-patch.ts).
- */
+/** A save in either section changes the other's saved copy: a draft without edits follows it, one with edits keeps them. */
 export function useSettingsDraft<T>(pick: (s: InstanceSettings) => T, patch: (s: InstanceSettings, d: T) => SettingsPatch, { data, update, onDirty, preview, elevate }: SectionProps) {
   const saved = pick(data.settings);
   const [base, setBase] = useState<T>(saved);
@@ -30,7 +24,6 @@ export function useSettingsDraft<T>(pick: (s: InstanceSettings) => T, patch: (s:
   const dirty = !same(draft, saved);
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
 
-  // Validation stays on the bar, and only while something is still wrong; the write is a toast.
   const save = async (valid: boolean, okText: string, what: string) => {
     if (!valid) return setError("Fix the highlighted fields first");
     setError(null);

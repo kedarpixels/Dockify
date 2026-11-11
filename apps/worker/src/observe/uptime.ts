@@ -1,9 +1,4 @@
-/**
- * Daily uptime minutes per app (app_uptime_days), for the public status page bars and the overview
- * health strip. Once a minute every app that should be running gets one sampled minute, plus a down
- * minute (no running container, or its route unreachable through the proxy) or a degraded minute
- * (running but unhealthy or restarting).
- */
+/** Once a minute each app that should be running gets a sampled minute, plus a down or degraded one. */
 import type { Db } from "@dockify/db";
 import { appsHere } from "../server/apps-here.ts";
 import type { ReachState } from "./reach.ts";
@@ -43,7 +38,6 @@ export async function recordUptimeMinute(db: Db, serverId: string, state: Sample
       },
     });
   }
-  // Kept 400 days (the model comment).
   await db.appUptimeDay.deleteMany({ where: { day: { lt: utcDay(now - 400 * 86_400_000) } } });
   return apps.length;
 }

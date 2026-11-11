@@ -17,16 +17,14 @@ export const DomainProbeStatus = z.enum(["untried", "passed", "failed"]);
 /** none: tunnel off or no Cloudflare; managed: Dockify owns the record and rule; external: left alone. */
 export const CfDomainState = z.enum(["none", "pending", "managed", "external", "failed"]);
 /**
- * A domain gets its route and certificate only once it points here (dns.status ok): its DNS names
- * this server, or, behind a proxy such as Cloudflare's, asking the domain itself reached this
- * server (probe passed). Until then it is waiting for DNS.
+ * A domain gets its route and certificate only once it points here: its DNS names this server or, behind a
+ * proxy such as Cloudflare's, asking the domain itself reached this server (probe passed).
  */
 export const DomainRow = z.object({
   id: z.string(),
   hostname: z.string(),
   appId: z.string(),
   appName: z.string(),
-  /** The app's display name, when it has one. */
   appDisplayName: z.string().optional(),
   projectSlug: z.string(),
   environment: z.string(),
@@ -49,7 +47,6 @@ export const DomainsPayload = z.object({
   server: z.object({ ipv4: z.string().nullable(), ipv6: z.string().nullable(), tunnelTarget: z.string().nullable() }),
 });
 export const CreateDomainBody = z.strictObject({ hostname: Hostname, appId: Uuid });
-/** keepRecord=1: leave the Cloudflare record Dockify made for this domain in place. */
 export const TestDomainOffer = z.object({ available: z.boolean(), reason: z.string().nullable(), suffix: z.string().nullable() });
 export const CreateTestDomainBody = z.strictObject({ appId: Uuid });
 export const DeleteDomainQuery = z.strictObject({ keepRecord: z.enum(["1"]).optional() });

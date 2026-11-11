@@ -1,10 +1,5 @@
-/**
- * Pure pieces of the observe api: metric bucketing, alert rule validation and spelling, status page
- * day states and incident whitelisting, log cursors. No I/O, so each is unit tested directly.
- */
+// Pure helpers for the observe api. No I/O.
 import { badField } from "../../errors.ts";
-
-// ------------------------------------------------------------------ metrics
 
 export type Range = "1h" | "24h" | "7d";
 export type Resolution = "raw" | "five_min" | "hour";
@@ -39,7 +34,7 @@ export interface Bucket {
 const n = (v: bigint | number | null): number | null => (v === null ? null : Number(v));
 const maxOf = (a: number | null, b: number | null): number | null => (a === null ? b : b === null ? a : Math.max(a, b));
 
-/** Groups samples into fixed buckets: averages for gauges, maxima for cumulative counters. */
+/** Averages gauges and takes the maximum of cumulative counters. */
 export function bucketize(samples: Sample[], bucketMs: number): Bucket[] {
   const groups = new Map<number, { sum: Bucket; count: number }>();
   for (const s of samples) {
@@ -83,7 +78,6 @@ export interface AppPoint {
   restarts: number;
 }
 
-/** App chart points: rates from counter deltas, restarts as the increase since the last point. */
 export function appPoints(buckets: Bucket[]): { points: AppPoint[]; lastRestartAt: string | null } {
   let lastRestartAt: string | null = null;
   const points = buckets.map((b, i) => {
@@ -103,8 +97,6 @@ export function appPoints(buckets: Bucket[]): { points: AppPoint[]; lastRestartA
   });
   return { points, lastRestartAt };
 }
-
-// ------------------------------------------------------------------ alert rules
 
 export type DbMetric = "disk" | "service" | "down" | "crash_loop" | "memory";
 export type ApiMetric = "disk" | "service" | "down" | "crashLoop" | "memory";
@@ -135,10 +127,7 @@ export interface ValidRule extends Omit<RuleInput, "channels" | "webhooks"> {
   webhooks: string[] | undefined;
 }
 
-/**
- * Cross-field rules zod cannot express. Returns the rule normalized: channels and webhooks
- * deduped. Whether a rule with nowhere to send gets the bell is decided once its webhooks are known (withBell).
- */
+/** Cross-field rules zod cannot express. Returns channels and webhooks deduped. */
 export function validateRule(r: RuleInput): ValidRule {
   if (r.metric === "service") {
     if (!r.service) throw badField("Pick the service this rule watches", "service");
@@ -166,8 +155,6 @@ export function validateRule(r: RuleInput): ValidRule {
 /** A rule that sends nowhere outside still shows in the bell, which a new rule gets by default. */
 export const withBell = (channels: RuleChannel[], webhooks: readonly string[]): RuleChannel[] => (channels.length || webhooks.length ? channels : ["bell"]);
 
-// ------------------------------------------------------------------ status page
-
 export type DayState = "ok" | "minor" | "major" | "none";
 export type CompState = "operational" | "degraded" | "outage";
 
@@ -188,12 +175,10 @@ export function lastDays(days: number, now: number): string[] {
   return Array.from({ length: days }, (_, i) => new Date(today - (days - 1 - i) * 86_400_000).toISOString().slice(0, 10));
 }
 
-// ------------------------------------------------------------------ calendar days in a time zone
-
 const DAY_MS = 86_400_000;
 const wallClocks = new Map<string, Intl.DateTimeFormat>();
 
-/** A cached reader of the wall clock in `zone`. Throws a RangeError for a zone this runtime does not know. */
+/** Throws a RangeError for a zone this runtime does not know. */
 function wallClock(zone: string): Intl.DateTimeFormat {
   let f = wallClocks.get(zone);
   if (!f) {
@@ -203,7 +188,6 @@ function wallClock(zone: string): Intl.DateTimeFormat {
   return f;
 }
 
-/** True for an IANA zone name this runtime can read. Anything else, a typo or a forged query, is refused. */
 export function isZone(zone: unknown): zone is string {
   if (typeof zone !== "string" || !zone || zone.length > 64 || !/^[A-Za-z0-9_+\-/]+$/.test(zone)) return false;
   try {
@@ -214,11 +198,7 @@ export function isZone(zone: unknown): zone is string {
   }
 }
 
-/**
- * The zone the deploy trend counts its days in: the viewer's saved zone, else the one their browser
- * sent, else UTC. It is the zone the dashboard's own day headings use, so "Deploys today", the
- * heatmap's today and the "Today" group of the deployment list all mean the same calendar day.
- */
+/** Saved zone, else the browser's, else UTC. The dashboard's day headings use the same zone, so "today" means one day everywhere. */
 export function trendZone(saved: string | null | undefined, requested: string | null | undefined): string {
   if (isZone(saved)) return saved;
   if (isZone(requested)) return requested;
@@ -233,16 +213,13 @@ function wallTime(t: number, zone: string): number {
   return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour) % 24, Number(p.minute), Number(p.second)) + ms;
 }
 
-/** The calendar day `t` falls on in `zone`, as YYYY-MM-DD. */
 export function dayIn(t: number, zone = "UTC"): string {
   return new Date(wallTime(t, zone)).toISOString().slice(0, 10);
 }
 
 /**
- * The first instant of `day` (YYYY-MM-DD) in `zone`. The offset read at the day's wall-clock
- * midnight is wrong only near a clock change, so a second read at the first answer settles it.
- * A change that skips midnight itself leaves that answer on the evening before; the day then
- * starts at the jump, which is the rest of that evening later.
+ * The offset read at wall-clock midnight is wrong near a clock change, so a second read settles it.
+ * A change that skips midnight itself makes the day start at the jump.
  */
 export function dayStartIn(day: string, zone = "UTC"): number {
   const wall = Date.parse(`${day}T00:00:00Z`);
@@ -256,27 +233,18 @@ export function dayStartIn(day: string, zone = "UTC"): number {
 /** The dashboard compares the last 30 days with the 30 before, so the trend reaches back this far. */
 const TREND_MIN_DAYS = 60;
 
-/**
- * The first day of the deploy trend in `zone`, as YYYY-MM-DD: Jan 1 of the year today falls in, or
- * 59 days before today when that is earlier (January and February). Without that reach back both
- * 30 day windows would start at Jan 1 early in the year and report made-up changes.
- */
+/** Jan 1 of today's year, or 59 days back when that is earlier, so both 30 day windows stay whole in January and February. */
 function trendFirstDay(now: number, zone: string): string {
   const today = Date.parse(`${dayIn(now, zone)}T00:00:00Z`);
   const jan1 = Date.UTC(new Date(today).getUTCFullYear(), 0, 1);
   return new Date(Math.min(jan1, today - (TREND_MIN_DAYS - 1) * DAY_MS)).toISOString().slice(0, 10);
 }
 
-/** The first instant of the deploy trend in `zone`, as a timestamp, which is where its query starts. */
 export function trendStart(now: number, zone = "UTC"): number {
   return dayStartIn(trendFirstDay(now, zone), zone);
 }
 
-/**
- * The deploy trend's days in `zone`, oldest first, as YYYY-MM-DD: every day from its first day
- * through Dec 31 of the year today falls in there. The heatmap shows that calendar year; early in
- * the year the days before it are there for the 30 day comparisons.
- */
+/** Oldest first, as YYYY-MM-DD, from the trend's first day through Dec 31 of today's year in `zone`. */
 export function trendDays(now: number, zone = "UTC"): string[] {
   const end = Date.UTC(Number(dayIn(now, zone).slice(0, 4)) + 1, 0, 1);
   const out: string[] = [];
@@ -309,8 +277,6 @@ export function safeLogoUrl(raw: string | null): string | null {
     return null;
   }
 }
-
-// ------------------------------------------------------------------ logs
 
 export const LEVELS = ["error", "warn", "info", "debug"] as const;
 export type Level = (typeof LEVELS)[number];

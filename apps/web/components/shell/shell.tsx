@@ -39,16 +39,12 @@ function subscribeSidebar(onChange: () => void) {
   return () => watch.disconnect();
 }
 
-/* The skip link: the page's main region takes focus (and the page scrolls to its top). Without
-   one, the browser follows #main itself. */
+/* Without a main region to focus, the browser follows #main itself. */
 function skipToMain(e: React.MouseEvent<HTMLAnchorElement>) {
   if (focusMain({ scroll: true })) e.preventDefault();
 }
 
-/**
- * `data` is the layout's read, at `servedAt`. Once a page has polled a newer overview the shell
- * shows that instead, so the sidebar, the command menu and the tab title follow the server.
- */
+/** Once a page has polled an overview newer than the layout's read, the shell shows that instead. */
 export function Shell({ data: served, servedAt = "", children }: { data: ShellData; servedAt?: string; children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
@@ -104,7 +100,6 @@ export function Shell({ data: served, servedAt = "", children }: { data: ShellDa
   }, []);
 
   useEffect(() => {
-    // Cmd on Apple platforms, Ctrl elsewhere (see mod-key.ts).
     const apple = isApple();
     const onKey = (e: KeyboardEvent) => {
       if (!(apple ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) || e.altKey || e.shiftKey || e.repeat) return;

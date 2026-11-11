@@ -21,10 +21,6 @@ const META: Array<[label: string, width: number]> = [
 /** A build's steps, from queued to the health check. */
 const STEPS = 7;
 
-/**
- * Route loading state for one deployment, in the page's own order: the Details card, then Steps,
- * then the Build log, each at its real size.
- */
 export default function Loading() {
   return (
     <>

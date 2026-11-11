@@ -1,4 +1,3 @@
-/** Row to contract mappers. Pure, so the response shapes are tested without a database. */
 import { iso, type RecentDeployment } from "@dockify/contracts";
 import type { ActorType, DeploymentStatus as DbDeploymentStatus } from "@dockify/db";
 import { actorRef, deploymentSource, NO_PEOPLE, type People } from "../../actor-view.ts";
@@ -53,7 +52,6 @@ export function recentDeployment(
   };
 }
 
-/** "owner/repo" for a repository URL, or the URL itself when it does not parse. */
 export function repoLabel(url: string): string {
   try {
     const u = new URL(url);
@@ -63,7 +61,7 @@ export function repoLabel(url: string): string {
   }
 }
 
-/** Lowercase letters, digits and dashes, at most 40 characters, matching the Slug contract. */
+/** Must match the Slug contract: lowercase letters, digits and dashes, at most 40 characters. */
 export function slugify(name: string): string {
   return name
     .normalize("NFKD")
@@ -75,7 +73,6 @@ export function slugify(name: string): string {
     .replace(/-+$/, "");
 }
 
-/** The slug to try for attempt n (0 is the plain slug), still within 40 characters. */
 export function slugCandidate(base: string, n: number): string {
   if (n === 0) return base;
   const suffix = `-${n + 1}`;

@@ -23,7 +23,6 @@ export interface IconImageRef {
   height: number;
 }
 
-/** A frontend a project can show the favicon of. */
 export interface FaviconApp {
   id: string;
   /** Its display name, else its name. */
@@ -36,10 +35,8 @@ export interface FaviconApp {
 /** What a project's icon is: the folder (the default), the favicon of an app the owner chose, or an upload. */
 export type ProjectIconMode = "folder" | "app" | "upload";
 
-/** Projects only: the icon's mode, the app chosen, and the frontends to choose from. */
 export interface ProjectFavicon {
   mode: ProjectIconMode;
-  /** The app the owner chose, or null. */
   pick: string | null;
   /** The app the shown favicon comes from: the chosen one while it has a favicon, else null. */
   from: string | null;
@@ -62,13 +59,9 @@ export interface IconMap {
 
 export const EMPTY_ICONS: IconMap = { apps: {}, projects: {} };
 
-/**
- * The write the Icon control sends. An app: automatic (its favicon or its kind's default) or an
- * upload as base64. A project: the folder, the favicon of one of its frontends, or an upload.
- */
+/** An upload travels as base64. */
 export type IconBody = { choice: "auto" } | { choice: "folder" } | { choice: "app"; appId: string } | { choice: "upload"; image: string };
 
-/** The answer of one icon write, through app/api/icons. */
 export interface IconResult {
   ok: boolean;
   source: OverviewSource;
@@ -93,10 +86,7 @@ export function iconUrl(t: IconTarget, version: string): string {
 export const PROJECT_FOLDER = "folder";
 export const PROJECT_UPLOAD = "upload";
 
-/**
- * What a project's Icon dropdown shows: the current value, and the frontends to choose from. A
- * chosen app that lost its favicon reads as the folder, which is what the project shows then.
- */
+/** A chosen app that lost its favicon reads as the folder, which is what the project shows then. */
 export function projectIconPick(state: IconState | undefined): { value: string; apps: FaviconApp[] } {
   const apps = state?.borrow?.apps ?? [];
   const pick = state?.borrow?.pick;

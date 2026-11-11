@@ -1,6 +1,4 @@
-/* App and project icons: the tile family (components/icons), the image frame, and the Icon control. */
-
-/* ============== Icon ============== */
+/* Icon */
 .aicon {
   display: inline-flex;
   flex: none;
@@ -26,8 +24,7 @@
   height: 100%;
 }
 
-/* An image fills the whole icon box with the tile's corner, and nothing behind it, so a logo with
-   a transparent background stays transparent. */
+/* Nothing sits behind an image, so a logo with a transparent background stays transparent. */
 .aicon > img {
   display: block;
   width: 100%;
@@ -49,7 +46,7 @@
 .aicon-tile[data-hue="redis"] { --ai-back-top: var(--tile-redis-top); --ai-back-bottom: var(--tile-redis-bottom); }
 .aicon-tile[data-hue="minio"] { --ai-back-top: var(--tile-minio-top); --ai-back-bottom: var(--tile-minio-bottom); }
 
-/* ============== Icon card ============== */
+/* Icon card */
 .ic-card {
   gap: 24px;
 }
@@ -64,7 +61,6 @@
   min-width: 0;
 }
 
-/* A project's dropdown, with the line naming where its icon comes from under it. */
 .ic-pick {
   display: grid;
   flex: 1;

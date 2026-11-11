@@ -1,8 +1,4 @@
-/**
- * The worker: claim loops over the jobs table, per server and global, with every module's handlers
- * (see wiring.ts). The update lane is never claimed here; the self-updater owns it. Start-up runs in
- * the order boot.ts describes before any job is claimed.
- */
+/** Claim loops over the jobs table, per server and global. The update lane is never claimed here: the updater owns it. */
 import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { jobs as J } from "@dockify/contracts";
@@ -28,16 +24,14 @@ export type { JobHandler } from "./wiring.ts";
 const LEASE_MS = 60_000;
 const IDLE_MS = 2_000;
 /**
- * One claim loop each, so a long build holds up neither a backup nor New app's read of a repository.
- * Maintenance has two: a long job on a server's loop (a prune, a janitor pass) no longer holds up the
- * global ones (mail, DNS checks), and the two run side by side.
+ * One claim loop per lane, so a long build holds up neither a backup nor a repository read. Maintenance has
+ * a per-server loop and a global one, so a long prune does not hold up mail or DNS checks.
  */
 const SERVER_LANES: JobLane[] = ["deploy", "data", "maintenance"];
 const GLOBAL_LANES: JobLane[] = ["maintenance", "detect"];
 
 const logger = jsonLogger();
 guardProcess(logger);
-/** What the modules log through: warnings, as before. */
 const log = (msg: string, extra?: object): void => logger.warn(msg, extra);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -57,7 +51,6 @@ try {
   const vault = createRemoteVault({ apiUrl: readApiUrl(), token: internalToken });
   shared = workerShared({ db, vault, internalToken, logger, alive });
 } catch (e) {
-  // A configuration the worker cannot run with: one line, then exit, so the cause is the last thing logged.
   logger.error(`worker cannot start: ${message(e)}`);
   process.exit(1);
 }
@@ -107,9 +100,8 @@ const serverLoops = (handlers: Wired["handlers"], serverId: string, server: Prim
   ...Array.from({ length: J.JOB_MAX_CONCURRENT_RUNS }, () => runLane(handlers, "cron", serverId, server)),
 ];
 
-/** Everything before the first claim. The primary server's runtime when the worker should run, else null. */
 async function start(): Promise<{ runtime: ServerRuntime; wired: Wired; primary: PrimaryLink } | null> {
-  // 1. The database. After a reboot it comes up in any order with the rest; wait quietly.
+  // After a reboot the database comes up in any order with the rest; wait quietly.
   const url = process.env.DATABASE_URL;
   const dbUp = await waitUntilReachable("the database", async () => {
     if (url) await tcpProbe(url)();
@@ -123,8 +115,8 @@ async function start(): Promise<{ runtime: ServerRuntime; wired: Wired; primary:
   }, { log: logger, signal: stop.signal });
   if (!primaryId) return null;
 
-  // 2. The link its agent dials, then that server's runtime, then what its proxy needs before anything
-  // else can fail: the dashboard's routers and the shared middleware. Traefik keeps its files until then.
+  // The dashboard's routers and the shared middleware are written before anything else can fail. Traefik
+  // keeps serving the files it has until then.
   const primary = await startPrimaryLink({ db, serverId: primaryId, env: process.env, health: shared.health, log });
   let cores = 0;
   const agentUp = await waitUntilReachable("this server's agent", async () => {
@@ -154,7 +146,7 @@ async function start(): Promise<{ runtime: ServerRuntime; wired: Wired; primary:
     return null;
   }
 
-  // 3. Every route against the live containers, before any job runs: a reboot gave them new addresses.
+  // Every route is resynced before any job runs: a reboot gave the containers new addresses.
   try {
     const r = await resyncRoutes(wired.edgeDeps, log);
     logger.info("routes resynced", r);
@@ -168,8 +160,8 @@ async function start(): Promise<{ runtime: ServerRuntime; wired: Wired; primary:
   // address has recreated this worker.
   await enqueue(db, { kind: "dashboard_domain", lane: "maintenance", payload: {}, dedupeKey: DASHBOARD_JOB_KEY }).catch(() => {});
 
-  // 4. The work folder. A problem there is logged once and reported with the heartbeat; only the
-  // jobs that stage files in it are refused (health.ts), so the worker starts either way.
+  // A work folder problem is reported with the heartbeat and refuses only the jobs that stage files there
+  // (health.ts), so the worker starts either way.
   const swept = await sweepCheckouts(shared.deployConfig.buildRoot);
   if (swept) log("removed checkouts a crash left behind", { checkouts: swept });
   await checkWorkFolder({ health: shared.health, dir: wired.data.tmpDir, log: logger });

@@ -8,14 +8,8 @@ import { plural } from "@/lib/format";
 import { opensUp, useOutsidePress } from "@/lib/hooks";
 import type { AppKind } from "@/lib/types";
 
-/*
- * The app filter: a multi-select in the Select material, grouped by project. A project row picks
- * or drops all of its apps at once. Nothing picked means every app, and picking every app reads
- * back as nothing picked, so the two never disagree. Keyboard: arrows (wrapping), Home and End
- * move; letters jump to the next row that starts with them, as in Select; Space or Enter toggles;
- * Escape or a click outside closes and returns focus. Every key the list reads is used up there,
- * so a letter never also reaches a page shortcut.
- */
+// Nothing picked means every app, and picking every app reads back as nothing picked. Every key
+// the list reads is used up there, so a letter never also reaches a page shortcut.
 
 export interface PickerApp {
   id: string;
@@ -51,7 +45,6 @@ export function AppPicker({ apps, value, onChange }: { apps: PickerApp[]; value:
   const all = (ids: string[]) => ids.length > 0 && ids.every((id) => picked.has(id));
   const some = (ids: string[]) => ids.some((id) => picked.has(id));
 
-  /** Every app picked is the same as none: show everything. */
   const commit = (next: Set<string>) => onChange(next.size >= apps.length && apps.every((a) => next.has(a.id)) ? [] : apps.map((a) => a.id).filter((id) => next.has(id)));
 
   const toggle = (row: Row) => {
@@ -72,10 +65,7 @@ export function AppPicker({ apps, value, onChange }: { apps: PickerApp[]; value:
   // Type-ahead: letters typed within 600ms build one query; the search starts after the active row
   // and wraps, so typing the same letter again walks through the rows that start with it.
   const typed = useRef({ text: "", at: Number.NEGATIVE_INFINITY });
-  /**
-   * `at` is the key event's own time stamp, so the pause between letters needs no clock read.
-   * `current` is the row the search moves on from (-1 starts at the top).
-   */
+  /** `at` is the key event's own time stamp, so the pause between letters needs no clock read. */
   const typeAhead = (key: string, at: number, current: number) => {
     const text = (at - typed.current.at < 600 ? typed.current.text : "") + key.toLowerCase();
     typed.current = { text, at };
@@ -166,7 +156,6 @@ export function AppPicker({ apps, value, onChange }: { apps: PickerApp[]; value:
             setActive(0);
             setOpen(true);
           } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            // A letter opens the list on the first row that starts with it.
             e.preventDefault();
             const hit = typeAhead(e.key, e.timeStamp, -1);
             setActive(hit >= 0 ? hit : 0);

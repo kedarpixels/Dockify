@@ -1,12 +1,7 @@
-/* Landing page (app/page.tsx, components/landing). Every class is prefixed ld-, il- (the line
-   illustrations) or sv- (the hero scene). Builds on the foundation tokens, the ruled frame and
-   the flat .btn.
+/* Whole pixels: every column is a whole number of pixels (round(down) tracks, the last one taking the rest)
+   and every drawing sits on a whole-pixel offset inside its box, at 1:1 wherever its column is wide enough. */
 
-   Whole pixels: every column is a whole number of pixels (round(down) tracks, the last one taking
-   the rest), every drawing sits on a whole-pixel offset inside its box (a container query measures
-   the box), and a drawing draws at 1:1 wherever its column is wide enough. */
-
-/* -------------- Type -------------- */
+/* Type */
 .ld-h1 {
   margin: 0;
   font-family: var(--font-pixel);
@@ -70,7 +65,7 @@
   text-wrap: pretty;
 }
 
-/* -------------- Calls to action -------------- */
+/* Calls to action */
 .ld-btn-lg {
   height: 40px;
   padding: 0 16px;
@@ -87,7 +82,7 @@
   justify-content: center;
 }
 
-/* -------------- Hero: a pixel headline beside one server -------------- */
+/* Hero */
 /* From 1264px the rail is the full 1200, and the art column is exactly the drawing: 520 plus its
    48px padding on each side plus the divider. Narrower, the columns split evenly in whole pixels. */
 .ld-hero {
@@ -143,8 +138,7 @@
   color: var(--ink);
 }
 
-/* A leading 14px glyph, quieter than the text like every key's icon; the left side gives back 2px
-   so the glyph and the text look evenly inset. */
+/* The left side gives back 2px, so the leading glyph and the text look evenly inset. */
 .ld-chip:has(> .ic:first-child) {
   gap: 6px;
   padding-left: 10px;
@@ -190,18 +184,14 @@
   background: var(--panel-2);
 }
 
-/* The line drawing, with the punchline under it. */
 .sv-stage {
   display: flex;
   flex-direction: column;
   width: 100%;
 }
 
-/* The wide drawing at 520 by 548 when the column has room, scaled down otherwise; its height and its
-   left offset are whole pixels either way. Under 480px of column the narrow layout takes over.
-   The shorter hero column is centred against the taller one. Every height in both columns is even
-   (the text column's line heights, paddings and boxes; the drawing plus one pixel under an odd
-   height), so the centring offset is always a whole pixel. */
+/* Scaled down when the column lacks room; its height and left offset stay whole pixels. Every height in both
+   hero columns is even, so the offset that centres the shorter column is a whole pixel. */
 .il.il-hero-wide {
   width: min(100cqw, 520px);
   height: round(down, calc(min(100cqw, 520px) * 548 / 520), 1px);
@@ -281,7 +271,7 @@
   to { opacity: 1; transform: none; }
 }
 
-/* -------------- Works with -------------- */
+/* Works with */
 .ld-works {
   padding: 24px var(--gutter);
   border-top: 1px solid var(--line);
@@ -308,7 +298,7 @@
   color: var(--ink-3);
 }
 
-/* -------------- Product shot -------------- */
+/* Product shot */
 .ld-shot {
   padding: 40px var(--gutter) 32px;
 }
@@ -333,8 +323,7 @@
   box-shadow: var(--seg-thumb-shadow);
 }
 
-/* A square browser-style card spanning the whole column: its sides are the rails, so it only
-   draws its top and bottom hairlines. */
+/* Its sides are the rails, so it only draws its top and bottom hairlines. */
 .ld-frame {
   position: relative;
   margin-inline: calc(var(--gutter) * -1);
@@ -385,8 +374,7 @@
   height: 12px;
 }
 
-/* The whole 1440 by 900 viewport, uncropped, on the soft mass surface with an even inset. Its height
-   is rounded down to a whole pixel, so the page below starts on one. */
+/* Its height is rounded down to a whole pixel, so the page below starts on one. */
 .ld-frame-view {
   container-type: inline-size;
   position: relative;
@@ -432,7 +420,7 @@
   color: var(--ink-3);
 }
 
-/* -------------- Section heads -------------- */
+/* Section heads */
 .ld-sec-hd {
   padding: 48px var(--gutter) 32px;
   border-bottom: 1px solid var(--line);
@@ -446,7 +434,7 @@
   gap: 16px 24px;
 }
 
-/* -------------- Differentiators: bento -------------- */
+/* Differentiators: bento */
 /* The 1px gap shows the line colour behind, so the rules stay right whatever the spans. */
 .ld-bento {
   display: grid;
@@ -468,10 +456,8 @@
   grid-column: span 2;
 }
 
-/* The drawing box is exactly as tall as its drawing at 1:1 (184, or 264 for the large one and, three
-   across, for the card in its row), plus 24px above and below and its rule. The text under it takes
-   any extra height, so the rules under the drawings line up across a row whatever the text, and a
-   drawing is centred in a box of known height, on whole pixels. */
+/* The drawing box is exactly as tall as its drawing at 1:1 plus padding and rule, and the text under it takes
+   any extra height, so the rules under the drawings line up across a row. */
 .ld-demo {
   container-type: inline-size;
   display: grid;
@@ -510,9 +496,7 @@
   text-wrap: pretty;
 }
 
-/* -------------- Line illustrations (components/landing/scene.ts) --------------
-   Thin wireframe drawings on the --panel-2 surface: hairline boxes, dashed guides, hatch fills,
-   labels in Geist and one blue accent for the live state. Everything follows the theme tokens. */
+/* Line illustrations (components/landing/scene.ts) */
 .il {
   --il-hatch: color-mix(in srgb, var(--ink-4) 42%, transparent);
   display: block;
@@ -532,9 +516,8 @@
   shape-rendering: crispEdges;
 }
 
-/* Each drawing at its own size when its box allows, else scaled down to a whole-pixel box; centred
-   in its box with whole-pixel offsets either way. The large drawing is 720 by 264 (352 by 236 on a
-   phone), the others 352 by 184. */
+/* Each drawing at its own size when its box allows, else scaled down to a whole-pixel box. The large drawing
+   is 720 by 264 (352 by 236 on a phone), the others 352 by 184. */
 .ld-demo > .il-wide {
   width: min(100cqw, 720px);
   height: calc(min(100cqw, 720px) * 264 / 720);
@@ -627,7 +610,7 @@
 .il-pixel { font-family: var(--font-pixel); font-feature-settings: "ss09"; fill: var(--ink); }
 .il-big { font-size: 26px; }
 
-/* -------------- How it works -------------- */
+/* How it works */
 .ld-steps-wrap {
   position: relative;
 }
@@ -652,9 +635,7 @@
   border-right: 1px solid var(--line);
 }
 
-/* The drawing is 340 by 112 at 1:1 and starts 20px down, so its middle row (76px) is the dashed
-   link's row. Where the column is narrower it scales down to whole-pixel boxes, still centred on
-   that row and on the column. */
+/* The drawing is 340 by 112 at 1:1 and starts 20px down, so its middle row (76px) is the dashed link's row. */
 .ld-step-art {
   container-type: inline-size;
   display: grid;
@@ -676,8 +657,7 @@
   margin-left: round(down, calc((100cqw - min(100cqw, 340px)) / 2), 1px);
 }
 
-/* One dashed line through all three fragments, on a whole pixel; a dot crosses it once when it
-   comes on screen. */
+/* One dashed line through all three fragments, on a whole pixel. */
 .ld-steps-link {
   position: absolute;
   z-index: 1;
@@ -743,7 +723,7 @@
   color: var(--ink-3);
 }
 
-/* -------------- Compare -------------- */
+/* Compare */
 .ld-cmp-wrap {
   padding: 16px var(--gutter) 0;
   overflow-x: auto;
@@ -829,7 +809,7 @@
   color: var(--ink-3);
 }
 
-/* -------------- FAQ -------------- */
+/* FAQ */
 .ld-faq {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
@@ -934,8 +914,7 @@
   text-wrap: pretty;
 }
 
-/* -------------- Final call -------------- */
-/* Two drifting pixel clouds in Dockify blue, from opposite corners, behind the call. */
+/* Final call */
 .ld-final {
   --cloud: color-mix(in srgb, var(--blue) 7%, var(--bg));
   --cloud-core: color-mix(in srgb, var(--blue) 13%, var(--bg));
@@ -978,7 +957,7 @@
   transform-origin: right top;
 }
 
-/* -------------- Responsive -------------- */
+/* Responsive */
 @media (max-width: 1100px) {
   .ld-h1 {
     font-size: 52px;

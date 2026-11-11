@@ -14,12 +14,7 @@ import { detect } from "./client";
 import { pickUrl, repoPicked, repoUrlOf, type BuildDraft, type Errors, type GitDraft } from "./draft";
 import type { DetectResult } from "./spec";
 
-/*
- * Step 2 for a GitHub repository: pick one from a connected account or take a URL, then the
- * branch, the root directory and the build. Once those settle, the worker reads the repository
- * (apps.detect) and the form shows what it found. Nothing here depends on the read finishing: a deploy
- * works it out again, and a field left blank follows what it finds then.
- */
+/* Nothing here depends on the repository read finishing: a deploy works it out again. */
 
 type Set = (fn: (d: GitDraft) => GitDraft) => void;
 
@@ -29,7 +24,7 @@ const POLL_MS = 2_000;
 /** The worker's own limits end a read well before this; past it the page stops asking. */
 const GIVE_UP_MS = 7 * 60_000;
 
-/** What a finished read changes in the form. An edited field or a typed port always stays. */
+/** An edited field or a typed port always stays. */
 export function applyDetected(d: GitDraft, r: DetectResult): GitDraft {
   const port = d.build.port || (r.port === null ? "" : String(r.port));
   const next = { ...d, detect: { state: "done" as const, result: r } };
@@ -127,10 +122,7 @@ export function GitSource({ draft, set, errors }: { draft: GitDraft; set: Set; e
 
 type Branches = { state: "loading" } | { state: "ready"; list: GitBranch[] } | { state: "error"; error: string };
 
-/**
- * The branch this app deploys from. A repository the App reads lists its branches with the
- * default picked; a URL import, or a list that failed to load, types the name instead.
- */
+/** A URL import, or a list that failed to load, types the name instead. */
 function BranchField({ picked, value, onChange, error }: { picked: Picked; value: string; onChange: (b: string) => void; error?: string }) {
   const repoId = picked.kind === "git" ? picked.repo.id : null;
   const [branches, setBranches] = useState<Branches>({ state: "loading" });

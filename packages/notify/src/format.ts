@@ -1,28 +1,6 @@
 /**
- * One message, shaped for each provider in its own native format. Every piece of text is escaped
- * for the markup the provider renders, so nothing in a message can format, link or mention by
- * accident: Discord markdown and mentions, Slack's <...> controls, Teams and Google Chat markup,
- * Telegram HTML, and Markdown links and @mentions in Mattermost and Rocket.Chat.
- *
- * The generic webhook's JSON (genericBody) is the documented one:
- *
- *   {
- *     "version": 1,
- *     "id": "<delivery id, the same across retries>",
- *     "event": "alert.firing" | "alert.resolved" | "update.available" | "update.updated" |
- *              "update.failed" | "update.rolled_back" | "test",
- *     "occurredAt": "<ISO time>",
- *     "severity": "critical" | "warning" | "info" | "success",
- *     "title": "...", "text": "...", "url": "<dashboard link>" | null,
- *     "fields": [{ "name": "...", "value": "..." }],
- *     "instance": { "name": "...", "url": "<dashboard origin>" | null },
- *     // alerts also carry the shape earlier versions sent:
- *     "alert": { "id", "metric", "detail", "startedAt", "resolvedAt", "url" }, "app": {...} | null, "service": "..." | null,
- *     // update notices carry:
- *     "update": { "event", "version", "from", "error" }
- *   }
- *
- * deliver.ts signs it (X-Dockify-Signature) and sends it.
+ * One message in each provider's native format. Every piece of text is escaped for the markup the provider
+ * renders, so nothing in a message can format, link or mention by accident.
  */
 import { WEBHOOK_PROVIDER_INFO, type WebhookProviderId } from "@dockify/contracts";
 import type { NotifyMessage, Severity } from "./message.ts";
@@ -34,8 +12,6 @@ export const clip = (s: string, n: number): string => (s.length > n ? `${s.slice
 /** Control characters never belong in a message; newlines and tabs stay. */
 const plain = (s: string): string => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
 const fieldsOf = (m: NotifyMessage) => m.fields.filter((f) => f.name.trim() && f.value.trim());
-
-// ------------------------------------------------------------------ Discord
 
 /** Discord markdown and mentions, escaped: no ping, no masked link, no formatting from outside text. */
 export const discordSafe = (s: string): string => plain(s).replace(/[@`*_~|>\\[\]]/g, (c) => `\\${c}`);
@@ -58,8 +34,6 @@ export function discordBody(m: NotifyMessage): object {
   };
 }
 
-// ------------------------------------------------------------------ Slack
-
 /** Slack's three control characters; with < escaped, no <!channel> or <@user> can form. */
 export const slackSafe = (s: string): string => plain(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -75,8 +49,6 @@ export function slackBody(m: NotifyMessage): object {
   // text is the notification's fallback: Slack shows the blocks.
   return { text: clip(slackSafe(`${m.title}: ${m.text}`), 300), blocks };
 }
-
-// ------------------------------------------------------------------ Microsoft Teams
 
 /** Adaptive Card text renders a subset of Markdown: escape what could link or format. */
 export const teamsSafe = (s: string): string => plain(s).replace(/[\\`*_[\]()<>#~|]/g, (c) => `\\${c}`);
@@ -108,8 +80,6 @@ export function teamsBody(m: NotifyMessage): object {
   };
 }
 
-// ------------------------------------------------------------------ Google Chat
-
 /** Card text renders a little HTML (<b>, <a>, <font>): escape it all. */
 export const htmlSafe = (s: string): string => plain(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -130,8 +100,6 @@ export function googleChatBody(m: NotifyMessage): object {
   };
 }
 
-// ------------------------------------------------------------------ Telegram
-
 export function telegramBody(m: NotifyMessage, chatId: string): object {
   const lines = [`<b>${htmlSafe(clip(m.title, 300))}</b>`, htmlSafe(clip(m.text, 3000))];
   for (const f of fieldsOf(m).slice(0, 20)) lines.push(`<b>${htmlSafe(clip(f.name, 100))}:</b> ${htmlSafe(clip(f.value, 500))}`);
@@ -145,13 +113,9 @@ export function telegramBody(m: NotifyMessage, chatId: string): object {
   };
 }
 
-// ------------------------------------------------------------------ Mattermost and Rocket.Chat
-
 /**
- * Both render Markdown and notify on @all, @channel, @here and @name. A zero-width space after
- * each @ keeps the text as it reads while no mention can form. What could make a link, an image,
- * HTML or a code span is escaped; < also gets the space, for a parser that reads <url|text> and
- * knows no backslash.
+ * Both render Markdown and notify on @all, @channel, @here and @name. A zero-width space after each @ stops
+ * mentions; < also gets one, for a parser that reads <url|text> and knows no backslash.
  */
 export const chatSafe = (s: string): string =>
   plain(s).replace(/[\\`[\]()!>]/g, (c) => `\\${c}`).replace(/</g, "\\<​").replace(/@/g, "@​");
@@ -185,8 +149,6 @@ export function rocketChatBody(m: NotifyMessage): object {
   };
 }
 
-// ------------------------------------------------------------------ ntfy
-
 const NTFY_PRIORITY: Readonly<Record<Severity, string>> = { critical: "5", warning: "4", info: "3", success: "3" };
 const NTFY_TAGS: Readonly<Record<Severity, string>> = { critical: "rotating_light", warning: "warning", info: "information_source", success: "white_check_mark" };
 
@@ -210,8 +172,6 @@ export function ntfyRequest(m: NotifyMessage): { headers: Record<string, string>
     body: clip(lines.join("\n"), 3500),
   };
 }
-
-// ------------------------------------------------------------------ generic
 
 export function genericBody(m: NotifyMessage): object {
   return {

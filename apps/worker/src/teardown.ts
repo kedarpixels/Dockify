@@ -1,8 +1,4 @@
-/**
- * Teardown work no single module owns: removing a deleted app (remove_app, queued by the projects
- * module in the same transaction that deletes the rows). Previews have their own teardown in
- * integrations/previews.ts.
- */
+/** Removes a deleted app. Previews have their own teardown in integrations/previews.ts. */
 import type { Db } from "@dockify/db";
 import { enqueue } from "@dockify/db";
 import { LABEL } from "./deploy/containers.ts";
@@ -46,17 +42,10 @@ export interface TeardownDeps {
   docker: DockerApi;
   routes: RouteStore;
   removeVolume(name: string): Promise<void>;
-  /** Removes the environment networks nothing needs any more, which this app's going may leave. */
   networks?: Omit<NetworkSweepDeps, "db" | "serverId">;
 }
 
-/**
- * Idempotent: every container labelled with the app (live, parked, release one-offs) with the
- * anonymous volumes only it used, its route file, its named volumes, the images it alone ran, the
- * Cloudflare objects Dockify recorded for its domains (handed to the edge module, which deletes only
- * those ids), and its environment's network if that environment went too. Runs after the rows are
- * gone, so it only reads the payload.
- */
+/** Idempotent, and runs after the rows are gone, so it reads only the payload. */
 export async function removeApp(deps: TeardownDeps, payload: unknown, serverId: string): Promise<void> {
   const p = parseRemoveApp(payload);
   await removeRoute(deps.routes, p.appId);

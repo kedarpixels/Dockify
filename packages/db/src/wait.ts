@@ -2,12 +2,8 @@ import { connect } from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
 
 /**
- * Waiting for a dependency at boot. After a host reboot Docker starts every container at
- * once, so the api and the worker come up before Postgres takes connections and the worker before
- * the Docker socket proxy. They used to crash or log an error for every attempt for about a
- * minute. Now each waits with backoff and says what it waits for once, at info; it logs an error
- * only when the wait has lasted long enough to be a real outage, and once more at info when the
- * dependency answers.
+ * After a host reboot Docker starts every container at once, so the api and the worker come up before
+ * Postgres and the socket proxy. Each waits with backoff and logs an error only for a real outage.
  */
 export interface WaitLog {
   info(msg: string, extra?: object): void;
@@ -27,11 +23,7 @@ export interface WaitOptions {
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).split("\n").map((l) => l.trim()).filter(Boolean).at(-1)?.slice(0, 300) ?? "unknown error";
 
-/**
- * Calls `probe` until it resolves. True once it does, false when `signal` aborts first. The first
- * failure logs "waiting for <what>" at info, a failure that lasts `sustainedMs` logs one error, and
- * success after any failure logs "<what> is reachable" at info. A first-try success logs nothing.
- */
+/** True once `probe` resolves, false when `signal` aborts first. A first-try success logs nothing. */
 export async function waitUntilReachable(what: string, probe: () => Promise<unknown>, o: WaitOptions): Promise<boolean> {
   const now = o.now ?? Date.now;
   const pause = o.sleep ?? ((ms: number, signal?: AbortSignal) => sleep(ms, undefined, { signal }).then(() => undefined));

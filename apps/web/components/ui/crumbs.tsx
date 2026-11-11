@@ -1,19 +1,8 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 
-/*
- * Breadcrumb above a detail page's title: 13px muted links, "/" between, the current page in ink.
- * Render it as the first child of `main.page`, right before SectionHead; the pair keeps the title
- * at the same height as on list pages.
- *
- *   <Crumbs back items={[{ label: "Deployments", href: "/deployments" }, { label: "dpl_8f2c" }]} />
- *
- * `back` adds a leading arrow key to the nearest ancestor with a link. An item's `icon` (a 20px
- * AppIcon or ProjectIcon) sits before its label. `current={false}` means the items are ancestors
- * only: the page's own name is already its title (and the top bar), so it is not printed a third time.
- *
- *   <Crumbs back current={false} items={[{ label: "Projects", href: "/projects" }]} />
- */
+// `back` adds a leading arrow key to the nearest ancestor with a link. `current={false}` means the
+// items are ancestors only: the page's own name is already its title.
 export function Crumbs({
   items,
   back = false,

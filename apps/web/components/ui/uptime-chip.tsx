@@ -1,12 +1,6 @@
 import { Chip } from "./chip";
 
-/**
- * How long the server has been up: a green chip with a soft pulse, then days (when there are any),
- * hours and minutes, never seconds. The Overview server card and the /server head both use it, so
- * the same reading looks the same in both places.
- *
- *   <UptimeChip seconds={host.uptimeSeconds} />
- */
+/** Days, hours and minutes, never seconds. */
 export function UptimeChip({ seconds }: { seconds: number }) {
   const s = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
   const d = Math.floor(s / 86_400);

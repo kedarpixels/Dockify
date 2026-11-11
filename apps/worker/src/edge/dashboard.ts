@@ -11,21 +11,8 @@ import { writeDashboardFiles } from "./routes.ts";
 import { checkTls, type TlsProbe } from "./tls.ts";
 
 /**
- * The dashboard's own address, on the edge. DOCKIFY_PUBLIC_URL says what the address is; the database
- * says what is being set up (instance.dashboardDomain) and what the dashboard left behind
- * (instance.dashboardPreviousHosts). This module keeps the route files and the tunnel in line with
- * them, and checks a new domain the same way an app's domain is checked: its DNS, then asking the
- * domain itself when its records name a proxy (edge/probe.ts).
- *
- *   waiting    the new domain does not lead here yet, or has no certificate yet. Rechecked on a backoff.
- *   ready      it answers and has its certificate; the owner can switch.
- *   switching  checked once more at the press of the key, then the updater takes over: it holds the
- *              Docker socket, rewrites .env and recreates the control services
- *              (apps/api/src/modules/platform/updates/domain-switch.ts).
- *   failed     the switch stopped and went back; the old address never stopped working.
- *
- * A certificate is asked for only once the name leads here, so Let's Encrypt's failure budget is never
- * spent on a typo. Nothing is served on the new name but the probe's path until the switch.
+ * A certificate is asked for only once the new name leads here, so Let's Encrypt's failure budget is
+ * never spent on a typo. The new name serves only the probe's path until the switch.
  */
 
 export const DASHBOARD_JOB_KEY = "dashboard.domain";
@@ -35,7 +22,6 @@ export interface DashboardDeps {
   db: Db;
   vault: SecretVault;
   settings: EdgeSettings;
-  /** The route files of the server the dashboard answers on, and that server's ingress. */
   routes: RouteStore;
   mode: EdgeMode;
   dns: DnsLookup;
@@ -67,16 +53,14 @@ export async function dashboardReservedHosts(db: Tx): Promise<string[]> {
   }
 }
 
-/** A router for the new name: always in tunnel mode (the probe needs it), in direct mode once the name leads here. */
 const nextHost = (pending: D.PendingDomain | null, mode: EdgeSettings["mode"]): string | null => {
   if (!pending) return null;
   return mode.ingress === "cloudflare_tunnel" || pending.dns.status === "ok" ? pending.host : null;
 };
 
 /**
- * Route files and tunnel rules, from what the database says. In a tunnel the current host's rules are
- * added only right after a change of address, recorded in dashboardLastChange: a tunnel edited by hand
- * since keeps its own design.
+ * In a tunnel the current host's rules are added only right after a change of address
+ * (dashboardLastChange): a tunnel edited by hand since keeps its own design.
  */
 export async function syncDashboardEdge(deps: DashboardDeps, opts: { forget?: readonly string[]; addCurrent?: boolean } = {}): Promise<void> {
   const { db, settings } = deps;
@@ -107,10 +91,9 @@ export async function syncDashboardEdge(deps: DashboardDeps, opts: { forget?: re
  */
 export const RECORD_FIRST_HOLD_MS = 10 * 60_000;
 
-/** The pending name is waiting for Dockify to make its record: nothing looks it up yet. */
 export const heldForRecord = (p: D.PendingDomain, now: number): boolean => !!p.recordFirst && !p.dns.checkedAt && now - Date.parse(p.requestedAt) < RECORD_FIRST_HOLD_MS;
 
-/** Writes the check's result, under the lock Settings writes under, unless the owner cancelled or changed the domain meanwhile. */
+/** Under the lock Settings writes under; nothing is written if the owner cancelled or changed the domain. */
 async function savePending(db: Db, host: string, change: (p: D.PendingDomain) => D.PendingDomain, also?: (tx: Tx) => Promise<unknown>): Promise<D.PendingDomain | null> {
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('dockify.dashboard.domain'))`;
@@ -125,9 +108,8 @@ async function savePending(db: Db, host: string, change: (p: D.PendingDomain) =>
 }
 
 /**
- * One check of the domain being set up. With `switching`, a domain that still answers and has its
- * certificate moves on: in a tunnel its rules go in first (nothing else can route the name once the
- * dashboard moves), then the updater gets its job. Anything else leaves it waiting, with the reason.
+ * With `switching`, a domain that still answers and has its certificate moves on: in a tunnel its rules
+ * go in first (nothing else can route the name once the dashboard moves), then the updater gets its job.
  */
 export async function checkDashboardDomain(deps: DashboardDeps, switching = false): Promise<void> {
   const { db, settings } = deps;
@@ -164,9 +146,6 @@ export async function checkDashboardDomain(deps: DashboardDeps, switching = fals
     : null;
   const pointsHere = tunnel ? dns.status === "ok" && (!deps.probe || probe?.status === "passed") : dns.status === "ok" || probe?.status === "passed";
 
-  // The certificate router only once the name leads here, then a read of what the name serves. Behind a
-  // proxy in direct mode that is this server's own certificate; in a tunnel it is Cloudflare's, which is
-  // the one visitors get.
   if (pointsHere && !tunnel) await writeDashboardFiles(deps.routes, deps.mode, { current: settings.dashboardHost, next: host, previous: row?.dashboardPreviousHosts ?? [] });
   const tlsAt = !tunnel && probe?.status === "passed" && server.v4.length ? server.v4 : dns.addresses;
   const tls = pointsHere
@@ -194,7 +173,6 @@ export async function checkDashboardDomain(deps: DashboardDeps, switching = fals
   );
 }
 
-/** The new host's tunnel rules, or why they could not go in. Only Cloudflare's API can change a tunnel. */
 async function addTunnelRules(deps: DashboardDeps, host: string, previous: readonly string[]): Promise<string | null> {
   const loaded = await loadCloudflare(deps.db, deps.vault);
   if (!loaded.ok) return `${loaded.reason} A tunnel's rules can only be changed through Cloudflare, so connect it in Settings, Integrations.`;
@@ -215,7 +193,6 @@ async function addTunnelRules(deps: DashboardDeps, host: string, previous: reado
   }
 }
 
-/** Queues a check of a domain still waiting, on the same backoff as an app's domain. */
 export async function queueDashboardCheck(db: Db, now = Date.now()): Promise<boolean> {
   const row = await db.instance.findUnique({ where: { id: 1 }, select: { dashboardDomain: true } });
   const p = D.readPendingDomain(row?.dashboardDomain);

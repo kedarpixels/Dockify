@@ -1,6 +1,4 @@
-/* The docs sidebar, in reading order. Prev and
-   next follow this order. Every slug has a file at content/docs/<slug>.mdx; external entries leave
-   the docs. */
+/* The docs sidebar, in reading order; prev and next follow it. Every slug has a file at content/docs/<slug>.mdx. */
 
 export type DocLink = { slug: string; title: string; href?: string };
 export type DocGroup = { title: string; items: DocLink[] };

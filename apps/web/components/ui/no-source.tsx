@@ -3,23 +3,7 @@ import { cx } from "./cx";
 import { Empty } from "./empty";
 import { clause } from "@/lib/format";
 
-/** An error as the start of a sentence: no trailing full stop, so ". Reload..." never doubles it. */
-
-/**
- * The page's state when its data cannot come from the API, the same card and the same sentences on
- * every page:
- *   - no API configured (no `error`): "No data source" / "Set DOCKIFY_API_URL for this dashboard.
- *     Nothing is shown until real data arrives."
- *   - the API did not answer (`error`): "Cannot reach the Dockify API" / "{error}. This page retries
- *     on its own." on a page that polls, else "{error}. Reload the page to try again.", with a
- *     Try again key (`onRetry`, or a plain reload).
- *
- *   {source === "none" ? <NoSource /> : null}
- *   {result.error ? <NoSource error={result.error} polling /> : null}
- *
- * It is a card, a block of its own: render it where the page's content would start, under the page
- * head (its title is an h2 under the page's h1).
- */
+/** A card of its own: render it where the page's content would start (its title is an h2 under the page's h1). */
 export function NoSource({
   error,
   polling = false,

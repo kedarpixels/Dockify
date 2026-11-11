@@ -1,20 +1,7 @@
 /**
- * Notification webhooks: the list in Settings, Integrations, Webhooks. Each webhook has a provider
- * (recognised from its URL, or chosen) that decides how @dockify/notify formats its messages.
- *
- * What is stored, and where:
- *   secretId        the endpoint, sealed (kind channel_url). For Telegram the bot's sendMessage URL,
- *                   whose path holds the bot token.
- *   secondSecretId  the generic webhook's signing secret, or an ntfy access token (channel_secret).
- *   host, chatId    plain: shown back as they are. Every answer carries only hints of the rest.
- *   icon_images     a generic webhook's logo (uploaded, or downloaded once from the owner's link)
- *                   or its site's favicon (the worker's icon_fetch job). Built-in providers draw
- *                   their own mark in the dashboard and store nothing.
- *
- * Every endpoint is checked twice before it is stored: the provider's own URL rule
- * (@dockify/contracts webhooks.ts) and net-guard's public address rule. Every send, the test here
- * and the worker's deliveries, goes through the net-guard client again, which checks the address
- * at connect time.
+ * Notification webhooks. secretId is the sealed endpoint (for Telegram its path holds the bot token); secondSecretId
+ * is a generic webhook's signing secret or an ntfy access token. Every endpoint passes the provider's URL rule and
+ * net-guard's public address rule before it is stored, and net-guard checks the address again at each send.
  */
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -35,9 +22,8 @@ import { WORKER_SILENT_MS } from "../platform/server.ts";
 import { who, type IntegrationDeps } from "./deps.ts";
 import { WEBHOOK_REF_SELECT, WEBHOOK_SELECT, webhookRef, webhookView } from "./webhook-view.ts";
 
-/** A server keeps at most this many webhooks. */
 export const MAX_WEBHOOKS = 50;
-/** Who owns a draft's sealed URL for one Send test; the worker deletes such rows as it opens them. */
+/** Owner of a draft's sealed URL for one Send test; the worker deletes such rows as it opens them. */
 const DRAFT_OWNER = "webhook_test";
 const TEST_WAIT = { waitMs: 30_000, pollMs: 500 };
 const LOGO_TIMEOUT_MS = 8_000;
@@ -45,11 +31,10 @@ const LOGO_TIMEOUT_MS = 8_000;
 const notFound = () => new HttpError(404, "Webhook not found", "NOT_FOUND");
 const label = (p: WebhookProviderId) => WEBHOOK_PROVIDER_INFO[p].label;
 
-// ------------------------------------------------------------------ the endpoint
 
 export interface Endpoint {
   provider: WebhookProviderId;
-  /** Normalised: what is sealed and called. */
+  /** Normalised: this is what gets sealed and called. */
   url: string;
   host: string;
   chatId: string | null;
@@ -62,11 +47,7 @@ export interface EndpointInput {
   chatId?: string;
 }
 
-/**
- * The endpoint a create, a patch or a draft test describes, checked: the provider (given, else
- * recognised from the URL), the URL by the provider's rule and net-guard's public address rule, and
- * for Telegram the bot token and the chat (from their fields, the pasted URL, or what is stored).
- */
+/** Validates the endpoint of a create, a patch or a draft test. The provider is the one given, else recognised from the URL. */
 export function resolveEndpoint(input: EndpointInput, current?: Endpoint): Endpoint {
   const recognised = input.url ? detectWebhook(input.url)?.provider : undefined;
   const provider = input.provider ?? recognised ?? (input.botToken ? "telegram" : undefined) ?? current?.provider;
@@ -93,11 +74,9 @@ export function resolveEndpoint(input: EndpointInput, current?: Endpoint): Endpo
   return { provider, url: u.toString(), host: u.hostname, chatId: null };
 }
 
-// ------------------------------------------------------------------ the second secret
 
 type SecondAction = { action: "keep" } | { action: "drop" } | { action: "set"; value: string; generated: string | null };
 
-/** What happens to the second secret slot: the generic webhook's signing secret, or an ntfy token. */
 export function secondFor(
   provider: WebhookProviderId,
   input: { signingSecret?: string; accessToken?: string | null },
@@ -120,7 +99,6 @@ export function secondFor(
   return current?.hasSecret ? { action: "drop" } : { action: "keep" };
 }
 
-// ------------------------------------------------------------------ logos
 
 export interface StoredLogo {
   mime: string;
@@ -128,9 +106,9 @@ export interface StoredLogo {
   sha256: string;
   width: number;
   height: number;
-  /** Where the bytes came from (after redirects), for a downloaded logo. */
+  /** Where the bytes came from after redirects; set for a downloaded logo only. */
   origin: string | null;
-  /** The link the owner gave, for a downloaded logo. */
+  /** The link the owner gave; set for a downloaded logo only. */
   link: string | null;
 }
 
@@ -138,11 +116,7 @@ const imageOf = (bytes: Uint8Array, check: { mime: string; width: number; height
   mime: check.mime, data: new Uint8Array(bytes), sha256: createHash("sha256").update(bytes).digest("hex"), width: check.width, height: check.height, origin, link,
 });
 
-/**
- * A logo the owner gave, checked and ready to store: an upload, or the bytes behind a link,
- * downloaded once through net-guard (https, public addresses, at most three redirects each checked
- * the same way, 128 KB, eight seconds). An SVG is stored only as its rebuild.
- */
+/** A link is downloaded once through net-guard (https, public addresses, bounded). An SVG is stored only as its rebuild. */
 export async function resolveLogo(http: HttpClient, logo: Exclude<WebhookLogoBody, { choice: "auto" }>): Promise<StoredLogo> {
   if (logo.choice === "upload") {
     const bytes = Buffer.from(logo.image, "base64");
@@ -176,14 +150,13 @@ export async function resolveLogo(http: HttpClient, logo: Exclude<WebhookLogoBod
   return imageOf(check.bytes, check.image, got.url.slice(0, 2048), logo.url.slice(0, 2048));
 }
 
-// ------------------------------------------------------------------ storage
 
 const sealUrl = (tx: Tx, ring: Keyring, id: string, e: Endpoint) =>
   storeSecret(tx, ring, { kind: "channel_url", ownerType: "webhook", ownerId: id }, e.url, webhookSecretHint(e.provider, e.url) || null);
 const sealSecond = (tx: Tx, ring: Keyring, id: string, value: string) =>
   storeSecret(tx, ring, { kind: "channel_secret", ownerType: "webhook", ownerId: id }, value, hintOf(value));
 
-/** The name asked for, or the provider's name numbered past the ones taken. A name asked for is never renamed. */
+/** A name the owner asked for is never renumbered; a default name is numbered past the ones taken. */
 async function uniqueName(db: Tx, wanted: string, explicit: boolean, exceptId?: string): Promise<string> {
   const rows = await db.notificationWebhook.findMany({ select: { id: true, name: true } });
   const taken = new Set(rows.filter((r) => r.id !== exceptId).map((r) => r.name.toLowerCase()));
@@ -207,12 +180,12 @@ async function load(db: Tx, id: string) {
   return webhookView(row);
 }
 
-/** A generic webhook's automatic icon: its site's favicon, fetched by the worker's icon_fetch job. */
+/** The favicon itself is fetched by the worker's icon_fetch job. */
 async function queueFavicon(db: Db, id: string): Promise<void> {
   await enqueue(db, { kind: "icon_fetch", lane: "maintenance", payload: { webhookId: id }, dedupeKey: `icon_fetch:webhook:${id}`, maxAttempts: 1 }).catch(() => undefined);
 }
 
-/** The endpoint and secrets of a stored webhook, opened for one send; null when its URL is gone. */
+/** Opens the sealed values for one send; null when the URL is gone. */
 export async function openTarget(db: Tx, ring: Keyring, row: { provider: WebhookProviderId; chatId: string | null; secretId: string | null; secondSecretId: string | null }): Promise<WebhookTarget | null> {
   const url = row.secretId ? await readSecretValue(db, ring, row.secretId) : null;
   if (!url) return null;
@@ -220,7 +193,7 @@ export async function openTarget(db: Tx, ring: Keyring, row: { provider: Webhook
   return { provider: row.provider, url, chatId: row.chatId, secret };
 }
 
-/** The delivery state the list shows: a success clears the error, a failure records why. */
+/** A success clears the stored error; a failure records why. */
 async function record(db: Db, id: string, out: DeliveryOutcome): Promise<void> {
   const data: Prisma.NotificationWebhookUpdateInput = out.ok ? { error: null, lastSentAt: new Date() } : { error: out.reason.slice(0, 300), lastFailedAt: new Date() };
   await db.notificationWebhook.update({ where: { id }, data }).catch(() => undefined);
@@ -233,7 +206,6 @@ async function instanceOf(ctx: Ctx) {
 
 const failed = (out: Extract<DeliveryOutcome, { ok: false }>) => new HttpError(502, out.reason, "WEBHOOK_FAILED", { status: out.status });
 
-// ------------------------------------------------------------------ handlers
 
 type Meta = ReturnType<typeof who>;
 
@@ -256,11 +228,9 @@ interface PatchInput extends Omit<CreateInput, "accessToken"> {
 
 export function webhookHandlers(deps: IntegrationDeps): Handlers {
   /**
-   * Sends the test message to an endpoint; answers what it got, or a 502 that says why. It goes
-   * through the worker (a webhook_send job, integrations/webhooks.ts there), because that is where
-   * every real alert leaves from: a green test must prove the path alerts take, whose network and
-   * firewall are not this process's. A draft has no row, so its URL is sealed for that one job, which
-   * deletes it once opened. Nothing plain goes in a job's payload.
+   * Runs through the worker (a webhook_send job) because every real alert leaves from there: a green test must prove
+   * that path, network and firewall included. A draft's URL is sealed for that one job, which deletes it once opened.
+   * Nothing plain goes in a job's payload.
    */
   async function sendTest(ctx: Ctx, target: WebhookTarget, savedId: string | null) {
     const message = testMessage(randomUUID(), await instanceOf(ctx));
@@ -301,7 +271,7 @@ export function webhookHandlers(deps: IntegrationDeps): Handlers {
       if (!j || Date.now() >= deadline) break;
       await new Promise((resolve) => setTimeout(resolve, wait.pollMs));
     }
-    // Busy with a long job. Nothing should arrive minutes later, unasked, so an unclaimed test is withdrawn.
+    // The worker is busy. Nothing should arrive minutes later, unasked, so an unclaimed test is withdrawn.
     const withdrawn = await ctx.db.job.updateMany({ where: { id: jobId, lockedUntil: null, completedAt: null, failedAt: null }, data: { failedAt: new Date(), lastError: "Withdrawn: the worker was busy" } });
     if (withdrawn.count && draftSecrets.length) await ctx.db.secret.deleteMany({ where: { id: { in: draftSecrets } } });
     throw new HttpError(503, "The worker is busy with a long job, so the test was not sent. Try again in a minute.", "WORKER_BUSY");
@@ -461,7 +431,7 @@ export function webhookHandlers(deps: IntegrationDeps): Handlers {
   };
 }
 
-/** Every webhook as the alert rules and the integrations row name it, oldest first. */
+/** Oldest first. */
 export async function webhookRefs(db: Tx) {
   const rows = await db.notificationWebhook.findMany({ select: WEBHOOK_REF_SELECT, orderBy: { createdAt: "asc" } });
   return rows.map(webhookRef);

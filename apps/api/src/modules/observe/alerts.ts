@@ -1,8 +1,4 @@
-/**
- * Alert rules, events and mutes. The worker evaluates and delivers; the api only edits rules and
- * mutes and lists what happened. Deleting or disabling a rule resolves its open events here, so the
- * bell never shows a firing alert nobody can act on.
- */
+// The worker evaluates and delivers alerts; the api only edits rules and mutes and lists what happened.
 import { LIVE_ALERT_METRIC, type Db, type Prisma, type Tx, type WebhookProvider } from "@dockify/db";
 import type { Actor } from "../../actor.ts";
 import { audit } from "../../audit.ts";
@@ -43,7 +39,6 @@ function ruleView(r: RuleRow, firing: Set<string>) {
   };
 }
 
-/** The webhooks a rule sends to after this write: those named, each of which must exist, or else the links it has. */
 async function resolveWebhooks(db: Tx, v: ValidRule, current: Array<{ id: string }>): Promise<string[]> {
   if (v.webhooks) {
     if (!v.webhooks.length) return [];
@@ -69,10 +64,7 @@ async function firingRules(db: Db, ids?: string[]): Promise<Set<string>> {
   return new Set(rows.map((r) => r.ruleId).filter((x): x is string => !!x));
 }
 
-/**
- * `projects`: a token limited to these projects sees only what concerns their apps, as every other
- * list it can read does. Server-wide rules and events belong to no project, so it sees none of them.
- */
+/** A token limited to `projects` sees only their apps' rules and events. Server-wide ones belong to no project, so it sees none. */
 export async function alertsPayload(db: Db, now = Date.now(), projects: string[] | null = null) {
   const inScope = projects ? { app: { environment: { projectId: { in: projects } } } } : {};
   const [rules, events, mutes, email, webhooks, firing] = await Promise.all([

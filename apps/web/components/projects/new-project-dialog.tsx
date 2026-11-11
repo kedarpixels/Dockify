@@ -13,21 +13,12 @@ import type { OverviewSource } from "@/lib/types";
 import { projectNameProblem } from "@/lib/validation";
 import { useCan } from "@/lib/viewer";
 
-/*
- * The New project popup, in one step: the name, then Create. A project is a folder of apps: it starts
- * with one environment, production, which shows nowhere; more can be added in the project's settings. A project is only
- * the container for one product's apps, so it asks for no repository and no branch. Each app brings
- * its own source (a repository, a Git URL, an image or a database) through New app on the
- * project's page, which is where Create lands.
- */
+// A project is only the container for one product's apps, so it asks for no repository and no
+// branch. It starts with one environment, production, which shows nowhere.
 
 type Key = "name";
 
-/**
- * The shared Dialog over the current page: Cancel or the close key runs `onClose`, and a finished
- * create replaces the popup's history entry so Back returns to the page underneath. With no data
- * source it says so and Create stays off, since nothing could be created.
- */
+/** A finished create replaces the popup's history entry, so Back returns to the page underneath. */
 export function NewProjectDialog({ source, taken, onClose }: { source: OverviewSource; taken: string[]; onClose: () => void }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -91,8 +82,7 @@ export function NewProjectDialog({ source, taken, onClose }: { source: OverviewS
     );
   }
 
-  // Cancel leaves without creating and closes over the page underneath. It waits while a create
-  // runs, as the Dialog's own close keys do, so a running write always has a place to answer.
+  // Cancel waits while a create runs, as the Dialog's own close keys do, so a running write always has a place to answer.
   return (
     <Dialog
       open

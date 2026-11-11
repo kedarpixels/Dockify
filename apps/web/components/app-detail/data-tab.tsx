@@ -19,21 +19,15 @@ import { AdminOnly, TabCard, TabFailed } from "./states";
 import { useAppTab } from "./use-tab";
 import { notRunning } from "@/lib/derive";
 
-/* Data: a read-only browser for this app’s database. Postgres lists its tables with row counts and
-   shows the first 50 rows of the picked one with column types, plus a query box that runs
-   read-only SQL. Rows and queries are tenant data, so both ask "Confirm it is you" when the API
-   wants a step-up (components/step-up). Redis searches keys with a glob and shows each key’s type
-   and TTL. Nothing here can write. The API keeps all of it for admins, so a Viewer sees why
-   instead of a refused read. */
-
-/* -------------- Grid -------------- */
+// Read-only. Rows and queries are tenant data, so both ask for a step-up when the API wants one.
+// The API keeps all of it for admins, so a Viewer sees why instead of a refused read.
 
 function cellText(v: Cell) {
   if (v === null) return null;
   return typeof v === "string" ? v : String(v);
 }
 
-/** Rows as a real table that scrolls inside its frame; the page itself never scrolls sideways. */
+/** Scrolls inside its frame; the page itself never scrolls sideways. */
 function Grid({ columns, rows, label }: { columns: PgColumn[]; rows: Cell[][]; label: string }) {
   return (
     <div className="at-grid-wrap" tabIndex={0} role="region" aria-label={label}>
@@ -71,8 +65,6 @@ function Grid({ columns, rows, label }: { columns: PgColumn[]; rows: Cell[][]; l
   );
 }
 
-/* -------------- Postgres -------------- */
-
 function TableList({ tables, picked, onPick }: { tables: PgTables["tables"]; picked: string | null; onPick: (t: string) => void }) {
   return (
     <ul className="soft-list at-tables" aria-label="Tables">
@@ -96,7 +88,6 @@ function TableList({ tables, picked, onPick }: { tables: PgTables["tables"]; pic
   );
 }
 
-/** What a read that found the container down says, instead of the bare status text. */
 const idleText = (app: AppDetail) => `${appTitle(app)} is not running or cannot be reached right now. Start it, then try again.`;
 
 function RowsPanel({ app, table }: { app: AppDetail; table: string }) {
@@ -255,8 +246,6 @@ function PostgresData({ app }: { app: AppDetail }) {
     </div>
   );
 }
-
-/* -------------- Redis -------------- */
 
 const TYPE_LABEL: Record<RedisType, string> = { string: "String", hash: "Hash", list: "List", set: "Set", zset: "Sorted set", stream: "Stream" };
 

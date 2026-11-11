@@ -24,18 +24,9 @@ import { Facts, FormKeys, IntegrationCard, Unavailable } from "./card";
 import { ExternalLink } from "@/components/ui/external-link";
 import { intFetch, listing } from "./client";
 
-/*
- * GitHub: this server's own GitHub App, and the accounts it is installed on.
- *
- * Without an App, Create GitHub App asks whose account it belongs to (yours, or an organization:
- * a private App installs only on its owner), then posts Dockify's manifest to GitHub, which creates
- * the App and comes back through the API with ?github=app-created (or app-failed). With an App,
- * Connect installs it on an account and comes back with ?github=installed (or failed); which
- * repositories it reads is managed on GitHub. Remove App forgets the App and its keys here; the App
- * itself is deleted on GitHub, from its own page.
- */
+// Creating the App posts Dockify's manifest to GitHub, which comes back through the API with
+// ?github=app-created, app-failed, installed or failed. Remove App only forgets it here.
 
-/** What each way back from GitHub says, once. */
 const BACK: Record<string, { ok: boolean; title: string; body: string }> = {
   installed: { ok: true, title: "GitHub account connected", body: "Its repositories now show when you add an app" },
   failed: { ok: false, title: "Could not connect the GitHub account", body: "GitHub did not finish the install. Try Connect again" },
@@ -90,10 +81,7 @@ function AccountRow({ i, onDisconnect, disabled }: { i: GitInstallation; onDisco
   );
 }
 
-/**
- * Sends the browser to GitHub with the manifest: a form POST, the one way GitHub takes it. The
- * state inside postUrl is single use and tied to this session; GitHub sends it back with the code.
- */
+/** A form POST is the one way GitHub takes a manifest. The state in postUrl is single use and tied to this session. */
 function postManifest(m: GitHubManifest): void {
   const form = document.createElement("form");
   form.method = "post";
@@ -110,7 +98,7 @@ function postManifest(m: GitHubManifest): void {
 
 const ORG = /^[A-Za-z\d](?:[A-Za-z\d]|-(?=[A-Za-z\d])){0,38}$/;
 
-/** The App's own settings page on GitHub, where its logo is uploaded; GitHub has no API for the logo. */
+/** GitHub has no API for the App's logo; it is uploaded on this page. */
 function appSettingsUrl(app: GitHubApp) {
   if (!app.owner) return app.htmlUrl;
   return app.owner.type === "Organization" ? `https://github.com/organizations/${encodeURIComponent(app.owner.login)}/settings/apps/${encodeURIComponent(app.slug)}` : `https://github.com/settings/apps/${encodeURIComponent(app.slug)}`;
@@ -208,8 +196,7 @@ export function GithubCard({ initialAccounts, initialApp, now, preview }: { init
   const [leaving, setLeaving] = useState<GitInstallation | null>(null);
   const welcomed = useRef(false);
 
-  // Back from GitHub: say how it went once and drop the flag, so a reload stays quiet. The list
-  // loaded on mount already holds a new account.
+  // Says how it went once and drops the flag, so a reload stays quiet.
   useEffect(() => {
     const url = new URL(window.location.href);
     const back = BACK[url.searchParams.get("github") ?? ""];

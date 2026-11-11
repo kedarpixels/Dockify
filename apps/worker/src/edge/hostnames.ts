@@ -1,7 +1,6 @@
 /**
- * Hostname rules shared by every edge writer (route files, tunnel ingress, DNS records). The api
- * validates with the contracts Hostname schema first; these checks run again here so a bad row or
- * a hand-built job payload can never reach Traefik or Cloudflare.
+ * The api validates hostnames first; these checks run again so a bad row or a hand-built job payload
+ * can never reach Traefik or Cloudflare.
  */
 import { nonPublicHostReason } from "@dockify/contracts";
 
@@ -15,7 +14,6 @@ export class EdgeHostError extends Error {
   }
 }
 
-/** Lowercase, no trailing dot. */
 export function normalizeHost(raw: string): string {
   return raw.trim().toLowerCase().replace(/\.$/, "");
 }
@@ -38,7 +36,6 @@ export function reservedHosts(dashboardHost: string | null | undefined, extra: s
   return out;
 }
 
-/** Throws unless `host` is a valid, public hostname that is not reserved. Returns it normalized. */
 export function assertTenantHost(raw: string, reserved: Set<string>): string {
   const host = normalizeHost(raw);
   if (!isValidHost(host)) throw new EdgeHostError(`Not a valid hostname: ${JSON.stringify(raw).slice(0, 80)}`);

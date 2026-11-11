@@ -4,11 +4,7 @@ import { upstreamStatus, type RouteAnswer } from "@/lib/http";
 import { isPreviewMode } from "@/lib/preview-mode";
 import type { AppJobs, JobInput, JobRunDetail, JobRunRow, ScheduledJobRow } from "@/components/app-detail/jobs-shared";
 
-/*
- * Scheduled jobs on an app (GET, POST, PATCH and DELETE /api/v1/apps/:id/jobs...). The api holds the
- * rules: who may write, the minimum interval, the limits. This only forwards checked ids and bodies,
- * or answers from the preview fixture, which only exists behind DOCKIFY_PREVIEW=1.
- */
+// Scheduled jobs on an app. The API holds the rules (who may write, intervals, limits); this only forwards checked ids and bodies.
 
 const NONE = { status: 503, body: { error: "No data source, set DOCKIFY_API_URL for this dashboard" } };
 

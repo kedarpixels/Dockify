@@ -1,18 +1,11 @@
-/**
- * The registry and repository host checks at rest. A repository host follows the address rule in
- * @dockify/net-guard, the one copy the api and the worker share; the worker runs the same rule again
- * against the resolved address at connect time. A registry follows the agent gate's rule
- * (@dockify/contracts, registry-host.ts), so the dashboard takes what a pull takes, a LAN registry
- * included. On top of it this file reads a name's DNS answer, which the gate cannot, and holds that
- * answer to the same rule. dockerd looks the name up again at the pull, from the host's network, so
- * this catches a mistake and nothing cleverer.
- */
+// Host checks at rest, when a repository or image is stored. Not a security boundary: the worker
+// re-checks a repository's resolved address at connect time, and dockerd resolves a registry name
+// again at the pull, so the DNS check here catches a mistake and nothing cleverer.
 import { lookup as dnsLookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
 import { nonPublicHostReason, refusedHost, refusedPull, registryHost } from "@dockify/contracts";
 import { isPublicAddress, isPublicHostname, mappedV4 } from "@dockify/net-guard";
 
-/** True when a host must never be contacted: non-global addresses and single-label or internal names. */
 export const isBlockedHost = (host: string): boolean => !isPublicHostname(host);
 
 export interface ResolvedAddress {
@@ -22,13 +15,12 @@ export type RegistryResolver = (host: string) => Promise<ResolvedAddress[]>;
 
 const systemRegistryResolver: RegistryResolver = (host) => dnsLookup(host, { all: true, verbatim: true });
 
-/** IPv6's LAN range, where a registry may answer as one in RFC 1918 may, and the metadata address inside it. */
+/** A LAN registry is allowed (as RFC 1918 is for IPv4), but not the cloud metadata address inside that range. */
 const V6_LAN = new BlockList();
 V6_LAN.addSubnet("fc00::", 7, "ipv6");
 const V6_METADATA = new BlockList();
 V6_METADATA.addAddress("fd00:ec2::254", "ipv6");
 
-/** Why a registry name may not answer with this address, or null. The gate's rule, with IPv6 added: its form has none. */
 function refusedAnswer(address: string): string | null {
   const v4 = isIP(address) === 4 ? address : mappedV4(address);
   if (v4) return refusedHost(v4);
@@ -38,10 +30,8 @@ function refusedAnswer(address: string): string | null {
 }
 
 /**
- * The registry rule with DNS. Null means the image may be stored. Docker Hub (no registry host) needs no
- * check. A name is refused when any answer is one the gate would refuse written out, and when it does not
- * resolve at all, but for a LAN name: that may resolve only from the host, through its own /etc/hosts or
- * resolver, and this runs in a container.
+ * Null means the image may be stored. A name is refused when any DNS answer is a refused address, or
+ * when it does not resolve. A LAN name may fail to resolve: only the host's resolver may know it, and this runs in a container.
  */
 export async function registryHostProblem(image: string, resolve: RegistryResolver = systemRegistryResolver): Promise<string | null> {
   const host = registryHost(image);
@@ -64,7 +54,6 @@ export async function registryHostProblem(image: string, resolve: RegistryResolv
   return null;
 }
 
-/** The host of an https repository URL (already shape-checked by the contract). */
 export function repoHostOf(repoUrl: string): string {
   return new URL(repoUrl).hostname;
 }

@@ -1,9 +1,4 @@
-/**
- * The icon_fetch job: a frontend's favicon from its own domains, or a generic notification
- * webhook's favicon from its own site (favicon.ts), stored as its favicon image. A failed fetch
- * keeps whatever was stored before and records why, so the app keeps its last good favicon or its
- * kind's tile, and the webhook its last favicon or the webhook glyph.
- */
+/** The icon_fetch job. A failed fetch keeps whatever was stored before and records why. */
 import { createHash } from "node:crypto";
 import { enqueue, type Db } from "@dockify/db";
 import type { HttpClient } from "@dockify/net-guard";

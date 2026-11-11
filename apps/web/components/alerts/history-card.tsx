@@ -32,7 +32,6 @@ function title(e: AlertEvent, rules: AlertRule[]) {
   return e.metric === "service" && e.service && e.service !== "any" ? `${SERVICE_NAME[e.service]} down` : ORPHAN_TITLE[e.metric];
 }
 
-/** How long it fired: ticking while it still does. */
 const lasted = (e: AlertEvent, now: number) => ((e.resolvedAt ? Date.parse(e.resolvedAt) : now) - Date.parse(e.startedAt)) / 1000;
 
 function EventRow({ e, rules, now }: { e: AlertEvent; rules: AlertRule[]; now: number }) {
@@ -75,7 +74,6 @@ function EventRow({ e, rules, now }: { e: AlertEvent; rules: AlertRule[]; now: n
   );
 }
 
-/** Up and Down move between the event links; Home and End jump to the ends. Enter follows the link. */
 function rowKeys(ev: React.KeyboardEvent<HTMLDivElement>) {
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(ev.key)) return;
   const rows = [...ev.currentTarget.querySelectorAll<HTMLAnchorElement>("a.al-ev")];
@@ -86,7 +84,6 @@ function rowKeys(ev: React.KeyboardEvent<HTMLDivElement>) {
   rows[next]?.focus();
 }
 
-/** Firing and resolved events, newest first, by day, with a status filter. */
 export function HistoryCard({ events, rules, now }: { events: AlertEvent[]; rules: AlertRule[]; now: number }) {
   const [filter, setFilter] = useState<Filter>("all");
   const heading = useDayHeading();

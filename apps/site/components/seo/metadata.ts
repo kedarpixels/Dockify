@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { SITE_NAME } from "./config";
 
-/* Per-page metadata. A page's openGraph replaces the layout's whole object rather than merging into
-   it, so the shared fields are set again here. Social images still come from opengraph-image.tsx. */
+/* A page's openGraph replaces the layout's whole object rather than merging into it, so the shared fields are set again here. */
 
 type PageMeta = {
   /** Path from the site root, for example "/install". */

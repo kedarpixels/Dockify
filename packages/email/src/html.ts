@@ -1,12 +1,10 @@
 /**
- * The small text helpers every template shares. Anything that came from an operator or a user
- * (an instance name, an app name, an address) is escaped before it reaches markup, and a link is
- * accepted only as an absolute https URL (plain http only for a loopback host in development).
+ * Anything from an operator or a user is escaped before it reaches markup, and a link is accepted only as an
+ * absolute https URL (plain http only for a loopback host in development).
  */
 
 const ENTITIES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
-/** Escapes text for an HTML body or a quoted attribute. */
 export function esc(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ENTITIES[c] ?? c);
 }

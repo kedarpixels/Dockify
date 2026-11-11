@@ -1,20 +1,13 @@
 /**
- * When an update may install on its own. Pure functions of the clock and the stored policy, so the
- * updater's scheduler tick and the tests share one rule.
- *
- *   manual    notify only; nothing installs without a click
- *   security  install only critical security releases, in the next maintenance window
- *   all       install every release on the channel, in the next maintenance window (the default)
- *
- * "Skip this version" and "Pause for 7 days" hold back every automatic install, critical ones too;
- * a click on Update now still works. The window is local to the instance time zone.
+ * When an update may install on its own. Skip and pause hold back every automatic install,
+ * critical ones too; a manual install still works.
  */
 import type { Offer } from "./release.ts";
 
 export type UpdateMode = "manual" | "security" | "all";
 
 export interface UpdateWindow {
-  /** Days the window opens on, 0 Sunday to 6 Saturday, in the instance time zone. */
+  /** 0 Sunday to 6 Saturday, in the instance time zone. */
   days: number[];
   /** "HH:MM", 24 hour. An end at or before the start runs past midnight into the next day. */
   start: string;
@@ -42,7 +35,6 @@ export const minutesOf = (hhmm: string): number => {
 const fmtCache = new Map<string, Intl.DateTimeFormat>();
 const DAY: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
-/** Weekday and minute of the day at `at` in `tz`. */
 export function localClock(at: Date, tz: string): { day: number; minute: number } {
   let f = fmtCache.get(tz);
   if (!f) {
@@ -53,7 +45,7 @@ export function localClock(at: Date, tz: string): { day: number; minute: number 
   return { day: DAY[parts.weekday ?? "Sun"] ?? 0, minute: Number(parts.hour) * 60 + Number(parts.minute) };
 }
 
-/** Whether `at` falls inside the window. A window past midnight belongs to the day it opens. */
+/** A window that runs past midnight belongs to the day it opens. */
 export function inWindow(at: Date, w: UpdateWindow | null, tz: string): boolean {
   if (!w) return true;
   if (!w.days.length) return false;
@@ -68,7 +60,7 @@ export function inWindow(at: Date, w: UpdateWindow | null, tz: string): boolean 
 
 const STEP_MS = 5 * 60_000;
 
-/** The next moment the window is open, at or after `from` (5 minute resolution), or null. */
+/** At or after `from`, at 5 minute resolution, or null if the window never opens. */
 export function nextWindowOpen(from: Date, w: UpdateWindow | null, tz: string): Date | null {
   if (!w) return from;
   if (!w.days.length) return null;
@@ -87,7 +79,6 @@ export type AutoDecision =
   | { action: "wait"; reason: string; until: Date | null }
   | { action: "install"; reason: string };
 
-/** What the scheduler does about the offered release right now. */
 export function decideAuto(now: Date, policy: UpdatePolicy, offer: Offer): AutoDecision {
   const rel = offer.target;
   if (!rel) return { action: "none", reason: "no newer release" };

@@ -1,7 +1,6 @@
 import { json } from "@/lib/http";
 import { getDeploymentLogs, isDeploymentId } from "@/lib/pages/deployments";
 
-/** GET /api/deployments/:id/logs?after=<seq>: new log lines for the follow tail. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isDeploymentId(id)) return json({ data: null, error: "Unknown deployment" }, 404);

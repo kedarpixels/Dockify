@@ -9,10 +9,7 @@ import { archOf, bare, fetchVerifiedFeed, imagesFor, refuseTarget, type Channel,
 import { runningVersion } from "@dockify/contracts";
 
 export interface StepsConfig {
-  /**
-   * Host folder holding docker-compose.yml and .env (root-owned, read-only to this process) and
-   * release/release.env (the one file the updater rewrites), bound at the same path.
-   */
+  /** Host install folder, bound at the same path. Only release/release.env in it is writable here. */
   composeDir: string;
   backupDir: string;
   readyzUrl: string;
@@ -22,7 +19,7 @@ export interface StepsConfig {
   publicKey: string;
   /** Free bytes the backup folder must keep beyond three times the database size. */
   minFreeBytes: number;
-  /** The version of the running updater image, the true current version a downgrade is measured against. */
+  /** The running updater image's version: what a downgrade is measured against. */
   currentVersion: string;
 }
 
@@ -37,26 +34,19 @@ export function loadStepsConfig(env: NodeJS.ProcessEnv, publicKey: string | null
     feedUrl: feed,
     publicKey: publicKey ?? "",
     minFreeBytes: Number(env.DOCKIFY_UPDATER_MIN_FREE_BYTES ?? 2 * 1024 ** 3) || 2 * 1024 ** 3,
-    // The image's own (contracts runningVersion): .env's DOCKIFY_VERSION is the version last installed
-    // by hand, and an update does not rewrite it, so it says nothing about what runs.
+    // Not .env's DOCKIFY_VERSION: an update never rewrites it, so it does not say what runs.
     currentVersion: runningVersion(env),
   };
 }
 
-/**
- * How long release.env.prev vouches for the images it names: the rollback window (state.ts
- * ROLLBACK_DAYS) and a day, the same as a pre-update dump is kept.
- */
+/** How long release.env.prev vouches for its images: the rollback window (ROLLBACK_DAYS) plus a day. */
 export const PREV_TRUST_MS = 8 * 86_400_000;
 
 const DIGEST_REF = /^[a-z0-9][a-z0-9._/:-]*@sha256:[a-f0-9]{64}$/;
 
 /**
- * release.env holds only the two pinned image references, so the updater never rewrites .env.
- * It is the one file in the install a non-root uid can write, and compose reads it as an env
- * file, so any other key in it (DOCKIFY_DIR, COMPOSE_PROFILES, a tag instead of a digest) would
- * let that uid steer what root runs. Every line must be blank, a comment, or one of the two keys
- * pinned by digest, once each. The installer's `dockify` wrapper applies the same rule.
+ * Strict on purpose: release.env is the one install file a non-root uid can write, and compose reads
+ * it as an env file, so any other key, or a tag instead of a digest, would let that uid steer root.
  */
 export function parseReleaseEnv(text: string): Images {
   const seen = new Map<string, string>();
@@ -78,7 +68,7 @@ export function parseReleaseEnv(text: string): Images {
 export const renderReleaseEnv = (i: Images) =>
   `# Written by the Dockify updater. Pinned by digest; do not edit by hand.\nDOCKIFY_CONTROL_IMAGE=${i.control}\nDOCKIFY_WEB_IMAGE=${i.web}\n`;
 
-/** The install layout. release.env sits in its own folder, the only one the updater may write. */
+/** release.env sits in its own folder, the only one the updater may write. */
 export const installPaths = (dir: string) => ({
   dir,
   compose: path.join(dir, "docker-compose.yml"),
@@ -87,7 +77,6 @@ export const installPaths = (dir: string) => ({
 });
 
 export interface GuardFs {
-  /** mtimeMs: when the file was last written. A real lstat always says. */
   lstat(p: string): Promise<{ uid: number; mode: number; mtimeMs?: number; isSymbolicLink(): boolean }>;
   readFile(p: string): Promise<Buffer>;
 }
@@ -96,13 +85,9 @@ const realFs: GuardFs = { lstat: (p) => lstat(p), readFile: (p) => readFile(p) }
 export const sha256Hex = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
 /**
- * Refuses to drive compose unless what it executes is root's alone. The updater holds the Docker
- * socket, so a compose file or .env that a non-root host user could edit would be a path from that
- * user to root on the next update. The folder, docker-compose.yml and .env must be real entries
- * owned by uid 0 and not writable by group or others; the compose file must still hash to
- * DOCKIFY_COMPOSE_SHA256 as the installer pinned it in .env (read from disk, never from this
- * process's environment, which a tampered compose file could have set); release.env must be
- * strict. Returns the on-disk compose hash.
+ * Refuses to drive compose unless what it executes is root's alone: the updater holds the Docker
+ * socket, so a compose file or .env a non-root user could edit is a path to root on the next update.
+ * The pin is read from .env on disk, never from this process's environment. Returns the compose hash.
  */
 export async function checkInstallTree(dir: string, fs: GuardFs = realFs): Promise<string> {
   const p = installPaths(dir);
@@ -122,7 +107,6 @@ export async function checkInstallTree(dir: string, fs: GuardFs = realFs): Promi
   return onDisk;
 }
 
-/** A signed release that names a compose hash must name the file that is on disk. */
 export function checkComposeMatchesRelease(onDiskSha256: string, rel: Pick<FeedRelease, "composeSha256">): void {
   if (rel.composeSha256 && rel.composeSha256 !== onDiskSha256) {
     throw new Error("this release ships a different docker-compose.yml than the one installed; rerun the installer to apply it");
@@ -137,10 +121,10 @@ export interface RunOpts {
 }
 export type Runner = (cmd: string, args: string[], opts?: RunOpts) => Promise<string>;
 
-/** Long enough for the largest dump or pull. The heartbeat renews the lease, so a hung command would otherwise hold an update running for good. */
+/** The heartbeat keeps renewing the lease, so without this cap a hung command holds an update running for good. */
 const COMMAND_TIMEOUT_MS = 2 * 3_600_000;
 
-/** Runs a command with an argument array (never a shell string) and rejects on a non-zero exit. */
+/** Argument array, never a shell string. Rejects on a non-zero exit. */
 export const run: Runner = (cmd, args, opts = {}) =>
   new Promise((resolve, reject) => {
     const timeoutMs = opts.timeoutMs ?? COMMAND_TIMEOUT_MS;
@@ -156,9 +140,8 @@ export const run: Runner = (cmd, args, opts = {}) =>
     else child.stdout.on("data", (d: Buffer) => { out = (out + d.toString()).slice(-20_000); });
     child.stderr.on("data", (d: Buffer) => { err = (err + d.toString()).slice(-4000); });
     if (opts.stdinFile) {
-      // A reader may stop early and exit 0: pg_restore --list reads only the table of contents, so a dump
-      // larger than the pipe breaks it. The exit code says whether that was fine. Handled now, since a
-      // rejection with no handler until the close below takes this whole process down mid-update.
+      // A reader may stop early and still exit 0 (pg_restore --list reads only the table of contents).
+      // Caught here because an unhandled rejection before the close event kills the process mid-update.
       const quietEarlyClose = (e: NodeJS.ErrnoException) => {
         if (e.code !== "EPIPE" && e.code !== "ERR_STREAM_PREMATURE_CLOSE") throw e;
       };
@@ -176,27 +159,23 @@ export const run: Runner = (cmd, args, opts = {}) =>
     });
   });
 
-/** The restore script runs inside the postgres container: drop and rebuild the schema atomically. */
+/** Runs inside the postgres container: drops and rebuilds the schema in one transaction. */
 export const RESTORE_SCRIPT =
-  // Its own file each time: it runs as postgres, and could not overwrite a dump an older root run left
-  // in /tmp at the old fixed name.
+  // mktemp, not a fixed name: it runs as postgres and cannot overwrite a file another user left in /tmp.
   "set -eu; set -o pipefail; f=$(mktemp /tmp/dockify-restore.XXXXXX); cat > \"$f\"; " +
-  // The last line, in the restore's own transaction: the dump was taken during the update being undone,
-  // so it holds that update's job, still open. Left open, the updater claims it once its lease lapses and
-  // installs the release again, minutes after the rollback. Schema-qualified: the dump empties search_path.
+  // The final UPDATE closes the update job the dump still holds open; otherwise the updater reclaims it
+  // and reinstalls the release minutes after the rollback. Schema-qualified: the dump empties search_path.
   "{ echo 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'; pg_restore --no-owner --no-privileges -f - \"$f\"; " +
   "echo 'UPDATE public.jobs SET \"completedAt\" = now(), \"lockedUntil\" = NULL WHERE lane::text = $$update$$ AND \"completedAt\" IS NULL AND \"failedAt\" IS NULL;'; } " +
   "| psql -v ON_ERROR_STOP=1 --single-transaction -q -U dockify -d dockify; rm -f \"$f\"";
 
-/** A restored dump is a program: it runs as the image's own unprivileged user, never as root in the container. */
+/** A restored dump is a program, so it never runs as root in the container. */
 const AS_POSTGRES = ["-u", "postgres"];
 
-/** What the steps read from the control-plane database. The engine passes Prisma-backed queries. */
 export interface ControlProbe {
-  /** A trivial query answers. */
   databaseOk(): Promise<boolean>;
   databaseBytes(): Promise<number>;
-  /** A deploy, restore or backup that is running right now, by name, or null. */
+  /** The name of a deploy, restore or backup running right now, or null. */
   busy(): Promise<string | null>;
   workerSeenAt(): Promise<Date | null>;
 }
@@ -205,15 +184,11 @@ export interface StepsDeps {
   probe: ControlProbe;
   fs?: GuardFs;
   fetchFeed?: (feedUrl: string, publicKey: string) => Promise<VerifiedFeed>;
-  /** Free bytes in a folder; statfs by default. */
   freeBytes?: (dir: string) => Promise<number>;
   run?: Runner;
   sleep?: (ms: number) => Promise<void>;
-  /** GETs a URL and answers its status (the api readiness probe). */
   getStatus?: (url: string) => Promise<number>;
-  /** process.arch by default. */
   arch?: string;
-  /** The channel to re-verify against. */
   channel: () => Promise<Channel>;
   now?: () => number;
 }
@@ -229,10 +204,9 @@ export async function fileSha256(file: string): Promise<string> {
   return h.digest("hex");
 }
 
-/** The dump file for an id. The worker reads the same path (same volume) to copy it offsite. */
+/** The worker reads this same path on the shared volume to copy the dump offsite. */
 export const dumpPath = (backupDir: string, id: string) => path.join(backupDir, "control", `pre-update-${id}.dump`);
 
-/** The digest part of a pinned reference. */
 export const digestOf = (ref: string) => ref.slice(ref.lastIndexOf("@") + 1);
 
 export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
@@ -244,7 +218,6 @@ export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
   const getStatus = deps.getStatus ?? (async (u: string) => (await fetch(u, { signal: AbortSignal.timeout(5000), redirect: "error" })).status);
   const p = installPaths(cfg.composeDir);
   const releaseEnv = p.releaseEnv;
-  // Images this process has checked, by resolve() or trustImages().
   const checked = new Set<string>();
   const imagesKey = (i: Images) => `${i.control} ${i.web}`;
   const pinnedInFile = async (file: string): Promise<Images | null> => {
@@ -254,11 +227,8 @@ export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
       return null;
     }
   };
-  /**
-   * The previous pins, while a rollback to them can still be asked for. Past that a row naming them is
-   * no rollback: a forged one (phase rollback, or its images) would be a downgrade nobody approved.
-   * The age is the file's own, which only pin() writes, never a row's.
-   */
+  // Trusted only inside the rollback window; past it a row naming these pins would be a downgrade
+  // nobody approved. The age is the file's mtime, which only pin() sets, never a row's.
   const pinnedBefore = async (): Promise<Images | null> => {
     const file = `${releaseEnv}.prev`;
     const written = await fs.lstat(file).then((st) => st.mtimeMs, () => undefined);
@@ -266,11 +236,9 @@ export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
     return pinnedInFile(file);
   };
   /**
-   * The one gate on what the updater may run, which holds the Docker socket: images must be what
-   * release.env pins or pinned within the rollback window (files only this process writes), or be
-   * listed for this architecture in a signed feed fetched and verified right now. Everything a journal
-   * row says is a claim: a database write could forge toImages or fromImages, or a row that starts past
-   * the pull step, and this is the step between an api bug and root on the host.
+   * The one gate on what the updater, which holds the Docker socket, may run. Images must be pinned
+   * in files only this process writes, or listed for this architecture in a signed feed verified now.
+   * A journal row is only a claim: a database write can forge its images or its starting phase.
    */
   const trustImages = async (images: Images): Promise<void> => {
     const key = imagesKey(images);
@@ -282,8 +250,8 @@ export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
     const feed = fetchFeed ? await fetchFeed(cfg.feedUrl, cfg.publicKey) : await fetchVerifiedFeed(cfg.feedUrl, channel, cfg.publicKey);
     const arch = archOf(deps.arch);
     const listed = feed.releases.some((r) => {
-      // The feed keeps old releases, signed for good. A row that starts past the pull step never reaches
-      // resolve(), so this is where a forged row meets the downgrade rule. A real rollback is .prev, above.
+      // The feed keeps old releases, validly signed. A row forged to start past the pull step skips
+      // resolve(), so the downgrade rule must hold here too. A real rollback matches .prev above.
       if (refuseTarget(r, cfg.currentVersion)) return false;
       try {
         return imagesKey(imagesFor(r, arch)) === key;
@@ -294,11 +262,8 @@ export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
     if (!listed) throw new Error("these images are neither pinned on this server nor in the signed release feed; refusing to run them");
     checked.add(key);
   };
-  /**
-   * Docker merges an image's labels into its container, so a tenant container made before the worker
-   * blanked them can claim com.docker.compose.project=dockify, and `compose exec`, `stop` and `up`
-   * would act on it. Real services never carry dockify.managed. Refuse rather than guess.
-   */
+  // Docker merges image labels into the container, so a tenant image can claim this compose project
+  // and compose would act on it. Real services never carry dockify.managed.
   const refuseImpostors = async (): Promise<void> => {
     const out = await exec("docker", ["ps", "-aq", "--filter", "label=dockify.managed=true", "--filter", "label=com.docker.compose.project=dockify"]);
     const ids = out.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -351,9 +316,8 @@ export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
       if (feed.sha256 !== manifestSha256) throw new Error("the signed release feed changed since this update was approved; check again");
       const rel = feed.releases.find((r) => bare(r.version) === bare(version));
       if (!rel) throw new Error(`the signed feed no longer lists ${version}`);
-      // Re-check the downgrade and minFrom rules against the actually running version, so a row
-      // inserted straight into the database (bypassing beginApply's check) cannot drive a signed
-      // downgrade: the version here is the running updater image's, not the row's forgeable fromVersion.
+      // Checked against the running image's version, not the row's forgeable fromVersion, so a row
+      // inserted straight into the database cannot drive a signed downgrade.
       const reason = refuseTarget(rel, cfg.currentVersion);
       if (reason) throw new Error(reason);
       checkComposeMatchesRelease(onDisk, rel);
@@ -368,7 +332,6 @@ export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
       await trustImages(images);
       for (const ref of [images.control, images.web]) {
         await exec("docker", ["pull", "--quiet", ref]);
-        // What landed must carry exactly the signed digest.
         const out = await exec("docker", ["image", "inspect", "--format", "{{json .RepoDigests}}", ref]);
         const digests = (JSON.parse(out.trim() || "[]") as string[]).map(digestOf);
         if (!digests.includes(digestOf(ref))) throw new Error(`the pulled image does not carry ${digestOf(ref)}`);
@@ -407,8 +370,8 @@ export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
       await rename(tmp, releaseEnv);
     },
     async swap(service: Service, since: Date) {
-      // The agent runs the worker's image, and the worker reaches Docker through it. It goes first, so the
-      // new worker's first look at Docker is already the new agent. It restarts nothing it serves.
+      // The worker reaches Docker through the agent, which runs the same image. The agent goes first so
+      // the new worker never talks to an old agent.
       if (service === "worker") await compose(["up", "-d", "--no-deps", "--wait", "--wait-timeout", String(cfg.healthTimeoutS), "agent"]);
       await compose(["up", "-d", "--no-deps", "--wait", "--wait-timeout", String(cfg.healthTimeoutS), service]);
       if (service === "api") await until("the api", apiReady);
@@ -434,10 +397,7 @@ export function dockerSteps(cfg: StepsConfig, deps: StepsDeps): UpdateSteps {
   };
 }
 
-/**
- * Recreates the updater itself on the newly pinned image, from a separate one-off container, so
- * the process being replaced is never the one doing the replacing. Called after a job settled.
- */
+/** Recreates the updater from a separate one-off container, so the process being replaced never does the replacing. */
 export async function refreshUpdater(cfg: StepsConfig, exec: Runner = run, fs: GuardFs = realFs): Promise<void> {
   const p = installPaths(cfg.composeDir);
   await checkInstallTree(cfg.composeDir, fs);
@@ -447,7 +407,6 @@ export async function refreshUpdater(cfg: StepsConfig, exec: Runner = run, fs: G
   ]);
 }
 
-/** Removes pre-update dumps older than `olderThan`, except the ones named in `keep`. */
 export async function pruneDumps(backupDir: string, keep: Set<string>, olderThan: Date): Promise<number> {
   const dir = path.join(backupDir, "control");
   let n = 0;

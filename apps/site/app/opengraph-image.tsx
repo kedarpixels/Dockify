@@ -1,6 +1,5 @@
 import { ogVariants, renderOg, type OgCard } from "@/components/seo/og";
 
-/* Social card for this route, dark and light. Drawn by components/seo/og.tsx. */
 const card: OgCard = {
   title: "Run every project on one server, and sleep.",
   accent: "and sleep.",

@@ -19,10 +19,7 @@ import { mutate, ToggleRow } from "./controls";
 import { DangerZone, DeleteDialog } from "./shared";
 import { hasUnsafeText, UNSAFE_TEXT_MESSAGE } from "@/lib/validation";
 
-/* The project's settings tab: name and auto-deploy, the environments and their branches, preview
-   deployments, the public status page, then the danger zone. The cards after
-   the first read the project extras, which load on the client; each shows its own loading and
-   error state. A Viewer reads them all and changes none. */
+/* The cards after the first read the project extras, which load on the client; each shows its own loading and error state. */
 
 const nameError = (name: string) => (!name ? "Enter a name" : name.length > 64 ? "Keep it under 64 characters" : hasUnsafeText(name) ? UNSAFE_TEXT_MESSAGE : null);
 
@@ -48,7 +45,6 @@ export function ProjectSettings({
   onOpenPreviews: () => void;
   /** Reloads the extras, for answers the page cannot merge (a DNS check, an environment added or removed). */
   onReload?: () => void;
-  /** Whether the name and auto-deploy card holds unsaved edits, for the page's section strip. */
   onDirty?: (dirty: boolean) => void;
 }) {
   const router = useRouter();

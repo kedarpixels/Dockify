@@ -2,16 +2,9 @@ import { isRecord } from "@/lib/validation";
 import { apiErrorMessage } from "./http-status";
 import { apiFetch } from "./hooks";
 
-/*
- * The browser's one JSON call to this dashboard's own routes (app/api/**). It goes through
- * `apiFetch`, so a 401 or a bounce to /login ends the session the same way everywhere, and it never
- * throws: every outcome, a dropped connection included, comes back as one answer to read.
- *
- *   const r = await callJson<Thing>("/api/things", { method: "POST", body: input });
- *   if (!r.ok) toast.error("Could not save the thing", { description: r.error });
- */
+// Goes through `apiFetch`, so a 401 ends the session the same way everywhere. Never throws: a
+// dropped connection comes back as an answer too.
 
-/** What a call says when this dashboard's server never answered. */
 export const OFFLINE = "Could not reach the dashboard. Check your connection";
 
 export type Answer<T> =

@@ -7,11 +7,7 @@ import { AuthHead } from "./auth-head";
 import { CooldownNotice, EmailField, Notice, SubmitButton, useCooldown } from "./fields";
 import { settle } from "./util";
 
-/**
- * /forgot: asks for a reset link by email. The answer is the same whether or not the address has
- * an account, so the sent state never says which. Only while email is set up (the page redirects
- * to /recover otherwise).
- */
+/** The answer is the same whether or not the address has an account, so the sent state never says which. */
 export function ForgotView() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState<{ field: boolean; text: string } | null>(null);

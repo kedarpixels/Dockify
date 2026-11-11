@@ -7,19 +7,9 @@ import type { Service, UpdateSteps } from "./runner.ts";
 import { installPaths, type ControlProbe, type Runner, type StepsConfig } from "./steps.ts";
 
 /**
- * The dashboard's change of address, in the updater: the one process that holds the Docker socket and
- * outlives the services it recreates. The worker has already checked that the new domain answers and has
- * its certificate, and in a tunnel added its rules (apps/worker/src/edge/dashboard.ts).
- *
- *   1. wait for any deploy, backup or restore: recreating the worker would stop it
- *   2. rewrite DOCKIFY_PUBLIC_URL in .env, as root in a throwaway container (env-file.ts)
- *   3. recreate api, worker and web, each waited for. Compose compares their environment, so these
- *      three, the only ones that read the address, are the only ones that restart.
- *   4. all three healthy together, or the old .env comes back and they are recreated once more
- *
- * The api's boot records the change (apps/api/src/boot.ts): the old address joins the ones that
- * redirect, and the pending domain is done. That also covers `dockify admin set-domain`, which edits
- * .env on the host. Every step is safe to repeat, so a lease taken over after a crash carries on.
+ * The dashboard's change of address runs in the updater, the one process that holds the Docker
+ * socket and outlives the services it recreates. The api's boot records the change, not this file.
+ * Every step is safe to repeat, so a lease taken over after a crash carries on.
  */
 
 const SERVICES: Service[] = ["api", "worker", "web"];
@@ -47,11 +37,11 @@ export function envWriterArgs(dir: string, image: string, host: string): string[
 
 const finish = (db: Db, id: string) => db.$executeRaw`UPDATE jobs SET "completedAt" = now(), "lockedUntil" = NULL, "lockedBy" = NULL WHERE id = ${id}::uuid`;
 const giveUp = (db: Db, id: string, why: string) => db.$executeRaw`UPDATE jobs SET "failedAt" = now(), "lastError" = ${why.slice(0, 500)}, "lockedUntil" = NULL, "lockedBy" = NULL WHERE id = ${id}::uuid`;
-/** Puts the job back for later without spending an attempt. */
+/** Requeues without spending an attempt. */
 const later = (db: Db, id: string, ms: number) =>
   db.$executeRaw`UPDATE jobs SET attempts = GREATEST(attempts - 1, 0), "runAfter" = now() + ${ms}::double precision * interval '1 millisecond', "lockedUntil" = NULL, "lockedBy" = NULL WHERE id = ${id}::uuid`;
 
-/** Runs one change of address. The answer is only for the log. */
+/** The returned string is only for the log. */
 export async function runDomainSwitch(deps: DomainSwitchDeps, job: Claimed, holder: string): Promise<string> {
   const { db, steps, exec, cfg, log } = deps;
   const payload = (job.payload && typeof job.payload === "object" ? job.payload : {}) as { host?: unknown };
@@ -64,7 +54,7 @@ export async function runDomainSwitch(deps: DomainSwitchDeps, job: Claimed, hold
   const pending = D.readPendingDomain(row?.dashboardDomain);
   const now = deps.now?.() ?? new Date();
 
-  // Something a recreated worker would stop: come back in a moment, within reason.
+  // Recreating the worker would stop a deploy, backup or restore in flight, so wait for it.
   const busy = await deps.probe.busy();
   if (busy) {
     const since = pending ? Date.parse(pending.requestedAt) : now.getTime();
@@ -117,8 +107,8 @@ export async function runDomainSwitch(deps: DomainSwitchDeps, job: Claimed, hold
 }
 
 /**
- * The stopped switch, for the page. A rollback booted the api twice, so its boot recorded the failed
- * name as an address the dashboard left: that entry and that last change are taken back here.
+ * A rollback boots the api on the new host and again on the old, so its boot recorded the failed
+ * name as an address the dashboard left. That entry and that last change are taken back here.
  */
 async function failed(deps: DomainSwitchDeps, job: Claimed, host: string, pending: D.PendingDomain | null, why: string, lastChange?: unknown): Promise<string> {
   const { db, log } = deps;

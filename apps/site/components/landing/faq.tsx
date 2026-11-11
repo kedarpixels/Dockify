@@ -2,8 +2,7 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { REPO } from "@/lib/site";
 
-/* FAQ copy (site brief 4.9), each answer checked against the product. Native details, so it works
-   without JavaScript. */
+/* Native details, so it works without JavaScript. */
 const FAQ: { q: string; a: React.ReactNode }[] = [
   { q: "Who is Dockify for?", a: "People who run several projects on one VPS. Need many servers today? Coolify or Dokploy will suit you better." },
   {

@@ -1,17 +1,7 @@
 /**
- * The worker's side of notification webhooks. It opens one webhook's endpoint and secrets through
- * the vault (the api's internal routes, each open audited; the worker holds no key), sends one
- * message through the net-guard client with @dockify/notify, and records how it went on the
- * webhook's row for the dashboard. Nothing here logs or returns a URL, a token or a secret.
- *
- * Two jobs send this way: alert_notify (observe/channels.ts) for alerts, and webhook_send for
- * messages built ahead of time (update notices), one job per webhook so each retries on its own. The
- * dashboard's Send test is a webhook_send job too, so a green test proves the path alerts take.
- *
- * While the api is down nothing can be opened, and an alert about that outage is the one that matters
- * most. So the worker remembers what it last opened, in this process's memory only and never
- * on disk, and falls back to it only when the api does not answer, and only while the webhook's row
- * still names that same value. Without such a copy the job waits for the api (wiring.ts).
+ * Notification webhook delivery. Targets are opened through the vault (each open audited; the worker
+ * holds no key), and nothing here logs or returns a URL, a token or a secret. For an api outage the
+ * last opened target is kept in memory only, and used only while the row still names that same value.
  */
 import { readSecretValues, type Db, type Prisma, type SecretVault } from "@dockify/db";
 import type { HttpClient } from "@dockify/net-guard";
@@ -23,7 +13,6 @@ export interface WebhookDeps {
   db: Db;
   vault: SecretVault;
   http: HttpClient;
-  /** What this process last opened, for an api outage. Without it, an outage just waits. */
   targets?: WebhookTargets;
 }
 
@@ -44,10 +33,7 @@ const OPEN_SELECT = {
   secret: { select: { updatedAt: true } }, secondSecret: { select: { updatedAt: true } },
 } as const;
 
-/**
- * One webhook's target, opened for one send; null when it is gone, switched off or has no URL. A
- * test opens a switched off webhook too, as the dashboard's Send test always has.
- */
+/** Null when it is gone, switched off or has no URL. A Send test opens a switched off webhook too. */
 export async function openWebhook(db: Db, vault: SecretVault, id: string, opts: { targets?: WebhookTargets | undefined; includeDisabled?: boolean } = {}): Promise<WebhookTarget | null> {
   const row = await db.notificationWebhook.findUnique({ where: { id }, select: OPEN_SELECT });
   if (!row || (!row.enabled && !opts.includeDisabled) || !row.secretId) return null;
@@ -69,10 +55,7 @@ export async function openWebhook(db: Db, vault: SecretVault, id: string, opts: 
   return target;
 }
 
-/**
- * Opens the webhooks that would announce an api outage (those of a service rule that covers the api),
- * so a copy is in memory when that outage comes. Each open is audited as usual; a timer runs this.
- */
+/** Opens the webhooks that would announce an api outage, so a copy is in memory when it comes. */
 export async function primeWebhookTargets(deps: Pick<WebhookDeps, "db" | "vault"> & { targets: WebhookTargets }): Promise<number> {
   const links = await deps.db.alertRuleWebhook.findMany({
     where: { webhook: { enabled: true }, rule: { enabled: true, metric: "service", OR: [{ service: "api" }, { service: "any" }, { service: null }] } },
@@ -84,13 +67,11 @@ export async function primeWebhookTargets(deps: Pick<WebhookDeps, "db" | "vault"
   return opened;
 }
 
-/** What the dashboard's list shows: a success clears the error, a failure records why. */
 export async function recordDelivery(db: Db, id: string, out: DeliveryOutcome): Promise<void> {
   const data = out.ok ? { error: null, lastSentAt: new Date() } : { error: out.reason.slice(0, 300), lastFailedAt: new Date() };
   await db.notificationWebhook.update({ where: { id }, data }).catch(() => undefined);
 }
 
-/** Sends one message to one webhook and records it; "skipped" when there is nothing to send to. */
 export async function sendToWebhook(deps: WebhookDeps, id: string, message: NotifyMessage): Promise<DeliveryOutcome | "skipped"> {
   const target = await openWebhook(deps.db, deps.vault, id, { targets: deps.targets });
   if (!target) return "skipped";
@@ -101,10 +82,7 @@ export async function sendToWebhook(deps: WebhookDeps, id: string, message: Noti
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/**
- * A webhook the add form has not saved yet, for one Send test: the api sealed its URL (and second
- * secret) under this owner type for this one job, and those rows go as soon as they are opened.
- */
+/** An unsaved webhook's Send test: the api seals its URL under this owner type, deleted once opened. */
 export const DRAFT_OWNER = "webhook_test";
 
 export type WebhookSend =
@@ -139,10 +117,7 @@ async function openDraft(deps: WebhookDeps, d: Extract<WebhookSend, { draft: unk
   }
 }
 
-/**
- * The webhook_send job. Throws to retry, PermanentJobError to stop. A test also leaves what it got on
- * its own row, which the api's Send test is waiting to read.
- */
+/** Throws to retry, PermanentJobError to stop. A test leaves its result on its own row for the api to read. */
 export async function runWebhookSend(deps: WebhookDeps, raw: unknown, jobId?: string): Promise<"sent" | "skipped"> {
   const send = parseWebhookSend(raw);
   const saved = "webhookId" in send;

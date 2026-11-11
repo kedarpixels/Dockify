@@ -1,25 +1,7 @@
 /**
- * Host-side account rescue: the way back in for a lost authenticator, or a forgotten password
- * while email is not set up. It runs only on the server, never over HTTP: the owner connects
- * over SSH and runs it inside the running api container through the `dockify` wrapper
- * (installer/install.sh), which goes in by the image's entrypoint so the database URL is
- * assembled the same way the api's own is:
- *
- *   sudo dockify admin disable-mfa <email>       turns two-factor sign in off
- *   sudo dockify admin reset-password <email>    prints a new random password
- *   sudo dockify admin revoke-sessions <email>   signs the user out everywhere
- *   sudo dockify admin set-domain <host>         moves the dashboard to this address
- *   sudo dockify admin factory-reset             erases the server back to first-run setup
- *   sudo dockify admin reset-link                forgets this server's agent key, for a lost agent volume
- *   sudo dockify admin rewrap-secrets            re-seals every stored secret under the current master key
- *
- * set-domain and factory-reset are the wrapper's own: they need root on the host to rewrite .env,
- * remove containers and recreate the services (installer/install.sh render_wrapper). In here
- * set-domain only asks `check-domain` whether the name is free, and factory-reset never comes here.
- *
- * Every change also ends the user's sessions, remembered browsers and pending sign ins, and writes
- * an activity row, so whoever held a stolen cookie is out the moment the owner runs it. A password
- * reset leaves two-factor on: an account that had it still needs the code to sign in.
+ * Host-side account rescue (`dockify admin ...`), run over SSH inside the api container, never over HTTP.
+ * set-domain and factory-reset need host root and live in the wrapper (installer/install.sh); only `check-domain` runs here.
+ * Every account change ends the user's sessions, remembered browsers and pending sign ins, so a stolen cookie dies with it.
  */
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -47,11 +29,11 @@ export function parseAdminArgs(argv: string[]): { command: AdminCommand; email: 
 /** A password strong enough to hand over once: 24 random bytes, URL-safe. */
 export const generatePassword = (): string => randomBytes(24).toString("base64url");
 
-/** Runs one command. Returns the lines to print. Throws when the user does not exist. */
+/** Returns the text to print. Throws when the user does not exist. */
 export async function runAdmin(db: Db, command: AdminCommand, email: string): Promise<string> {
   const user = await db.user.findUnique({ where: { email } });
   if (!user) throw new Error(`No user with the email ${email}`);
-  // Nothing to turn off: say so, and leave the sessions and the activity log alone.
+  // Nothing to turn off: leave the sessions and the activity log alone.
   if (command === "disable-mfa" && !user.totpConfirmedAt) return `Two-factor sign in is not on for ${email}. Nothing changed.`;
   const password = command === "reset-password" ? generatePassword() : null;
   const passwordHash = password ? await argonHash(password) : null;
@@ -86,13 +68,9 @@ export async function runAdmin(db: Db, command: AdminCommand, email: string): Pr
 }
 
 /**
- * The way back when this server's agent lost its volume, and with it its key: the row still pins the
- * old key, so the new one is refused, and nothing can reach Docker. Forgetting the pin lets the agent's
- * join token work again. It changes nothing a running site depends on.
- *
- * An agent is often lost because it was compromised, and whoever read that file could race the new key
- * with the old token. So `dockify admin reset-link` on the host writes a new token first, and the row
- * forgets the old one here: nothing can join until the worker restarts and offers the new one.
+ * For an agent that lost its volume and key: clearing the pin lets a join token work again.
+ * The host command writes a new token first and the old hash is dropped here, so whoever read the old
+ * token cannot race the new key; nothing joins until the worker restarts and offers the new one.
  */
 export async function resetLink(db: Db): Promise<string> {
   const id = await defaultServerId(db);
@@ -107,10 +85,8 @@ export async function resetLink(db: Db): Promise<string> {
 }
 
 /**
- * Finishes a master key rotation (docs: Security). One transaction re-seals every secret under the
- * active key and records that key as the instance's, so a failure at any point leaves every row as it
- * was, readable under the keys that opened it before. Only after this can the old key leave
- * master_key_previous.
+ * Finishes a master key rotation in one transaction, so a failure leaves every row readable under the keys
+ * that opened it before. Only after this can the old key leave master_key_previous.
  */
 export async function rewrapSecrets(db: Db, ring: Keyring): Promise<string> {
   const count = await db.$transaction(
@@ -123,7 +99,7 @@ export async function rewrapSecrets(db: Db, ring: Keyring): Promise<string> {
       });
       return n;
     },
-    // A long pause beats a half done rotation: this is one offline-minded host command.
+    // A long pause beats a half done rotation.
     { maxWait: 60_000, timeout: 30 * 60_000 },
   );
   return count

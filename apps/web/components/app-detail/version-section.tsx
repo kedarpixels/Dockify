@@ -15,12 +15,8 @@ import { appTitle, plural } from "@/lib/format";
 import type { AppDetail, ServiceVersionView } from "@/lib/pages/project-detail";
 import { TabCard } from "./states";
 
-/*
- * Changing a managed database's version, on its Settings tab, for admins. The API refuses a
- * downgrade, so the list never holds an older version. What each path does is said before the press:
- * a new Postgres major goes through a copy the owner then switches to, and the old service stays until
- * they delete it. While the worker runs it this polls, and nothing stale is shown while it loads.
- */
+// The API refuses a downgrade, so the list never holds an older version. A new Postgres major goes
+// through a copy the owner then switches to; the old service stays until they delete it.
 
 const POLL_MS = 3_000;
 const WORKING = new Set(["backing_up", "upgrading", "copying", "switching"]);
@@ -42,7 +38,7 @@ export function VersionSection({ app }: { app: AppDetail }) {
   const [picked, setPicked] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
 
-  // One read now, and one every few seconds while the worker runs. A read that lands after leaving is dropped.
+  // A read that lands after leaving is dropped.
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let left = false;

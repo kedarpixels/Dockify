@@ -1,9 +1,8 @@
-/* ============== Tokens ============== */
+/* Tokens */
 
 :root {
   color-scheme: light;
 
-  /* Portfolio palette */
   --background: #ffffff;
   --foreground: #0a0a0a;
   /* Muted text: 5.33:1 on the page and 4.72:1 on --mass, so small grey text passes on every grey
@@ -23,7 +22,6 @@
   --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --font-pixel: var(--font-geist-pixel-square), var(--font-geist), system-ui, sans-serif;
 
-  /* Our names */
   --bg: var(--background);
   --panel-2: #fafafa;
   --line: var(--border);
@@ -39,7 +37,6 @@
   --active: #ebebeb;
   /* White text and glyphs on the solid blue keys, in both themes. */
   --on-solid: #ffffff;
-  /* The brand blue of the logo (not a UI accent). */
 
   /* Accent: primary keys, focus, and the live state in the drawings. */
   --blue: #0070f3;
@@ -47,7 +44,6 @@
   --blue-solid: #0070f3;
   --blue-solid-hover: color-mix(in srgb, var(--blue-solid) 88%, #000000);
   --blue-solid-active: color-mix(in srgb, var(--blue-solid) 80%, #000000);
-  /* Blue text on the page or a blue tint: 5.58:1 on the 12% tint. */
 
   /* Status */
   --ok: #16a34a;
@@ -55,13 +51,12 @@
   --warn: #f59e0b;
   --warn-ink: #b45309;
   --bad: #e5484d;
-  /* Idle and stopped dots: 3.23:1 on the page, so the dot alone still reads. */
 
   /* Key material: keys, chips and kbd chips fill with --key-fill and hover with --key-hover. Both
      are the page's own on the page; popovers re-point them (see the Dialog section). */
   --key-fill: var(--bg);
   --key-hover: var(--mass);
-  /* The segmented control's thumb and the theme switch's knob: flat fills, a ring and a soft shadow. */
+  /* Shared by the segmented control's thumb and the theme switch's knob. */
   --seg-thumb: var(--bg);
   --seg-thumb-shadow: 0 0 0 1px var(--line-strong), 0 1px 2px rgb(0 0 0 / 0.06);
   --knob: #ffffff;
@@ -72,7 +67,6 @@
 
   --rail: 1200px;
   --gutter: 32px;
-  /* The sticky top bar. */
   --top-h: 56px;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-key: cubic-bezier(0.65, 0, 0.35, 1);
@@ -144,7 +138,7 @@
   --scrim: rgb(0 0 0 / 0.55);
 }
 
-/* ============== Base ============== */
+/* Base */
 
 /* The stable gutter stops the page shifting sideways when a scroll lock hides the scrollbar. The
    scroll padding keeps an anchor or a control that Tab scrolls to clear of the sticky top bar. */
@@ -174,11 +168,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Quiet scrollbars on inner scrollers (the docs nav, menus, code, tables): a thin rounded thumb in the
-   line colour on no track, a shade darker under the pointer, never arrow keys or an OS bar. Chromium
-   and Safari draw them from the ::-webkit-scrollbar rules, which they honour only while the standard
-   properties stay unset; Firefox takes the standard properties. The page itself keeps the browser's
-   own scrollbar. */
+/* Chromium and Safari honour the ::-webkit-scrollbar rules only while the standard properties stay unset;
+   Firefox takes the standard properties. The page itself keeps the browser's own scrollbar. */
 
 :not(html) {
   scrollbar-width: thin;
@@ -217,17 +208,10 @@ body {
   display: none;
 }
 
-/* ============== Layout: the ruled frame ============== */
+/* Layout: the ruled frame */
 
-/* The column runs between two rails the full page height; rules and dither bands run full bleed
-   and cross the rails at 5px nodes.
-
-   Every rail and node lands on a whole pixel at any width. The column centres the rail with the odd
-   pixel going right. Blocks, band nodes and the header and footer rows share two numbers, M the
-   left offset and B the rail's outer width:
-     M = round(down, max(0px, (100% - var(--rail)) / 2), 1px)
-     B = min(var(--rail), 100% - 4px)
-   Each round() declaration follows a plain one, which a browser without round() keeps. */
+/* Every rail and node lands on a whole pixel at any width: the column centres the rail with the odd pixel
+   going right. Each round() declaration follows a plain one, which a browser without round() keeps. */
 
 main.page {
   position: relative;
@@ -255,7 +239,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   z-index: var(--z-lift);
 }
 
-/* -------------- Hover tooltip -------------- */
+/* Hover tooltip */
 
 [data-tip]::after,
 [data-tip]::before {
@@ -344,7 +328,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   translate: 0 2px;
 }
 
-/* -------------- Button -------------- */
+/* Button */
 
 .btn:disabled,
 .btn[aria-disabled="true"] {
@@ -375,7 +359,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   display: none;
 }
 
-/* -------------- Segmented control -------------- */
+/* Segmented control */
 
 .seg2-opt {
   display: inline-flex;
@@ -402,7 +386,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   color: var(--ink);
 }
 
-/* -------------- Theme switch -------------- */
+/* Theme switch */
 
 .tswitch-tip::before {
   content: "";
@@ -416,8 +400,6 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   rotate: 45deg;
   translate: -50% 0;
 }
-
-/* The key chip inside a tip bubble: the inverted bubble's own colours, 12px. */
 
 .tswitch-tip kbd {
   display: inline-grid;
@@ -440,7 +422,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   }
 }
 
-/* -------------- Copy -------------- */
+/* Copy */
 
 .copy-key[data-copied]::after,
 .copy-key[data-copied]::before {
@@ -449,7 +431,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   transition-delay: 0ms;
 }
 
-/* -------------- Dialog -------------- */
+/* Dialog */
 
 .dlg {
   --key-fill: var(--popover);
@@ -464,8 +446,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   animation: dlg-in 140ms var(--ease) both;
 }
 
-/* Close: a 24px key with a 12px cross on the same fill and hairline ring as every secondary key
-   (owner: it keeps its background), so it matches Cancel. */
+/* The same fill and hairline ring as every secondary key, so it matches Cancel. */
 
 .dlg-close {
   position: absolute;
@@ -482,7 +463,7 @@ main.page > :not(.sep, .rule):has([data-tip]:hover, [data-tip]:focus-visible, .t
   from { transform: translateY(100%); }
 }
 
-/* ============== Utilities ============== */
+/* Utilities */
 
 /* Numbers that never jitter. */
 
@@ -501,16 +482,13 @@ kbd {
   letter-spacing: -0.01em;
 }
 
-/* Status dot: 6px and round. */
-
 .dot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
 }
 
-/* Site: the one inline link inside running text, on every page and in the docs. Ink, with a
-   hairline underline that darkens on hover, so a link never relies on colour alone. */
+/* A hairline underline that darkens on hover, so a link never relies on colour alone. */
 
 .link-inline,
 .prose a:not(.dgrid-cell, .doc-anchor) {
@@ -528,7 +506,7 @@ kbd {
   text-decoration-color: currentColor;
 }
 
-/* ============== Responsive ============== */
+/* Responsive */
 
 @media (max-width: 760px) {
   /* The mobile --gutter is defined once, in site.css, so the two files cannot disagree. */
@@ -539,9 +517,8 @@ kbd {
     font-size: 28px;
     line-height: 36px;
   }
-  /* Phones draw no rails and no nodes, the grammar of the phone header and footer: the column runs
-     edge to edge, so a band has no rail to cross, and a corner node would be a stub on the screen
-     edge. Hairlines and bands stay. */
+  /* Phones draw no rails and no nodes: the column runs edge to edge, so a corner node would be a stub on the
+     screen edge. Hairlines and bands stay. */
   main.page > * {
     max-width: none;
     margin-inline: 0;
@@ -582,7 +559,7 @@ kbd {
   }
 }
 
-/* ============== Reduced motion ============== */
+/* Reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -593,11 +570,10 @@ kbd {
   }
 }
 
-/* ============== Forced colours ============== */
+/* Forced colours */
 
-/* High contrast modes drop every box-shadow, which is how keys, chips, the search and dialogs draw
-   their edges. Real borders and outlines take their place. The frame is drawing, not information:
-   it keeps its own greys. */
+/* High contrast modes drop every box-shadow, which is how keys, chips, the search and dialogs draw their
+   edges. Real borders and outlines take their place. */
 
 @media (forced-colors: active) {
   :is(.btn, .seg2, .seg2-thumb, .kbd, .icon-tile, .dlg, .dsearch-key, .cmdline, .code, .pg-path, .dnote, .tswitch, .ld-chip) {
@@ -620,7 +596,7 @@ kbd {
   }
 }
 
-/* ============== Print ============== */
+/* Print */
 
 /* Paper gets the content: no header, footer, sidebars or dither, and the light palette's text and
    lines even from the dark theme, so nothing prints light grey on white. */

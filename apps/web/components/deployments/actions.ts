@@ -1,18 +1,13 @@
 import { callJson } from "@/lib/client-api";
 import type { ActionResult, DeploymentAction } from "@/lib/pages/deployments";
 
-/*
- * What a deployment's keys say and send, shared by the rows on every list and the deployment page,
- * so a redeploy reads the same wherever it starts: one trigger name, one confirm, one toast set.
- */
+/* Shared by every list and the deployment page, so a redeploy reads the same wherever it starts. */
 
-/** What started a deployment. */
 const TRIGGER_LABEL: Record<string, string> = { push: "Push", manual: "Manual", redeploy: "Redeploy", rollback: "Rollback", webhook: "Webhook" };
 
-/** "Push", "Manual", "Redeploy", "Rollback", "Webhook"; anything newer reads capitalised. */
+/** Anything newer reads capitalised. */
 export const triggerLabel = (trigger: string) => TRIGGER_LABEL[trigger] ?? trigger.charAt(0).toUpperCase() + trigger.slice(1);
 
-/** Toast copy per action: sentence case titles, no full stops. */
 export const ACTION_TOAST: Record<DeploymentAction, { loading: string; success: string; error: string }> = {
   redeploy: { loading: "Starting redeploy", success: "Redeploy started", error: "Could not redeploy" },
   rollback: { loading: "Rolling back", success: "Rollback started", error: "Could not roll back" },
@@ -26,10 +21,7 @@ export function deployWhere(d: { projectSlug: string; app: { name: string }; bra
   return `${d.projectSlug} / ${d.app.name}${ref ? `, ${ref}` : ""}`;
 }
 
-/**
- * The confirm for an action on one deployment: a statement for the title, what will happen, the
- * key as a verb, and a dismiss key that never reads like the action ("Keep running" for a cancel).
- */
+/** The dismiss key never reads like the action ("Keep running" for a cancel). */
 export function actionQuestion(
   action: DeploymentAction,
   { label, short, ago, queued = false, vercel = false }: { label: string; short?: string | null; ago?: string; queued?: boolean; vercel?: boolean },
@@ -56,10 +48,7 @@ export function actionQuestion(
   };
 }
 
-/**
- * Sends an action through this dashboard's route (POST /api/deployments/:id/:action). Resolves with
- * the answer; throws the API's reason on a failure, so `toast.promise` can say it.
- */
+/** Throws the API's reason on a failure, so `toast.promise` can say it. */
 export async function sendDeploymentAction(id: string, action: DeploymentAction): Promise<ActionResult> {
   const r = await callJson<ActionResult>(`/api/deployments/${encodeURIComponent(id)}/${action}`, { method: "POST" });
   if (!r.ok) throw new Error(r.error);

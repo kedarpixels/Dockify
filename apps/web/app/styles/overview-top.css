@@ -1,13 +1,9 @@
-/* Overview, top half: the page head and the project strip that carries the Projects page's card
-   (projects.css). The area sparkline is shared and lives in foundation.css. */
-
-/* -------------- Page head -------------- */
+/* Page head */
 .ov-head .shead-actions {
   gap: 12px;
 }
 
-/* -------------- Project strip -------------- */
-/* The portfolio tab strip: ruled cards side by side, snapping, arrow keys in the head. */
+/* Project strip */
 .ovp {
   display: flex;
   flex-direction: column;
@@ -33,7 +29,6 @@
   min-width: 0;
 }
 
-/* Edge fades while there is more to scroll. */
 .ovp-mask::before,
 .ovp-mask::after {
   content: "";
@@ -61,10 +56,8 @@
   opacity: 0;
 }
 
-/* Three cards per view; fewer stretch to fill, so no orphan gap is left. Cards sit 1px apart and
-   draw their rings into the gap, as on the Projects grid. The scroll box is 3px larger all round
-   than the cards (padding, cancelled by a negative margin), so the corner nodes that sit 3px
-   outside each card stay inside its clip and land whole on the head line, the rails and the band. */
+/* The scroll box is 3px larger all round than the cards (padding cancelled by a negative margin),
+   so the corner nodes that sit 3px outside each card stay inside its clip. */
 .ovp-track {
   display: grid;
   grid-auto-flow: column;
@@ -88,16 +81,12 @@
   box-shadow: 0 0 0 1px var(--line);
 }
 
-/* Phones: one card and the edge of the next, so the strip reads as one that scrolls. */
 @container ovp (max-width: 520px) {
   .ovp-track {
     grid-auto-columns: minmax(round(down, 84%, 1px), 1fr);
   }
 }
 
-/* One project has the strip to itself: its identity and its last deployment sit side by side in
-   one band, instead of stacking into a wide card that is mostly empty. A narrow strip keeps the
-   stacked card. */
 @container ovp (min-width: 960px) {
   .ovp-track > .pj-cell:only-child > .pj-body {
     display: grid;

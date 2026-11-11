@@ -1,19 +1,12 @@
 /**
- * The worker's view of secrets. This process holds no master key: every
- * plaintext value it needs is fetched from the api's internal secrets routes, by row id, over the
- * control network, with the internal channel token. The api checks the kind, checks that the job
- * the worker names is live, audits the call and answers with the values. Sealing (a deployment's
- * env snapshot, the backup key) and the backup key escrow go the same way.
- *
- * The current job rides along in an AsyncLocalStorage so the api can bind each open to it; timers
- * name themselves ("timer:janitor") so the audit row still says why.
+ * The worker holds no master key: every plaintext secret comes from the api's internal routes, which check the
+ * named job is live and audit the call. Timers name themselves ("timer:janitor") so the audit row says why.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { readSecret, type Sealed } from "@dockify/crypto";
 import type { SecretOwner, SecretVault } from "@dockify/db";
 
 export interface JobContext {
-  /** The claimed job's id, or null for periodic work. */
   jobId: string | null;
   /** The job kind, or "timer:<name>". */
   purpose: string;
@@ -38,11 +31,9 @@ export interface RemoteVaultOptions {
   token: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
-  /** Overrides the AsyncLocalStorage lookup, for tests. */
   context?: () => JobContext | undefined;
 }
 
-/** DOCKIFY_INTERNAL_TOKEN (or its _FILE form). Required: without it the worker cannot open anything. */
 export function readInternalToken(env: NodeJS.ProcessEnv = process.env): string {
   const token = readSecret("DOCKIFY_INTERNAL_TOKEN", env);
   if (!token) throw new Error("DOCKIFY_INTERNAL_TOKEN is not set; the worker needs it to reach the api's secret-opening routes");

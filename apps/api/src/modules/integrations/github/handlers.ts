@@ -67,7 +67,7 @@ async function upsertInstallation(db: Tx, i: { id: string; login: string; accoun
   await db.gitHubInstallation.upsert({ where: { installationId: BigInt(i.id) }, create: { installationId: BigInt(i.id), ...data }, update: data });
 }
 
-/** Pulls the App's installations from GitHub, so the picker works even when a webhook was missed. */
+/** Pulls the installations from GitHub, so the picker works even when a webhook was missed. */
 export async function syncInstallations(db: Db, ring: Keyring, deps: IntegrationDeps, app: GitHubAppRow): Promise<void> {
   const jwt = await deps.github.jwt(db, ring, app);
   const seen: string[] = [];
@@ -94,7 +94,6 @@ async function requireInstallation(db: Tx, id: string): Promise<GitHubInstallati
   return row;
 }
 
-// ------------------------------------------------------------------ webhook
 
 interface Delivery {
   projectId: string | null;
@@ -149,8 +148,8 @@ async function onInstallation(db: Db, deps: IntegrationDeps, ev: InstallationEve
 const DELIVERY_EVENT: Record<string, string> = { push: "push", pull_request: "pull_request", ping: "ping", installation: "installation", installation_repositories: "installation" };
 
 /**
- * The GitHub receiver. No session: the HMAC over the raw bytes is the whole authentication, so it is
- * checked before anything is written. The delivery id insert is the replay check (unique index).
+ * No session: the HMAC over the raw bytes is the whole authentication, so it is checked before anything is written.
+ * The delivery id insert (unique index) is the replay check.
  */
 export async function receiveGitHubWebhook(
   db: Db, ring: Keyring, deps: IntegrationDeps, req: FastifyRequest, raw: unknown,
@@ -172,15 +171,14 @@ export async function receiveGitHubWebhook(
   if (!stored) return { status: 202 };
 
   let rowId: string;
-  // The delivery id insert is the replay check. A known id is expected (a redelivery from GitHub's
-  // Recent Deliveries), so it is an insert that skips duplicates rather than a failed one: a caught
-  // unique violation still reaches Prisma's error log as a raw invocation error.
+  // A known id is expected (a manual redelivery), so the insert skips duplicates: a caught unique violation
+  // would still reach Prisma's error log.
   const fresh = await db.webhookDelivery.createMany({ data: [{ provider: "github", deliveryId, event: stored }], skipDuplicates: true });
   if (fresh.count === 1) {
     rowId = (await db.webhookDelivery.findFirstOrThrow({ where: { provider: "github", deliveryId }, select: { id: true } })).id;
   } else {
-    // GitHub keeps the delivery id on a redelivery, and never redelivers on its own. So a repeat of one
-    // that failed here is the owner asking again: it runs. The update claims it, so two at once run it once.
+    // GitHub never redelivers on its own, so a repeat of a delivery that failed here is the owner asking again.
+    // The update claims it, so two at once run it once.
     const retry = await db.webhookDelivery.updateMany({ where: { provider: "github", deliveryId, statusCode: { gte: 500 } }, data: { statusCode: null, summary: "" } });
     if (retry.count !== 1) {
       req.log.info({ deliveryId, event }, "GitHub redelivered a delivery already handled; nothing to do");
@@ -231,13 +229,13 @@ export async function receiveGitHubWebhook(
   return { status: 202 };
 }
 
-/** The setup redirect GitHub sends after an install. */
+/** Handles the setup redirect GitHub sends after an install. */
 export async function completeInstall(
   db: Db, ring: Keyring, deps: IntegrationDeps, query: { installation_id?: string; state?: string },
 ): Promise<{ ok: boolean }> {
   const sessionId = query.state ? consumeInstallState(ring, deps.states, query.state) : null;
   if (!sessionId || !query.installation_id || !/^\d{1,20}$/.test(query.installation_id)) return { ok: false };
-  // The same rule as the App's own callback: still signed in, and still an enabled Admin.
+  // Same rule as the App's own callback: still signed in, and still an enabled Admin.
   const session = await liveAdmin(db, sessionId);
   if (!session) return { ok: false };
   const app = await requireGitHubApp(db);
@@ -248,7 +246,7 @@ export async function completeInstall(
     id: String(r.id), login: r.account.login, accountType: r.account.type, avatarUrl: r.account.avatar_url ?? null,
     repositorySelection: r.repository_selection, suspended: r.suspended_at !== null,
   });
-  // Adding the GitHub App grants clone and push-to-deploy access; audit it like the removal is.
+  // Adding the App grants clone and push-to-deploy access, so it is audited like its removal.
   await audit(db, {
     category: "access", action: "git.installation.add", verb: "added the GitHub App",
     actorType: "user", actorId: session.userId, actorName: session.name,
@@ -257,12 +255,11 @@ export async function completeInstall(
   return { ok: true };
 }
 
-// ------------------------------------------------------------------ App creation from the manifest
 
-/** GitHub's manifest codes are short URL-safe tokens; anything else is not worth a call to GitHub. */
+/** Anything not shaped like a manifest code is not worth a call to GitHub. */
 const MANIFEST_CODE = /^[\w-]{1,128}$/;
 
-/** The session a state names, while it is still signed in and its user is still an enabled Admin. */
+/** Null unless the session is still signed in and its user is still an enabled Admin. */
 async function liveAdmin(db: Db, sessionId: string, now = new Date()): Promise<{ userId: string; name: string } | null> {
   const s = await db.session.findUnique({
     where: { id: sessionId },
@@ -279,11 +276,9 @@ async function liveAdmin(db: Db, sessionId: string, now = new Date()): Promise<{
 export type AppManifestOutcome = { ok: true; slug: string } | { ok: false; reason: string };
 
 /**
- * GitHub's redirect after it created the App from the manifest. GitHub sends the browser back
- * cross-site, so no session cookie arrives: the signed single-use manifest state is the only
- * authentication, and the session it names must still be alive and an Admin. Only then is the
- * code traded for the credentials, which are sealed in the transaction that stores the App and
- * its audit row. The reason on a refusal names what failed and never carries the code or a secret.
+ * GitHub redirects back cross-site, so no session cookie arrives: the signed single-use state is the only
+ * authentication, and the session it names must still be a live Admin before the code is traded.
+ * The refusal reason never carries the code or a secret.
  */
 export async function completeAppManifest(
   db: Db, ring: Keyring, deps: IntegrationDeps, query: { code?: string; state?: string }, client: { ip: string; userAgent: string | null },
@@ -304,7 +299,7 @@ export async function completeAppManifest(
       const row = await tx.integration.create({ data: { kind: "github_app", name: "default", config: asJson({ appId: app.appId, slug: app.slug }) } });
       const pk = await storeSecret(tx, ring, { kind: "github_private_key", ownerType: "integration", ownerId: row.id }, app.pem, null);
       const wh = await storeSecret(tx, ring, { kind: "github_webhook_secret", ownerType: "integration", ownerId: row.id }, app.webhookSecret, null);
-      // GitHub hands the client secret over once, here; it is kept sealed for a later sign-in with GitHub.
+      // GitHub hands the client secret over only here.
       const cs = app.clientSecret ? await storeSecret(tx, ring, { kind: "github_client_secret", ownerType: "integration", ownerId: row.id }, app.clientSecret, null) : null;
       const config = {
         appId: app.appId, slug: app.slug, clientId: app.clientId, htmlUrl: app.htmlUrl, source: "manifest",
@@ -326,7 +321,6 @@ export async function completeAppManifest(
   return { ok: true, slug: app.slug };
 }
 
-// ------------------------------------------------------------------ handlers
 
 export function gitHandlers(deps: IntegrationDeps): Handlers {
   let lastSync = 0;
@@ -424,10 +418,8 @@ export function gitHandlers(deps: IntegrationDeps): Handlers {
     },
 
     /**
-     * Forgets this server's GitHub App: its row, every sealed value it owns (private key, webhook
-     * secret, client secret) and its installations, so another App can be created. Apps keep their
-     * repository URL but lose the installation they cloned through. The App itself stays on GitHub
-     * (no API deletes one); the dashboard links its settings page so the owner can delete it there.
+     * Removes the row, every sealed value it owns and its installations. Apps keep their repository URL but lose the
+     * installation they cloned through. The App itself stays on GitHub, which has no API to delete one.
      */
     "git.app.delete": async ({ actor, req, ctx }) => {
       const row = await findIntegration(ctx.db, "github_app");

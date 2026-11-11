@@ -24,14 +24,8 @@ import { HealthSection, LimitsSection, ReleaseSection, SaveRow, TargetSection, u
 import { TabCard, TabFailed } from "./states";
 import { useAppTab } from "./use-tab";
 
-/* The app's settings: its name, build and run, the icon, health check, resource limits, release command, the
-   deploy target for frontends, then the danger zone (the project settings order: identity first).
-   An app on Vercel keeps only what does something for it: the branch, the icon, the deploy target
-   and the danger zone. Nothing runs here, so the rest waits, saved, for a move back to this server.
-   Each card saves on its own, so one bad field never blocks another card's save. Build and run is
-   part of the app itself; the rest is the app's config (GET and PATCH /api/v1/apps/:id/config).
-   While any card holds unsaved edits, closing the tab or following a link off the page asks first
-   (the shared useLeaveGuard, as on the Settings page). */
+// Each card saves on its own, so one bad field never blocks another card's save. An app on Vercel
+// keeps only the cards that act there; the rest waits, saved, for a move back to this server.
 
 /** image and branch change what the app runs; the rest is how it runs. */
 type BuildDraft = { builder: string; installCommand: string; buildCommand: string; startCommand: string; dockerfilePath: string; port: string; image: string; branch: string };
@@ -251,7 +245,6 @@ function BuildSection({ app, multiEnv, onSaved, onDirty }: { app: AppDetail; mul
   );
 }
 
-/** The cards that report unsaved edits, by name. */
 type CardKey = "name" | "build" | "health" | "limits" | "release" | "target";
 const CARDS: CardKey[] = ["name", "build", "health", "limits", "release", "target"];
 
@@ -268,9 +261,8 @@ export function SettingsTab({
   multiEnv: boolean;
   now: number;
   onSaved: (s: AppSettings) => void;
-  /** A saved rename: the display name now shown (null shows the name). */
+  /** Null shows the app's own name. */
   onRenamed: (displayName: string | null) => void;
-  /** Whether any card holds unsaved edits, for a page that switches tabs in place. */
   onDirty?: (dirty: boolean) => void;
 }) {
   const router = useRouter();

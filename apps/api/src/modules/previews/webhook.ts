@@ -1,13 +1,6 @@
-/**
- * The pull_request webhook path (HMAC already verified by the receiver). opened, reopened and
- * synchronize create or update the preview pr-<n>; closed (merged or not) deletes it. Only
- * projects with previews on are touched. Every decision that needs the caps runs under one
- * server-wide advisory lock, so two PRs opened at once can never both take the last slot.
- *
- * The worker owns the rest: it builds and runs the containers, posts the sticky PR comment and the
- * commit status (preview_feedback), and tears down (preview_cleanup). This file only writes rows
- * and queues those jobs in the same transaction.
- */
+// The pull_request webhook path; the receiver has already verified the HMAC. Every decision that
+// needs the caps runs under one server-wide advisory lock, so two PRs opened at once can never
+// both take the last slot.
 import { projects as P } from "@dockify/contracts";
 import { defaultServerId, enqueuePreviewTx, type Db, type PreviewStatus, type Tx } from "@dockify/db";
 import { requestDeployTx } from "../deployments/enqueue.ts";
@@ -52,18 +45,17 @@ export async function instancePreview(db: Tx): Promise<InstancePreview> {
   return { cap: i?.previewServerMax ?? 4, domain: i?.previewDomain ?? null, publicUrl: i?.publicUrl ?? "" };
 }
 
-/** Whether the last check saw *.domain resolve to this server. */
+/** Reads the last stored check of *.domain; it does not resolve anything itself. */
 export async function domainResolves(db: Tx, domain: string): Promise<{ ok: boolean; detail: string | null }> {
   const row = await db.previewDomain.findUnique({ where: { domain }, select: { dnsStatus: true, dnsDetail: true } });
   return { ok: row?.dnsStatus === "ok", detail: row?.dnsDetail ?? null };
 }
 
-/** Marks a preview for removal and queues its teardown and its PR comment update. */
 export async function retirePreview(tx: Tx, id: string, reason: string, error: string | null = null): Promise<void> {
   const row = await tx.previewEnv.findUnique({ where: { id }, select: { status: true } });
   if (!row || row.status === "closed" || row.status === "closing") return;
   if (row.status === "blocked") {
-    // Nothing ever ran: closed straight away.
+    // Nothing ever ran, so there is nothing for the worker to tear down.
     await tx.previewEnv.update({ where: { id }, data: { status: "closed", reason, error, closedAt: new Date() } });
   } else {
     await tx.previewEnv.update({ where: { id }, data: { status: "closing", reason, error } });
@@ -77,18 +69,18 @@ const loadProjects = (db: Db) => db.project.findMany({ where: { archivedAt: null
 
 type ProjectApp = Project["environments"][number]["apps"][number];
 
-/** Whether this app builds from the pull request's base repository: by id when both sides have one, else by URL. */
+/** Matched by repository id when both sides have one (it survives a rename), else by URL. */
 export function appBuildsRepo(a: Pick<ProjectApp, "gitRepository" | "gitRepoId">, pr: Pick<PullRequestEvent, "repoId" | "identity">): boolean {
   return !!a.gitRepository && (a.gitRepoId && pr.repoId ? a.gitRepoId === pr.repoId : repoIdentity(a.gitRepository) === pr.identity);
 }
 
 function repoMatches(p: Project, pr: PullRequestEvent): boolean {
-  // Each app's own repository first: the dashboard stores the id on the app, and the project's may name another.
+  // Each app's own repository first: the project's may name another.
   const byApp = p.environments.some((e) => e.apps.some((a) => appBuildsRepo(a, pr)));
   return byApp || (!!p.gitRepoId && p.gitRepoId === pr.repoId);
 }
 
-/** PR numbers are per repository, so a preview is found by its base repository too, never by the number alone. */
+/** PR numbers are per repository, so a preview is keyed by its base repository too, never by the number alone. */
 const keyOf = (p: Project, pr: PullRequestEvent) => ({ projectId_repoKey_prNumber: { projectId: p.id, repoKey: pr.identity, prNumber: pr.number } });
 
 async function onClose(db: Db, p: Project, pr: PullRequestEvent): Promise<string | null> {
@@ -105,7 +97,7 @@ async function onOpen(db: Db, p: Project, pr: PullRequestEvent, now: Date): Prom
   const base = pickBaseEnvironment(p.environments, p.previewBaseEnv);
   const inst = await instancePreview(db);
   const domain = P.effectivePreviewDomain(p.previewDomain, inst.domain, inst.publicUrl).domain;
-  // Only the apps that build this repository: another repository's app has no such commit and no such PR.
+  // Only the apps that build this repository: another repository's app has no such commit.
   const apps = (base?.apps ?? []).filter(includedInPreviews).filter((a) => appBuildsRepo(a, pr));
   const disk = await latestDiskPct(db, now.getTime());
   const cap = inst.cap;
@@ -134,7 +126,6 @@ async function onOpen(db: Db, p: Project, pr: PullRequestEvent, now: Date): Prom
     if (!apps.length) return `PR #${pr.number}: no app in ${base.name} is included in previews`;
     const live = existing && isLive(existing.status);
     if (!live) {
-      // Refuse until *.domain resolves to this server: a preview nobody can reach is wasted work.
       if (!dns.ok) {
         await enqueuePreviewTx(tx, "preview_dns", domain);
         return block("dns", `the preview domain ${domain} does not resolve to this server yet${dns.detail ? ` (${dns.detail})` : ""}. Create the record *.${domain}, press Check DNS in the dashboard, then push again`);
@@ -168,8 +159,8 @@ async function onOpen(db: Db, p: Project, pr: PullRequestEvent, now: Date): Prom
       const member = await tx.previewDeployment.findUnique({ where: { envId_appId: { envId: row.id, appId: a.id } }, select: { id: true } });
       let pdId = member?.id;
       if (!pdId) {
-        // Two projects can both have an app `web` and a PR #1. Their project's id then tells them apart:
-        // a hostname another preview or a real domain holds is never shared.
+        // Two projects can both have an app `web` and a PR #1, so a taken hostname falls back to one
+        // scoped by project id. A hostname another preview or a real domain holds is never shared.
         const free = async (candidate: string) => {
           const [taken, takenDomain] = await Promise.all([
             tx.previewDeployment.findUnique({ where: { hostname: candidate }, select: { id: true } }),

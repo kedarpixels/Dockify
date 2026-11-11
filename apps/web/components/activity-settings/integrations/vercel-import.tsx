@@ -19,13 +19,8 @@ import { FormKeys } from "./card";
 import { intFetch, listing } from "./client";
 import { useStepUp } from "@/components/step-up/step-up";
 
-/*
- * Import one Vercel project's variables and domains into a Dockify environment: pick where they
- * land and which Vercel environment they come from, look over what moves (values stay masked, the
- * browser never holds them), then confirm.
- */
+/* Values stay masked through the import: the browser never holds them. */
 
-/** A Dockify project and its environments, the places an import can land. */
 export interface ImportTarget {
   slug: string;
   environments: string[];
@@ -65,7 +60,6 @@ export function VercelImportDialog({
   const [target, setTarget] = useState<VercelTarget>("production");
   const [busy, setBusy] = useState(false);
 
-  // A fresh pick every time a project opens, guessed from its name.
   if (!project && shownFor !== null) setShownFor(null);
   if (project && project.id !== shownFor) {
     setShownFor(project.id);
@@ -101,7 +95,6 @@ export function VercelImportDialog({
     // Closing "Confirm it is you" is no failure: nothing to report, and the dialog stays open.
     if (isStepUpCancel(r)) return;
     if (!r.ok) {
-      // The toast says why; the dialog stays open for another try.
       toast.error("Could not import from Vercel", { description: errText(r.error) });
       return;
     }

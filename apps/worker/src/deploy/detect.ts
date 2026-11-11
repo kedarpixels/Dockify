@@ -1,8 +1,4 @@
-/**
- * New app's read of a repository: clone it (the same guards as a deploy), look for a Dockerfile, and
- * run Railpack's plan step in the BuildKit sandbox with no variable at all. Nothing is built or run
- * from the result, and every field of it came from a hostile repository: the web shows it as text.
- */
+/** New app's read of a repository. Nothing is built or run from it, and every field came from a hostile repository. */
 import { readFile } from "node:fs/promises";
 import { Redactor } from "@dockify/redact";
 import type { Db, Prisma, SecretVault } from "@dockify/db";
@@ -27,7 +23,6 @@ export interface DetectDeps {
 
 const PLAN_TIMEOUT_MS = 3 * 60_000;
 
-/** The port a repository probably serves on: the Dockerfile's EXPOSE, then the framework's usual one. */
 export function detectPort(o: { dockerfile: string | null; framework: string | null; provider: string | null }): number | null {
   if (o.dockerfile === null) return plannedPort(o);
   const m = /^\s*EXPOSE\s+(\d{1,5})/im.exec(o.dockerfile);
@@ -46,7 +41,6 @@ export interface DetectAnswer {
   startCommand: string;
   dockerfilePath: string;
   port: number | null;
-  /** Why the plan step gave up, when it did. */
   reason: string | null;
 }
 

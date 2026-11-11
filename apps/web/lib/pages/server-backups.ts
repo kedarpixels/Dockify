@@ -15,22 +15,8 @@ import { seeded } from "@/lib/preview-random";
 
 export { NEW_DB_NAME } from "./server-backups-shared";
 
-/*
- * Loader for the Server and Backups pages. Every call is in the API contract
- * (packages/contracts/src/endpoints.ts); the web app never reads the database itself, and every
- * call is bounded (lib/api.ts).
- *
- * Updates (signed, versioned releases only)
- *   A write that needs step-up answers 403 { error: "step_up_required" }; the route answers the
- *   shared refusal (lib/step-up.ts) and the page confirms it is you (components/step-up), then
- *   sends it again. The preview refuses the same writes outside its own window.
- *
- * Reads forward the session cookie with no-store, the same as fetchOverview. Without
- * DOCKIFY_API_URL the design preview (DOCKIFY_PREVIEW=1) serves fixtures derived from
- * buildPreviewOverview; otherwise the pages get no data and show their empty state.
- */
-
-// -------------- Types --------------
+// Loader for the Server and Backups pages. A write that needs step-up answers the shared refusal
+// (lib/step-up.ts); the page confirms it is you and sends it again.
 
 export type MetricRange = "1h" | "24h" | "7d";
 
@@ -74,10 +60,7 @@ export interface ContainerRow {
   state: ContainerState;
 }
 
-/**
- * The control plane's services: the API and Postgres by the API's own probes, the worker by its
- * heartbeat, the rest as the worker last saw their containers. redis is an id older APIs sent.
- */
+/** The API and Postgres report by the API's own probes, the worker by its heartbeat, the rest as the worker last saw their containers. redis is an id older APIs sent. */
 export type ServiceId = "api" | "worker" | "proxy" | "postgres" | "redis" | "web" | "buildkit" | "socketProxy" | "updater" | "cloudflared";
 
 export interface ServiceHealth {
@@ -229,10 +212,7 @@ export interface UpdateStatus {
   history: UpdateJob[];
   /** The last good version this install can return to: within 7 days, its dump still on disk. */
   rollback: { updateId: string; version: string; until: string } | null;
-  /**
-   * The pending security release from the signed feed (lib/security-release.ts): the newest release
-   * above `current` with a security block, kept while any pending release has one. Older APIs leave it out.
-   */
+  /** The newest pending release with a security block (lib/security-release.ts). Older APIs leave it out. */
   security?: SecurityRelease | null;
 }
 
@@ -281,7 +261,6 @@ export type StorageProvider = "r2" | "s3" | "minio" | "custom";
 export interface BackupDatabase {
   /** The service's name: what a restore confirms with. */
   name: string;
-  /** What people read as its name today, while it has one. */
   displayName?: string;
   projectSlug: string;
   environment: string;
@@ -326,7 +305,6 @@ export interface BackupConfig {
   restoreTests: { cron: string; nextRunAt: string | null };
 }
 
-/** One tier of a database's backups: its own cron, switch and how many automatic backups it keeps. */
 export interface BackupTierSchedule {
   tier: BackupTier;
   enabled: boolean;
@@ -366,7 +344,6 @@ export interface BackupSchedule {
   tiers: Record<BackupTier, BackupTierSchedule>;
 }
 
-/** What the schedule dialog changes on one tier. */
 export interface TierPatch {
   tier: BackupTier;
   enabled?: boolean;
@@ -433,22 +410,16 @@ export interface BackupsResult {
   fetchedAt: string;
 }
 
-/** What a mutation hands back to its route: a status and a JSON body. */
 export interface ActionResult<T> {
   status: number;
   body: T | { error: string; code?: string };
 }
 
-// -------------- API access --------------
-
 // Preview only when no API is configured at all: a set (even broken) API URL must never fall back to fixtures.
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-/**
- * One call to the Dockify API (lib/api.ts): the API's own message on a failure, else a line for its
- * status. `timeoutMs` covers the writes the API holds open while the worker runs them.
- */
+/** `timeoutMs` covers the writes the API holds open while the worker runs them. */
 async function api<T>(path: string, init?: { method?: Method; body?: unknown; timeoutMs?: number }): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string; code?: string }> {
   const r = await apiRequest<T>(path, { method: init?.method, body: init?.body, timeoutMs: init?.timeoutMs });
   // A success without a body (an empty 204, say) is still a success, not an outage.
@@ -464,10 +435,7 @@ function list<T>(body: T[] | { items?: T[]; data?: T[] }): T[] {
   return Array.isArray(body) ? body : (body.items ?? body.data ?? []);
 }
 
-/**
- * Fills fields an older API leaves out, so the page never reads undefined: the kind from the
- * old `trigger`, no encryption, and no restore test yet.
- */
+/** Fills fields an older API leaves out, so the page never reads undefined. */
 function normRun(r: BackupRun & { trigger?: "schedule" | "manual" }): BackupRun {
   return {
     ...r,
@@ -502,11 +470,7 @@ function normSchedule(s: BackupSchedule): BackupSchedule {
   return { ...out, tiers: s.tiers ?? { local: flatTier(out, "local"), offsite: flatTier(out, "offsite") } };
 }
 
-/**
- * Forwards a write, or answers it from the fixture in preview, or refuses with no source. The API's
- * own 4xx pass through with their code (401 ends the session, a step-up refusal asks for one);
- * `elevated` writes are refused in the preview outside its step-up window, as the API refuses them.
- */
+/** The API's own 4xx pass through with their code. `elevated` writes are refused in the preview outside its step-up window, as the API refuses them. */
 async function mutate<T>(path: string, method: Method, body: unknown, simulate: () => T | null, opts: { elevated?: boolean; timeoutMs?: number } = {}): Promise<ActionResult<T>> {
   if (process.env.DOCKIFY_API_URL) {
     const r = await api<T>(path, { method, body, timeoutMs: opts.timeoutMs });
@@ -525,8 +489,6 @@ async function mutate<T>(path: string, method: Method, body: unknown, simulate: 
 export function isRange(value: string | null): value is MetricRange {
   return value === "1h" || value === "24h" || value === "7d";
 }
-
-// -------------- Server --------------
 
 export async function getServer(): Promise<ServerResult> {
   await connection();
@@ -550,8 +512,6 @@ export async function getServer(): Promise<ServerResult> {
 
   return { source: "none", data: null, metrics: null, updates: null, fetchedAt };
 }
-
-// -------------- Updates --------------
 
 export async function getUpdates(): Promise<UpdatesResult> {
   if (process.env.DOCKIFY_API_URL) {
@@ -615,10 +575,7 @@ export function saveUpdatePolicy(body: UpdatePolicyBody): Promise<ActionResult<U
   }, { elevated: true });
 }
 
-/**
- * Checks a policy body from the browser field by field, as the contract's UpdatePolicyBody does,
- * and returns only those fields, or an error message.
- */
+/** Returns only the checked fields of a policy body from the browser, or an error message. */
 export function parsePolicyBody(raw: Record<string, unknown>): { ok: true; body: UpdatePolicyBody } | { ok: false; error: string } {
   const { mode, channel, window, timeZone } = raw;
   if (mode !== "manual" && mode !== "security" && mode !== "all") return { ok: false, error: "Expected mode manual, security or all" };
@@ -661,8 +618,6 @@ export function pruneServer(targets: PruneTarget[]): Promise<ActionResult<PruneR
     };
   }, { timeoutMs: PRUNE_TIMEOUT_MS });
 }
-
-// -------------- Backups --------------
 
 export async function getBackups(): Promise<BackupsResult> {
   await connection();
@@ -767,11 +722,7 @@ export function deleteOrphans(resourceId: string): Promise<ActionResult<OrphanDe
   }, { elevated: true });
 }
 
-/**
- * Streams the dump from the API; there is no file to give in the preview. Elevated on the API: the
- * page confirms it is you before it starts the download (components/step-up `ensureStepUp`). A
- * refusal comes back as JSON with the API's status and code, never as a file.
- */
+/** Streams the dump from the API. A refusal comes back as JSON with the API's status and code, never as a file. */
 export async function downloadBackup(id: string, signal?: AbortSignal): Promise<Response> {
   if (!process.env.DOCKIFY_API_URL) return answer({ ok: false, error: "Downloads need the Dockify API" }, 503);
   const r = await apiStream(`/api/v1/backups/${encodeURIComponent(id)}/download`, { accept: "*/*", signal });
@@ -784,9 +735,7 @@ export async function downloadBackup(id: string, signal?: AbortSignal): Promise<
   return new Response(r.res.body, { status: r.res.status, headers: out });
 }
 
-// -------------- Preview fixtures --------------
-// Built from buildPreviewOverview(now) so apps, ids, host numbers and in-flight builds agree with
-// the Overview. Values are seeded, so every refresh draws the same server.
+// Preview fixtures, built from buildPreviewOverview(now) and seeded, so every refresh draws the same server.
 
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
@@ -894,8 +843,6 @@ function buildPreviewServer(now: Date): ServerSnapshot {
     },
     disk,
     containers,
-    // The rows the API sends (modules/platform/server.ts): the API and Postgres by probe, the
-    // worker by its heartbeat, the rest from the worker's reading of the control plane's containers.
     services: [
       { id: "api", status: "ok", latencyMs: 4, detail: "serving this request" },
       { id: "worker", status: "ok", latencyMs: null, detail: `reported 12 s ago, ${building} building, ${queued} queued` },
@@ -969,10 +916,7 @@ function seededHex(seed: string, length: number) {
   return out.slice(0, length);
 }
 
-/**
- * One finished preview job. `failAt` marks the step that failed: the ones after it are skipped,
- * and a rolled back update gets the rollback step at the end.
- */
+/** `failAt` marks the step that failed: the ones after it are skipped, and a rolled back update gets the rollback step at the end. */
 function previewJob(o: {
   id: string;
   kind: UpdateJob["kind"];
@@ -1106,11 +1050,7 @@ const UPD = {
   j7: "6b1f3c2a-4d5e-4f60-9a71-b2c3d4e5f607",
 };
 
-/**
- * The preview's update status: 0.9.0 with 0.9.2 available (a security release unless
- * `critical: false`), 1.0.0 behind it, every stable release installed automatically between 03:00
- * and 05:00 UTC, and a history with a rollback, a rolled back update and a failed one.
- */
+/** 0.9.0 with 0.9.2 available (a security release unless `critical: false`) and 1.0.0 behind it; automatic installs run 03:00 to 05:00 UTC. */
 function buildPreviewUpdates(now: Date, { critical = true }: { critical?: boolean } = {}): UpdateStatus {
   const t = now.getTime();
   const history: UpdateJob[] = [
@@ -1223,11 +1163,7 @@ interface PreviewTier {
   enabled?: boolean;
 }
 
-/**
- * The preview's backup plan for each project's database: a tier on this server and one offsite,
- * each with its own cron and count, and what a restore test finds in it. horseai is the owner's
- * own: every 12 hours here keeping 1, daily to the bucket keeping 7.
- */
+/** Each project's database: a tier on this server and one offsite, each with its own cron and count. */
 const PLANS: Record<
   string,
   { local?: PreviewTier; offsite?: PreviewTier; encrypted: boolean; sizeGb: number; tables: number; rows: number; failRecent?: number }
@@ -1240,7 +1176,6 @@ const PLANS: Record<
   fieldnote: { offsite: { cron: "0 3 * * 0", keep: 3, keepDays: 30 }, encrypted: true, sizeGb: 0.41, tables: 35, rows: 604_118 },
 };
 
-/** A destination id the preview knows, for the schedule dialog's picker. */
 const previewStorage = (id: string): BackupStorageRef | null => (id === R2.id ? R2 : null);
 
 /** The flat fields older readers use, from the tiers (the api's own rule, backups/map.ts). */
@@ -1262,10 +1197,7 @@ function withFlat(s: BackupSchedule): BackupSchedule {
   };
 }
 
-/**
- * Databases whose apps were deleted. Their backups outlive them until deleted from the page.
- * The ids are not in lib/preview-fixture.ts on purpose: these apps no longer exist.
- */
+/** Databases whose apps were deleted. Their ids are not in lib/preview-fixture.ts on purpose: these apps no longer exist. */
 const DELETED: Array<{ resourceId: string; projectSlug: string; name: string; deletedDaysAgo: number; cron: string; sizeGb: number }> = [
   { resourceId: "res_inkwell_analytics", projectSlug: "inkwell", name: "analytics", deletedDaysAgo: 12, cron: "0 1 * * *", sizeGb: 0.18 },
   { resourceId: "res_sword_legacy", projectSlug: "fieldnote", name: "legacy-postgres", deletedDaysAgo: 21, cron: "0 2 * * 0", sizeGb: 0.95 },

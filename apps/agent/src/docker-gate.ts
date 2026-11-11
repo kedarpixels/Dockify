@@ -1,18 +1,7 @@
 /**
- * The narrow gate in front of this server's Docker. A node:http server with no port, fed by the link's
- * streams, so the worker's Docker client works unchanged. Every call must match a rule here, and only
- * then goes on to the socket proxy's allowlist (deploy/socket-proxy/haproxy.cfg), which reads no bodies.
- * This module reads the bodies, by exact keys: a key it does not know is refused, so a new Docker
- * feature cannot widen what a compromised control plane can ask for. That is what stops it being host
- * root: no bind mount of /, no control network, no volume with a driver, no privileged exec.
- *
- * What it does not stop, by design: running any image inside tenant limits, reading a tenant's env.
- * That is what a control plane is for.
- *
- * What reaches the socket proxy is never the caller's bytes. A body is parsed, checked, and written again
- * by this module, so a parser that reads the same bytes differently (Go merges two equal keys, and folds
- * a key's case) has nothing of the caller's to read. A call with no body rule takes no body and no
- * Content-Type at all, because Docker reads a form body too, and its fields win over the query.
+ * The gate in front of this server's Docker. Every call must match a rule here, and bodies are checked by
+ * exact keys, so a new Docker feature cannot widen what a compromised control plane can ask for. A body is
+ * parsed and written again: Docker never reads the caller's bytes (Go merges equal keys and folds their case).
  */
 import { assertSafeSpec, ContainerPolicyError, endWhenDone, isImageReference, LOG_MAX_FILES, LOG_MAX_SIZE } from "@dockify/engine";
 import { isIP, connect as netConnect } from "node:net";
@@ -33,24 +22,21 @@ const MAX_BUFFERED = 128 * 1024 * 1024;
 const INSPECT_CACHE_MS = 60_000;
 /** How much of an answer too large to hold is read: enough for its first key, a container's id. */
 const HEAD_BYTES = 256;
-/** A response's headers, in front of a tunnel. */
 const MAX_ANSWER_HEAD = 64 * 1024;
 
-/** What a tenant's names look like, the same as the socket proxy's and container-spec's. */
+/** Tenant name patterns. They must stay the same as the socket proxy's and container-spec's. */
 const TENANT_NETWORK = /^dockify-(?:env-[a-z0-9-]{1,60}|pv-[a-z0-9-]{1,60}|helpers)$/;
 const TENANT_VOLUME = /^(?:dockify-data-[a-z0-9-]{1,100}|dk-[a-z0-9][a-z0-9_.-]{0,124})$/;
 const CONTAINER_NAME = /^(?:dk-|dockify-(?:rt|bk|rs)-)[A-Za-z0-9_.-]{1,200}$/;
 const FULL_ID = /^[a-f0-9]{64}$/;
-/** A name a tenant container may answer to on its network. */
 const ALIAS = /^[a-z0-9][a-z0-9_.-]{0,127}$/;
 const ENV_ENTRY = /^[A-Za-z_][A-Za-z0-9_]{0,127}=/;
 const USER = /^[\w.-]{1,64}(?::[\w.-]{1,64})?$/;
 const SYSCTL_VALUE = /^[\w.:-]{0,64}$/;
 const EXPOSED_PORT = /^\d{1,5}\/tcp$/;
 /**
- * The names the control plane's own containers answer to. Docker's DNS gives a container's name and its
- * aliases on its network, and ignores case, so any spelling on a network the agent or Traefik has joined
- * could stand in for them (the agent's dial resolves dk-proxy by name). A trailing dot reads the same.
+ * The control plane's own container names. Docker's DNS ignores case and a trailing dot, so any spelling of
+ * one on a shared network could stand in for it (the agent's dial resolves dk-proxy by name).
  */
 const RESERVED_NAMES = new Set(["dk-proxy", "dockify-proxy", "dockify-agent"]);
 const isReservedName = (name: string): boolean => RESERVED_NAMES.has(name.toLowerCase().replace(/\.+$/, ""));
@@ -90,7 +76,6 @@ const RESTART_NAMES = new Set(["no", "unless-stopped", "on-failure"]);
 const MAX_RESTART_RETRIES = 10;
 /** Nanoseconds: a month, far above any real healthcheck setting. */
 const MAX_HEALTH_NS = 30 * 86_400 * 1e9;
-/** The one tmpfs containerSpec adds, for a read-only root. */
 const READONLY_TMPFS = JSON.stringify({ "/tmp": "rw,noexec,nosuid,size=64m" });
 
 /** Every field of the HostConfig has its type here, so nothing below or in assertSafeSpec reads a coerced value. */
@@ -157,7 +142,7 @@ export function checkCreateBody(body: unknown): void {
     if (e instanceof ContainerPolicyError) refuse(e.message);
     throw e;
   }
-  // assertSafeSpec holds the same pattern; this stays here so the gate says so whatever that file does.
+  // Repeated from assertSafeSpec on purpose: the gate holds whatever that file does.
   if (JSON.stringify(hc.SecurityOpt) !== JSON.stringify(["no-new-privileges:true"])) refuse("SecurityOpt must be exactly [no-new-privileges:true]");
   if (b.Healthcheck !== undefined) {
     if (!isObject(b.Healthcheck)) return refuse("a healthcheck must be an object");
@@ -190,7 +175,6 @@ export function checkVolumeBody(body: unknown): void {
   if (body.Labels !== undefined && !isTextMap(body.Labels)) refuse("Labels must be a map of text");
 }
 
-/** The exact body DockerClient.ensureNetwork sends. */
 export function checkNetworkBody(body: unknown): void {
   if (!isObject(body)) return refuse("a network body must be an object");
   const b = body;
@@ -268,22 +252,17 @@ interface Rule {
   path: RegExp;
   /** Refused when a query is present and does not match. Absent means no query is allowed. */
   query?: RegExp;
-  /** The query must be there. */
   queryRequired?: boolean;
-  /** The container in the path must carry dockify.managed=true. */
   managed?: boolean;
   /**
-   * Read and check the JSON body, and forward only what this module writes from it. A rule without one
-   * takes no body and no Content-Type, so no rule ever passes on bytes it has not read.
+   * Checks the JSON body and forwards only what this module writes from it. A rule without one takes no body
+   * and no Content-Type, because Docker reads a form body too and its fields win over the query.
    */
   body?: (body: unknown) => void;
   /** Its answer is a container inspect, whose env is dropped unless the container is a tenant's. */
   stripEnv?: boolean;
-  /** Its answer may be a 101, and from then on the bytes are a process's stdio. */
   upgrade?: boolean;
-  /** Carries a registry's credential, for that one pull. */
   registryAuth?: boolean;
-  /** Reads the query once its form has passed: refuses what the form alone cannot say. */
   checkQuery?: (query: string) => void;
 }
 
@@ -339,7 +318,6 @@ const RULES: readonly Rule[] = [
   { method: "DELETE", path: /^\/volumes\/[0-9a-f]{64}$/ },
 ];
 
-/** The network named in a connect or disconnect must be a tenant's. */
 const NETWORK_CHANGE = /^\/networks\/([^/]+)\/(?:connect|disconnect)$/;
 
 const decoded = (s: string): string => {
@@ -350,7 +328,6 @@ const decoded = (s: string): string => {
   }
 };
 
-/** Splits off a version prefix the way the socket proxy allows it, and refuses what it would not parse. */
 function splitUrl(url: string): { path: string; query: string; hasQuery: boolean } {
   const q = url.indexOf("?");
   const rawPath = q === -1 ? url : url.slice(0, q);
@@ -367,7 +344,6 @@ function splitUrl(url: string): { path: string; query: string; hasQuery: boolean
   return { path, query, hasQuery: q !== -1 };
 }
 
-/** A header by name, whatever its case: a real request's are lower case, a test's need not be. */
 const header = (headers: Record<string, unknown>, wanted: string): string | undefined => {
   for (const [k, v] of Object.entries(headers)) if (k.toLowerCase() === wanted && v !== undefined) return String(v);
   return undefined;
@@ -410,7 +386,6 @@ export function ruleFor(method: string, url: string, headers: Record<string, unk
 }
 
 export interface DockerGate {
-  /** One stream of the link: raw HTTP/1.1, one exchange. */
   handle(stream: Duplex): void;
   close(): void;
 }
@@ -443,10 +418,7 @@ export function createDockerGate(upstream: GateUpstream, opts: { now?: () => num
       req.end();
     });
 
-  /**
-   * Whether Docker lists this exact container under dockify.managed=true. Only the start of the answer
-   * is read: [] when the filter leaves nothing, and the id first when it leaves the container.
-   */
+  /** Only the start of the answer is read: [] when the filter leaves nothing, the id first when it leaves the container. */
   const listedAsManaged = (id: string): Promise<boolean> =>
     new Promise((resolve, reject) => {
       const filters = encodeURIComponent(JSON.stringify({ id: [id], label: ["dockify.managed=true"] }));

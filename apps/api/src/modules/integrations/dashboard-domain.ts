@@ -1,18 +1,7 @@
 /**
- * Settings, Instance, Dashboard domain. A new address is set up beside the running one: the owner
- * enters a domain, sees the record it needs (or has Dockify add it on a managed Cloudflare zone), and
- * the worker checks it the way it checks an app's domain (apps/worker/src/edge/dashboard.ts). Only
- * once it answers and has its certificate can the owner switch; then the updater rewrites
- * DOCKIFY_PUBLIC_URL in .env and recreates the control services, and everything built from that
- * address follows at boot: cookies, the CSRF origin, invite and email links.
- *
- * The old address keeps working until the switch, and redirects after it (apps/api/src/boot.ts records
- * it), so nobody can lock themselves out. `sudo dockify admin set-domain <host>` is the way back in.
- *
- * GitHub: only the webhook URL of an App can be set through its API (PATCH /app/hook/config, with the
- * App's JWT). The homepage, callback and setup URLs can only be changed on github.com, so the page lists
- * them with the exact values. Until then the old address keeps serving /api/v1/, so a connected App
- * keeps working either way.
+ * Moving the dashboard to a new domain. The new address is set up and checked beside the running one; the switch
+ * rewrites DOCKIFY_PUBLIC_URL and the old address redirects afterwards, so nobody can lock themselves out.
+ * `sudo dockify admin set-domain <host>` is the way back in.
  */
 import { dashboardDomain as D, nonPublicHostReason } from "@dockify/contracts";
 import type { Keyring } from "@dockify/crypto";
@@ -32,7 +21,7 @@ const SWITCH_KEY = "dashboard.domain.switch";
 const APPLY_KEY = "dashboard.domain.apply";
 const LOCK = "dockify.dashboard.domain";
 
-/** Long enough for the slowest check (modules/domains/handlers.ts CHECK_WAIT_MS). */
+/** Must outlast the slowest check (modules/domains/handlers.ts CHECK_WAIT_MS). */
 const CHECK_WAIT_MS = 16_000;
 const CHECK_POLL_MS = 400;
 
@@ -44,7 +33,7 @@ async function instanceRow(db: Tx) {
   return row;
 }
 
-/** Where a GitHub App's settings live, and the four values it should hold for `origin`. */
+/** Only the webhook URL can be set through GitHub's API; the other three must be changed on github.com, so they are listed. */
 export function githubSteps(app: { config: { slug: string; owner?: { login: string; type: string } } }, origin: string) {
   const m = buildManifest(origin) as { url: string; redirect_url: string; setup_url: string; hook_attributes: { url: string } };
   const slug = encodeURIComponent(app.config.slug);
@@ -91,10 +80,9 @@ const enqueueCheck = (tx: Tx, payload: Record<string, unknown> = {}, key = JOB_K
 const lock = (tx: Tx) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${LOCK}))`;
 
 /**
- * The name is on a Cloudflare zone Dockify manages and has no A, AAAA or CNAME record there: the page
- * offers to create it, so the first lookup waits for that. Looked up before, the name would sit in a
- * resolver's negative cache for the zone's negative TTL (30 minutes on Cloudflare) after the record
- * was made. Anything that cannot be read says no: the check then runs at once, as before.
+ * True when Dockify can create the record on a managed Cloudflare zone, in which case the first lookup must wait:
+ * looked up before the record exists, the name sits in resolvers' negative cache (30 minutes on Cloudflare).
+ * Anything that cannot be read answers false, and the check runs at once.
  */
 async function offersRecord(ctx: Ctx, deps: IntegrationDeps, host: string): Promise<boolean> {
   try {
@@ -107,7 +95,7 @@ async function offersRecord(ctx: Ctx, deps: IntegrationDeps, host: string): Prom
   }
 }
 
-/** Lets the worker look the pending name up: Dockify made its record, or the owner pressed Check now. */
+/** Lets the worker look the pending name up, once the record exists or the owner pressed Check now. */
 async function releaseHold(tx: Tx, host: string): Promise<void> {
   await lock(tx);
   const now = D.readPendingDomain((await instanceRow(tx)).dashboardDomain);
@@ -116,7 +104,7 @@ async function releaseHold(tx: Tx, host: string): Promise<void> {
   await tx.instance.update({ where: { id: 1 }, data: { dashboardDomain: toJson(rest) } });
 }
 
-/** Why a name cannot be the dashboard's address, or null. Also used by `dockify admin set-domain`. */
+/** Also used by `dockify admin set-domain`. */
 export async function hostProblem(db: Tx, host: string): Promise<{ message: string; code: string } | null> {
   const notPublic = nonPublicHostReason(host);
   if (notPublic) return { message: notPublic, code: "HOSTNAME_NOT_PUBLIC" };
@@ -155,7 +143,7 @@ export function dashboardDomainHandlers(deps: IntegrationDeps): Handlers {
       return stateOf(ctx, deps);
     },
 
-    /** Queues a check and waits for it, like a domain's Recheck. Past the wait the page polls. */
+    /** Waits for the queued check up to CHECK_WAIT_MS; past that the page polls. */
     "settings.domain.check": async ({ ctx }) => {
       const before = D.readPendingDomain((await instanceRow(ctx.db)).dashboardDomain);
       if (!before) throw new HttpError(409, "No new domain is being set up", "NOT_PENDING");
@@ -236,11 +224,7 @@ export function dashboardDomainHandlers(deps: IntegrationDeps): Handlers {
       return stateOf(ctx, deps);
     },
 
-    /**
-     * An old address stops answering. The Cloudflare record Dockify made for it goes too, by the id it
-     * recorded, and only while that record still names this server (apps/worker/src/edge/jobs.ts,
-     * unwire). Any other record at the name is the owner's to remove.
-     */
+    /** The Cloudflare record goes too, but only the one Dockify recorded by id and only while it still names this server. */
     "settings.domain.previous.delete": async ({ params, actor, req, ctx }) => {
       const a = requireActor(actor);
       const host = normalizeHost(params.host);
@@ -270,10 +254,8 @@ export function dashboardDomainHandlers(deps: IntegrationDeps): Handlers {
 }
 
 /**
- * After a change of address: the GitHub App's webhook URL follows, the one URL of an App that GitHub's
- * API can set. Runs once for each change, at the api's first boot on the new address. A failure is
- * recorded for the page, which then lists the webhook URL among the steps; the old address keeps
- * serving the webhook meanwhile.
+ * Runs once per change of address, at the api's first boot on the new one. A failure is recorded for the page,
+ * which then lists the webhook URL among the manual steps; the old address keeps serving the webhook meanwhile.
  */
 export async function followGitHubWebhook(db: Db, ring: Keyring, deps: IntegrationDeps, origin: string): Promise<"updated" | "failed" | "skipped"> {
   const row = await db.instance.findUnique({ where: { id: 1 }, select: { dashboardLastChange: true } });

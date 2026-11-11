@@ -1,9 +1,4 @@
-/* The project card (components/projects/project-card.tsx), shared by the Projects grid, the
-   Overview strip and the app cards on a project's page; the Projects list rows; and the New project
-   popup. Cells are ruled in the portfolio language: square, with a node on each corner where its
-   lines meet its neighbours'. */
-
-/* -------------- Toolbar -------------- */
+/* Toolbar */
 .pj-views {
   display: flex;
   align-items: center;
@@ -11,8 +6,7 @@
   margin-left: auto;
 }
 
-/* Phones: the search takes its own row, and the status filter shrinks and scrolls sideways instead
-   of overflowing, so the layout keys keep their place at the end of its row. */
+/* The status filter shrinks and scrolls sideways, so the layout keys keep their place at the end of its row. */
 @media (max-width: 520px) {
   .pj-bar .search {
     max-width: none;
@@ -30,13 +24,9 @@
   }
 }
 
-/* -------------- Grid of cards -------------- */
-/* Cells wrap left-aligned; a short last row leaves clean page white, not a coloured hole.
-   Cells sit 1px apart and each draws a 1px ring just outside itself, so two neighbours' rings
-   land in the same gap pixel and read as one hairline; the outer rings land on the rails, the rule
-   above and the band below. Whole pixels only (no half-pixel outline), so it holds at every zoom.
-   The corner nodes (-3px) centre on those rings. The columns follow the width of the grid itself,
-   so a collapsed sidebar counts. */
+/* Grid of cards */
+/* Cells sit 1px apart and each draws a 1px ring just outside itself, so neighbours' rings share
+   the gap pixel and the outer rings land on the rails. The corner nodes (-3px) centre on those rings. */
 .pj-grid {
   container: pj-grid / inline-size;
   display: flex;
@@ -44,9 +34,8 @@
   gap: 1px;
 }
 
-/* Whole-pixel cells so the lines between them stay crisp at 100% zoom. Each row's last cell takes
-   the pixel or two left over, so the block's right edge stays straight. The 0.1px keeps a width that
-   divides exactly from rounding down on the browser's own fractions. */
+/* Whole-pixel cells; each row's last cell takes the leftover pixel or two. The 0.1px keeps a
+   width that divides exactly from rounding down on the browser's own fractions. */
 .pj-grid > .pj-cell {
   flex: 0 0 round(down, calc((100% - 2px) / 3 + 0.1px), 1px);
   box-shadow: 0 0 0 1px var(--line);
@@ -74,7 +63,7 @@
   }
 }
 
-/* -------------- The card -------------- */
+/* The card */
 .pj-cell {
   position: relative;
   display: flex;
@@ -120,7 +109,6 @@
   min-width: 0;
 }
 
-/* The card's name is its heading (h2 on a page, h3 under a card head). */
 .pj-name {
   margin: 0;
   font-size: 15px;
@@ -129,7 +117,6 @@
   color: var(--ink);
 }
 
-/* The name reads as the link it is: it underlines under the pointer. */
 .pj-hd-link:hover .pj-name,
 .pj-row-lead:hover .pj-name,
 .pj-cell[data-variant="carousel"]:hover .pj-name {
@@ -137,8 +124,8 @@
   text-underline-offset: 3px;
 }
 
-/* On the Overview strip the whole card opens the project: the name's link stretches over it. The
-   refs, the time, the dot and the pips come later in the card, so their links and tips stay above it. */
+/* The name's link stretches over the whole card. The refs, time, dot and pips come later in the
+   card, so their links and tips stay above it. */
 .pj-cell[data-variant="carousel"] .pj-hd-link::after {
   content: "";
   position: absolute;
@@ -154,7 +141,6 @@
   outline-offset: -2px;
 }
 
-/* Environments never clip: a second one that does not fit wraps under the first. */
 .pj-envs {
   display: flex;
   flex-wrap: wrap;
@@ -174,7 +160,6 @@
   min-width: 0;
 }
 
-/* Sections after the first sit under a full-width hairline, so Last deployment and Apps read as two blocks. */
 .pj-body > .pj-sec + .pj-sec {
   margin: 0 calc(var(--gutter) * -1);
   padding: 20px var(--gutter) 0;
@@ -208,7 +193,6 @@
   flex: none;
 }
 
-/* Branch, hash, app: one order on every card. */
 .pj-meta {
   display: flex;
   align-items: center;
@@ -219,7 +203,7 @@
   color: var(--ink-3);
 }
 
-/* Under the message, the refs start where its text starts (past the 6px dot and its 8px gap). */
+/* The refs start where the message text starts (past the 6px dot and its 8px gap). */
 .pj-last-msg + .pj-meta {
   padding-left: 14px;
 }
@@ -236,7 +220,6 @@
   color: var(--ink-4);
 }
 
-/* A missing value reads muted on every card: "No deployments yet", "Internal only". */
 .pj-none {
   margin: 0;
   font-size: 14px;
@@ -261,12 +244,8 @@
   color: var(--ink);
 }
 
-/* "View all N apps": a neutral 20px tile with the more glyph in the icons' column, the label in the
-   names' column, and a 14px arrow centred on the status dots' column (the dot's 4px margin and 6px
-   width put its centre 7px in, as the arrow's is). */
-/* The 20px slot of the icons' column. Its face is drawn at the app icons' own tile size: they draw a
-   20-unit tile in a 24-unit box (preset-tile.tsx), about 16.7px of the 20, so a full 20px face
-   read larger than the icons above it. 16px keeps the face on whole pixels. */
+/* 16px, not 20: the app icons draw a 20-unit tile in a 24-unit box (preset-tile.tsx), about
+   16.7px, so a full 20px face reads larger than the icons above it. */
 .pj-more-tile {
   position: relative;
   isolation: isolate;
@@ -330,7 +309,7 @@
   color: var(--ink-3);
 }
 
-/* -------------- List: skills-style ruled rows -------------- */
+/* List: skills-style ruled rows */
 .pj-rows {
   container: pj-rows / inline-size;
   display: flex;
@@ -349,8 +328,6 @@
   border-bottom: 0;
 }
 
-/* Node where the row's top line meets the lead column; the last row has one more where the column
-   meets the band below. */
 .pj-row-node {
   top: -3px;
   left: calc(var(--lead) - 3px);
@@ -377,7 +354,6 @@
   margin-top: 4px;
 }
 
-/* The name and environments, then the project state on its own line, apart from the app chips. */
 .pj-row-id {
   display: flex;
   flex-direction: column;
@@ -453,8 +429,7 @@
   }
 }
 
-/* -------------- New project -------------- */
-/* The one-step popup (components/projects/new-project-dialog.tsx): the name, then Create. There is no separate page; /projects/new always opens this popup. */
+/* New project */
 .pj-new {
   display: flex;
   flex-direction: column;

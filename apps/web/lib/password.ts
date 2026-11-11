@@ -1,19 +1,12 @@
-/*
- * The one password policy and strength guide, shared by setup, invite, reset and Settings, and by
- * the server checks in lib/pages/auth.ts and app/(console)/settings/actions.ts. The minimum mirrors
- * NewPassword in packages/contracts/src/common.ts, which the API enforces.
- */
+// The minimum mirrors NewPassword in packages/contracts/src/common.ts, which the API enforces.
 
-/** At least 12 characters, as the API requires for every new password. */
 export const MIN_PASSWORD = 12;
 
 /** The API's upper bound (contracts NewPassword). */
 const MAX_PASSWORD = 256;
 
-/** The refusal for a new password below the minimum. */
 export const SHORT_PASSWORD = `Use at least ${MIN_PASSWORD} characters`;
 
-/** What both password fields say when they differ. */
 export const PASSWORD_MISMATCH = "Passwords do not match";
 
 const COMMON = /^(password|dockify|qwerty|letmein|welcome|admin|123456|abc123|iloveyou)/i;

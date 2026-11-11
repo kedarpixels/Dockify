@@ -1,9 +1,8 @@
 import { createElement, type ReactNode } from "react";
 import { GLYPHS, type GlyphNode } from "./icon-glyphs";
 
-/* Every glyph is a geist-icons drawing, copied into icon-glyphs.ts by scripts/gen-icons.mjs so only
-   the icons the site uses reach the browser. They are filled 16px drawings, so `.ic` sets fill to
-   currentColor and no stroke. */
+/* Glyphs are copied into icon-glyphs.ts by scripts/gen-icons.mjs, so only the icons in use reach the browser.
+   They are filled 16px drawings, so `.ic` sets fill to currentColor and no stroke. */
 
 export type IconName = keyof typeof GLYPHS;
 
@@ -13,7 +12,7 @@ function draw(nodes: GlyphNode[]): ReactNode[] {
   return nodes.map(([tag, props, kids], i) => createElement(tag, { key: i, ...props }, kids ? draw(kids) : undefined));
 }
 
-/** A geist-icons glyph. Decorative by default; pass `label` when the icon carries meaning alone. */
+/** Decorative by default; pass `label` when the icon carries meaning alone. */
 export function Icon({
   name,
   size = 16,

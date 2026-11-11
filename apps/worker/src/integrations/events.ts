@@ -1,15 +1,6 @@
 /**
- * The instance event switches in Settings, Notifications. This is the only file in the worker that
- * reads them; everything that sends goes through eventOn, at the moment it would send, so a switch
- * turned off also stops what was already queued.
- *
- *   deployFailed        deploy_notify (integrations/deploy-notify.ts): webhooks and the member who started it,
- *                       for a deploy on this server or on Vercel (integrations/vercel-mirror.ts queues those)
- *   appDown             alert_notify for a down or crash loop rule (observe/channels.ts); the bell still lists it
- *   backupFailed        event_notify, here: a scheduled backup that failed
- *   tlsExpiring         event_notify, here: a certificate with less than 14 days left
- *   previewDeployments  preview_notify (integrations/preview-notify.ts)
- *   jobFailed           event_notify, from jobs/run.ts: a scheduled job that started failing
+ * The only worker file that reads the event switches in Settings, Notifications. Senders call eventOn
+ * at the moment they would send, so a switch turned off also stops what was already queued.
  */
 import { auth as A } from "@dockify/contracts";
 import { enqueue, type Db, type Prisma } from "@dockify/db";
@@ -23,13 +14,9 @@ export async function eventOn(db: Db, event: A.NotifyEventName): Promise<boolean
   return A.notifyEvents(row?.notifyEvents)[event];
 }
 
-/** The switch an alert rule's metric answers to. A metric with none (disk, memory) is only its rule's business. */
 export const metricEvent = (metric: string): A.NotifyEventName | null => (metric === "down" || metric === "crash_loop" ? "appDown" : null);
 
-/**
- * Queues a message for every enabled webhook, each its own job so one dead webhook holds up nothing.
- * A job row of any age counts, so a retry of the job calling this never sends a webhook twice.
- */
+/** One job per webhook; a job row of any age counts, so a retry of the caller never sends twice. */
 export async function webhooksOnce(db: Db, key: string, message: NotifyMessage): Promise<number> {
   const hooks = await db.notificationWebhook.findMany({ where: { enabled: true }, select: { id: true }, orderBy: { createdAt: "asc" } });
   let queued = 0;
@@ -56,7 +43,6 @@ export interface EventNotice {
   /** One line, already redacted. */
   detail: string;
   where: string;
-  /** The dashboard path that shows it. */
   href: string;
   at: string;
 }
@@ -87,7 +73,7 @@ export interface EventNotifyDeps extends EmailDeps {
   publicUrl: string | null;
 }
 
-/** The event_notify job: every enabled webhook, then every admin by email. Throws to retry, PermanentJobError to stop. */
+/** Throws to retry, PermanentJobError to stop. */
 export async function deliverEventNotice(deps: EventNotifyDeps, raw: unknown): Promise<"sent" | "skipped"> {
   const n = parseEventNotice(raw);
   if (!(await eventOn(deps.db, n.event))) return "skipped";
@@ -125,11 +111,7 @@ interface BackupSnapshot {
   environment?: unknown;
 }
 
-/**
- * Every failed scheduled backup becomes one notice. A backup can fail along several paths (its job,
- * the sweep for a dead job, the next request finding it stale), so this reads the rows they all
- * write rather than adding a call to each. A backup someone started by hand reports on its own page.
- */
+/** Reads the rows every failure path writes; a backup started by hand reports on its own page. */
 export async function announceFailedBackups(db: Db, now = new Date()): Promise<number> {
   const rows = await db.backup.findMany({
     where: { status: "failed", trigger: "schedule", finishedAt: { gt: new Date(now.getTime() - BACKUP_NEWS_MS) } },
@@ -159,7 +141,6 @@ export async function announceFailedBackups(db: Db, now = new Date()): Promise<n
 /** Let's Encrypt renews with 30 days left, so under this renewal has been failing for two weeks. */
 const TLS_WARN_MS = 14 * 86_400_000;
 
-/** Each certificate with under 14 days left warns once. A renewed one has a new date, so it could warn anew. */
 export async function announceExpiringCertificates(db: Db, now = new Date()): Promise<number> {
   const rows = await db.domain.findMany({
     where: { tlsStatus: "active", tlsExpiresAt: { not: null, lt: new Date(now.getTime() + TLS_WARN_MS) } },

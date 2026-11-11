@@ -14,17 +14,8 @@ import { vercelLogsHref } from "./vercel-links";
 import { LogViewer } from "./log-viewer";
 import { NO_RUNTIME_LINES, readFailure, STREAM_LOST, wantsBuildLog } from "./vercel-log-state";
 
-/*
- * A Vercel deployment's runtime logs in the deployment log viewer: what a short read brought, then the
- * live stream. Vercel's API only streams new lines and has no way to page back, and that is said on
- * the card, with a link to Vercel's own Logs tab for anything older.
- *
- * One open card holds at most one read and one stream at a time, and gives both back when it goes:
- * the read is aborted, the stream closed, and a hidden browser tab closes its stream until it shows
- * again, so tabs left open in the background never use up the per-user stream limit. On an app's Logs
- * tab with no runtime lines yet (a static site served from cache prints none), the card says so and
- * shows the latest deployment's build log, so the tab is never blank.
- */
+// Vercel's API only streams new lines and cannot page back. A card holds at most one read and one
+// stream, and a hidden tab closes its stream so background tabs never use up the per-user limit.
 
 /** The most lines a page keeps; the oldest go first, like a terminal's scrollback. */
 const MAX_LINES = 5_000;
@@ -144,7 +135,6 @@ export function VercelRuntimeLogs({
         giveUp(STREAM_LOST);
       };
     };
-    // A hidden tab gives its stream back and takes a new one when it shows; lines already read stay.
     const onVisibility = () => {
       if (document.hidden) shut();
       else open();

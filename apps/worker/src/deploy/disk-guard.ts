@@ -1,16 +1,6 @@
 /**
- * What Dockify can do about a tenant filling the disk on a filesystem with no per-container quota.
- *
- * Docker's `--storage-opt size` needs the overlay2 driver on xfs mounted with pquota (or btrfs or
- * zfs). On overlay2 over ext4, the common Ubuntu install, the daemon refuses it, so a container's
- * writable layer can grow until the disk is full. Without a quota this module does what still works:
- *
- *   refuse new builds and pulls near full, so a build never takes the last of the room
- *   keep a reserve file that is given up when the disk is nearly gone, so Postgres and the worker get
- *   room to keep running and report it. It buys time; it stops nothing
- *   report the state on the Server page, next to the disk alert, as a worker issue
- *
- * Log files are capped separately: container-spec.ts for tenants, x-logging in the compose file.
+ * The common ext4 install has no per-container disk quota (--storage-opt size needs xfs with pquota). So builds
+ * and pulls are refused near full, and a reserve file is given up when the disk is nearly gone, which buys time.
  */
 import { open, rm, stat, statfs } from "node:fs/promises";
 import { PermanentDeployError } from "@dockify/engine";
@@ -18,12 +8,9 @@ import type { WorkerHealth } from "../health.ts";
 import type { HostReading } from "@dockify/engine";
 
 const GiB = 1024 ** 3;
-/** Below the larger of these a disk counts as low. */
 export const MIN_FREE_BYTES = 3 * GiB;
 export const MIN_FREE_PCT = 5;
-/** Below this the reserve is given up: the control plane needs it now. */
 export const CRITICAL_FREE_BYTES = GiB;
-/** The reserve: 1 GiB, or 2 percent of a small disk. */
 export const RESERVE_BYTES = GiB;
 export const RESERVE_PCT = 2;
 export const DISK_LOW_ISSUE = "disk_low";
@@ -39,7 +26,6 @@ export const statfsUsage = (path: string): DiskUsageReader => async () => {
   return { freeBytes: Number(s.bavail) * Number(s.bsize), totalBytes: Number(s.blocks) * Number(s.bsize) };
 };
 
-/** The disk of a server, through its host reading. A reading with no disk reads as a read that failed. */
 export const hostDiskUsage = (host: () => Promise<HostReading>): DiskUsageReader => async () => {
   const { disk } = await host();
   if (!disk) throw new Error("the host reading has no disk");

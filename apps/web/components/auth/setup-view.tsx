@@ -13,16 +13,8 @@ import { DomainSetupStep } from "./domain-setup-step";
 import { DoneStep, ProtectStep } from "./totp-enroll";
 import { VerifyEmailStep } from "./verify-email-step";
 
-/**
- * /setup: first run. The first admin account, then email: connected here unless the installer did it
- * (or set up later), with a code to the admin's address once it is on. Then an optional
- * authenticator, an optional domain of its own on an install still on its sslip.io name, then the console. Email and two-factor both call the API on the new session, which
- * starts with a step-up made from the password just chosen (lib/pages/auth.ts), so neither asks for
- * it again inside that window.
- *
- * `finished` as it first mounts: an admin already existed, so this is a later visit with a session.
- * It turning true mid-flow is this browser's own new account, and the steps go on.
- */
+// `finished` at first mount means an admin already existed. It turning true mid-flow is this
+// browser's own new account, and the steps go on.
 export function SetupView({ finished = false, suggestedName, emailEnabled = false, offerDomain = false, preview = false }: { finished?: boolean; suggestedName?: string; emailEnabled?: boolean; offerDomain?: boolean; preview?: boolean }) {
   const router = useRouter();
   const [arrivedFinished] = useState(finished);
@@ -36,7 +28,6 @@ export function SetupView({ finished = false, suggestedName, emailEnabled = fals
   const [skippedEmail, setSkippedEmail] = useState(false);
   const [connected, setConnected] = useState<EmailIntegration | null>(null);
   const plan = setupPlan(emailEnabled, skippedEmail, offerDomain);
-  // What follows the authenticator: the offer of a domain on an sslip.io install, else the end.
   const afterProtect = nextStep(plan, "protect");
 
   if (arrivedFinished) return null;

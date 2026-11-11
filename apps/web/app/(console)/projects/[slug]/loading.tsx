@@ -5,7 +5,6 @@ import { Rule, Spacer } from "@/components/ui/rule";
 import { SectionHead } from "@/components/ui/section-head";
 import { Skel } from "@/components/ui/skeleton";
 
-/** Route loading state for a project: its crumbs, a head of bars, the section strip, three app cards. */
 export default function Loading() {
   return (
     <>

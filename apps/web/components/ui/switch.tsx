@@ -3,11 +3,7 @@
 import { cx } from "./cx";
 import type { FieldIds } from "./field";
 
-/**
- * The one on/off toggle. 36 by 20 track: off is the soft grey track inside a 3:1 ring, on is solid
- * blue; the white knob slides 16px. Keyboard: Space or Enter (native button). Inside a Field pass
- * `ids`, so the label names it and the hint or error is read with it.
- */
+/** Inside a Field pass `ids`, so the label names it and the hint or error is read with it. */
 export function Switch({
   checked,
   onChange,
@@ -23,7 +19,6 @@ export function Switch({
   label?: string;
   disabled?: boolean;
   id?: string;
-  /** From a Field: the id its label points at, the hint or error, the invalid flag. */
   ids?: FieldIds;
   className?: string;
 }) {

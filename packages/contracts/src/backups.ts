@@ -4,7 +4,6 @@ import { StorageProvider } from "./integrations.ts";
 
 export const BackupDatabase = z.object({
   name: z.string(),
-  /** The app's display name today, while it has one and still exists. */
   displayName: z.string().optional(),
   projectSlug: z.string(),
   environment: z.string(),
@@ -27,9 +26,8 @@ export const BackupConfig = z.object({
 /** Where a tier keeps its copies: `local` on this server's disk, `offsite` in an S3 destination. */
 export const BackupTier = z.enum(["local", "offsite"]);
 /**
- * One tier of a database's backups: its own cron, and the newest `keep` automatic backups always
- * stay (plus every one from the last `keepDays` days, when set: how migrated schedules keep their
- * old rule). Manual backups are never counted or removed.
+ * The newest `keep` automatic backups always stay, plus every one from the last `keepDays` days when set.
+ * Manual backups are never counted or removed.
  */
 export const BackupTierSchedule = z.object({
   tier: BackupTier,
@@ -48,9 +46,8 @@ export const BackupTierSchedule = z.object({
   lastRunAt: Iso.nullable(),
 });
 /**
- * A database's backups: both tiers in `tiers`. The flat fields are the one schedule older clients
- * read: the tier that is on (offsite first) for cron, retention and destination, `enabled` when any
- * tier is on, and the soonest next run of the tiers that are on.
+ * Both tiers are in `tiers`. The flat fields are the one schedule older clients read: the tier that is on
+ * (offsite first), `enabled` when any tier is on, and the soonest next run.
  */
 export const BackupSchedule = z.object({
   id: z.string(),
@@ -61,7 +58,6 @@ export const BackupSchedule = z.object({
   /** Deprecated: about how many days of backups that tier keeps. Read `tiers` instead. */
   retentionDays: z.number(),
   destination: z.enum(["s3", "local"]),
-  /** Set for "local": the copies are on this server's own disk and go with it. */
   warning: z.string().optional(),
   storage: BackupStorageRef.nullable(),
   encryption: BackupEncryption,
@@ -80,10 +76,8 @@ export const BackupRun = z.object({
   createdAt: Iso,
   finishedAt: Iso.nullable(),
   sizeBytes: z.number().nullable(),
-  /** The tier the copy counts in, by where it is stored. */
   tier: BackupTier,
   destination: z.enum(["s3", "local"]),
-  /** Set for "local": the copy is on this server's own disk and goes with it. */
   warning: z.string().optional(),
   storage: BackupStorageRef.nullable(),
   encryption: BackupEncryption,
@@ -97,9 +91,8 @@ const Cron = z.string().max(100).regex(/^(\S+\s+){4}\S+$/).regex(/^[\d*/,\- ]+$/
 export const KEEP_MAX = 1000;
 export const KEEP_DAYS_MAX = 3650;
 /**
- * Changes one tier. Without `tier`, the change goes where an older client meant it: to the tier its
- * `destination` names (moving the schedule there), else to the tier the flat fields describe.
- * `retentionDays` is the old rule: keep 3, plus every backup from that many days.
+ * Without `tier`, the change goes where an older client meant it: to the tier its `destination` names, else
+ * the tier the flat fields describe. `retentionDays` is the old rule: keep 3, plus that many days of backups.
  */
 export const SchedulePatchBody = z.strictObject({
   tier: BackupTier.optional(),

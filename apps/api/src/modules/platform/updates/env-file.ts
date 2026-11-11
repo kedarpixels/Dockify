@@ -1,10 +1,7 @@
 /**
- * The one writer of DOCKIFY_PUBLIC_URL after install. .env is root's alone (the updater and the
- * `dockify` wrapper refuse to run otherwise) and the updater runs as uid 1000, so this file also runs
- * as a program in a throwaway container: root, no network, every capability dropped but CHOWN, with
- * the install folder as its only mount (domain-switch.ts). It imports nothing but node's own modules.
- *
- *   node env-file.ts <install folder> <hostname>
+ * The one writer of DOCKIFY_PUBLIC_URL after install. .env is root's alone and the updater is not
+ * root, so this file also runs as a program in a throwaway root container: `node env-file.ts <install
+ * folder> <hostname>`. It must import nothing but node's own modules.
  */
 import { chownSync, chmodSync, lstatSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -14,13 +11,12 @@ import { pathToFileURL } from "node:url";
 const HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 export const isPlainHost = (host: string): boolean => HOST.test(host);
 
-/** The host in an .env's DOCKIFY_PUBLIC_URL, or null. */
 export function publicHostOf(env: string): string | null {
   const m = /^DOCKIFY_PUBLIC_URL=https?:\/\/([^/:\s]+)/m.exec(env);
   return m?.[1] ?? null;
 }
 
-/** The file with DOCKIFY_PUBLIC_URL set to https://<host>, every other line as it was. */
+/** Every other line stays as it was. */
 export function withPublicUrl(env: string, host: string): string {
   if (!isPlainHost(host)) throw new Error(`Not a plain hostname: ${host}`);
   const line = `DOCKIFY_PUBLIC_URL=https://${host}`;

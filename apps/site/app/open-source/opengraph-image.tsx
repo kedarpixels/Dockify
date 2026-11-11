@@ -1,6 +1,5 @@
 import { ogVariants, renderOg, type OgCard } from "@/components/seo/og";
 
-/* Social card for this route, dark and light. Drawn by components/seo/og.tsx. */
 const card: OgCard = {
   title: "Open source",
   accent: "source",

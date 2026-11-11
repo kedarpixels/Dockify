@@ -15,28 +15,18 @@ import type { IntegrationStatus } from "@/lib/pages/integrations";
 import { useCan } from "@/lib/viewer";
 import { intFetch } from "./client";
 
-/* The pieces every integration and its dialogs share: the integration row, its status chip, a
-   stored secret's hint, the facts grid, the form and manage dialog parts, and the state of a
-   card that lists things. */
-
 const STATUS: Record<IntegrationStatus, { label: string; tone: "ok" | "idle" | "bad" }> = {
   connected: { label: "Connected", tone: "ok" },
   disconnected: { label: "Not connected", tone: "idle" },
   error: { label: "Error", tone: "bad" },
 };
 
-/** The integration's state, as every status column reads: the shared status chip. */
 function Status({ status }: { status: IntegrationStatus }) {
   const s = STATUS[status];
   return <StatusChip tone={s.tone}>{s.label}</StatusChip>;
 }
 
-/**
- * One integration as a ruled settings row: a 32px tile, the name over what is connected (its
- * purpose until something is), then the status chip and the keys on the shared right edge. A long
- * status wraps inside its own row and never stretches the others. Narrow columns put the chip and
- * keys under the text, as every settings row does.
- */
+/** A long status wraps inside its own row and never stretches the others. */
 export function IntegrationCard({
   id,
   icon,
@@ -53,7 +43,7 @@ export function IntegrationCard({
   status: IntegrationStatus;
   /** What is connected, or what went wrong; the purpose shows until there is something to say. */
   meta?: React.ReactNode;
-  /** The keys: Connect, or Manage. A Viewer gets none: every integration change is an admin's. */
+  /** A Viewer gets none: every integration change is an admin's. */
   children: React.ReactNode;
 }) {
   const { manage } = useCan();
@@ -95,7 +85,6 @@ export function Hint({ hint, what }: { hint: string; what: string }) {
   );
 }
 
-/** Label over value pairs in a two-column grid, one column on phones. */
 export function Facts({ items }: { items: Array<{ label: string; value: React.ReactNode }> }) {
   return (
     <dl className="int-facts">
@@ -109,7 +98,6 @@ export function Facts({ items }: { items: Array<{ label: string; value: React.Re
   );
 }
 
-/** A two-line row in an integration dialog: a tile, the name and its sub line, then keys. */
 export function ItemRow({ icon, title, sub, children }: { icon: IconName; title: React.ReactNode; sub?: React.ReactNode; children?: React.ReactNode }) {
   return (
     <li className="soft-row int-row" data-hover="true">
@@ -125,7 +113,6 @@ export function ItemRow({ icon, title, sub, children }: { icon: IconName; title:
   );
 }
 
-/** A dialog form's footer keys: Cancel, then the submit key. */
 export function FormKeys({ onCancel, busy, cancel = "Cancel", ...submit }: { onCancel: () => void; busy: boolean; cancel?: string } & Omit<React.ComponentProps<typeof PendingButton>, "type" | "className" | "pending">) {
   return (
     <>
@@ -137,7 +124,6 @@ export function FormKeys({ onCancel, busy, cancel = "Cancel", ...submit }: { onC
   );
 }
 
-/** The one field of a provider's connect form: a pasted token. Typing clears its error. */
 export function TokenField({ label, form, hint }: { label: string; form: ReturnType<typeof useTokenForm>; hint: React.ReactNode }) {
   return (
     <Field label={label} error={form.error} hint={hint}>
@@ -159,7 +145,7 @@ export function TokenField({ label, form, hint }: { label: string; form: ReturnT
   );
 }
 
-/** A connect form's state. `begin` starts a submit: false while one runs, or when no token was pasted. */
+/** `begin` starts a submit: false while one runs, or when no token was pasted. */
 export function useTokenForm() {
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
@@ -177,7 +163,6 @@ export function useTokenForm() {
   return { token, setToken, busy, setBusy, error, setError, begin };
 }
 
-/** A connected provider's dialog: Disconnect and Done, and what went wrong on top when the token stopped working. */
 export function ProviderDialog({
   open,
   onClose,
@@ -226,7 +211,6 @@ export function ProviderDialog({
   );
 }
 
-/** Where a list that failed to load stands, with the key that asks again. */
 export function Unavailable({ icon, title, error, onRetry }: { icon: IconName; title: string; error: string; onRetry: () => void }) {
   return (
     <Empty
@@ -244,10 +228,7 @@ export function Unavailable({ icon, title, error, onRetry }: { icon: IconName; t
 
 export type Listing<T> = { state: "idle" | "loading" } | { state: "ready"; list: T[] } | { state: "error"; error: string };
 
-/**
- * A provider card's state: its dialog, its Disconnect confirm, and the list the dialog reads, once per
- * connection, from the press that opens it. An answer to an older load, or one after the card left, is dropped.
- */
+/** The list loads once per connection, from the press that opens the dialog. Stale or late answers are dropped. */
 export function useProviderCard<T>(connected: boolean, path: string, onLoaded?: (list: T[]) => void) {
   const [open, setOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -269,11 +250,7 @@ export function useProviderCard<T>(connected: boolean, path: string, onLoaded?: 
   return { open, setOpen, leaving, setLeaving, list, setList, load, openManage };
 }
 
-/**
- * The state of a card that manages a list: the dialog, its list or form step, and the row being
- * removed. The card's key goes straight to the form while there is nothing to list, and Cancel on
- * that first form just closes.
- */
+/** With nothing to list the card's key goes straight to the form, and Cancel on that first form just closes. */
 export function useCrudCard<T>(hasItems: boolean) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<{ at: "list" } | { at: "form"; editing: T | null }>({ at: "list" });
@@ -287,7 +264,6 @@ export function useCrudCard<T>(hasItems: boolean) {
       setOpen(true);
     },
     listOpen: open && mode.at === "list",
-    /** The open form, with the row it edits; null while none shows. */
     form: open && mode.at === "form" ? { editing: mode.editing } : null,
     add: () => setMode({ at: "form", editing: null }),
     edit: (row: T) => setMode({ at: "form", editing: row }),
@@ -298,7 +274,6 @@ export function useCrudCard<T>(hasItems: boolean) {
   };
 }
 
-/** The list step of such a card: Done, and the key that opens the empty form. */
 export function ListDialog({ open, onClose, onAdd, addLabel, title, sub, icon, children }: { open: boolean; onClose: () => void; onAdd: () => void; addLabel: string; title: string; sub: string; icon: IconName; children: React.ReactNode }) {
   return (
     <Dialog
@@ -325,7 +300,7 @@ export function ListDialog({ open, onClose, onAdd, addLabel, title, sub, icon, c
   );
 }
 
-/** Asks before a row leaves such a list; focus goes back to the list, or to its add key once it is empty. */
+/** After a remove, focus goes back to the list, or to its add key once it is empty. */
 export function RemoveDialog<T>({ row, onClose, title, sub, body, label, onRemove }: { row: T | null; onClose: () => void; title: string; sub?: string; body: string | undefined; label: string; onRemove: (row: T) => Promise<void> }) {
   return (
     <ConfirmDialog

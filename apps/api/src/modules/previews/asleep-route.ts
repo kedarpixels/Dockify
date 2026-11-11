@@ -1,8 +1,5 @@
-/**
- * The page a sleeping preview's hosts show (worker edge/routes.ts, renderAsleepRouteFile). Static on
- * purpose: this answers anyone who has the link, or a crawler that found it, so it names no project,
- * pull request or person, and a visit does not wake anything.
- */
+// Static on purpose: this answers anyone who has the link, crawlers included, so it names no
+// project, pull request or person, and a visit does not wake anything.
 import type { FastifyInstance } from "fastify";
 import { PREVIEW_ASLEEP_PATH } from "@dockify/contracts";
 import { INFRA_POLICIES } from "../../policy.ts";

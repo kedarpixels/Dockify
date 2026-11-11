@@ -95,14 +95,11 @@ export function RuleDialog({
   onClose,
   onSave,
 }: {
-  /** The rule to edit, or null for a new one. */
   rule: AlertRule | null;
-  /** A new app rule starts on this app (from an app group's "New rule"). */
   presetApp: string | null;
   apps: Resource[];
   rules: AlertRule[];
   channels: AlertsPayload["channels"];
-  /** Every webhook a rule can send to (Settings, Integrations, Webhooks). */
   webhooks: WebhookRef[];
   onClose: () => void;
   /** Resolves true when saved, so the dialog closes; false keeps it open. */
@@ -126,7 +123,6 @@ export function RuleDialog({
   const dupeErr = dupe ? "A rule for this already exists. Edit that one instead." : null;
   const valid = !tErr && !appErr && !chErr && !dupe;
 
-  // Switching scope picks the first condition of that scope; a threshold is filled from its default.
   const pickScope = (scope: Scope) => {
     const metric = scope === "server" ? SERVER_METRICS[0]! : APP_METRICS[0]!;
     const r = THRESHOLD[metric];

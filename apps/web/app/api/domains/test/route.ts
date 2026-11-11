@@ -3,7 +3,6 @@ import { guardWrite, json, readJsonObject, refuse, upstreamStatus } from "@/lib/
 import { forward, isId } from "@/lib/pages/resources-domains";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/** GET /api/domains/test: whether this server can offer a free test domain. Hidden when it cannot. */
 export async function GET() {
   if (process.env.DOCKIFY_API_URL) {
     const r = await apiRequest<unknown>("/api/v1/domains/test-domain");
@@ -13,7 +12,6 @@ export async function GET() {
   return json({ available: false, reason: null, suffix: null });
 }
 
-/** POST /api/domains/test: one test domain for an app, on an explicit press. The API makes up the name. */
 export async function POST(request: Request) {
   const refused = guardWrite(request);
   if (refused) return refused;

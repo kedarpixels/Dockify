@@ -4,20 +4,13 @@ import { apiErrorMessage } from "./http-status";
 import { STEP_UP_MESSAGE, STEP_UP_REQUIRED } from "./step-up";
 import { upstreamHeaders } from "./upstream";
 
-/*
- * Every call this server makes to the Dockify API goes through here: one URL rule, the visitor's
- * forwarded headers (lib/upstream.ts), no cache, a timeout on every call, and one way to read the
- * answer. A hung API therefore ends a render, a route or an action with a clear line instead of
- * holding it open, and an elevated route's step_up_required always comes back as the shared
- * refusal (lib/step-up.ts), never as raw text.
- */
+// Every server call to the Dockify API goes through here: forwarded visitor headers, no cache, and
+// a timeout, so a hung API ends a render with a clear line instead of holding it open.
 
-/** A read gives up after 10 seconds, as the overview always did. */
 const READ_TIMEOUT_MS = 10_000;
 /** A write may do more work before it answers. */
 const WRITE_TIMEOUT_MS = 30_000;
 
-/** Why a call failed before the API answered, worded for the page that shows it. */
 const UNREACHABLE = "The API did not answer";
 const TIMED_OUT = "The API took too long to answer";
 export const UNREADABLE = "The API sent something this dashboard cannot read";
@@ -36,10 +29,7 @@ export interface ApiInit {
   timeoutMs?: number;
   /** Forward the visitor's session cookie. Off for public reads. Default on. */
   cookie?: boolean;
-  /**
-   * A cached public read (the status page) instead of no-store. It forwards nothing of the
-   * visitor (no cookie, no address), so every visitor shares one cached answer.
-   */
+  /** A cached public read. It forwards no cookie or address, so every visitor shares one cached answer. */
   revalidate?: { seconds: number; tags: string[] };
   /** The browser's request: when the visitor leaves, the API call is cut too, so its work stops. */
   signal?: AbortSignal;
@@ -49,7 +39,6 @@ export interface ApiFailure {
   ok: false;
   /** The API's HTTP status, or 0 when it never answered. */
   status: number;
-  /** One short line for the UI: the API's own message, else a line for the status. */
   error: string;
   /** The API's machine code (SLUG_TAKEN, ENV_CONFLICT), STEP_UP_REQUIRED, "timeout" or "unreachable". */
   code?: string;
@@ -70,7 +59,6 @@ export type ApiResult<T> = ApiSuccess<T> | ApiFailure;
 const isTimeout = (e: unknown) => e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError");
 const record = (v: unknown): Record<string, unknown> | undefined => (isRecord(v) ? v : undefined);
 
-/** Builds the API URL for `path`, or the reason it cannot. */
 function urlFor(path: string, query?: ApiInit["query"]): URL | ApiFailure {
   const base = process.env.DOCKIFY_API_URL;
   if (base === undefined) return { ok: false, status: 503, error: NO_API, code: "no_api" };
@@ -84,10 +72,7 @@ function urlFor(path: string, query?: ApiInit["query"]): URL | ApiFailure {
   return url;
 }
 
-/**
- * The failure for a non-2xx answer. A step-up refusal becomes the shared refusal, and the raw
- * "step_up_required" text never survives as a message.
- */
+/** A step-up refusal becomes the shared refusal, so raw "step_up_required" never reaches a message. */
 function failureOf(status: number, raw: unknown, headers?: Headers): ApiFailure {
   const body = record(raw);
   const said = typeof body?.error === "string" ? body.error : typeof body?.message === "string" ? body.message : "";
@@ -101,10 +86,7 @@ function failureOf(status: number, raw: unknown, headers?: Headers): ApiFailure 
 /** Failures made here, not by the API: their own line is the one to show. */
 const LOCAL = new Set(["timeout", "unreachable", "unreadable", "no_api", STEP_UP_REQUIRED]);
 
-/**
- * The generic line for a failure, for reads that never show the API's own wording: the reason when
- * the API never answered, sent something unreadable or wants a step-up, else the status line.
- */
+/** The line for reads that never show the API's own wording: the local reason, else the status line. */
 export const plainError = (f: ApiFailure) => (f.code && LOCAL.has(f.code) ? f.error : apiErrorMessage(f.status));
 
 /** One JSON call to the Dockify API. Never throws. A 204 or an empty 2xx body is `data: null`. */
@@ -147,11 +129,8 @@ export async function apiRequest<T>(path: string, init: ApiInit = {}): Promise<A
   return { ok: true, status: res.status, data: body as T, headers: res.headers };
 }
 
-/**
- * A call whose answer is streamed on (a log tail, a backup file, an icon). The timeout covers only
- * the wait for the response head, so a long stream is never cut; `signal` (the browser's request)
- * still ends it when the visitor leaves. A non-2xx answer is read and returned as a failure.
- */
+/** A streamed answer (log tail, backup file, icon). The timeout covers only the wait for the response
+ * head, so a long stream is never cut; `signal` still ends it when the visitor leaves. */
 export async function apiStream(path: string, init: ApiInit & { accept: string }): Promise<{ ok: true; res: Response } | ApiFailure> {
   const url = urlFor(path, init.query);
   if (!(url instanceof URL)) return url;

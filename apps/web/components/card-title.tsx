@@ -1,7 +1,6 @@
 import { Icon, type IconName } from "@/components/icon";
 import { IconTile } from "@/components/ui/icon-tile";
 
-/** Card head title: a 32px IconTile, then a 15px ink title over a 13px muted sub line. */
 export function CardTitle({ id, icon, title, sub }: { id: string; icon: IconName; title: string; sub?: React.ReactNode }) {
   return (
     <div className="ctitle">

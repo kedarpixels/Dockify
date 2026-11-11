@@ -1,7 +1,7 @@
 import type { FastifyReply } from "fastify";
 import type { z } from "zod";
 
-/** A deliberate HTTP failure. The body always has the shared shape { error, code?, field?, ... }. */
+/** The body always has the shared shape { error, code?, field?, ... }. */
 export class HttpError extends Error {
   readonly status: number;
   readonly code: string;
@@ -23,13 +23,12 @@ export const stepUpRequired = () => new HttpError(403, "step_up_required", "STEP
 export const badField = (message: string, field: string) => new HttpError(400, message, "INVALID_REQUEST", { field });
 export const notImplemented = () => new HttpError(501, "Not implemented yet", "NOT_IMPLEMENTED");
 
-/** Fastify's name for the part of a request a schema checked, as the error names it. */
+/** Fastify's validationContext, as the error names that part. */
 const PART: Record<string, string> = { body: "body", querystring: "query", params: "params", headers: "headers" };
 
 /**
- * Zod issues as { field, fields }: the first issue drives the one-line error the UI shows. An issue
- * about the whole of a part (an unknown query key, say) is labelled with that part, so a bad query
- * reads "query", never "body". `part` is Fastify's validationContext.
+ * The first issue drives the one-line error the UI shows. An issue about a whole part (an unknown
+ * query key, say) is labelled with that part, so a bad query reads "query", never "body".
  */
 export function zodFields(error: z.ZodError, part = "body"): { message: string; field?: string; fields: Record<string, string> } {
   const fields: Record<string, string> = {};

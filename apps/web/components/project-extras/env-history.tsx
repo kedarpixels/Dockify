@@ -16,10 +16,7 @@ import { plural } from "@/lib/format";
 import type { EnvVersion } from "@/lib/pages/project-detail";
 import { summarize, TARGET_LABEL } from "./env-model";
 
-/* Version history: one row per version of the project's variables, newest first, with who changed
-   it, when, and what (keys only: history never holds a value). A row opens to list its changes.
-   Every version but the current one can be rolled back to, which writes a new version and
-   redeploys what it reaches. */
+/* Keys only: history never holds a value. A rollback writes a new version and redeploys what it reaches. */
 
 const FIRST = 8;
 const OP_SIGN = { add: "+", change: "~", remove: "-" } as const;

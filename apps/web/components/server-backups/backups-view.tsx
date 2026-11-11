@@ -34,17 +34,14 @@ import { dbLabel, dueIn, offServer } from "./util";
 
 const DAY = 86_400_000;
 
-/** Backups run on UTC schedules, so every absolute time on this page reads in UTC. */
+// Backups run on UTC schedules, so every absolute time on this page reads in UTC.
 
-/** "18.4 GB" as a KPI figure and its small unit. */
 function sized(n: number): Pick<KpiData, "value" | "unit"> {
   const [value = "0", unit] = bytes(n).split(" ");
   return { value, unit };
 }
 
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-// -------------- KPI strip --------------
 
 function Kpis({ runs, schedules, now }: { runs: BackupRun[]; schedules: BackupSchedule[]; now: number }) {
   const month = runs.filter((r) => now - Date.parse(r.createdAt) < 30 * DAY && r.status !== "running");
@@ -58,7 +55,6 @@ function Kpis({ runs, schedules, now }: { runs: BackupRun[]; schedules: BackupSc
     .filter((s) => s.enabled && s.nextRunAt)
     .sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0];
   const failed = month.length - ok;
-  // Rate and size ease to their new values when a run lands; the next run counts down live.
   const rateShown = Math.floor(useTween(rate ?? 0));
   const sizeShown = useTween(size);
   const tick = useSecond(now);
@@ -106,8 +102,6 @@ function Kpis({ runs, schedules, now }: { runs: BackupRun[]; schedules: BackupSc
   return <KpiStrip label="Backup summary" cells={cells} />;
 }
 
-// -------------- Page --------------
-
 /** A failed read keeps the last good snapshot on screen, and any dialog open over it. */
 const hasBackups = (r: BackupsResult) => r.data !== null;
 
@@ -131,7 +125,6 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
   const testLock = useRef(new Set<string>());
   // Restore tests started here, so their result toasts when a poll (or the preview) lands it.
   const watched = useRef(new Set<string>());
-  // The database whose schedule dialog is open.
   const [editing, setEditing] = useState<BackupSchedule | null>(null);
   const d = result.data;
   const preview = result.source === "preview";
@@ -192,7 +185,6 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
     return () => clearTimeout(t);
   }, [result.source, testRunning, setResult]);
 
-  // A watched test that left "running" reports how it went.
   useEffect(() => {
     if (!d) return;
     for (const r of d.runs) {
@@ -220,7 +212,6 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
 
   const showHistory = () => document.getElementById("sb-hist")?.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" });
 
-  // Starting closes the dialog; the toast follows the request and offers a jump to the history.
   const launch = async (pick: string) => {
     if (!d || launchLock.current) return;
     launchLock.current = true;
@@ -256,8 +247,7 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
     setLaunching(false);
   };
 
-  // The restore runs behind a toast; the row's button spins until it settles, and no other run
-  // of the same database can start a second restore meanwhile.
+  // No other run of the same database can start a second restore meanwhile.
   const restore = async (run: BackupRun, req: RestoreRequest) => {
     setRestoring(null);
     if (restoreLock.current.has(run.resourceId)) return;
@@ -290,7 +280,6 @@ export function BackupsView({ overview, initial }: { overview: OverviewResult; i
     });
   };
 
-  // The test runs on the worker; the row shows "Testing" until a poll brings the result.
   const test = async (run: BackupRun) => {
     if (testLock.current.has(run.id)) return;
     testLock.current.add(run.id);

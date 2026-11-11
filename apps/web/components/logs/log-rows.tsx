@@ -7,7 +7,6 @@ import { sameLines } from "./log-dom";
 import { useChunkHeight } from "./use-log-window";
 import { cleanText, leadingLevel, levelOf, splitHits, type LogLevel, type RuntimeLogLine } from "./model";
 
-/** What a row shows about its app: the label, the environment when not production, a colour. */
 export interface AppMeta {
   label: string;
   env?: string;
@@ -28,7 +27,6 @@ type RowsProps = {
   wrap: boolean;
   /** The line the URL points at (#L-id). */
   targetId?: string;
-  /** The line whose link was just copied; its time shows a short "Link copied" tip. */
   copiedId?: string;
   onSize: (index: number, height: number) => void;
 };
@@ -44,13 +42,13 @@ const sameRows = (a: RowsProps, b: RowsProps) =>
   a.copiedId === b.copiedId &&
   a.onSize === b.onSize;
 
-/** "30 Oct" and "14:05:12" in the user's zone and clock. Rows only render after mount, so this never hydrates. */
+/** Rows only render after mount, so this never hydrates. */
 function stamp(iso: string, time: TimeFormat) {
   const p = time.parts(iso);
   return { day: p ? `${p.day} ${MONTHS[p.month]}` : "", time: time.clock(iso, { seconds: true }) };
 }
 
-/** Up to CHUNK rows, memoised so an append re-renders only the chunk it lands in. */
+/** Memoised so an append re-renders only the chunk it lands in. */
 export const LogRows = memo(function LogRows({
   lines,
   index,

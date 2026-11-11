@@ -1,12 +1,7 @@
 import { guardWrite, json, readJsonBody, refuse, upstreamStatus } from "@/lib/http";
 import { runMutation, type Mutation } from "@/lib/pages/project-detail";
 
-/**
- * POST /api/project-detail: every write from the project and app pages and the New project popup.
- * The body is one typed Mutation; `runMutation` maps it onto a fixed API route, so the browser can
- * never reach an arbitrary upstream path. A refusal keeps the API's status, so a lapsed session
- * (401) ends the page's session and a step-up refusal (403, code step_up_required) asks for one.
- */
+/** runMutation maps the typed body onto a fixed API route, so the browser can never reach an arbitrary upstream path. */
 export async function POST(request: Request) {
   const refused = guardWrite(request);
   if (refused) return refused;

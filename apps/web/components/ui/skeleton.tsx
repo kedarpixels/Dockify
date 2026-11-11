@@ -1,15 +1,6 @@
 import { cx } from "./cx";
 
-/*
- * Loading shapes. Bars only, never placeholder words, sized like the content that replaces them so
- * nothing jumps when data lands. The pulse stops under reduced motion.
- *
- *   <Skel w={120} />                                                  one 8px bar
- *   <SkelRows rows={6} template="24px minmax(0,1fr) 120px 56px" cols={[16, "60%", 80, 40]} />
- *   <SkelRows rows={4} height={56} template="24px minmax(0,1fr) 96px" cols={[24, { w: "50%", lines: 2 }, 64]} />
- *
- * Copy the real row's `grid-template-columns` and height (44 single line, 56 two line).
- */
+/* Bars only, never placeholder words. Copy the real row's `grid-template-columns` and height so nothing jumps. */
 
 type Size = number | string;
 const px = (v: Size | undefined) => (typeof v === "number" ? `${v}px` : v);
@@ -22,10 +13,7 @@ export function Skel({ w, h = 8, r, className }: { w?: Size; h?: Size; r?: numbe
 /** A column of a skeleton row: a width, or a two-line stack (a 10px bar over a shorter 8px one). */
 export type SkelCol = Size | { w: Size; lines?: 1 | 2 };
 
-/**
- * `rows` rows at the real row height. Each column draws one bar; a number column of 16 or 24 is
- * drawn square (an icon or a row tile). The block is announced once as loading.
- */
+/** A number column of 16 or 24 is drawn square (an icon or a row tile). The block is announced once as loading. */
 export function SkelRows({
   rows = 5,
   height = 44,
@@ -36,7 +24,6 @@ export function SkelRows({
 }: {
   rows?: number;
   height?: 44 | 56 | number;
-  /** The real row's grid-template-columns. */
   template: string;
   cols: SkelCol[];
   label?: string;

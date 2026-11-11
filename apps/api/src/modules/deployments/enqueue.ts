@@ -1,9 +1,6 @@
-/**
- * The one path from "a deploy should happen" to a queued job: a per-app advisory lock, an in-flight
- * check, then the Deployment row and its job in the same transaction, so two clicks never queue two
- * builds and a failure partway never strands a deployment with no job. The apps module's deploy
- * endpoint and the webhook receiver should call this too.
- */
+// The one path from "a deploy should happen" to a queued job. Every caller must come through here:
+// the Deployment row and its job are written together under a per-app advisory lock, so two clicks
+// never queue two builds and no deployment is left without a job.
 import { gzipSync } from "node:zlib";
 import type { Db, Prisma, Tx } from "@dockify/db";
 import { HttpError } from "../../errors.ts";
@@ -14,10 +11,8 @@ export type NewDeployment = Omit<Prisma.DeploymentUncheckedCreateInput, "appId" 
 export type DeployRequestOutcome = { kind: "queued"; deploymentId: string; jobId: string } | { kind: "coalesced" };
 
 /**
- * The single "a deploy should happen" helper, inside the caller's transaction. A per-app (or
- * per-preview) advisory lock, then the in-flight check. When something is in flight, `busy`
- * decides: "reject" answers 409 (a click), "coalesce" stamps pendingDeployAt so the pipeline runs
- * one more deploy after the open one (a push, an env change).
+ * When a deploy is already in flight, `busy` decides: "reject" answers 409 (a click), "coalesce"
+ * stamps pendingDeployAt so the pipeline runs one more deploy after the open one (a push, an env change).
  */
 export async function requestDeployTx(
   tx: Prisma.TransactionClient,
@@ -37,7 +32,6 @@ export async function requestDeployTx(
     if (!previewId) await tx.app.updateMany({ where: { id: appId }, data: { pendingDeployAt: new Date() } });
     return { kind: "coalesced" };
   }
-  // The deployment and its job follow the app, on whichever server it runs.
   const app = await tx.app.findUnique({ where: { id: appId }, select: { serverId: true } });
   if (!app) throw new HttpError(404, "App not found", "NOT_FOUND");
   const now = new Date().toISOString();
@@ -54,9 +48,8 @@ export async function requestDeployTx(
 }
 
 /**
- * Refuses a delete while one of these apps has a deployment running: its container could come up
- * after the teardown looked. Takes each app's deploy lock, in id order so two deletes cannot deadlock,
- * and a deploy asked for later waits on that lock and finds the app gone.
+ * Guards a delete: a running deployment's container could come up after the teardown looked. Locks
+ * are taken in id order so two deletes cannot deadlock; a later deploy waits and finds the app gone.
  */
 export async function assertNoDeployInFlight(tx: Prisma.TransactionClient, appIds: string[]): Promise<void> {
   for (const id of [...appIds].sort()) {
@@ -67,7 +60,6 @@ export async function assertNoDeployInFlight(tx: Prisma.TransactionClient, appId
   }
 }
 
-/** A user-initiated deploy: refuses with 409 while one is in flight. */
 export async function enqueueDeployment(db: Db, appId: string, data: NewDeployment): Promise<string> {
   return db.$transaction(async (tx) => {
     const out = await requestDeployTx(tx, appId, data, "reject");
@@ -76,10 +68,7 @@ export async function enqueueDeployment(db: Db, appId: string, data: NewDeployme
   });
 }
 
-/**
- * Appends lines to a deployment's log with a database-allocated seq, the same scheme the worker
- * uses, so a note written here can never collide with the running deploy's lines.
- */
+/** The seq is allocated by the database, as the worker does, so these lines never collide with the running deploy's. */
 export async function appendLog(db: Tx, deploymentId: string, texts: string[], stream: "stdout" | "stderr" = "stdout"): Promise<void> {
   if (!texts.length) return;
   const n = texts.length;

@@ -7,11 +7,8 @@ import { useSessionEnded } from "@/lib/hooks";
 import { openLayer } from "@/lib/modal";
 import { IconTile } from "./icon-tile";
 
-/*
- * The full-screen notice shown once a client fetch learns the session ended (`apiFetch` in
- * lib/hooks.ts). Mounted once by the console layout. It sits above every dialog, so nothing else
- * answers keys or focus while it shows; Sign in is a full navigation, so the console starts fresh.
- */
+// Sits above every dialog, so nothing else answers keys or focus while it shows. Sign in is a full
+// navigation, so the console starts fresh.
 export function SessionExpired() {
   const ended = useSessionEnded();
   const id = useId();

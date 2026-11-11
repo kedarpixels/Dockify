@@ -39,7 +39,6 @@ const DEAD: Record<NonNullable<InviteResult["reason"]>, { icon: IconName; title:
   },
 };
 
-/** /invite/[token]: invites from Settings, emailed when email is set up or shared as a copy link. */
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const result = await getInvite(token);

@@ -1,11 +1,6 @@
 /**
- * Alert delivery to notification webhooks and to email (owners and admins, over SMTP). Each
- * send is one job on the leased queue (kind alert_notify), one per webhook, so
- * retries, backoff and a worker crash mid-send are the queue's problem and one dead webhook never
- * holds up another. The in-app bell needs no delivery: the AlertEvent row is what the bell lists.
- *
- * A webhook's URL is its credential. It is opened only right before the send (integrations/
- * webhooks.ts), sent through net-guard, and never logged; failures name the provider and status.
+ * Each send is its own queued job, so one dead webhook never holds up another. A webhook's URL is its
+ * credential: opened only right before the send, sent through net-guard, and never logged.
  */
 import { appLabel } from "@dockify/contracts";
 import type { Db, SecretVault } from "@dockify/db";
@@ -21,11 +16,7 @@ import { sendToWebhook, type WebhookTargets } from "../integrations/webhooks.ts"
 
 export type Transition = "firing" | "resolved";
 
-/**
- * One delivery. email: the owners and admins. webhook: one notification webhook by id. legacy: a
- * job queued by a version before the webhook list, naming the old single Discord or generic
- * channel; it goes to the rule's webhooks of that provider, which the migration linked.
- */
+/** legacy: a job from before the webhook list; it goes to the rule's webhooks of that provider. */
 export type NotifyTarget = { kind: "email" } | { kind: "webhook"; webhookId: string } | { kind: "legacy"; provider: "discord" | "generic" };
 
 export interface NotifyPayload {
@@ -48,7 +39,6 @@ export function parseNotifyPayload(raw: unknown): NotifyPayload {
   throw new PermanentJobError("alert_notify payload is malformed");
 }
 
-/** Contract spelling of a metric, the one webhook consumers and the web see. */
 export const PUBLIC_METRIC: Record<Metric, string> = {
   disk: "disk", service: "service", down: "down", crash_loop: "crashLoop", memory: "memory",
 };
@@ -67,20 +57,15 @@ export interface AlertView {
   href: string;
   startedAt: Date;
   resolvedAt: Date | null;
-  /** `shown` is what people read as the app's name, its display name when it has one; `name` stays its identity. */
-  /** `named` is false when the project has one environment: its place then leaves the environment out. */
+  /** `shown` is the name people read, `name` the identity; `named` is false for a one-environment project. */
   app: { name: string; shown?: string; projectSlug: string; environment: string; named?: boolean } | null;
-  /** The app as the email's project chip shows it (name, kind, icon links); only the email channel reads it. */
   chip?: AppRef | null;
 }
 
 const whereOf = (a: AlertView): string =>
   a.app ? [a.app.projectSlug, ...(a.app.named === false ? [] : [a.app.environment]), a.app.shown ?? a.app.name].join(" / ") : a.service ? `service ${a.service}` : "host";
 
-/**
- * One alert as every webhook gets it, shaped per provider by @dockify/notify. The generic
- * webhook's JSON keeps the shape earlier versions sent (event, alert, app, service, occurredAt).
- */
+/** The generic webhook's JSON keeps the shape earlier versions sent (event, alert, app, service, occurredAt). */
 export function alertMessage(a: AlertView, t: Transition, publicUrl: string | null, instanceName: string): NotifyMessage {
   const url = publicUrl ? new URL(a.href, publicUrl).toString() : null;
   const at = t === "firing" ? a.startedAt : (a.resolvedAt ?? new Date());
@@ -99,7 +84,6 @@ export function alertMessage(a: AlertView, t: Transition, publicUrl: string | nu
         id: a.id, metric: PUBLIC_METRIC[a.metric], detail: a.detail, startedAt: a.startedAt.toISOString(),
         resolvedAt: a.resolvedAt?.toISOString() ?? null, url: url ?? a.href,
       },
-      // The shape earlier versions sent: the app by its name, which is its identity.
       app: a.app ? { name: a.app.name, projectSlug: a.app.projectSlug, environment: a.app.environment } : null,
       service: a.service,
     },
@@ -110,19 +94,15 @@ export interface NotifyDeps {
   db: Db;
   vault: SecretVault;
   publicUrl: string | null;
-  /** The net-guard client, for webhooks. Tests pass a fake. */
   http?: HttpClient;
-  /** The SMTP sender, for email. Tests pass a fake. */
   mail?: Mailer | undefined;
   /** DOCKIFY_INTERNAL_TOKEN, to sign the icon links in an alert email; without it the chip shows the tiles. */
   internalToken?: string | undefined;
-  /** What this process last opened, for an api outage (integrations/webhooks.ts). */
   targets?: WebhookTargets | undefined;
 }
 
 const EMAIL_KIND: Partial<Record<Metric, AlertKind>> = { down: "appDown", crash_loop: "appDown" };
 
-/** The email channel: one message per owner and admin. Throws to retry, PermanentJobError to stop. */
 async function deliverEmail(deps: NotifyDeps, a: AlertView, t: Transition): Promise<"sent" | "skipped"> {
   if (!deps.publicUrl) throw new PermanentJobError("email channel needs DOCKIFY_PUBLIC_URL for its link");
   const where = a.chip ?? whereOf(a);
@@ -138,14 +118,13 @@ async function deliverEmail(deps: NotifyDeps, a: AlertView, t: Transition): Prom
   return n ? "sent" : "skipped";
 }
 
-/** The webhooks a legacy job means: the rule's linked webhooks of the old channel's provider. */
 async function legacyTargets(db: Db, ruleId: string | null, provider: "discord" | "generic"): Promise<string[]> {
   if (!ruleId) return [];
   const links = await db.alertRuleWebhook.findMany({ where: { ruleId, webhook: { provider } }, select: { webhookId: true } });
   return links.map((l) => l.webhookId);
 }
 
-/** The alert_notify job body. Throws to retry, PermanentJobError to stop. */
+/** Throws to retry, PermanentJobError to stop. */
 export async function deliverAlert(deps: NotifyDeps, raw: unknown): Promise<"sent" | "skipped"> {
   const p = parseNotifyPayload(raw);
   const ev = await deps.db.alertEvent.findUnique({
@@ -179,7 +158,6 @@ export async function deliverAlert(deps: NotifyDeps, raw: unknown): Promise<"sen
     id: ev.id, metric: ev.metric as Metric, service: ev.service, detail: ev.detail, href: ev.href,
     startedAt: ev.startedAt, resolvedAt: ev.resolvedAt,
     app: ev.app && project ? { name: ev.app.name, shown: appLabel(ev.app), projectSlug: project.slug, environment: ev.app.environment.name, named } : null,
-    // The email's project chip: the dashboard's names and icons; webhooks keep their own shape.
     chip: ev.app && project
       ? {
           projectName: project.name, projectSlug: project.slug, env: named ? ev.app.environment.name : null, appName: appLabel(ev.app), appKind: ev.app.kind,

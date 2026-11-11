@@ -1,21 +1,7 @@
 /**
- * Email delivery over SMTP, with the server and login the owner stored (packages/email smtp.ts).
- *
- *   email_send   one message the api rendered and sealed (an email_message secret). The job names
- *                only that secret, so neither the payload nor lastError ever holds an address,
- *                a code or a link. The sealed row is deleted once the message is settled.
- *   alert email  the email channel of an alert rule: one message per admin, sent from the
- *                alert_notify job (observe/channels.ts).
- *   mailEach     the loop behind every message to several people. One refused recipient costs only
- *                that recipient's copy.
- *
- * SMTP has no idempotency. Every send carries a key that becomes a stable Message-ID, and the mailer
- * skips a key its server already accepted, so a retried job does not repeat what went out. What can
- * still repeat: a message whose accepting reply was lost, or one sent before a worker restart.
- *
- * A send that fails says something about the integration only when the stored settings are at fault
- * (MailError.settingsRefused: a refused login, a host the address rule refuses). A refused recipient
- * or from address is that one send's problem, and the login goes on working.
+ * Email over SMTP. An email_send job names only a sealed email_message secret, so neither the payload
+ * nor lastError ever holds an address, a code or a link. SMTP has no idempotency: each send's key
+ * becomes a stable Message-ID and the mailer skips a key its server already accepted.
  */
 import { readSecretValue, type Db, type Integration, type SecretVault } from "@dockify/db";
 import { alert, MailError, readEmailConfig, type AlertKind, type AppRef, type EmailMessage, type Mailer, type SmtpServer } from "@dockify/email";
@@ -45,7 +31,6 @@ interface SealedMessage {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** The email integration ready to send, or null when it is not set up. */
 export async function loadSender(db: Db, vault: SecretVault): Promise<Sender | null> {
   const row = await db.integration.findUnique({ where: { kind_name: { kind: "email", name: "default" } } });
   if (!row?.secretId || row.status === "disconnected") return null;
@@ -68,7 +53,6 @@ async function markRefused(db: Db, row: Integration, e: MailError): Promise<void
   await db.integration.update({ where: { id: row.id }, data: { status: "error", error: e.cardError } }).catch(() => undefined);
 }
 
-/** A send went through, so a row a refusal marked is wrong now: a replaced password, or an older verdict. */
 async function markWorking(db: Db, row: Integration): Promise<void> {
   if (row.status !== "error") return;
   await db.integration.update({ where: { id: row.id }, data: { status: "connected", error: null } }).catch(() => undefined);
@@ -87,14 +71,8 @@ export interface Recipient {
 }
 
 /**
- * One message to several people. Each is tried whatever became of the last, so one departed
- * teammate's mailbox never silences the rest, on this try or a retry. Settings that cannot work stop
- * at once, since no send can, and so does no connection, since the next would only wait out the same
- * failure. A recipient the server refused goes on the activity log by name.
- *
- * Throws to retry when a send may still work (the mailer skips the ones already accepted),
- * PermanentJobError when nothing went out and nothing will. Only a status leaves in those: the
- * server's text could name a recipient. Returns how many went out.
+ * Each recipient is tried whatever became of the last. Throws to retry when a send may still work,
+ * PermanentJobError when nothing will; both carry only a status, as server text could name a recipient.
  */
 export async function mailEach(deps: EmailDeps, sender: Sender, users: Recipient[], message: EmailMessage, keyOf: (userId: string) => string): Promise<number> {
   let sent = 0;
@@ -140,7 +118,7 @@ export interface EmailJob {
   maxAttempts: number;
 }
 
-/** The email_send job body. Throws to retry, PermanentJobError to stop. */
+/** Throws to retry, PermanentJobError to stop. */
 export async function runEmailSend(deps: EmailDeps, job: EmailJob): Promise<"sent" | "skipped"> {
   const p = job.payload as { messageId?: unknown; inviteId?: unknown } | null;
   const messageId = p?.messageId;
@@ -192,15 +170,12 @@ export interface AlertEmail {
   kind: AlertKind;
   title: string;
   detail: string;
-  /** The app, as the dashboard shows it (with its signed icon links), or a plain place for a host or service alert. */
   where: AppRef | string;
   at: Date;
   url: string;
-  /** The dashboard's public origin, where the email's logo, icons and fonts load from. */
   origin: string;
 }
 
-/** The email channel of an alert: one message to each admin (mailEach says what a failure does). */
 export async function sendAlertEmails(deps: EmailDeps, a: AlertEmail): Promise<number> {
   const sender = await loadSender(deps.db, deps.vault);
   if (!sender) return 0;

@@ -1,15 +1,7 @@
 /**
- * SVG logos, rebuilt rather than filtered. The input is parsed by a strict XML reader (no DOCTYPE,
- * no entities beyond the five XML ones, no CDATA, no processing instructions but the XML
- * declaration), then a new document is written from an allowlist: drawing elements and
- * presentation attributes only, local #references only, every value checked again after entity
- * decoding. Nothing of the input's text is copied through unread, so whatever the allowlist does
- * not name cannot reach the output: scripts, event handlers, foreignObject, images, links,
- * animation, styles, external references and data: URIs all go.
- *
- * The stored logo is served as image/svg+xml with nosniff and a sandboxing CSP, and the dashboard
- * shows it through <img>, where an SVG never runs script anyway. This rebuild is the layer that
- * does not depend on either. Pure TypeScript, so the api (uploads) and the worker (downloads) share it.
+ * SVG logos are rebuilt, not filtered: a strict XML reader (no DOCTYPE, entities, CDATA or PIs), then a new
+ * document written from an allowlist, every value checked after entity decoding. Nothing of the input is
+ * copied through unread, so scripts, handlers, links and external references cannot reach the output.
  */
 
 export const SVG_MAX_BYTES = 128 * 1024;
@@ -97,7 +89,6 @@ function parse(text: string): Node {
       i = j + 1;
       continue;
     }
-    // A start tag.
     const m = NAME.exec(text.slice(i + 1));
     if (!m) fail("The SVG has a malformed tag");
     const node: Node = { name: m![0], attrs: [], children: [] };
@@ -148,8 +139,6 @@ function parse(text: string): Node {
   return svg!;
 }
 
-// ------------------------------------------------------------------ the allowlist
-
 /** Elements a logo draws with. Anything else goes, with everything inside it. */
 const ELEMENTS = new Set([
   "svg", "g", "defs", "title", "desc", "symbol", "use", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon",
@@ -191,7 +180,6 @@ function safeValue(name: string, value: string): string | null {
   return v;
 }
 
-/** The declarations of a style attribute that are presentation attributes, as attributes. */
 function styleDeclarations(style: string): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   for (const decl of style.split(";")) {
@@ -289,10 +277,7 @@ function size(attrs: Array<[string, string]>): { width: number; height: number }
   return { width: clamp(w), height: clamp(h) };
 }
 
-/**
- * The logo rebuilt from the allowlist, with the size to record for it, or why it was refused. The
- * input must be UTF-8 text of at most SVG_MAX_BYTES, and so must the output.
- */
+/** The input must be UTF-8 text of at most SVG_MAX_BYTES, and so must the output. */
 export function sanitizeSvg(input: string | Uint8Array): SvgResult {
   try {
     let text: string;
@@ -322,10 +307,7 @@ export function sanitizeSvg(input: string | Uint8Array): SvgResult {
   }
 }
 
-/**
- * True when bytes look like markup with an <svg> element near the top. Only a hint for which check
- * to run: sanitizeSvg decides, and refuses a DOCTYPE or anything else it does not accept.
- */
+/** Only a hint for which check to run: sanitizeSvg decides. */
 export function looksLikeSvg(bytes: Uint8Array): boolean {
   const head = new TextDecoder("utf-8").decode(bytes.subarray(0, 2048)).replace(/^﻿/, "").trimStart();
   return head.startsWith("<") && /<svg[\s>/]/i.test(head);

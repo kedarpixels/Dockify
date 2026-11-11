@@ -1,11 +1,6 @@
 /**
- * Backup key escrow format. The backup key lives sealed in the control-plane database, so a lost
- * disk would leave every offsite DKBK blob unreadable even to an owner who kept the master key.
- * Every backup run therefore also writes the backup key, sealed under the master key, next to the
- * dumps. A fresh install with the same master key (or the old one in DOCKIFY_MASTER_KEY_PREVIOUS)
- * opens it with openBackupKeyEscrow and can decrypt.
- *
- * Only the api seals and opens escrow files: the worker asks the api for the text and uploads what it gets. The object carries ciphertext only.
+ * Backup key escrow: every backup run writes the backup key, sealed under the master key, next to the
+ * dumps, so a lost disk does not leave offsite blobs unreadable. Only the api seals and opens escrow.
  */
 import { keyFingerprint, open, seal, type Keyring, type Sealed } from "./index.ts";
 
@@ -60,7 +55,7 @@ export function escrowFingerprint(text: string): string | null {
   }
 }
 
-/** Opens an escrow file with the master key ring. Throws when the key is wrong or the file was altered. */
+/** Throws when the key is wrong or the file was altered. */
 export function openBackupKeyEscrow(ring: Keyring, text: string): { key: Buffer; fingerprint: string } {
   const f = JSON.parse(text) as Partial<EscrowFile>;
   if (f.format !== FORMAT || f.v !== 1 || typeof f.fingerprint !== "string" || !f.sealed) throw new Error("not a Dockify backup key file");

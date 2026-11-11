@@ -11,22 +11,8 @@ import type { TimePrefs } from "@/lib/types";
 import type { FieldIds } from "./field";
 import { Segmented, type SegmentOption } from "./segmented";
 
-/*
- * The app's own date and time picker: a field-style trigger over a month calendar and a time row,
- * never the browser's native datetime-local surface. The value is the same "YYYY-MM-DDTHH:mm" wall
- * clock string a datetime-local input uses, so callers parse it the same way.
- *
- *   <Field label="From" hint="Your time zone">{(ids) => <DateTimePicker ids={ids} label="From" value={from} min={min} max={max} onChange={setFrom} />}</Field>
- *
- * With `ids` the trigger takes the Field's id, and its hint or error is read with it.
- *
- * The open calendar lives in a layer of its own. It is portaled to the body and fixed to the
- * viewport under its trigger, or above it when there is more room there, so a dialog's scrolling
- * body can never clip it. Inside a modal it joins the modal layer stack (lib/modal) while open, so
- * the dialog underneath leaves keys and focus to it: Tab walks the calendar, the first Esc closes
- * only the calendar, and a click inside it is never taken for a click on the scrim. Enter on a day
- * or in a time field confirms the choice and submits the surrounding form, as Enter does in a form.
- */
+// The value is the same "YYYY-MM-DDTHH:mm" wall clock string a datetime-local input uses. The open
+// calendar is portaled to the body, so a dialog's scrolling body never clips it.
 
 const DOW = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const DOW_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -75,7 +61,6 @@ function shiftMonth(p: Day, n: number): Day {
   return { ...first, d: Math.min(p.d, daysIn(first.y, first.mo)) };
 }
 
-/** Returns now on the user's clock, which is where an empty value starts. */
 function nowIn(prefs: TimePrefs): Parts {
   const p = timeParts(Date.now(), { prefs });
   if (p) return { y: p.year, mo: p.month, d: p.day, h: p.hour, mi: p.minute };
@@ -83,13 +68,10 @@ function nowIn(prefs: TimePrefs): Parts {
   return { y: n.getFullYear(), mo: n.getMonth(), d: n.getDate(), h: n.getHours(), mi: n.getMinutes() };
 }
 
-/* These are the controls Tab can reach in the calendar; the day grid and the AM/PM switch each keep a single stop. */
+/* The day grid and the AM/PM switch each keep a single tab stop. */
 const tabbables = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)")].filter((el) => el.tabIndex >= 0);
 
-/**
- * Submits the form the way Enter in one of its fields does: through its default (first) submit
- * button, and not at all while that button is disabled.
- */
+/** Like Enter in a field: through the form's default (first) submit button, and not at all while it is disabled. */
 function submitLikeEnter(form: HTMLFormElement | null | undefined) {
   if (!form) return;
   const main = [...form.elements].find(
@@ -114,10 +96,9 @@ export function DateTimePicker({
   onChange: (v: string) => void;
   min?: string;
   max?: string;
-  /** A 12-hour clock with an AM and PM switch. Defaults to the signed-in user's clock. */
+  /** Defaults to the signed-in user's clock. */
   hour12?: boolean;
   id?: string;
-  /** From a Field: the trigger's id, its hint or error, the invalid flag. */
   ids?: FieldIds;
   /** Accessible name for the trigger and the calendar. */
   label: string;
@@ -170,7 +151,6 @@ export function DateTimePicker({
     submitLikeEnter(trigger.current?.form);
   };
 
-  // One effect per open places the calendar, joins the modal layer and binds the dismiss listeners.
   useLayoutEffect(() => {
     const t = trigger.current;
     const p = panel.current;
@@ -243,8 +223,7 @@ export function DateTimePicker({
     flushSync(() => setOpen(false));
   };
 
-  // The grid takes the usual calendar keys: arrows move by day and week, Home and End go to the ends
-  // of the week, Page Up and Page Down move by month (by year with Shift), and Enter confirms.
+  // The usual calendar keys: arrows by day and week, Home and End within the week, Page Up and Down by month (year with Shift).
   const onGridKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     const d = Number((e.target as HTMLElement).closest<HTMLElement>(".dtp-day")?.dataset.day);
@@ -410,11 +389,7 @@ export function DateTimePicker({
   );
 }
 
-/**
- * One two-digit part of the time, in the field skin. Focus selects it, so typing replaces it. Every
- * digit applies at once; two digits, or one that no second digit could follow ("7" for an hour),
- * finish the part and hand focus to `next`. The arrow keys step and wrap; Enter confirms the choice.
- */
+/** Two digits, or one that no second digit could follow ("7" for an hour), finish the part and hand focus to `next`. */
 function TimeField({
   label,
   value,

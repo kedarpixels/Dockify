@@ -1,10 +1,6 @@
-/* Project extras: the staged variables workbench and its version history, environments, pull
-   request previews, the GitHub webhook and the status page setting, on the project and app pages.
-   Rows follow the project-detail tables: 44px soft rows, 8px inset, 13px muted heads. Each table
-   stacks by its own width (a named container), so it holds up beside the sidebar. */
+/* Each table stacks by its own width (a named container), so it holds up beside the sidebar. */
 
-/* -------------- Shared bits -------------- */
-/* A switch with its visible label after it, for one option inside a dialog or a card head. */
+/* Shared bits */
 .px-inline-switch {
   display: inline-flex;
   align-items: center;
@@ -38,7 +34,7 @@
   margin-top: 4px;
 }
 
-/* -------------- Pending changes bar -------------- */
+/* Pending changes bar */
 .px-pending {
   position: sticky;
   top: var(--top-h);
@@ -70,12 +66,11 @@
   margin-left: auto;
 }
 
-/* After Discard: the same bar, quiet, holding Undo until the next change or Dismiss. */
 .px-pending[data-quiet] {
   background: var(--mass);
 }
 
-/* -------------- Env tools -------------- */
+/* Env tools */
 .px-env-tools {
   background: var(--panel);
 }
@@ -89,8 +84,6 @@
   border-top: 0;
 }
 
-/* A row's "more" menu: below its key, right aligned, above the next rows. Menu material, as the
-   dropdown list: 6px off its key, 10px radius, --shadow-menu. */
 .px-menu {
   position: relative;
   display: inline-flex;
@@ -116,7 +109,6 @@
   bottom: calc(100% + 6px);
 }
 
-/* Rows match the dropdown's options and the account menu: 36px, 14px type. */
 .px-menu-item {
   display: flex;
   align-items: center;
@@ -143,13 +135,12 @@
   color: var(--ink-3);
 }
 
-/* A leading node instead of an icon, such as an app tile in the Add override menu. */
 .px-menu-glyph {
   display: inline-flex;
   flex: none;
 }
 
-/* A row in a popover takes the popover fill, which stays visible on the dark popover. */
+/* The popover fill, which stays visible on the dark popover. */
 .px-menu-item:hover:not(:disabled),
 .px-menu-item:focus-visible {
   outline-offset: -2px;
@@ -168,7 +159,7 @@
   opacity: var(--disabled-opacity);
 }
 
-/* -------------- Review dialog -------------- */
+/* Review dialog */
 .px-review-hd {
   display: flex;
   flex-wrap: wrap;
@@ -346,7 +337,7 @@
   min-height: 36px;
 }
 
-/* -------------- Version history -------------- */
+/* Version history */
 .px-ver-wrap {
   container: px-vers / inline-size;
   display: flex;
@@ -396,7 +387,7 @@
   cursor: pointer;
 }
 
-/* The global ring, drawn inside: the row runs to its list's edge. */
+/* The ring is drawn inside: the row runs to its list's edge. */
 .px-ver-toggle:focus-visible {
   outline-offset: -2px;
 }
@@ -503,7 +494,7 @@
   white-space: nowrap;
 }
 
-/* -------------- Environments -------------- */
+/* Environments */
 .px-envs-wrap,
 .px-prevs-wrap {
   display: flex;
@@ -565,7 +556,6 @@ li.px-prev:hover {
   min-width: 0;
 }
 
-/* The only environment names none: its row reads "Branch", as a field label would. */
 .px-env-plain {
   font-size: 14px;
   line-height: 20px;
@@ -608,7 +598,6 @@ a.px-env-ref {
   padding: 6px 0;
 }
 
-/* The compact field (data-size="sm"), in the mono face of the branch it edits. */
 .px-env-edit .field {
   font-family: var(--font-mono);
 }
@@ -635,7 +624,7 @@ a.px-env-ref {
   gap: 4px;
 }
 
-/* -------------- Previews -------------- */
+/* Previews */
 .px-prev-opts {
   display: flex;
   flex-direction: column;
@@ -762,7 +751,7 @@ a.px-env-ref {
   color: var(--ink-3);
 }
 
-/* -------------- Status page -------------- */
+/* Status page */
 .px-status-body {
   display: flex;
   flex-direction: column;
@@ -809,9 +798,8 @@ a.px-env-ref {
   color: var(--ink);
 }
 
-/* -------------- Linked variables -------------- */
-/* A link shows what it points at, never a value: a soft chip with the link glyph. Revealed, the
-   resolved value sits on a line under it. */
+/* Linked variables */
+/* A link shows what it points at, never a value. */
 .px-ref-cell {
   display: flex;
   flex-direction: column;
@@ -850,7 +838,6 @@ a.px-env-ref {
   background: var(--mass);
 }
 
-/* What to do about a broken link, in words under its chip. */
 .px-ref-note {
   font-family: var(--font-sans);
   font-size: 12px;
@@ -858,7 +845,6 @@ a.px-env-ref {
   color: var(--bad-ink);
 }
 
-/* The dialog: services as a picked list, then one row per variable it fills. */
 .px-link {
   display: flex;
   flex-direction: column;
@@ -882,13 +868,13 @@ a.px-env-ref {
   transition: background-color 150ms var(--ease), box-shadow 150ms var(--ease);
 }
 
-/* Picked is the foundation surface-key-picked; hover is the popover fill, which stays visible in dark. */
+/* Hover is the popover fill, which stays visible in dark. */
 .px-link-opt:not(.surface-key-picked):hover {
   background: var(--fill-popover);
 }
 
-/* Inside, because the dialog body scrolls and would clip a ring drawn outside the row. The row
-   carries the one ring; its radio's own ring stays clear (forced colours still draw it). */
+/* Inside, because the dialog body scrolls and would clip an outside ring. The row carries the one
+   ring; its radio's own ring stays clear (forced colours still draw it). */
 .px-link-opt:has(input:focus-visible) {
   outline: 2px solid var(--blue);
   outline-offset: -2px;
@@ -903,7 +889,7 @@ a.px-env-ref {
   opacity: var(--disabled-opacity);
 }
 
-/* The row is dimmed already; its radio does not dim a second time. */
+/* The row is dimmed already; its radio must not dim a second time. */
 .px-link-opt[data-off] > .radio:disabled {
   opacity: 1;
 }
@@ -971,8 +957,6 @@ a.px-env-ref {
   color: var(--ink-3);
 }
 
-/* Each table stacks by its own width, at the scale's steps: environments, webhook deliveries and
-   versions fit in columns down to 520px, previews (six columns) down to 760px. */
 @container px-envs (width < 520px) {
   .px-env-head {
     display: none;
@@ -1047,12 +1031,11 @@ a.px-env-ref {
   }
 }
 
-/* Outside the tables: the sticky bar, the toolbar search and the dialog and settings rows follow the viewport. */
+/* Outside the tables, these follow the viewport. */
 @media (max-width: 760px) {
   .px-pending {
     flex-wrap: wrap;
   }
-  /* Under the dot and its gap, so the keys line up with the text. */
   .px-pending-acts {
     margin-left: 20px;
   }

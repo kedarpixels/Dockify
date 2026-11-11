@@ -1,14 +1,7 @@
 /**
- * Reachability of the apps on a published status page. Container state alone can have the status
- * page say Operational while the app answered 502: the container ran, but its route pointed at a dead
- * address. So once a minute the worker sends each such app one request through the proxy, the way a
- * visitor's request goes (the app's hostname as Host and SNI, the app's health path or "/"), and the
- * public status page reads the verdict next to the observed container state.
- *
- * The request only ever goes to the server's own proxy, over its dialer, never to an address a
- * hostname resolves to, so a domain cannot point the probe anywhere else. TLS is not judged here
- * (the edge module checks certificates); a gateway error (502, 503, 504), Traefik's own "no route"
- * 404, a refused connection or a timeout reads as unreachable, and any other answer as reachable.
+ * A running container can still answer 502, so each status page app gets one request through the proxy.
+ * It only ever goes to the server's own proxy over its dialer, never to an address a hostname resolves
+ * to, so a domain cannot point the probe anywhere else. TLS is not judged here.
  */
 import type { IncomingMessage } from "node:http";
 import { connect as tlsConnect } from "node:tls";
@@ -74,7 +67,6 @@ export function proxyProbe(opts: { dial: Dialer; tls: boolean; timeoutMs?: numbe
 
 const ROUTED = ["frontend", "backend"] as const;
 
-/** The apps worth probing: routed apps of this server listed on a published status page, with a domain. */
 export async function reachTargets(db: Db, serverId: string): Promise<ReachTarget[]> {
   const apps = await db.app.findMany({
     where: {
@@ -101,7 +93,6 @@ export async function reachTargets(db: Db, serverId: string): Promise<ReachTarge
 /** In-memory verdicts for the uptime minutes, so a day bar counts an unreachable minute as down. */
 export type ReachState = Map<string, { ok: boolean; at: number }>;
 
-/** One pass: probe each target in turn and store the verdict on its app row. */
 export async function probeReachability(db: Db, serverId: string, probe: ReachProbe, state: ReachState, now = () => Date.now()): Promise<number> {
   const targets = await reachTargets(db, serverId);
   const live = new Set(targets.map((t) => t.appId));

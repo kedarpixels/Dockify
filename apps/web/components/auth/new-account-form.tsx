@@ -15,10 +15,7 @@ export interface NewAccountValues {
   password: string;
 }
 
-/**
- * The account form shared by /setup and /invite: name, email, a new password with its strength
- * meter, and a confirm field. Setup also names the instance; an invite fixes the email.
- */
+/** Shared by /setup and /invite. Setup also names the instance; an invite fixes the email. */
 export function NewAccountForm({
   idPrefix,
   askInstance,

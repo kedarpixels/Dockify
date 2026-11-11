@@ -1,9 +1,5 @@
-/**
- * Projects, environments, apps and env vars. The route policy table already decided who may call
- * each route (Admin writes, Viewer reads); these handlers add the checks that need the
- * row: the token's project limit, the step-up for anything that touches a secret, and the
- * cross-field refusals of a new app.
- */
+// The route policy table already decided who may call each route. These handlers add the checks
+// that need the row: the token's project limit and the step-up for anything that touches a secret.
 import { actorFields, meta } from "../../actor.ts";
 import { requireActor } from "../../actor.ts";
 import { randomUUID } from "node:crypto";
@@ -46,14 +42,12 @@ const secretGate = (a: Actor) => (touches: boolean): void => {
   if (!a.elevated) throw stepUpRequired();
 };
 
-/** The loader and interpreter hook keys among a set of changes (adds and changes only), deduplicated. */
 export const dangerousIn = (changes: Array<{ key: string; op: string }>): string[] =>
   [...new Set(changes.filter((c) => c.op !== "remove" && P.isDangerousEnvKey(c.key)).map((c) => c.key))];
 
 /**
- * A hook key (NODE_OPTIONS, LD_PRELOAD, BASH_ENV...) runs code before the app's own code does. It
- * needs an elevated session that confirms it on purpose, never a token, and the apply writes an
- * audit row naming the keys. Returns the keys so the caller can audit them.
+ * A hook key (NODE_OPTIONS, LD_PRELOAD, BASH_ENV...) runs code before the app's own code does: it
+ * needs an elevated session that confirms it, never a token. Returns the keys for the caller to audit.
  */
 export function dangerousGate(a: Actor, keys: string[], confirmed: boolean | undefined): string[] {
   if (!keys.length) return [];
@@ -82,9 +76,8 @@ const planError = (e: unknown): never => {
 };
 
 /**
- * Environment names and app ids to scope ids, refusing an app that is not in that environment. A
- * link becomes its stored reference, refused unless the service is in this same project; the
- * reference itself is not secret (listings show it), the credential it resolves to is.
+ * A link becomes its stored reference, refused unless the service is in this same project. The
+ * reference is not secret (listings show it); the credential it resolves to is.
  */
 function resolveChanges(scope: ProjectScope, changes: EnvChangeIn[]): ResolvedChange[] {
   const services = servicesOf(scope.apps);
@@ -118,8 +111,6 @@ const labeler = (scope: ProjectScope) => (e: Entry) => {
   return { environment: env?.name ?? "", ...(app ? { appId: app.id, appName: app.name } : {}) };
 };
 
-// ------------------------------------------------------------------ views
-
 /** A sample older than this no longer says what an app uses now: the sampler writes one every 20 s. */
 const USAGE_FRESH_MS = 2 * 60_000;
 
@@ -151,7 +142,6 @@ async function projectDetail(ctx: Ctx, projectId: string, viewer: Actor) {
   });
   const appById = new Map(apps.map((a) => [a.id, a]));
   const people = await loadPeople(ctx.db, viewer, [...deployments, ...apps.flatMap((a) => a.deployments)]);
-  // The newest sample of each app that runs, as the app page's usage card reads it.
   const running = apps.filter((a) => a.status === "running" || a.status === "degraded");
   const samples = running.length
     ? await ctx.db.metricSample.findMany({
@@ -255,8 +245,6 @@ async function simpleEnv(ctx: Ctx, projectId: string) {
   };
 }
 
-// ------------------------------------------------------------------ apps
-
 export interface NewApp {
   spec: AppSpec | null;
   name: string;
@@ -265,7 +253,6 @@ export interface NewApp {
   id?: string;
   /** Keys of spec.env that are not secret, so the variables page shows them. Default: all sealed and masked. */
   plain?: ReadonlySet<string>;
-  /** Variables linked to a managed service created in this same call. */
   refs?: ReadonlyArray<{ key: string; serviceId: string; field: P.EnvRefField }>;
   memoryMb?: number;
   /** Redeploy the digest of the first pull, as a managed service does (a template's image). */
@@ -278,38 +265,27 @@ export const setRegistryResolver = (r: RegistryResolver | undefined): void => {
   registryResolver = r;
 };
 
-/**
- * Why an image may not be pulled, or null: the rule every path that stores an image applies, on its
- * face (checkSpec) and then by its DNS answer. A spec's other rules do not concern an image alone.
- */
+/** Why an image may not be pulled, or null. Every path that stores an image must pass this: its face (checkSpec), then its DNS answer. */
 export async function imageProblem(image: string): Promise<string | null> {
   const face = checkSpec({ kind: "backend", target: "server", source: { type: "image", image, registryId: null } } as AppSpec).find((r) => r.field === "source.image");
   return face?.reason ?? registryHostProblem(image, registryResolver);
 }
 
-/** The old bare shape { name, kind }: a database kind gets the newest version offered, as New app proposes. */
 function bareColumns(kind: AppSpec["kind"]): { kind: AppSpec["kind"]; image?: string; port?: number } {
   if (kind === "postgres" || kind === "redis") return { kind, image: SERVICE_IMAGES[kind][SERVICE_DEFAULT_VERSION[kind]], port: SERVICE_PORTS[kind] };
   return { kind };
 }
 
-/** The apps a new Postgres or Redis is linked to as it is created (contracts ServiceLink). */
 export type ServiceLinkIn = z.infer<typeof P.ServiceLink>;
 
-/** The kinds a service can be linked to: the apps that run code. */
 const LINKABLE = new Set(["frontend", "backend", "bot"]);
 
 const listed = (names: string[]): string => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
 /**
- * The variables that link a new service to the apps picked in its create popup: DATABASE_URL for a
- * Postgres, REDIS_URL for a Redis, set on each app as a reference to the service (env-refs), the
- * same stored form the Variables page links with. The credential is read at deploy time, so a
- * changed one follows on the app's next deploy. An app that already has that name, its own or one
- * shared in its environment, is never overwritten silently: unless the caller listed it in
- * `replace`, the create answers 409 LINK_CONFLICT naming those apps, and the transaction creates
- * nothing. A replaced variable of the app's own keeps where it is used; a shared one stays as it
- * is for the other apps and the picked app gets its own link over it.
+ * Links a new service to the picked apps as a reference (DATABASE_URL or REDIS_URL) resolved at
+ * deploy time. An existing variable of that name is replaced only for apps listed in `replace`;
+ * otherwise 409 LINK_CONFLICT. A shared one is never changed: the picked app gets its own over it.
  */
 async function linkChanges(
   tx: Prisma.TransactionClient, ring: Ctx["ring"], scope: ProjectScope, env: { id: string; name: string },
@@ -341,10 +317,7 @@ async function linkChanges(
   });
 }
 
-/**
- * Creates the app rows for one or more specs in one transaction. Returns the new ids. `link` only
- * goes with one new Postgres or Redis: the apps its create popup picked (linkChanges).
- */
+/** All specs are created in one transaction. `link` is only valid with a single new Postgres or Redis. */
 export async function createApps(
   ctx: Ctx, actor: Actor, project: { id: string; slug: string }, environment: string, apps: NewApp[], req: FastifyRequest, link?: ServiceLinkIn,
 ): Promise<string[]> {
@@ -391,7 +364,6 @@ export async function createApps(
         include: { project: { select: { _count: { select: { environments: true } } } } },
       });
       if (!env) throw new HttpError(404, `Environment ${environment} not found`, "ENV_NOT_FOUND");
-      // How many the project has, so the log names the environment only when there are several.
       const envCount = env.project?._count?.environments;
       // Another app may show a new app's name as its display name: refused, so no two apps look alike.
       const shown = await tx.app.findFirst({
@@ -405,15 +377,13 @@ export async function createApps(
       for (const a of apps) {
         const id = a.id ?? randomUUID();
         const cols = a.spec ? appColumns(a.spec) : bareColumns(a.kind);
-        // A managed service (a service source, or the old bare shape of a database kind) gets its
-        // credentials as the shared sealed JSON the worker reads, and its named data volume
-        // as a Volume row, so every deploy, backup and restore finds the same data.
+        // A managed service gets sealed credentials the worker reads and a named data volume row,
+        // so every deploy, backup and restore finds the same data.
         const service = cols.kind === "postgres" || cols.kind === "redis" ? cols.kind : null;
         // Its name becomes a DNS alias on the environment network (contracts RESERVED_SERVICE_NAMES).
         if (service && isReservedServiceName(a.name)) throw new HttpError(400, RESERVED_SERVICE_MESSAGE, "RESERVED_NAME", { field: "name" });
         let passwordSecretId: string | null = null;
         if (service) passwordSecretId = await sealServiceCredentials(tx, ctx.ring, id, generateServiceCredentials(service, a.name));
-        // A GitHub App installation named by the spec is linked by its row; an unknown one is refused.
         let gitInstallationId: string | null = null;
         const gitRef = a.spec?.source.type === "git" ? a.spec.source.git : undefined;
         if (gitRef) {
@@ -437,17 +407,15 @@ export async function createApps(
       const refs = apps.some((a) => a.refs?.length);
       if (envChanges.length || linking || refs) {
         const scope = await loadScope(tx, project.id);
-        // Every service was created above, so the scope holds them and the reference passes the project check.
+        // The scope is loaded after the services are created, so their references pass the project check.
         for (const [i, a] of apps.entries()) {
           for (const r of a.refs ?? []) {
             envChanges.push({ scope: "app", scopeId: ids[i]!, environment: env.name, appId: ids[i]!, appName: a.name, key: r.key, op: "add", value: refValueFor({ resourceId: r.serviceId, field: r.field }, servicesOf(scope.apps)), secret: false, target: "runtime" });
           }
         }
-        // The service was created above, so the scope holds it and the reference passes the project check.
         const service = linking ? { id: ids[0]!, kind: linked as "postgres" | "redis" } : undefined;
         if (linking && service) envChanges.push(...(await linkChanges(tx, ctx.ring, scope, env, service, linking)));
         const out = await applyChanges(tx, ctx.ring, scope, { baseVersion: "current", changes: envChanges, redeploy: false, writer: writerOf(actor), authorize: secretGate(actor) });
-        // The links are variable changes like any other: they get the same audit row as an apply.
         if (linking) await auditEnv(tx, actor, project, out.version, out.records.length, req, out.records);
       }
       for (const [i, id] of ids.entries()) {
@@ -465,12 +433,7 @@ export async function createApps(
   }
 }
 
-// ------------------------------------------------------------------ teardown
-
-/**
- * Revokes every live API token limited to this project alone: once the cascade drops its rows it
- * could reach nothing, and a dead token should not linger in the list. Each revocation is audited.
- */
+/** Revokes every live API token limited to this project alone: after the cascade it could reach nothing. */
 export async function revokeTokensLimitedTo(tx: Prisma.TransactionClient, p: { id: string; slug: string }, a: Actor, req: FastifyRequest): Promise<number> {
   const tokens = await tx.apiToken.findMany({
     where: { revokedAt: null, projects: { some: { projectId: p.id } } },
@@ -499,8 +462,6 @@ async function teardown(tx: Prisma.TransactionClient, projectId: string, environ
   return removed;
 }
 
-// ------------------------------------------------------------------ handlers
-
 export const projectsHandlers = {
   "projects.list": async ({ actor, ctx }) => {
     const a = requireActor(actor);
@@ -528,7 +489,6 @@ export const projectsHandlers = {
     if (!base) throw new HttpError(400, "Use letters or digits in the name", "INVALID_SLUG", { field: "name" });
     // "New!" slugifies to "new" too: the reserved check runs on the slug, not only on the name.
     if (isReservedSlug(base)) throw new HttpError(400, "That name is reserved", "RESERVED_SLUG", { field: "name" });
-    // A project is a folder of apps: one environment unless the caller names more.
     const environments = body.environments ?? [P.DEFAULT_ENVIRONMENT];
     const envNames = new Set(environments);
     if (envNames.size !== environments.length) throw new HttpError(400, "Each environment needs its own name", "DUPLICATE_ENVIRONMENT", { field: "environments" });
@@ -539,7 +499,6 @@ export const projectsHandlers = {
       if (!inst) throw new HttpError(400, "That GitHub installation is not connected", "GIT_NOT_FOUND", { field: "git" });
       gitInstallationId = inst.id;
     }
-    // No branch named: the instance's default branch (Settings, Instance).
     const branch = body.defaultBranch ?? (await ctx.db.instance.findUnique({ where: { id: 1 }, select: { defaultBranch: true } }))?.defaultBranch ?? "main";
     // A taken slug gets a suffix for a different name that slugifies alike; the same name would leave
     // two projects nobody can tell apart.
@@ -648,8 +607,6 @@ export const projectsHandlers = {
     return { ids };
   },
 
-  // ---------------------------------------------------------------- env vars
-
   "env.get": async ({ params, actor, ctx }) => {
     const a = requireActor(actor);
     const p = await projectBySlug(ctx, a, params.slug);
@@ -728,7 +685,6 @@ export const projectsHandlers = {
     if (!row) throw notFound("Variable");
     const stored = await readSecretValue(ctx.db, ctx.ring, row.secretId).catch(() => null);
     if (stored === null) throw new HttpError(500, "The value could not be unsealed", "UNREADABLE");
-    // A link reveals what it resolves to now, read from this project's own services only.
     const linked = P.isEnvRefValue(stored);
     const value = await resolveValue(stored, servicesOf(scope.apps), (svc) => openRefTarget(ctx.db, ctx.ring, svc)).catch(planError);
     await audit(ctx.db, {
@@ -786,8 +742,6 @@ export const projectsHandlers = {
     return { version: r.version };
   },
 
-  // ---------------------------------------------------------------- environments
-
   "environments.create": async ({ params, body, actor, ctx, req }) => {
     const a = requireActor(actor);
     const p = await projectBySlug(ctx, a, params.slug);
@@ -806,9 +760,8 @@ export const projectsHandlers = {
             .filter((e) => e.scope === "environment" && e.scopeId === from.id)
             .map((e) => ({ scope: "environment", scopeId: env.id, environment: env.name, key: e.key, op: "add", value: e.value ?? "", secret: e.secret, target: e.target }));
           if (changes.length) {
-            // Hook keys run code before the app starts, so a copy passes the same gate as an edit.
-            // These values exist already, so there is no new one to confirm: a token is refused, and a
-            // session steps up, as for a copied secret.
+            // A copied hook key passes the same gate as an edit. The values exist already, so
+            // there is nothing new to confirm: a token is refused and a session steps up.
             const hooks = dangerousGate(a, dangerousIn(changes), true);
             await applyChanges(tx, ctx.ring, scope, { baseVersion: "current", changes, redeploy: false, writer: writerOf(a), authorize: secretGate(a) });
             await auditHooks(tx, a, p, hooks, req);
@@ -855,11 +808,9 @@ export const projectsHandlers = {
       if (envs.length <= 1) {
         throw new HttpError(409, "A project keeps at least one environment; delete the project instead", "LAST_ENVIRONMENT");
       }
-      // Its apps go the way a deleted app goes (containers, volumes, routes, domains, images and the
-      // network once empty, by the worker's remove_app); refused while one of them deploys.
       const removed = await teardown(tx, p.id, [env.id]);
-      // The previews built from it go with its row (the worker's reconcile removes their containers,
-      // routes, networks and databases, by label). A base that names it moves to one that is left.
+      // Its previews go with its row (the worker's reconcile cleans up by label). A preview base
+      // that names it moves to an environment that is left.
       const left = envs.filter((e) => e.id !== env.id);
       const project = await tx.project.findUniqueOrThrow({ where: { id: p.id }, select: { previewBaseEnv: true } });
       if (project.previewBaseEnv === env.name) {
@@ -876,7 +827,6 @@ export const projectsHandlers = {
   },
 } satisfies Handlers;
 
-/** One row per apply that set a hook key, naming the keys, so the activity log shows who changed how a process starts. */
 async function auditHooks(tx: Prisma.TransactionClient, a: Actor, p: { id: string; slug: string }, keys: string[], req: FastifyRequest): Promise<void> {
   if (!keys.length) return;
   await audit(tx, {

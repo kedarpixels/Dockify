@@ -1,13 +1,6 @@
 /**
- * Backup key escrow. The backup key lives sealed in the control-plane database, so a lost disk or
- * a dropped dockify-db volume would leave every offsite DKBK blob unreadable even to the owner who
- * kept the master key. Every backup run therefore also writes the backup key, sealed under the
- * master key, next to the dumps at the destination.
- *
- * The worker holds no master key: it asks the api for the escrow text
- * of the backup key row (the api seals it with the format in @dockify/crypto escrow.ts, audited)
- * and uploads what comes back after checking it names the key in use. A fresh install with the
- * same master key opens it with openBackupKeyEscrow from @dockify/crypto.
+ * The backup key lives sealed in the control-plane database, so losing that database would leave every offsite
+ * backup unreadable. Each run therefore writes the key next to the dumps, sealed under the master key by the api.
  */
 import { Readable } from "node:stream";
 import { escrowFingerprint } from "@dockify/crypto";
@@ -22,7 +15,6 @@ export function escrowObjectKey(prefix: string, fingerprint: string): string {
   return key;
 }
 
-/** Writes (or rewrites, idempotently) the escrow object for the active backup key. */
 export async function writeBackupKeyEscrow(
   store: ObjectStore, prefix: string, db: Db, vault: SecretVault, keys: { secretId: string; fingerprint: string },
 ): Promise<string> {

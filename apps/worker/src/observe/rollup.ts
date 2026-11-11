@@ -1,8 +1,6 @@
 /**
- * Rollups and retention for metric_samples. raw rows roll into five_min buckets (the 24h chart) and
- * five_min rows into hour buckets (the 7d chart); the 1h chart reads raw. Each pass rolls only whole
- * buckets that have closed, picks up after the newest bucket already written, deletes and rewrites
- * its window in one transaction under an advisory lock, so a rerun or a second worker is harmless. Retention deletes in bounded batches so a first sweep never locks the table.
+ * Each pass rolls only closed buckets and rewrites its window in one transaction under an advisory lock,
+ * so a rerun or a second worker is harmless. Retention deletes in batches so it never locks the table.
  */
 import type { Db } from "@dockify/db";
 import type { ObserveConfig } from "./config.ts";
@@ -79,7 +77,7 @@ export interface MaintenanceResult {
   pruned: number;
 }
 
-/** One rollup plus retention pass. Rollup runs first so retention never drops unrolled raw rows. */
+/** Rollup runs first so retention never drops unrolled raw rows. */
 export async function metricsMaintenance(db: Db, cfg: Pick<ObserveConfig, "retention">, now = Date.now()): Promise<MaintenanceResult> {
   const rolled = (await rollOne(db, "five_min", now)) + (await rollOne(db, "hour", now));
   const r = cfg.retention;

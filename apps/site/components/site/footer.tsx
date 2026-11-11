@@ -3,7 +3,6 @@ import { Corners } from "@/components/ui/rule";
 import { SITE_TAGLINE } from "@/components/seo/config";
 import { FOOTER_NAV } from "@/lib/site";
 
-/** Footer, from the brief (4.11): wordmark and one line, three link columns, the bottom line. */
 export function SiteFooter() {
   return (
     <footer className="st-foot">

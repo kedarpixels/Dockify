@@ -1,8 +1,6 @@
 /**
- * Envelope encryption. A Postgres dump on its own must yield zero usable credentials, so the KEK
- * never lives in the database. Each value gets its own 32-byte DEK, used exactly once, wrapped by the
- * active KEK. AES-256-GCM with 96-bit random nonces; one DEK sees one nonce, so the birthday bound
- * never applies to value encryption.
+ * Envelope encryption: the KEK never lives in the database, so a Postgres dump alone yields no credentials.
+ * Each value gets its own single-use 32-byte DEK (AES-256-GCM, 96-bit random nonce) wrapped by the active KEK.
  */
 import { createCipheriv, createDecipheriv, createHash, createHmac, createSign, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -114,7 +112,6 @@ export interface Sealed {
 }
 
 export interface SealContext {
-  /** Secret row id. */
   id: string;
   /** What the value is, for example `env_var` or `totp`. */
   kind: string;
@@ -196,8 +193,8 @@ export function open(ring: Keyring, ctx: SealContext, sealed: Sealed): string {
 }
 
 /**
- * Re-key under the active KEK with a FRESH DEK. Re-wrapping the old DEK would leave a leaked key plus
- * an old dump able to read every row. This does not rotate the secrets themselves.
+ * Re-keys under the active KEK with a fresh DEK: re-wrapping the old DEK would let a leaked key plus an
+ * old dump read every row. Does not rotate the secrets themselves.
  */
 export function rewrap(ring: Keyring, ctx: SealContext, sealed: Sealed): Sealed {
   if (sealed.kekId === ring.active) return sealed;
@@ -233,9 +230,8 @@ export function internalChannelToken(ring: Keyring, env: NodeJS.ProcessEnv = pro
 }
 
 /**
- * A keyed hash for short secrets (6-digit email codes). A plain SHA-256 of a million possible codes
- * is reversed in a blink from a database dump; keyed by a subkey of the master key, a dump alone
- * says nothing. The label separates uses, and a key rotation simply voids codes in flight.
+ * Keyed hash for short secrets (6-digit email codes): a plain SHA-256 of a million codes is reversed
+ * instantly from a dump. The label separates uses; a key rotation voids codes in flight.
  */
 export function keyedHash(ring: Keyring, label: string, value: string): string {
   const sub = createHmac("sha256", activeKek(ring)).update(`dockify-keyed-hash-v1:${label}`).digest();
@@ -257,13 +253,9 @@ export function newToken(): string {
 }
 
 /**
- * Mail icon links. An email shows a project's or an app's own icon, but the icon routes are
- * session gated and a mail client has no session, so the email carries a signed link instead
- * (/api/icons/mail/<token>). The token names the owner and the icon's version, under an HMAC keyed
- * by a subkey both sides derive from one existing secret: the internal channel token, which the
- * api (serving the link) and the worker (minting it) already share. It carries nothing else,
- * cannot be guessed, and stops working the moment the icon changes, since its version no longer
- * matches the one shown; a key rotation voids every link at once.
+ * Mail clients have no session, so emails carry a signed icon link (/api/icons/mail/<token>) naming the
+ * owner and icon version. The HMAC key derives from the internal channel token the api and worker share;
+ * an icon change or a key rotation voids the link.
  */
 const MAIL_ICON_LABEL = "dockify.mail-icon.v1";
 
@@ -271,13 +263,11 @@ export type MailIconTarget = "app" | "project";
 
 export interface MailIconRef {
   target: MailIconTarget;
-  /** The app or project id (a uuid). */
   id: string;
   /** The icon's version: the first 12 hex characters of its sha256. */
   version: string;
 }
 
-/** The signing key, derived once from the shared secret. */
 export function mailIconKey(secret: string): Buffer {
   if (!secret) throw new CryptoError("The mail icon key needs a secret to derive from", "KEY_MISSING");
   return createHmac("sha256", secret).update(MAIL_ICON_LABEL).digest();

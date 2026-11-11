@@ -2,7 +2,6 @@ import type { IconName } from "@/components/icon";
 import { appTitle, plural } from "@/lib/format";
 import type { AlertApp, AlertChannel, AlertMetric, ControlService } from "@/lib/pages/alerts";
 
-/** The glyph for each kind of rule, in rows, the history and the editor. */
 export const METRIC_ICON: Record<AlertMetric, IconName> = {
   disk: "layers",
   service: "server",
@@ -11,7 +10,6 @@ export const METRIC_ICON: Record<AlertMetric, IconName> = {
   memory: "cpu",
 };
 
-/** The condition's name in the editor's dropdown; a rule's title adds its threshold (ruleTitle). */
 export const METRIC_NAME: Record<AlertMetric, string> = {
   disk: "Disk usage above",
   service: "Control-plane service down",
@@ -20,7 +18,6 @@ export const METRIC_NAME: Record<AlertMetric, string> = {
   memory: "Memory above",
 };
 
-/** What the editor says under each condition. */
 export const METRIC_HINT: Record<AlertMetric, string> = {
   disk: "Percent of the server disk in use.",
   service: "The API, worker, proxy or database of Dockify itself stops answering.",
@@ -38,7 +35,6 @@ export const SERVICE_NAME: Record<ControlService, string> = {
   database: "Postgres",
 };
 
-/** Email and the bell; each webhook carries its own name and mark (components/.../webhook-mark.tsx). */
 export const CHANNEL_NAME: Record<AlertChannel, string> = { email: "Email", bell: "In-app bell" };
 export const CHANNEL_ICON: Record<AlertChannel, IconName> = { email: "mail", bell: "bell" };
 
@@ -54,10 +50,7 @@ interface RuleLike {
   durationMin: number;
 }
 
-/**
- * The rule's title, the editor's condition name plus its threshold, the same in the rule rows and
- * the history: "Disk usage above 85%", "Crash loop", "Worker down".
- */
+/** The same in the rule rows and the history: "Disk usage above 85%", "Crash loop". */
 export function ruleTitle(r: RuleLike): string {
   switch (r.metric) {
     case "disk":

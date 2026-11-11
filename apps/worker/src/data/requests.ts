@@ -1,8 +1,6 @@
 /**
- * The only way a backup or restore gets queued. A Backup row and its job are created in one
- * transaction under a per-app advisory lock, so two requests for the same app collapse into one run
- * instead of two dumps fighting over the database. Shared by the api (manual, restore buttons), the
- * scheduler (cron) and the deploy and update paths (pre-deploy, pre-update).
+ * The only way a backup or restore gets queued. The row and its job are created in one transaction under a
+ * per-app advisory lock, so two requests for the same app collapse into one run.
  */
 import { defaultServerId, type BackupKind, type BackupTrigger, type Db, type Prisma, type Tx } from "@dockify/db";
 import { loadTiers, primaryTier, tierDestinationId, type Tier } from "./tiers.ts";
@@ -38,11 +36,7 @@ export interface AppSnapshot {
 
 export const STALE_RUN_ERROR = "The worker stopped before this backup finished";
 
-/**
- * Why a backup row that will never finish failed: the last error its own attempts recorded, else
- * the last error of the job that ran it, else that the worker stopped. A sweep never writes a
- * vaguer reason over a real one.
- */
+/** The row's own last error, else its job's, else that the worker stopped: never a vaguer reason over a real one. */
 export function staleReason(rowError: string | null | undefined, jobError: string | null | undefined): string {
   if (rowError?.trim()) return rowError.slice(0, 2_000);
   if (jobError?.trim()) return jobError.slice(0, 2_000);
@@ -52,29 +46,20 @@ export function staleReason(rowError: string | null | undefined, jobError: strin
 const lock = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
 
 export interface BackupRequest {
-  /** The first copy; `backupIds` lists every copy this one run writes. */
   backupId: string;
   backupIds: string[];
   jobId: string;
   existing: boolean;
 }
 
-/** What a backup job runs: one dump, written to the first row's destination and to each copy's. */
 export interface BackupJobPayload {
   backupId: string;
   copies?: string[];
 }
 
 /**
- * Queues a backup of one service app. If one is already running for it, that one is returned
- * (existing: true): a pre-deploy dump that finds a scheduled dump in flight reuses it. While a
- * restore of the app is open the answer is 409 BUSY: the restore takes its own pre-restore dump
- * (a running row under the restore job), which must never be mistaken for a crash leftover.
- *
- * With `tiers`, the one dump goes to each tier, one row per tier, so both tiers due at once cost a
- * single dump. A scheduled run that finds another run in flight is BUSY rather than reused: that run
- * may not write to its tier, so the scheduler gives the slot back and fires once it is done.
- * Without `tiers`, one copy goes to `destinationId`, else where the database's schedule points.
+ * Queues a backup, or returns the one already running (existing: true). While a restore of the app is open the
+ * answer is 409 BUSY: its pre-restore dump must never be mistaken for a crash leftover.
  */
 export async function requestBackup(db: Db, appId: string, trigger: BackupTrigger, opts: { destinationId?: string | null; tiers?: readonly Tier[] } = {}): Promise<BackupRequest> {
   return db.$transaction(async (tx) => {
@@ -155,11 +140,7 @@ export async function defaultDestinationId(tx: Tx): Promise<string | null> {
   return d?.id ?? null;
 }
 
-/**
- * Where a backup outside the tiers goes (a pre-update or pre-deploy dump, a manual run an older
- * client asked for): the destination of the tier the schedule's flat fields describe, else the
- * default destination, as before tiers.
- */
+/** Where a backup outside the tiers goes: the schedule's primary tier's destination, else the default one. */
 export async function scheduleDestinationId(tx: Tx, appId: string): Promise<string | null> {
   const tiers = await loadTiers(tx, appId);
   const def = await tx.backupDestination.findFirst({ where: { isDefault: true }, select: { id: true, type: true } });
@@ -176,7 +157,6 @@ export type RestoreMode = "replace" | "new";
 export interface RestorePayload {
   backupId: string;
   mode: RestoreMode;
-  /** The app restored into: the source app for replace, the freshly created app for new. */
   targetAppId: string;
   /** Written by the worker before it stops anything, read by recovery after a crash. */
   quiesced?: string[];
@@ -184,9 +164,8 @@ export interface RestorePayload {
 }
 
 /**
- * Queues a restore. One restore per target app at a time, and never while a backup of it runs.
- * Restores never retry on their own (maxAttempts 1): a half done restore is resolved by recovery
- * and a person, not replayed blind.
+ * Queues a restore: one per target app at a time, and never while a backup of it runs. Restores never
+ * retry (maxAttempts 1): a half done restore is resolved by recovery and a person, not replayed blind.
  */
 export async function requestRestore(db: Db, payload: RestorePayload): Promise<string> {
   return db.$transaction(async (tx) => {

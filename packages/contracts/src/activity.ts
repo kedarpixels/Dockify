@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { ActorKind, ActorRef, AppKind, AppStatus, Cursor, HostSnapshot, Iso, RecentDeployment, Resource, Role, Slug } from "./common.ts";
 
-// ------------------------------------------------------------------ activity
-
 export const ActivityCategory = z.enum(["deploys", "config", "access", "system"]);
 export const ActivityActor = z.object({ id: z.string(), name: z.string(), avatarUrl: z.string().nullable().optional(), kind: ActorKind.optional() });
 export const ActivityEvent = z.object({
@@ -26,8 +24,6 @@ export const ActivityQuery = z.strictObject({
   q: z.string().max(200).optional(),
 });
 export const ActivityPage = z.object({ items: z.array(ActivityEvent), nextCursor: z.string().nullable(), actors: z.array(ActivityActor) });
-
-// ------------------------------------------------------------------ overview
 
 const byKey = <K extends z.ZodEnum>(k: K) => z.record(k, z.number());
 /** One control-plane notice. `id` is stable, so the bell can remember it was read. */
@@ -58,7 +54,6 @@ export const Overview = z.object({
     domains: z.number(),
     deployments: z.object({ total: z.number(), last24h: z.number(), inFlight: z.number() }),
   }),
-  /** The newest few across the install. */
   recentDeployments: z.array(RecentDeployment),
   /** Each app's newest deployment that left the queue, newest first: what a card says, however quiet the app. */
   lastDeployments: z.array(RecentDeployment),
@@ -71,8 +66,6 @@ export const Overview = z.object({
 });
 export type Overview = z.infer<typeof Overview>;
 
-// ------------------------------------------------------------------ deployments
-
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const DeploymentsQuery = z.strictObject({
   cursor: Cursor.optional(),
@@ -82,7 +75,6 @@ export const DeploymentsQuery = z.strictObject({
   /** Half-open created_at window, UTC days (the overview heatmap day panel). */
   from: Day.optional(),
   to: Day.optional(),
-  /** Only builds on this server (dockify) or only deployments that ran on Vercel. */
   provider: z.enum(["dockify", "vercel"]).optional(),
 });
 export const DeploymentStats = z.object({

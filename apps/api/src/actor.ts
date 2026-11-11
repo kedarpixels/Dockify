@@ -6,19 +6,17 @@ import { readCookie, type WebOrigin } from "./cookies.ts";
 import { forbidden, HttpError, stepUpRequired, unauthenticated } from "./errors.ts";
 import { ROLE_RANK, SCOPE_RANK, SCOPE_ROLE, type Policy } from "./policy.ts";
 
-/** The signed-in caller, or a 401. */
 export function requireActor(actor: Actor | null): Actor {
   if (!actor) throw unauthenticated();
   return actor;
 }
 
-/** The caller through a browser session, or a 401: an API token never reaches these. */
+/** 401 for an API token too: session only. */
 export function requireSession(actor: Actor | null): SessionActor {
   if (!actor || actor.kind !== "session") throw unauthenticated();
   return actor;
 }
 
-/** The request facts an audit row keeps. */
 export const meta = (req: FastifyRequest) => ({ ip: req.clientIp, userAgent: req.headers["user-agent"] ?? null });
 
 /** Who did it, as an audit row and a deployment row both spell it. */
@@ -28,7 +26,6 @@ export const actorFields = (a: Actor) => ({
   actorName: a.name,
 });
 
-/** A browser session. */
 export interface SessionActor {
   kind: "session";
   userId: string;
@@ -49,21 +46,19 @@ export interface TokenActor {
   /** Chosen at creation. When false the token reaches only `projectIds`, and no ids means no project. */
   allProjects: boolean;
   projectIds: string[];
-  /** Explicit powers on top of the scope; see TokenGrant. */
   grants: TokenGrant[];
   elevated: false;
 }
 
 export type Actor = SessionActor | TokenActor;
 
-/** What authenticates the worker on the internal routes: the channel token, and optionally a pinned peer list. */
+/** What authenticates the worker on the internal routes. */
 export interface InternalAuth {
   token: string;
   /** Socket peer addresses allowed to call; empty means any peer that knows the token. */
   peers: string[];
 }
 
-/** Session lifetimes: idle at most 24 h, absolute at most 30 days. */
 export const SESSION_IDLE_MS = 24 * 3600_000;
 export const SESSION_ABSOLUTE_MS = 30 * 24 * 3600_000;
 export const ELEVATION_MS = 5 * 60_000;
@@ -80,9 +75,8 @@ export const roleAtLeast = (have: Role, need: Role): boolean => roleRank(have) >
 export const scopeAtLeast = (have: TokenScope, need: TokenScope): boolean => scopeRank(have) >= scopeRank(need) && scopeRank(have) >= 0;
 
 /**
- * Whether this caller may read a command's text: an app's build, start and release commands and a
- * scheduled job's. They can hold a token someone pasted inline, so a Viewer and a read token (which
- * acts as a Viewer) get them blank.
+ * Command text (build, start, release, job commands) can hold a token someone pasted inline,
+ * so a Viewer and a read token get it blank.
  */
 export const readsCommands = (a: Actor): boolean => roleAtLeast(a.role, "admin");
 
@@ -95,7 +89,7 @@ export function readBearer(req: FastifyRequest): string | null {
   return m?.[1] ?? null;
 }
 
-/** Resolves the browser session in the cookie, or null. Refreshes idle expiry at most every 5 min. */
+/** Refreshes idle expiry at most every 5 minutes, to keep reads from writing the row each time. */
 export async function sessionFromCookie(db: Db, req: FastifyRequest, web: WebOrigin, now = new Date()): Promise<SessionActor | null> {
   const token = readCookie(req, web, "session");
   if (!token) return null;
@@ -145,7 +139,6 @@ async function tokenActor(db: Db, raw: string, now: Date): Promise<TokenActor> {
 /** The peer address as the compose network names it (IPv4-mapped form stripped). */
 export const peerAddress = (remote: string | undefined): string => (remote ?? "").replace(/^::ffff:/i, "");
 
-/** Internal routes: the bearer must equal the channel token, and the peer must be a listed one. */
 export function checkInternal(req: FastifyRequest, internal: InternalAuth | undefined): void {
   const bearer = readBearer(req);
   if (!internal || !bearer || !safeEqual(bearer, internal.token)) throw unauthenticated("Internal routes need the channel token");
@@ -153,9 +146,8 @@ export function checkInternal(req: FastifyRequest, internal: InternalAuth | unde
 }
 
 /**
- * Applies a route's policy to a request: resolves the caller and checks access, role and scope.
- * Returns null only for anonymous routes. A present bearer selects the token path outright: an
- * invalid one is a 401, never a silent fall back to the cookie.
+ * Applies a route's policy; null when the route has no actor (anonymous, internal). A present bearer
+ * selects the token path outright: an invalid one is a 401, never a silent fall back to the cookie.
  */
 export async function enforce(db: Db, req: FastifyRequest, web: WebOrigin, policy: Policy, now = new Date(), internal?: InternalAuth): Promise<Actor | null> {
   if (policy.access === "anonymous") return null;
@@ -201,9 +193,8 @@ export function assertProjectScope(actor: Actor, projectId: string): void {
 }
 
 /**
- * Tokens limited to only this project. Deleting the project cascades their rows away, which
- * leaves them able to reach nothing (never everything: `allProjects` is a column, not an empty
- * list). They are revoked with the project so the token list does not keep dead entries.
+ * Tokens limited to only this project, to revoke with it. The cascade alone would leave them reaching
+ * nothing (never everything: `allProjects` is a column, not an empty list), as dead entries in the list.
  */
 export function tokensLimitedOnlyTo(tokens: Array<{ id: string; allProjects: boolean; projects: Array<{ projectId: string }> }>, projectId: string): string[] {
   return tokens

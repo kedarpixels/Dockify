@@ -19,9 +19,7 @@ import { TabCard, TabFailed } from "./states";
 import { useAppTab } from "./use-tab";
 import { notRunning } from "@/lib/derive";
 
-/* Metrics: CPU, memory, network and restarts over 1h, 24h or 7d, then how close the app sits to
-   each configured limit. One range drives all four charts. Each metric is a KpiCell (the KPI
-   strip's ruled cell) with its chart and its averages under the figures. */
+/* One range drives all four charts. */
 
 const RANGES: Array<{ value: MetricRange; label: string }> = [
   { value: "1h", label: "1h" },
@@ -49,7 +47,6 @@ interface Series {
   foot: (values: number[]) => [string, string];
 }
 
-/** The four cells, in order, for the skeleton too. */
 const CELLS: Array<{ key: string; name: string; icon: IconName }> = [
   { key: "cpu", name: "CPU", icon: "cpu" },
   { key: "memory", name: "Memory", icon: "layers" },
@@ -123,7 +120,6 @@ function seriesOf(m: AppMetrics, range: MetricRange): Series[] {
   return series;
 }
 
-/** One metric: the KPI cell's head and figure (a tone dot when it runs hot), then its chart and foot. */
 function MetricCell({ s, m, range, now, local, delay }: { s: Series; m: AppMetrics; range: MetricRange; now: number; local: boolean; delay: number }) {
   const time = useTimeFormat();
   const values = m.points.map(s.pick);
@@ -149,7 +145,6 @@ function MetricCell({ s, m, range, now, local, delay }: { s: Series; m: AppMetri
   );
 }
 
-/** The four cells at their loaded size: real labels, bars for the figures, the chart and the foot. */
 function CellSkeleton({ c }: { c: (typeof CELLS)[number] }) {
   return (
     <KpiCell cell={{ icon: c.icon, label: c.name, value: <Skel w={96} h={28} />, lead: <Skel w={120} /> }}>
@@ -164,7 +159,6 @@ function CellSkeleton({ c }: { c: (typeof CELLS)[number] }) {
   );
 }
 
-/** How close the app runs to each limit: one row per limit with a meter and its reading. */
 function Limits({ m, onSettings }: { m: AppMetrics; onSettings: () => void }) {
   const can = useCan();
   const now = m.current!;
@@ -185,7 +179,6 @@ function Limits({ m, onSettings }: { m: AppMetrics; onSettings: () => void }) {
       title="Limit usage"
       sub="Right now, against the limits this app runs with"
       actions={
-        // A labelled write key is not rendered for a Viewer.
         can.manage ? (
           <button type="button" className="btn btn-sm" onClick={onSettings}>
             Change limits

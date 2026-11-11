@@ -5,14 +5,8 @@ import { INSTALL_CMD } from "@/lib/site";
 import { Handles, HatchDefs, Ico, IconBox } from "./il";
 import { along, type Frame, grow, lengthOf, lin, p, type Pt, useScene, useSvgId, win } from "./scene";
 
-/* The hero, in the line language of the feature drawings. One pass tells the whole product: the
-   install command runs, the server comes up, projects are deployed, built, checked and go live
-   behind the edge, then the night's backup leaves for the bucket. It plays once and holds; only the
-   traffic into the live projects keeps flowing.
-
-   Two layouts of one story: WIDE (520 by 548, four projects, the command on top) from a 520px art
-   column up, and NARROW (320 by 349, two projects, larger labels) on phones, where the command line
-   sits right above the drawing in the page itself. landing.css shows one or the other. */
+/* Two layouts of one story: WIDE (520 by 548, four projects, the command on top) from a 520px art column up,
+   and NARROW (320 by 349, two projects) on phones. landing.css shows one or the other. It plays once and holds. */
 
 type Rect = { x: number; y: number; w: number; h: number };
 

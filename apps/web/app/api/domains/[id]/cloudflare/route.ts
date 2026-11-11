@@ -6,10 +6,7 @@ import { isPreviewMode } from "@/lib/preview-mode";
 
 const CF_ID = /^[0-9a-f]{32}$/;
 
-/**
- * POST /api/domains/:id/cloudflare: creates the record this domain needs, on an explicit press.
- * `replace` is the go-ahead to remove exactly those records first. Elevated on the API.
- */
+/** Creates the record this domain needs. `replace` is the go-ahead to remove exactly those records first. Elevated on the API. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const refused = guardWrite(request);
   if (refused) return refused;

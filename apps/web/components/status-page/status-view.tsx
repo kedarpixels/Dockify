@@ -20,7 +20,6 @@ const TONE = { operational: "ok", degraded: "warn", outage: "bad" } as const;
 /** "API and Website", "API, Database and Website". */
 const names = (list: string[]) => (list.length < 2 ? (list[0] ?? "") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`);
 
-/** One sentence under the headline that names what is affected. */
 function leadLine(data: PublicStatus) {
   const total = data.components.length;
   if (!total) return "No components are published yet.";
@@ -61,7 +60,6 @@ function ComponentRow({ c, now }: { c: StatusComponent; now: number }) {
   );
 }
 
-/** The public status page of one project: head, overall state, components, incidents. */
 export function StatusView({ data }: { data: PublicStatus }) {
   const now = Date.parse(data.updatedAt);
   const tone = TONE[data.state];

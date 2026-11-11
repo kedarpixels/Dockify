@@ -21,7 +21,7 @@ export interface SelectOption<T extends string> {
   disabled?: boolean;
 }
 
-/** The options whose label or value holds `q`, already trimmed and lowercased. */
+/** `q` must already be trimmed and lowercased. */
 const matching = <T extends string>(options: SelectOption<T>[], q: string) =>
   q ? options.filter((o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)) : options;
 
@@ -34,30 +34,8 @@ const CAP = 280;
 const FILTER = 41;
 const FILTER_MIN_W = 280;
 
-/**
- * The one dropdown: a 36px field-style trigger and a flat list in a layer of its own. Enter, Space
- * or the arrows open; arrows wrap, Home and End jump, typing finds the first match (also on the
- * closed trigger), Enter picks, Esc or an outside click closes. `search` puts a filter field over a
- * long list (time zones): typing filters, the arrows and Enter still drive it, and Esc clears the
- * filter before it closes.
- *
- * The open list is portaled to the body and fixed to the viewport, so no scroll box or dialog edge
- * ever clips it. It opens under the trigger and flips above only when it does not fit below and
- * there is more room above, then shortens to the room it has. It is as wide as its trigger (a
- * narrow trigger lets it grow to its longest option). Inside a dialog it joins the modal layer
- * stack while open, so the dialog leaves focus, Tab and the first Esc to it.
- *
- * The trigger is named by its label and then its value ("Filter by project, All projects"), so the
- * choice is heard and can be spoken to. Inside a Field pass `ids`: the visible label names it and
- * the hint or error is read with it.
- *
- *   <Field label="Condition" hint="Percent of the server disk in use.">
- *     {(ids) => <Select ids={ids} label="Condition" value={v} options={opts} onChange={setV} />}
- *   </Field>
- *
- * Every printable key the trigger or the list reads (type-ahead) is used up there, so a page
- * shortcut such as D for the theme never fires as well.
- */
+// The open list is portaled to the body, so no scroll box or dialog edge clips it. Every printable
+// key the trigger or the list reads is used up there, so a page shortcut never fires as well.
 export function Select<T extends string>({
   value,
   options,
@@ -87,7 +65,6 @@ export function Select<T extends string>({
   className?: string;
   disabled?: boolean;
   id?: string;
-  /** From a Field: the trigger's id, its visible label, its hint or error, and the invalid flag. */
   ids?: FieldIds;
   /** Placeholder of a filter field at the top of the open list. */
   search?: string;
@@ -217,9 +194,8 @@ export function Select<T extends string>({
     if (open && search) place.current?.(true);
   }, [open, search, query]);
 
-  // Focus the list so keys land on it, and keep the active row in view by scrolling the list
-  // only (scrollIntoView would also scroll the page). Pointer hover moves the highlight but never
-  // scrolls: only opening and keyboard moves bring a row into view.
+  // The active row is kept in view by scrolling the list only (scrollIntoView would also scroll the
+  // page). Pointer hover moves the highlight but never scrolls.
   const byPointer = useRef(false);
   useEffect(() => {
     if (!open || !list.current) return;
@@ -282,7 +258,6 @@ export function Select<T extends string>({
       const o = shown[active];
       if (o) pick(o);
     } else if (search) {
-      // Letters go to the filter field.
     } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       const hit = typeAhead(e.key, e.timeStamp);

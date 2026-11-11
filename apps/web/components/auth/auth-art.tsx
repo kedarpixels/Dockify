@@ -1,10 +1,5 @@
-/*
- * The sign-in art: the Dockify whale drawn in deploy-heatmap cells, rounded squares in the heat
- * levels of the Overview year grid, so the brand reads as a year of deploys. The levels come from
- * public/dockify-mark.svg sampled on a 39 by 29 grid (cell coverage: solid inside, lighter steps
- * along the edge for a clean silhouette), cropped to the lit cells. Each digit is a heat level, 0
- * empty. Plain SVG at its native size, colours from the theme tokens, so it is crisp in both themes.
- */
+// The levels come from public/dockify-mark.svg sampled on a 39 by 29 grid, cropped to the lit
+// cells. Each digit is a heat level, 0 empty.
 
 const ROWS = [
   "00020000000000000000000000000000000",
@@ -40,11 +35,7 @@ const STEP = 9;
 const WIDTH = ROWS[0]!.length * STEP - (STEP - CELL);
 const HEIGHT = ROWS.length * STEP - (STEP - CELL);
 
-/**
- * The full-bleed panel at the right of the sign-in card: a quiet surface in the theme, the whale in
- * 446 lit cells that pop in left to right like the Overview grid, and one line about the product
- * at the foot, hung from the whale's left edge. Decorative, so hidden from assistive tech.
- */
+/** Decorative, so hidden from assistive tech. */
 export function AuthArt() {
   return (
     <div className="auth-art" aria-hidden="true" style={{ "--art-w": `${WIDTH}px`, "--art-h": `${HEIGHT}px` } as React.CSSProperties}>

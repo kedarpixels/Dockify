@@ -1,19 +1,6 @@
 /**
- * The disk breakdown on the Server page, and the Prune button behind it, on the worker side.
- *
- * Docker is read through the socket proxy (GET /system/df, images and volumes only) and the build
- * cache through buildctl: builds run in Dockify's own rootless BuildKit, never in Docker's builder,
- * so Docker's build cache list would always be empty. A timer samples every few minutes into
- * Instance.hostDisk, and the prune job samples again right after it removes anything, so the page
- * shows the freed space at once.
- *
- * What a prune may remove follows the janitor's retention rules exactly (loadRetention). An image
- * that the current, an in-flight or one of the last N ready deployments of an app points at is a
- * rollback target and stays. So does any image a container was created from, any image younger
- * than the janitor's one hour guard, and any image Dockify did not build or pull for a deployment,
- * which keeps the control plane's own images out of reach. Volumes are never removed here. Logs
- * are not measured at all: Docker's log files live on the host, where the worker cannot see them,
- * so the page gets no logs slice rather than a guess.
+ * The Server page's disk breakdown and Prune button. The build cache is read through buildctl: builds run in
+ * Dockify's own BuildKit, so Docker's cache list is always empty. A prune follows the janitor's retention rules.
  */
 import type { Db, Prisma } from "@dockify/db";
 import { PermanentJobError, stderrLog } from "../errors.ts";
@@ -26,7 +13,6 @@ import type { Builder } from "../server/runtime.ts";
 
 export type DiskSliceId = "images" | "buildCache" | "volumes";
 
-/** One slice as Instance.hostDisk stores it and the api's server.get serves it. */
 export interface DiskSlice {
   id: DiskSliceId;
   bytes: number;
@@ -34,25 +20,18 @@ export interface DiskSlice {
   count: number;
 }
 
-/** The order the page lists the slices in. */
 const ORDER: readonly DiskSliceId[] = ["images", "buildCache", "volumes"];
 
 /** How often the timer samples. A sample walks every volume, so it is not something to run often. */
 export const SAMPLE_EVERY_MS = 5 * 60_000;
-/** The first sample waits a little after boot, while Docker and BuildKit are busy starting things. */
 const FIRST_SAMPLE_MS = 30_000;
 /** Docker sizes each volume by walking its files, which can take minutes on a large host. */
 const DF_TIMEOUT_MS = 3 * 60_000;
-/** buildctl du reads BuildKit's own records, so it answers fast or not at all. */
 const DU_TIMEOUT_MS = 60_000;
-/** The same ceiling the janitor gives its own buildctl prune. */
 const PRUNE_TIMEOUT_MS = 10 * 60_000;
 
 const bytes = (n: unknown): number => (typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.round(n) : 0);
 
-// ------------------------------------------------------------------ BuildKit
-
-/** A BuildKit cache record, as buildctl prints client.UsageInfo with --format '{{json .}}'. */
 export interface CacheRecord {
   id: string;
   inUse: boolean;
@@ -97,7 +76,6 @@ export function parseCacheUsage(text: string): CacheRecord[] {
   return v.map(toRecord);
 }
 
-/** Reads `buildctl prune --format '{{json .}}'`: one JSON record per line for each record it removed. */
 export function parsePrunedRecords(text: string): CacheRecord[] {
   return text
     .split("\n")
@@ -109,13 +87,8 @@ export function parsePrunedRecords(text: string): CacheRecord[] {
 /** buildctl prune leaves these record types alone unless it is told --all, which this module never does. */
 const KEPT_RECORD_TYPES = new Set(["internal", "frontend"]);
 
-/**
- * Whether buildctl prune, run the way the prune job runs it, removes this record: nothing uses it,
- * it is not shared with an image store, and it is neither an internal nor a frontend record.
- */
 export const isPrunableRecord = (r: CacheRecord): boolean => !r.inUse && !r.shared && !KEPT_RECORD_TYPES.has(r.recordType);
 
-/** The cache's size and record count, and what a prune would free of it. */
 export function buildCacheSlice(records: readonly CacheRecord[]): DiskSlice {
   let total = 0;
   let spare = 0;
@@ -126,19 +99,13 @@ export function buildCacheSlice(records: readonly CacheRecord[]): DiskSlice {
   return { id: "buildCache", bytes: total, reclaimableBytes: spare, count: records.length };
 }
 
-// ------------------------------------------------------------------ images and volumes
-
-/** What the retention rules keep, and what Dockify built or pulled. */
 export interface Ownership {
-  /** Images a rollback, a live app or preview, or a deploy in flight needs. */
   keep: ReadonlySet<string>;
-  /** Images deployment rows point at: everything Dockify built or pulled for an app. */
   referenced: ReadonlySet<string>;
 }
 
 export const ownershipOf = (r: LoadedRetention): Ownership => ({ keep: r.plan.keepImages, referenced: r.referenced });
 
-/** The repository of a tag ("ghcr.io/org/app:1" is "ghcr.io/org/app"), keeping a registry port. */
 const repoOfTag = (tag: string): string => {
   const colon = tag.lastIndexOf(":");
   return colon > tag.lastIndexOf("/") ? tag.slice(0, colon) : tag;
@@ -146,11 +113,7 @@ const repoOfTag = (tag: string): string => {
 const repoOfDigest = (ref: string): string => ref.split("@")[0] ?? ref;
 const realRefs = (refs: readonly string[] | null | undefined, placeholder: string) => (refs ?? []).filter((r) => r && r !== placeholder);
 
-/**
- * Whether Docker removes this image by id without force, which the prune never uses: it refuses
- * while two tags name the image, or while its references span more than one repository. Counting
- * such an image as reclaimable would promise bytes a prune can never free.
- */
+/** Docker will not remove by id an image with two tags or repositories; counting it would promise bytes no prune frees. */
 export function deletableById(img: DiskUsageImage): boolean {
   const tags = realRefs(img.RepoTags, "<none>:<none>");
   if (tags.length > 1) return false;
@@ -159,12 +122,8 @@ export function deletableById(img: DiskUsageImage): boolean {
 }
 
 /**
- * Pure: the images a prune may remove. An image qualifies only when Dockify made it (built with
- * the dockify.managed label, or built or pulled for a deployment), the retention rules do not keep
- * it, Docker counted no container created from it, no other image is built on it, Docker would
- * remove it by id without force, and it is older than the janitor's one hour guard. Everything
- * else on the host stays. That includes the control plane's images, among them a release pinned
- * by digest, which has no tag and so looks dangling to Docker.
+ * Pure: the images a prune may remove: made by Dockify, not kept by retention, unused, and older than the
+ * janitor's guard. The control plane's stay: a release pinned by digest has no tag and looks dangling to Docker.
  */
 export function removableImages(images: readonly DiskUsageImage[], own: Ownership, nowMs: number): DiskUsageImage[] {
   const out: DiskUsageImage[] = [];
@@ -193,7 +152,6 @@ export function removableImages(images: readonly DiskUsageImage[], own: Ownershi
  */
 export const uniqueBytes = (img: DiskUsageImage): number => (img.SharedSize >= 0 ? bytes(img.Size - img.SharedSize) : 0);
 
-/** Every image on the host, each shared layer counted once, and what removing the removable ones frees. */
 export function imagesSlice(df: DiskUsage, removable: readonly DiskUsageImage[]): DiskSlice {
   const images = df.Images ?? [];
   // Docker always sends LayersSize with images. Without it, each image's own bytes plus the largest
@@ -206,25 +164,17 @@ export function imagesSlice(df: DiskUsage, removable: readonly DiskUsageImage[])
   return { id: "images", bytes: total, reclaimableBytes: Math.min(total, spare), count: images.length };
 }
 
-/**
- * The compose volume rootless BuildKit keeps its state in (deploy/docker-compose.yml). Its bytes
- * are the build cache slice already, so counting the volume under Volumes too would draw the same
- * bytes twice in the page's stacked bar.
- */
+/** BuildKit's state volume: its bytes are the build cache slice already, so it is not counted under Volumes too. */
 const BUILDKIT_VOLUME = "dockify-buildkit";
 
 export const isBuildkitVolume = (v: DiskUsageVolume): boolean =>
   v.Labels?.["com.docker.compose.volume"] === BUILDKIT_VOLUME || v.Name === BUILDKIT_VOLUME || v.Name.endsWith(`_${BUILDKIT_VOLUME}`);
 
-/** Every other volume's size and count. A volume holds data, so none of it is ever reclaimable here. */
 export function volumesSlice(df: DiskUsage): DiskSlice {
   const vols = (df.Volumes ?? []).filter((v) => !isBuildkitVolume(v));
   return { id: "volumes", bytes: vols.reduce((n, v) => n + bytes(v.UsageData?.Size), 0), reclaimableBytes: 0, count: vols.length };
 }
 
-// ------------------------------------------------------------------ sampling
-
-/** The two Docker calls this module makes. DockerClient has both. */
 export interface DiskDocker {
   diskUsage(types: readonly DiskUsageType[], signal?: AbortSignal): Promise<DiskUsage>;
   removeImage(id: string): Promise<void>;
@@ -242,7 +192,6 @@ export interface DiskDeps {
 
 const logOf = (deps: DiskDeps) => deps.log ?? stderrLog;
 
-/** The slices last written, so a source that fails this time keeps its last reading. Malformed rows are dropped. */
 export function storedSlices(raw: unknown): DiskSlice[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
@@ -257,7 +206,6 @@ export function storedSlices(raw: unknown): DiskSlice[] {
 
 export interface Sample {
   slices: DiskSlice[];
-  /** The slices read this time. The others were carried over from the stored sample. */
   fresh: ReadonlySet<DiskSliceId>;
 }
 
@@ -326,11 +274,7 @@ export interface SamplerTimes {
   everyMs: number;
 }
 
-/**
- * Samples on a timer, one pass at a time: a slow pass makes the next tick skip, rather than start a
- * second walk of the same volumes. It runs beside the job lanes, so it never holds up a deploy.
- * stop() waits for the pass in flight.
- */
+/** One pass at a time: a slow pass makes the next tick skip. stop() waits for the pass in flight. */
 export function startDiskSampler(deps: DiskDeps, times: SamplerTimes = { firstMs: FIRST_SAMPLE_MS, everyMs: SAMPLE_EVERY_MS }): { stop(): Promise<void> } {
   let running: Promise<void> | null = null;
   const tick = (): void => {
@@ -357,16 +301,10 @@ export function startDiskSampler(deps: DiskDeps, times: SamplerTimes = { firstMs
   };
 }
 
-// ------------------------------------------------------------------ prune
-
 export const PRUNE_TARGETS = ["images", "buildCache", "logs"] as const;
 export type PruneTarget = (typeof PRUNE_TARGETS)[number];
 
-/**
- * The targets a prune job names, in a fixed order. A job that names nothing, or anything else
- * (volumes above all), fails before it touches the disk: the api never queues one like that, so
- * such a payload is a bug or a forgery.
- */
+/** A job that names nothing, or anything else (volumes above all), fails before it touches the disk: a bug or a forgery. */
 export function parsePruneTargets(payload: unknown): PruneTarget[] {
   const raw = payload && typeof payload === "object" ? (payload as { targets?: unknown }).targets : undefined;
   if (!Array.isArray(raw) || !raw.length) throw new PermanentJobError("A prune must name what to remove");
@@ -382,10 +320,6 @@ export interface PruneReport {
   cacheRecordsRemoved: number;
 }
 
-/**
- * The prune job. It removes exactly what the payload names, samples the disk again, and leaves its
- * report on its own job row, where the api's server.prune request is waiting for it.
- */
 export async function runPrune(deps: DiskDeps, job: { id: string; payload: unknown }): Promise<PruneReport> {
   const targets = parsePruneTargets(job.payload);
   const now = deps.now?.() ?? new Date();

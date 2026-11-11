@@ -35,7 +35,6 @@ export const APP_TONE: Record<AppStatus, Tone> = {
   unknown: "warn",
 };
 
-/** What an app's status chip says, on every page. */
 export const APP_STATUS_LABEL: Record<AppStatus, string> = {
   running: "Running",
   deploying: "Deploying",
@@ -52,14 +51,10 @@ export const APP_STATUS_LABEL: Record<AppStatus, string> = {
 const NOT_RUNNING: ReadonlySet<AppStatus> = new Set<AppStatus>(["stopped", "exited", "missing", "failed", "unknown"]);
 export const notRunning = (status: AppStatus): boolean => NOT_RUNNING.has(status);
 
-/** What a project's state chip says for its tone (projectTone); a project with no apps says NO_APPS. */
 export const PROJECT_STATE_LABEL: Record<Tone, string> = { bad: "Degraded", live: "Deploying", pending: "Queued", warn: "Partial", ok: "Healthy", idle: "Not deployed" };
 export const NO_APPS = "No apps yet";
 
-/**
- * A project's state is its worst app's: anything broken, then a deploy in flight, then a stopped or
- * undeployed app. A project with nothing deployed yet has nothing wrong with it.
- */
+/** A project's state is its worst app's: broken, then deploying, then stopped or undeployed. */
 export function projectTone(statuses: ReadonlySet<AppStatus>): Tone {
   if (statuses.size === 1 && statuses.has("unknown")) return "idle";
   if ([...statuses].some((s) => APP_TONE[s] === "bad")) return "bad";
@@ -136,11 +131,8 @@ function weekly(trend: Overview["deployTrend"], weeks: number) {
 
 type Delta = NonNullable<Kpi["delta"]>;
 
-/**
- * A KPI's change: whole-number percent change from `then` to `now`, or "Same" when it rounds to
- * zero. With no earlier value, or an earlier zero that makes a percentage meaningless, there is no
- * delta, except zero to zero, which is "Same". `upIs` names the tone a rise earns.
- */
+/** Whole percent change from `then` to `now`; "Same" when it rounds to zero or both are zero.
+ * No delta without an earlier value or from an earlier zero. `upIs` names the tone a rise earns. */
 export function kpiDelta(now: number, then: number | null | undefined, upIs: "ok" | "bad", hint: string): Delta | undefined {
   if (then === undefined || then === null) return undefined;
   if (then === 0) return now === 0 ? { text: "Same", dir: "flat", tone: "idle", hint } : undefined;
@@ -150,12 +142,8 @@ export function kpiDelta(now: number, then: number | null | undefined, upIs: "ok
   return { text: `${Math.abs(change)}%`, dir: up ? "up" : "down", tone: up === (upIs === "ok") ? "ok" : "bad", hint };
 }
 
-/**
- * Yesterday's deploys up to this time of day, so a morning is never measured against all of
- * yesterday. The last 24 hours hold today plus the part of yesterday after this time, so the rest
- * of yesterday is what came before it. Undefined when the counts do not add up (a snapshot from
- * the other side of midnight, a day missing from the trend): no comparison beats a made-up one.
- */
+/** Yesterday's deploys up to this time of day, so a morning is not measured against a whole day.
+ * Undefined when the counts do not add up: no comparison beats a made-up one. */
 function sameTimeYesterday(yesterday: number | undefined, last24h: number, today: number): number | undefined {
   if (yesterday === undefined) return undefined;
   const before = yesterday - (last24h - today);
@@ -164,9 +152,8 @@ function sameTimeYesterday(yesterday: number | undefined, last24h: number, today
 
 export function deriveKpis(o: Overview, todayIso: string): Kpi[] {
   const trend = o.deployTrend;
-  // The trend runs to 31 Dec, so anchor the recent windows on today's position in it, not the array
-  // end. When today is missing (a stale snapshot over New Year, a client clock behind the server),
-  // anchor on the last day before it and report today as 0 with no comparison.
+  // The trend runs to 31 Dec, so the recent windows anchor on today's row, not the array end.
+  // When today is missing (stale snapshot, client clock behind), anchor on the last day before it.
   let ti = trend.findIndex((d) => d.date === todayIso);
   const todayKnown = ti >= 0;
   if (!todayKnown) ti = trend.findLastIndex((d) => d.date < todayIso);
@@ -267,7 +254,6 @@ const lastDay = (d: RecentDeployment, now: number) => now - settledAt(d) < DAY_M
 
 const shortCommit = (d: RecentDeployment) => d.commit?.slice(0, 7) ?? "manual";
 
-/** The bell's line for an app status that needs attention: the title after the app's name, and why. */
 const STATUS_PROBLEM: Partial<Record<AppStatus, { title: string; detail: string }>> = {
   degraded: { title: "degraded", detail: "failing health checks" },
   restarting: { title: "restarting", detail: "its container keeps crashing" },
@@ -278,10 +264,7 @@ const STATUS_PROBLEM: Partial<Record<AppStatus, { title: string; detail: string 
   unknown: { title: "not deployed", detail: "nothing is running" },
 };
 
-/**
- * Live problems: every app the Healthy apps KPI says needs attention (STATUS_PROBLEM), and apps
- * whose latest deploy failed in the last day.
- */
+/** Live problems: apps in a STATUS_PROBLEM state, and apps whose latest deploy failed in the last day. */
 function deriveProblems(o: Overview, now: number): Notice[] {
   const out: Notice[] = [];
   // A state notice is keyed by app and state, so degraded then stopped are two notices. The bell
@@ -313,10 +296,7 @@ function deriveProblems(o: Overview, now: number): Notice[] {
   return out;
 }
 
-/**
- * The bell: live problems first, then up to 8 deploy results from the last day not already listed.
- * Dockify's own notices join whichever group they belong to and take their place by time.
- */
+/** The bell: live problems first, then up to 8 deploy results from the last day not already listed. */
 export function deriveNotices(o: Overview, now: number): Notice[] {
   const problems = deriveProblems(o, now);
   const shown = new Set(problems.map((p) => p.id));
@@ -337,12 +317,8 @@ export function deriveNotices(o: Overview, now: number): Notice[] {
 
 const SYSTEM_TONE = { info: "idle", ok: "ok", bad: "bad" } as const;
 
-/**
- * Dockify's own events from the overview. A failed or rolled back update, and a pending security
- * release (the bad toned notices), stay listed as problems until the API drops them; an available
- * release or a finished update reads once seen. Only console paths are kept as links, so a notice
- * can never point off the dashboard.
- */
+/** Dockify's own events. Bad-toned ones stay as problems until the API drops them.
+ * Only console paths are kept as links, so a notice can never point off the dashboard. */
 function system(o: Overview): Notice[] {
   return (o.system ?? []).map((n) => ({
     id: `sys:${n.id}`,
@@ -358,7 +334,6 @@ function system(o: Overview): Notice[] {
 /** Apps that are up: running, or swapping in a new build. */
 export const upCount = (apps: Array<{ status: string }>) => apps.filter((a) => a.status === "running" || a.status === "deploying").length;
 
-/** Everything the console frame needs from one overview snapshot. */
 export function buildShell(data: Overview | null) {
   const shows = projectsShowingEnvironments(data?.resources ?? []);
   return {

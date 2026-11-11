@@ -8,11 +8,6 @@ import { cx } from "@/components/ui/cx";
 import { Rule } from "@/components/ui/rule";
 import { DocsSearch } from "./search";
 
-/**
- * Docs sidebar: the search in its own ruled row, then the groups, which scroll under it. Every
- * entry is one line. On phones the search stays as a row and the groups fold into a disclosure
- * above the article, its chevron turning when open.
- */
 export function DocsSidebar() {
   const path = usePathname();
   const list = (

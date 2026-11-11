@@ -7,8 +7,7 @@ import { Ico } from "./il";
 import { useInView } from "./motion";
 import { type Frame, grow, lin, mix, p, useScene, useSvgId, win } from "./scene";
 
-/* "Three steps": each step is a small fragment of the real flow, joined by one dashed line that a
-   blue dot crosses once. Each fragment plays once when it comes on screen, then holds for good. */
+/* Each fragment plays once when it comes on screen, then holds for good. */
 
 const ONCE = Infinity;
 const END = 4000;

@@ -1,8 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-/* Docs content: one MDX file per page in content/docs, frontmatter `title` and `description`.
-   Every docs page is prerendered, so these run at build time; each file is read once per process. */
+/* One MDX file per page in content/docs. Pages are prerendered, so each file is read once, at build time. */
 
 const DIR = path.join(process.cwd(), "content", "docs");
 

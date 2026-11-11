@@ -13,10 +13,7 @@ import { intFetch, listing, upsert, type Setter } from "./client";
 import { plural } from "@/lib/format";
 import { useStepUp } from "@/components/step-up/step-up";
 
-/*
- * Container registries: credentials Dockify logs in with before it pulls a private image. One
- * dialog lists them and switches to a form to add or edit one; a remove asks for the host.
- */
+/* Credentials Dockify logs in with before it pulls a private image. */
 
 const KINDS: Record<RegistryKind, { label: string; host: string | null; user: string; token: string }> = {
   ghcr: { label: "GitHub Container Registry", host: "ghcr.io", user: "Your GitHub user or organization.", token: "A classic token with the read:packages scope." },
@@ -105,7 +102,6 @@ function RegistryForm({ editing, onSaved, onBack, preview }: { editing: Registry
 
 export function RegistriesCard({ value, onChange, preview }: { value: Registry[]; onChange: Setter<Registry[]>; preview: boolean }) {
   const { elevate } = useStepUp();
-  // Connect goes straight to the form; once there are registries the list comes first.
   const card = useCrudCard<Registry>(value.length > 0);
 
   const remove = async (reg: Registry) => {

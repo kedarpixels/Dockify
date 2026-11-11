@@ -27,9 +27,8 @@ const bytes = (b: Buffer): Uint8Array<ArrayBuffer> => new Uint8Array(b);
 const scopeOf = (o: SecretOwner) => `${o.ownerType}:${o.ownerId}`;
 
 /**
- * Who can seal and open secret rows. The api holds the master key and uses the keyring directly;
- * the worker holds no key and goes through the api's internal secrets routes,
- * receiving only the plaintext values of the rows it names, each call audited by the api.
+ * The api holds the master key and uses the keyring directly. The worker holds no key: it goes through the
+ * api's internal secrets routes and receives only the plaintext of the rows it names, each call audited.
  */
 export interface SecretVault {
   /** Plaintext by row id. A missing row maps to null; a row that will not open throws. */
@@ -83,11 +82,9 @@ export function keyringVault(ring: Keyring): SecretVault {
 export class RewrapError extends Error {}
 
 /**
- * Re-seals every row an earlier master key sealed under the active key, with a fresh data key each,
- * and returns how many. Call it in a transaction: every row is re-sealed and read back before the
- * first write, so a row that will not open stops the run with nothing written. Writers to the table
- * wait for the commit; readers keep reading the old rows until then. updatedAt stays, since no value
- * changed.
+ * Re-seals every row an earlier master key sealed, with a fresh data key each. Call it in a transaction:
+ * every row is re-sealed and read back before the first write, so a row that will not open stops the run
+ * with nothing written. updatedAt stays, since no value changed.
  */
 export async function rewrapSecretRows(tx: Prisma.TransactionClient, ring: Keyring): Promise<number> {
   await tx.$executeRaw`LOCK TABLE secrets IN SHARE ROW EXCLUSIVE MODE`;
@@ -119,10 +116,7 @@ export async function rewrapSecretRows(tx: Prisma.TransactionClient, ring: Keyri
 
 export const vaultOf = (access: SecretAccess): SecretVault => ("keys" in access ? keyringVault(access) : access);
 
-/**
- * The alert rules that exist. The database enum still holds http_5xx, a rule nothing could ever feed,
- * so a row an earlier version stored stays where it is: never listed, never judged, never changed.
- */
+/** The database enum still holds http_5xx, a rule nothing can feed: such a row is never listed, judged or changed. */
 export const LIVE_ALERT_METRIC = { not: "http_5xx" } as const;
 
 /** Last four characters, the only part of a credential ever shown back. */
@@ -131,11 +125,8 @@ export function hintOf(value: string): string {
 }
 
 /**
- * Seals and stores a value. The row id is chosen before sealing because it is part of the AAD.
- * The hint is opt-in: it defaults to null so no plaintext fragment of a tenant secret (env vars,
- * generated passwords, snapshots, TOTP seeds) ever lands in the database. Only credentials that
- * are shown back in the UI (integration tokens) pass hintOf(value) explicitly.
- * Returns the new secret id.
+ * The row id is chosen before sealing because it is part of the AAD. The hint defaults to null so no plaintext
+ * fragment of a tenant secret lands in the database; only credentials shown back in the UI pass hintOf(value).
  */
 export async function storeSecret(tx: Tx, access: SecretAccess, owner: SecretOwner, value: string, hint?: string | null): Promise<string> {
   const id = randomUUID();

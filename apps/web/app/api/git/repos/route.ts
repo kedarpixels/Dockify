@@ -2,7 +2,6 @@ import { json, refuse } from "@/lib/http";
 import { cleanQuery, getRepos, isCursor, isGitId } from "@/lib/pages/git";
 import { crossSiteRefusal } from "@/lib/same-origin";
 
-/** GET /api/git/repos?installation=<id>&q=<query>&cursor=: one page of an account's repositories. */
 export async function GET(request: Request) {
   const reason = crossSiteRefusal(request.headers);
   if (reason) return refuse(403, reason);

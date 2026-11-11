@@ -12,15 +12,10 @@ import { callJson } from "@/lib/client-api";
 import { cleanHost, joinHost, recordMode, SSL_LABEL, type CfDomains, type CfHostState, type CfRecord } from "@/lib/dashboard-domain";
 import type { CloudflareZone } from "@/lib/pages/integrations";
 
-/*
- * Cloudflare, as the Domains page, the add-domain dialog and the dashboard's own domain see it: what a
- * hostname's records and zone say, and the two things Dockify may do about it, both on an explicit
- * press. Create adds the record a name needs. Fix removes exactly the records on the screen and adds
- * the right one, after a confirmation that names them; the API refuses if Cloudflare holds anything else
- * by then. Only zones the owner switched on are read or written.
- */
+// Dockify writes to Cloudflare only on an explicit press. Fix removes exactly the records on the
+// screen, and the API refuses if Cloudflare holds anything else by then. Only switched-on zones are touched.
 
-/** Every domain's Cloudflare state, read when the page opens and again on request. Admins only. */
+/** Admins only. */
 export function useCloudflareDomains(enabled: boolean) {
   const [data, setData] = useState<CfDomains | null>(null);
   const [loading, setLoading] = useState(enabled);
@@ -47,7 +42,6 @@ export function useCloudflareDomains(enabled: boolean) {
   return { data, loading, reload, stateOf, put };
 }
 
-/** The word under a row's DNS chip: how Cloudflare carries the name. */
 export function cfRowNote(s: CfHostState | null): string | null {
   if (!s?.managed) return null;
   const r = s.records[0];
@@ -57,7 +51,6 @@ export function cfRowNote(s: CfHostState | null): string | null {
 
 const TONE = { bad: "bad", warn: "warn", info: undefined } as const;
 
-/** What Cloudflare says about a hostname: its record, how it is carried, the zone's SSL mode, and what breaks. */
 export function CfStatePanel({
   state,
   canWrite,
@@ -121,7 +114,6 @@ export function CfStatePanel({
   );
 }
 
-/** The records at a name, as Cloudflare holds them. */
 export function CfRecords({ records, label = "Records on Cloudflare" }: { records: CfRecord[]; label?: string }) {
   return (
     <div className="dm-recs cf-recs" role="table" aria-label={label}>
@@ -148,10 +140,7 @@ export function CfRecords({ records, label = "Records on Cloudflare" }: { record
   );
 }
 
-/**
- * The go-ahead for a write that removes records: it names each one. Create needs no such thing, but a
- * proxied name asks which way it should be carried, in direct mode.
- */
+/** The go-ahead for a write that removes records names each one. In direct mode a proxied name asks which way it should be carried. */
 export function CfRecordDialog({
   open,
   state,
@@ -205,7 +194,7 @@ export function CfRecordDialog({
   );
 }
 
-/** The zones this token can see, for picking a domain. Empty when Cloudflare is not connected. */
+/** Empty when Cloudflare is not connected. */
 export function useCloudflareZones(enabled: boolean) {
   const [zones, setZones] = useState<CloudflareZone[]>([]);
   useEffect(() => {
@@ -222,10 +211,7 @@ export function useCloudflareZones(enabled: boolean) {
   return zones;
 }
 
-/**
- * A hostname: picked from the zones Dockify manages, a name and a zone, or typed in full. With no
- * managed zone it is the plain field, and the picker never shows.
- */
+/** With no managed zone it is the plain field, and the picker never shows. */
 export function HostPicker({
   value,
   onChange,

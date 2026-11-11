@@ -1,11 +1,7 @@
 /**
- * The email half of auth, live only while the owner has connected email (Settings, Integrations):
- * forgot password with a one-time link, and 6-digit codes that verify an address, move an
- * account to a new one, or confirm a password change. Without email every route here answers
- * EMAIL_NOT_CONFIGURED and the host CLI (admin.ts, run over SSH) is the way back in.
- *
- * Secrets at rest: reset tokens as SHA-256 (256-bit random, so no KDF is needed), codes as a hash
- * keyed by the master key. Links are built from DOCKIFY_PUBLIC_URL, never from a request header.
+ * The email half of auth: reset links and 6-digit codes. Without email every route answers EMAIL_NOT_CONFIGURED.
+ * At rest, reset tokens are SHA-256 (256-bit random, so no KDF is needed) and codes a hash keyed by the master key.
+ * Links are built from DOCKIFY_PUBLIC_URL, never from a request header.
  */
 import { passwordMatches } from "../passwords.ts";
 import { meta, requireSession } from "../actor.ts";
@@ -30,8 +26,7 @@ export const MAX_CODE_TRIES = 5;
 /** Settled codes and reset links are kept this long for the activity trail, then pruned. */
 const KEEP_SETTLED_MS = 24 * 3600_000;
 
-/** Where a request came from, for the email's Device and IP address rows. No user agent, no Device
- * row (the same as security notices), rather than a guessed "Unknown device". */
+/** No user agent means no Device row in the email, rather than a guessed "Unknown device". */
 const requestedFrom = (req: FastifyRequest) => {
   const ua = req.headers["user-agent"] ?? null;
   return { device: ua ? describeDevice(ua).device : null, ip: req.clientIp || null };
@@ -51,12 +46,7 @@ export const codeHash = (ring: Keyring, id: string, code: string) => keyedHash(r
 
 export const resetUrl = (publicOrigin: string, token: string) => `${publicOrigin.replace(/\/+$/, "")}/reset/${token}`;
 
-// ------------------------------------------------------------------ forgot password
-
-/**
- * Looks the address up and, when it belongs to an active member, mails a reset link. Runs after
- * the 202 has gone out, so the answer and its timing are the same for every address.
- */
+/** Runs after the 202 has gone out, so the answer and its timing are the same for every address. */
 export async function startPasswordReset(ctx: Ctx, email: string, req: FastifyRequest, now = new Date()): Promise<"sent" | "skipped"> {
   const { db, ring, config, limits } = ctx;
   const user = await db.user.findUnique({ where: { email }, include: { member: true } });
@@ -85,8 +75,6 @@ function assertUsable(row: ResetRow | null, now: Date): asserts row is ResetRow 
 
 const findReset = (db: Tx, token: string) =>
   db.passwordReset.findUnique({ where: { tokenHash: hashToken(token) }, include: { user: { select: { email: true, disabledAt: true } } } });
-
-// ------------------------------------------------------------------ email codes
 
 /** Address codes (verify, change) and password codes live apart: one never spends or voids the other. */
 const ADDRESS = { in: ["verify", "change"] as ("verify" | "change")[] };
@@ -124,9 +112,8 @@ export async function proveCurrentPassword(ctx: Ctx, a: SessionActor, current: s
 }
 
 /**
- * Checks the emailed password change code before anything changes, and counts a wrong one (five
- * void it). Returns the spend, which me.password runs inside the transaction that writes the new
- * hash, so the code works exactly once even if two submits race. Only while email is on.
+ * Checks the emailed code before anything changes and counts a wrong one. Returns the spend, which me.password
+ * runs inside the transaction that writes the new hash, so the code works exactly once even if two submits race.
  */
 export async function checkPasswordCode(
   ctx: Ctx,
@@ -194,8 +181,7 @@ export const emailAuthHandlers: Handlers = {
       });
       await voidResetLinks(tx, user.id, now);
       await revokeSessions(tx, user.id);
-      // A reset is what someone does after losing control of an account, and a token minted meanwhile
-      // must not outlive it. It costs a forgetful owner their CI tokens; the notice and the docs say so.
+      // A reset is what someone does after losing control of an account, so a token minted meanwhile must not outlive it.
       const tokens = await revokeApiTokens(tx, user.id, now);
       if (tokens) await audit(tx, { category: "access", action: "token.revoke", verb: "revoked their API tokens", suffix: `(${tokens}) with a password reset`, actorType: "user", actorId: user.id, actorName: user.name, ...meta(req) });
       await tx.trustedDevice.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: now } });
@@ -245,10 +231,7 @@ export const emailAuthHandlers: Handlers = {
     return { email: to, purpose: change ? ("change" as const) : ("verify" as const), expiresAt: expiresAt.toISOString() };
   },
 
-  /**
-   * Step one of a password change while email is on: proves the current password, then mails a
-   * code to the account address. me.password takes the code with the passwords and checks it first.
-   */
+  /** Step one of a password change while email is on; me.password takes the code and checks it first. */
   "me.password.code": async ({ body, actor, req, reply, ctx }) => {
     const a = requireSession(actor);
     const { db, ring, limits } = ctx;

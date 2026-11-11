@@ -19,13 +19,8 @@ import { BRANCH_MESSAGE, BRANCH_NAME } from "@/lib/validation";
 import { NO_ACCESS_TIP, useCan } from "@/lib/viewer";
 import { send } from "./api";
 
-/* Environments are optional. A project starts with one and shows no environment anywhere: this card
-   then holds only the branch its apps deploy from and Add environment. With two or more, one row per
-   environment with the branch that deploys to it, its app count, an inline branch editor and remove;
-   the preview row stands for pull request previews and links to their settings. Removing one deletes
-   everything in it (its apps, databases, volumes, domains and variables) after its name is typed and
-   the session steps up; the last one never goes. Add environment can copy another environment's
-   variables. A Viewer sees the table with its keys dimmed; their tips say why. */
+// A project with one environment shows no environment anywhere: the card then holds only the
+// branch its apps deploy from. The last environment never goes.
 
 const NAME_MAX = 32;
 const NAME = /^[a-z][a-z0-9-]{0,31}$/;
@@ -257,7 +252,6 @@ export function EnvironmentsCard({
     router.refresh();
   };
 
-  /** What removing an environment takes with it, in the confirm's words. */
   const removal = (name: string) => {
     const apps = p.apps.filter((a) => a.environment === name);
     const dbs = apps.filter((a) => a.kind === "postgres" || a.kind === "redis" || a.kind === "s3").length;
@@ -268,7 +262,7 @@ export function EnvironmentsCard({
     return `Deletes ${envName(name)} from ${p.slug} with ${what}. Previews built from it close, and its branch stops deploying. Database backups stay on the Backups page. This cannot be undone.`;
   };
 
-  /** After a removal: the first key of the row now in the removed one's place (the next environment, or the preview row). */
+  /** The focus lands on the first key of the row now in the removed one's place. */
   const afterRemove = () => {
     const rows = list.current?.querySelectorAll<HTMLElement>(":scope > li");
     const row = rows?.length ? rows[Math.min(removedAt.current, rows.length - 1)] : undefined;

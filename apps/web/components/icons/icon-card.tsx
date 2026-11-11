@@ -15,12 +15,7 @@ import { useCan } from "@/lib/viewer";
 import { AppIcon, ProjectIcon, useIcons } from "./app-icon";
 import { prepareUpload, sendIcon } from "./upload";
 
-/*
- * The Icon card in app and project settings: what shows now, Automatic (a frontend's favicon or
- * the kind's default), an upload, and Reset. A project picks in a dropdown instead: Folder (the
- * default), one of its frontends with a favicon, or the upload while it has one. Each action saves
- * at once; a refused upload says why under the card.
- */
+/* Each action saves at once; a refused upload says why under the card. */
 
 type Busy = "auto" | "pick" | "upload" | null;
 
@@ -33,7 +28,7 @@ function hostOf(url: string | null) {
   }
 }
 
-/** The muted line under the current icon. It names the kind as every other page does ("Backend", "Storage"), not the preset. */
+/** Names the kind as every other page does ("Backend", "Storage"), not the preset. */
 function statusLine(state: IconState | undefined, kind: AppKind | undefined, domain: string | null, now: number): React.ReactNode {
   if (state?.choice === "upload") return state.image ? `Uploaded image, ${state.image.width} by ${state.image.height}` : "Uploaded image";
   const fav = state?.favicon;
@@ -59,9 +54,7 @@ export function IconCard({
   name: string;
   /** "horseai / web" or "horseai", for the toasts. */
   where: string;
-  /** Apps only; a project has no kind. */
   kind?: AppKind;
-  /** The app's primary URL, for the favicon line. */
   url?: string | null;
   now: number;
 }) {
@@ -102,7 +95,6 @@ export function IconCard({
 
   const auto = (success: string) => void run(() => save({ choice: "auto" }, "auto", success));
 
-  // A project's dropdown: the upload while it has one, else the frontend chosen, else the folder.
   const project = target.target === "project";
   const { value: picked, apps } = projectIconPick(state);
   // The pick waiting on "remove the upload?", since leaving an upload deletes it as Reset does.

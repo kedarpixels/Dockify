@@ -5,14 +5,12 @@ import { Rule, Spacer } from "@/components/ui/rule";
 import { SectionHead } from "@/components/ui/section-head";
 import { Skel, SkelRows } from "@/components/ui/skeleton";
 
-/** The three KPI cells the loaded view shows, as skeletons, so the strip holds its height. */
 const KPIS: KpiData[] = [
   { icon: "alert", label: "Firing now", value: <Skel w={32} h={22} />, lead: <Skel w={88} /> },
   { icon: "history", label: "Fired, 24 hours", value: <Skel w={32} h={22} />, lead: <Skel w={120} /> },
   { icon: "pause", label: "Muted rules", value: <Skel w={32} h={22} />, lead: <Skel w={80} /> },
 ];
 
-/** Route loading state for Alerts: the real head, KPI strip, rules card and history card at their real sizes. */
 export function AlertsSkeleton() {
   return (
     <>

@@ -32,7 +32,7 @@ async function instanceName(ctx: Ctx): Promise<string> {
   return row?.name ?? "Dockify";
 }
 
-/** The new sign in notice, only for a device this account has not used recently. */
+/** Only for a device this account has not used recently. */
 async function noticeSignIn(ctx: Ctx, userId: string, sessionId: string, req: FastifyRequest): Promise<void> {
   const fresh = await isNewDevice(ctx.db, userId, sessionId, req.headers["user-agent"] ?? null).catch(() => false);
   if (fresh) await sendSecurityNotice(ctx, userId, "signIn", req);
@@ -52,10 +52,9 @@ export async function expireOldChallenges(db: Tx, userId: string, now = new Date
 }
 
 /**
- * Whether this client already belongs to the account: a live trusted-device cookie for it, a network
- * it signed in from recently, or the network that just finished a password reset. Read only once the
- * ceiling is what refuses a request, so ordinary sign-ins never pay for it. Says nothing about the
- * password, which is still checked, and the per-network bucket still applies.
+ * Whether this client already belongs to the account: a live trusted-device cookie, a network it signed in
+ * from recently, or the network that just finished a password reset. Read only once the ceiling refuses a
+ * request, so ordinary sign-ins never pay for it; the password and the per-network bucket still apply.
  */
 async function knownClient(ctx: Ctx, email: string, req: FastifyRequest): Promise<boolean> {
   if (ctx.limits.login.trustedAfterReset(email, req.clientIp)) return true;
@@ -114,11 +113,10 @@ export const authHandlers: Handlers = {
   "auth.login": async ({ body, req, reply, ctx }) => {
     const { db, web, limits } = ctx;
     const email = body.email.toLowerCase();
-    // Only failures count against an account, per client network, so one address cannot lock a
-    // known user out (ratelimit.ts LoginGuard). The per-address bucket already ran in the hook.
+    // Only failures count against an account (ratelimit.ts LoginGuard). The per-address bucket already ran in the hook.
     let wait = limits.login.attempt(email, req.clientIp);
-    // Several networks together can hold the account's ceiling down for as long as they like. A
-    // client the account already knows goes on, held only to its own network's rate.
+    // Several networks together can hold the account's ceiling down for good, so a client the
+    // account already knows goes on, held only to its own network's rate.
     let ceiling = true;
     if (wait !== null && limits.login.onlyCeiling(email, req.clientIp)) {
       if (await knownClient(ctx, email, req)) {

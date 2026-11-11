@@ -1,7 +1,6 @@
 /**
- * A small Docker Engine API client over node:http. It talks to the socket proxy (DOCKER_HOST
- * tcp://...) in production or a unix socket in development, and exposes only the calls the deploy
- * engine makes. Every container create goes through containerSpec() and assertSafeSpec() first.
+ * A small Docker Engine API client: the socket proxy in production, a unix socket in development.
+ * Every container create goes through containerSpec() and assertSafeSpec() first.
  */
 import { createHash } from "node:crypto";
 import { request, type IncomingMessage } from "node:http";
@@ -77,7 +76,6 @@ export interface ImageSummary {
   Created: number;
 }
 
-/** One image in Docker's disk accounting (GET /system/df), which counts containers and shared bytes. */
 export interface DiskUsageImage {
   Id: string;
   /** The image this one was built on, empty for pulled and loaded images. */
@@ -101,7 +99,6 @@ export interface DiskUsageVolume {
   UsageData?: { Size: number; RefCount: number } | null;
 }
 
-/** The parts of GET /system/df that Dockify reads. */
 export interface DiskUsage {
   /** Bytes every image layer takes on disk, each layer counted once however many images share it. */
   LayersSize?: number;
@@ -112,7 +109,6 @@ export interface DiskUsage {
 /** The object types the socket proxy lets the worker ask /system/df about. */
 export type DiskUsageType = "image" | "volume";
 
-/** What the deploy engine needs from the daemon. Tests pass a fake. */
 export interface DockerApi {
   inspectContainer(idOrName: string): Promise<ContainerInfo>;
   listContainers(labels: Record<string, string>): Promise<ContainerSummary[]>;
@@ -238,7 +234,6 @@ export function daemonMessage(text: string): string {
 
 export class DockerClient implements DockerApi {
   private readonly endpoint: Endpoint;
-  /** The server's core count, or null when it is not known yet. */
   readonly cpuCores: number | null;
   constructor(endpoint: Endpoint, opts: { cpuCores: number | null }) {
     this.endpoint = endpoint;
@@ -292,11 +287,7 @@ export class DockerClient implements DockerApi {
     return JSON.parse(text) as T;
   }
 
-  /**
-   * Reads a JSON-lines progress stream (pull, load) and fails on an errorDetail line. A refusal before
-   * the stream starts (404 for an unknown image, for example) carries the daemon's message, never its
-   * raw JSON body.
-   */
+  /** Fails on an errorDetail line. A refusal before the stream starts carries the daemon's message, never its raw JSON. */
   private async progress(res: IncomingMessage, onLine: (t: string) => void): Promise<void> {
     if ((res.statusCode ?? 500) >= 400) throw new DockerError(res.statusCode ?? 500, daemonMessage(await readAll(res)).slice(0, 500));
     let partial = "";
@@ -378,9 +369,8 @@ export class DockerClient implements DockerApi {
     await this.call("DELETE", `/images/${encodeURIComponent(id)}${qs({ noprune: false })}`, undefined, true);
   }
   /**
-   * Docker's own disk accounting for the object types named, and only those. The socket proxy
-   * allows nothing else: container sizes walk every writable layer, and Docker's build cache is
-   * empty here because builds run in Dockify's own BuildKit.
+   * Only the types named: the socket proxy allows nothing else. Container sizes walk every writable layer, and
+   * Docker's build cache is empty here because builds run in Dockify's own BuildKit.
    */
   async diskUsage(types: readonly DiskUsageType[], signal?: AbortSignal): Promise<DiskUsage> {
     if (!types.length) throw new Error("diskUsage needs at least one object type");

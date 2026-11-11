@@ -1,19 +1,14 @@
-/*
- * What the dashboard and the site share: primitives only, no tokens. The source is apps/web; the site
- * holds a copy, which apps/site/scripts/sync-ui.mjs writes and checks. Each app imports this file right
- * before its own foundation.css, which holds its tokens, what differs between the two, and every rule
- * that must come after a rule of its own.
- */
+/* Primitives shared by the dashboard and the site, no tokens. apps/web is the source; the site's
+   copy is written and checked by apps/site/scripts/sync-ui.mjs. Import before the app's own foundation.css. */
 
-/* ============== Base ============== */
+/* Base */
 
 ::selection {
   background: color-mix(in srgb, var(--blue) 22%, transparent);
   color: var(--ink);
 }
 
-/* The ring follows the element's own corners, so a square row keeps a square ring and its fill is
-   never rounded off by the focus. Bare text links get a small radius of their own. */
+/* The ring follows the element's own corners, so a square row keeps a square ring. */
 
 :focus-visible {
   outline: 2px solid var(--blue);
@@ -23,8 +18,6 @@
 :where(a):focus-visible {
   border-radius: 4px;
 }
-
-/* Inline code never falls back to the browser's typewriter face. */
 
 code,
 samp,
@@ -67,7 +60,7 @@ img {
 
 .ic-20 { width: 20px; height: 20px; }
 
-/* ============== Layout: the ruled frame ============== */
+/* Layout: the ruled frame */
 
 main.page > * {
   width: 100%;
@@ -77,8 +70,6 @@ main.page > * {
   border-left: 1px solid var(--line);
   border-right: 1px solid var(--line);
 }
-
-/* Node: 5px square centred on the parent's 1px border at a corner. */
 
 .node {
   position: absolute;
@@ -105,9 +96,8 @@ main.page > * {
 
 .node-line[data-pos="br"] { bottom: -2px; right: -2px; }
 
-/* Rule: a hairline with a node at each end. Inside a block it spans its parent; every nested rule
-   sits in an unpadded wrapper flush with the block's 1px rails, so it reaches over them by a pixel
-   and its nodes centre on the rails instead of a pixel inside. */
+/* A nested rule sits in an unpadded wrapper flush with the block's 1px rails, so it reaches over
+   them by a pixel and its nodes centre on the rails. */
 
 .rule {
   position: relative;
@@ -135,8 +125,6 @@ main.page > :not(.rule, .sep) .rule {
     linear-gradient(var(--node), var(--node)) right top / 5px 5px no-repeat;
 }
 
-/* Spacer: 40px of 50% Bayer dither framed by rules. */
-
 .sep {
   position: relative;
   z-index: var(--z-line);
@@ -160,8 +148,6 @@ main.page > :not(.rule, .sep) .rule {
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h3v3H0zM3 3h3v3H3z'/%3E%3C/svg%3E") repeat;
 }
 
-/* Rails redrawn across the band, a node on each crossing. */
-
 .sep::after {
   content: "";
   position: absolute;
@@ -178,8 +164,6 @@ main.page > :not(.rule, .sep) .rule {
     linear-gradient(var(--line), var(--line)) 2px 0 / 1px 100% no-repeat,
     linear-gradient(var(--line), var(--line)) calc(100% - 2px) 0 / 1px 100% no-repeat;
 }
-
-/* Page end: the last band grows to the bottom with no dither, only the rails running on. */
 
 .sep-end {
   flex: 1 0 41px;
@@ -201,10 +185,8 @@ main.page > :not(.rule, .sep) .rule {
     linear-gradient(var(--line), var(--line)) calc(100% - 2px) 0 / 1px 100% no-repeat;
 }
 
-/* On the page, rules and bands run full bleed under every block: a block's own corner nodes paint
-   over their lines, and no tooltip or dropdown is ever crossed by one. Only their nodes and the
-   band's rail segments rise, over a block lifted by an open tip or dropdown too, on the rails at
-   M and M + B (see the frame note above). */
+/* Rules and bands run full bleed under every block, so no tooltip or dropdown is crossed by one.
+   Only their nodes and the band's rail segments rise, over a lifted block too. */
 
 main.page > .rule,
 main.page > .sep {
@@ -227,15 +209,10 @@ main.page > .sep:first-child {
   background: linear-gradient(var(--line), var(--line)) bottom / 100% 1px no-repeat;
 }
 
-/* Blocks stack over the rules and bands; a block with an open tooltip or dropdown lifts over its
-   neighbours, still under the rail nodes. */
-
 main.page > :not(.sep, .rule) {
   position: relative;
   z-index: var(--z-raise);
 }
-
-/* SectionHead: pixel title, 40px above, 8px to the lead, 32px below. */
 
 .shead {
   padding: 40px var(--gutter) 32px;
@@ -275,7 +252,7 @@ main.page > :not(.sep, .rule) {
   gap: 8px;
 }
 
-/* -------------- Icon tile -------------- */
+/* Icon tile */
 
 .icon-tile {
   display: inline-flex;
@@ -300,10 +277,10 @@ main.page > :not(.sep, .rule) {
 
 .icon-tile[data-size="lg"] .ic { width: 18px; height: 18px; }
 
-/* -------------- Hover tooltip -------------- */
+/* Hover tooltip */
 
 /* data-tip="Label" on any control; data-tip-side="bottom" or "right", data-tip-align="end".
-   Shows whole after 150ms and hides at once, so nothing fades out under a band or a neighbour. */
+   Hides at once, so nothing fades out under a band or a neighbour. */
 
 [data-tip] {
   position: relative;
@@ -346,8 +323,8 @@ main.page > :not(.sep, .rule) {
   translate: 0 0;
 }
 
-/* Touch screens have no hover: a tapped tip would stay stuck on screen, so tips are desktop only.
-   A copy result ("Copied", "Copy failed") still shows for its moment, since nothing else says it. */
+/* A tapped tip would stay stuck on a touch screen, so tips are desktop only. A copy result still
+   shows, since nothing else says it. */
 
 @media (hover: none) {
   [data-tip]:not([data-copied])::before,
@@ -356,15 +333,10 @@ main.page > :not(.sep, .rule) {
   }
 }
 
-/* -------------- Button -------------- */
+/* Button */
 
-/* .btn 36px, .btn-sm 32px, .btn-xs 28px; .btn-icon square; .btn-primary and .btn-danger solid,
-   leading with a glyph; .btn-quiet-danger the secondary key in red text for a destructive action
-   that confirms first. Hover only changes colour.
-   Glyphs: a labelled key carries one only when it is primary or danger (it makes or removes
-   something), or a .btn-lead file action (Download, Upload, Download CSV). Every other labelled key
-   is text only, and a glyph passed to it is not drawn. Primaries pass the same <Icon name /> with
-   no size: the key sizes it. */
+/* A labelled key draws a glyph only when it is primary, danger or a .btn-lead file action; a glyph
+   passed to any other labelled key is not drawn. The key sizes its own glyph. */
 
 .btn {
   position: relative;
@@ -451,8 +423,6 @@ main.page > :not(.sep, .rule) {
   background: var(--blue-solid-active);
 }
 
-/* Other labelled buttons are text only: no glyph, no tooltip. */
-
 .btn:not(.btn-icon) > .ic,
 .btn:not(.btn-icon) > svg {
   display: none;
@@ -463,11 +433,10 @@ main.page > :not(.sep, .rule) {
   display: none;
 }
 
-/* -------------- Whole-pixel widths -------------- */
+/* Whole-pixel widths */
 
-/* Text is measured in fractions, so a key or chip that hugs its label lands its edges, and everything
-   beside it, between pixels. This rounds the hug up to a whole pixel. Zero specificity, so a fixed,
-   stretched or flexed width elsewhere still wins. */
+/* Text is measured in fractions, so a key that hugs its label lands its edges between pixels. This
+   rounds the hug up to a whole pixel. Zero specificity, so any other width still wins. */
 
 @supports (width: calc-size(auto, round(up, size, 1px))) {
   :where(.btn, .chip, .kbd, .hash-chip, .seg2-opt, .sb-sort, .set-readonly, .set-tk-prefix, .ev-target, .px-ref, .pd-res-label, .top-title-cell, .st-brand, .st-keys, .ld-chip, .dsoon, .skip, .tswitch-tip) {
@@ -475,7 +444,7 @@ main.page > :not(.sep, .rule) {
   }
 }
 
-/* -------------- Segmented control -------------- */
+/* Segmented control */
 
 .seg2 {
   position: relative;
@@ -512,9 +481,9 @@ main.page > :not(.sep, .rule) {
   padding: 0;
 }
 
-/* -------------- Key chip -------------- */
+/* Key chip */
 
-/* 12px, the floor for any text, on a 20px chip. */
+/* 12px is the floor for any text. */
 
 kbd.kbd,
 .kbd {
@@ -533,7 +502,7 @@ kbd.kbd,
   line-height: 1;
 }
 
-/* -------------- Theme switch -------------- */
+/* Theme switch */
 
 .tswitch {
   position: relative;
@@ -555,8 +524,6 @@ kbd.kbd,
 .tswitch:focus-visible {
   border-radius: 8px;
 }
-
-/* A flat knob (no gradient on a control): one fill, a ring and a soft shadow, per theme. */
 
 .tswitch-knob {
   position: absolute;
@@ -592,8 +559,6 @@ kbd.kbd,
 .dark .tswitch-sun {
   display: none;
 }
-
-/* The [data-tip] bubble and tail exactly, plus a key chip for the D shortcut. */
 
 .tswitch-tip {
   position: absolute;
@@ -636,7 +601,7 @@ kbd.kbd,
   transition: opacity 0s 150ms, translate 0s 150ms;
 }
 
-/* At a column edge the bubble ends flush with the switch, so it never crosses the rail; the tail
+/* At a column edge the bubble ends flush with the switch so it never crosses the rail; the tail
    stays under the middle of the track (26px in, minus half its 10px width). */
 
 .tswitch[data-align="end"] .tswitch-tip {
@@ -660,8 +625,7 @@ kbd.kbd,
   translate: 0 0;
 }
 
-/* While the palette swaps nothing fades its own colour (the flash); animations pause, the knob
-   slides, unless the reader asked for less motion. */
+/* While the palette swaps, transitions are off so nothing fades its own colour (the flash). */
 
 html.theme-switching *,
 html.theme-switching *::before,
@@ -676,10 +640,9 @@ html.theme-switching *::after {
   }
 }
 
-/* -------------- Copy -------------- */
+/* Copy */
 
-/* After a copy the tip stays up for its moment, even once the pointer has left. A fixed bubble
-   width keeps it from shifting as "Copy" turns into "Copied". */
+/* A fixed bubble width keeps it from shifting as "Copy" turns into "Copied". */
 
 .copy-key[data-tip]::after {
   min-width: 64px;
@@ -691,10 +654,7 @@ html.theme-switching *::after {
   translate: 0 0;
 }
 
-/* -------------- Dialog -------------- */
-
-/* Popover material over a dim scrim. Head 20px above and below, body 24px, footer keys 36px on the
-   right. A Select or date picker inside floats in its own layer above (select.tsx, datetime-picker.tsx). */
+/* Dialog */
 
 .dlg-scrim {
   position: fixed;
@@ -736,10 +696,10 @@ html.theme-switching *::after {
   }
 }
 
-/* ============== Utilities ============== */
+/* Utilities */
 
-/* Screen-reader only. The -1px margin keeps a box that lands after the content (the toaster's live
-   regions) from stretching the page by a pixel and adding a scrollbar to short pages. */
+/* The -1px margin keeps a box that lands after the content from stretching the page by a pixel
+   and adding a scrollbar to short pages. */
 
 .sr {
   position: absolute;

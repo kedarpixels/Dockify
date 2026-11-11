@@ -5,8 +5,7 @@ import { SectionHead } from "@/components/ui/section-head";
 import { Skel, SkelRows } from "@/components/ui/skeleton";
 import { SECTION_GROUPS } from "./sections";
 
-/* Route loading states for /activity and /settings: the real heads and frame, with bars where the
-   controls, rows and section content will land, so nothing jumps when data arrives. */
+/* Bars sit where the controls and rows will land, so nothing jumps when data arrives. */
 
 /** The loaded event row's grid (activity-view.tsx, SKEL_TEMPLATE). */
 const EVENT_ROW = "24px minmax(0, 1fr) 96px 72px 28px";
@@ -35,10 +34,7 @@ export function ActivitySkeleton() {
   );
 }
 
-/**
- * Settings while it loads: the sub-nav with its real groups (no row current yet: the section comes
- * from the address once the page renders), then one block of 56px setting rows.
- */
+/** No nav row is current yet: the section comes from the address once the page renders. */
 export function SettingsSkeleton() {
   return (
     <>

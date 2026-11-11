@@ -5,14 +5,8 @@ import { previewElevate } from "@/lib/preview-step-up";
 import { STEP_UP_MINUTES } from "@/lib/step-up";
 import { isPreviewMode } from "@/lib/preview-mode";
 
-/*
- * The server side of "Confirm it is you" (components/step-up/step-up.tsx): which credential the
- * account confirms with, and the check itself, POST /api/v1/auth/step-up. With two-factor on the
- * API takes only the authenticator code; without it, only the password (apps/api/src/routes/auth.ts).
- *
- * A server action is a public endpoint, so the input is checked for shape here and only the checked
- * field is forwarded. Nothing here logs, so a password or code never reaches the server output.
- */
+// A server action is a public endpoint, so the input is checked for shape here and only the checked
+// field is forwarded. Nothing here logs, so a password or code never reaches the server output.
 
 export type StepUpMethod = "code" | "password";
 
@@ -34,7 +28,7 @@ const CODE = /^\d{6}$/;
 
 const windowEnd = () => new Date(Date.now() + STEP_UP_MINUTES * 60_000).toISOString();
 
-/** The credential this account confirms with, or null when the API cannot say (the dialog then takes either). */
+/** Null when the API cannot say; the dialog then takes either. */
 export async function stepUpMethod(): Promise<StepUpMethod | null> {
   if (process.env.DOCKIFY_API_URL !== undefined) {
     const r = await apiRequest<{ twoFactor?: { enabled?: unknown } }>("/api/v1/me");
@@ -45,7 +39,6 @@ export async function stepUpMethod(): Promise<StepUpMethod | null> {
   return isPreviewMode() ? "password" : null;
 }
 
-/** Opens the step-up window on this session: the 6-digit authenticator code, or the password. */
 export async function confirmStepUp(input: { code?: string; password?: string }): Promise<StepUpAnswer> {
   const raw: Record<string, unknown> = input && typeof input === "object" ? input : {};
   let body: { code: string } | { password: string };

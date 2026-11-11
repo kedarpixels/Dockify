@@ -5,11 +5,8 @@ import { Icon, type IconName } from "@/components/icon";
 import { cx } from "@/components/ui/cx";
 import { opensUp, useOutsidePress } from "@/lib/hooks";
 
-/* A row's "more" key: one icon button in the row's last slot, opening a short menu below it,
-   right aligned. Keeps destructive actions out of the row itself. Arrows, Home and End move;
-   Escape closes and returns focus to the key; Tab or a click outside closes. With `text` the key
-   is a small text button instead (text only, like every labelled secondary key), for a card head
-   action that picks an app first. The icon key carries no tip: its name is enough. */
+// Keeps destructive actions out of the row itself. With `text` the key is a small text button,
+// for a card head action that picks an app first. The icon key carries no tip: its name is enough.
 
 export interface RowMenuItem {
   label: string;
@@ -36,9 +33,8 @@ export function RowMenu({ label, items, text }: { label: string; items: RowMenuI
 
   useEffect(() => {
     if (!open) return;
-    // Opens upward when the room below ends first, so a menu on a low row never hides under the fold
-    // of a scroll box. Before the focus, which would scroll the box to reach the menu. 6px gap, 8px
-    // clear of the edge.
+    // Opens upward when the room below ends first. Placed before the focus, which would otherwise
+    // scroll the box to reach the menu.
     const pop = panel.current;
     const anchor = root.current?.getBoundingClientRect();
     if (pop && anchor && opensUp(anchor, pop.offsetHeight + 6 + 8, pop.parentElement)) pop.dataset.flip = "up";

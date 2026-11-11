@@ -10,7 +10,6 @@ import type { DeploymentStats } from "@/lib/pages/deployments";
 
 type Bucket = NonNullable<DeploymentStats["buckets"]>[number];
 
-/** Sparkline point labels: "14:05" in the user's clock. */
 type HourLabel = (iso: string) => string;
 
 function cells(s: DeploymentStats, hourLabel: HourLabel): KpiData[] {
@@ -32,7 +31,6 @@ function cells(s: DeploymentStats, hourLabel: HourLabel): KpiData[] {
       value: s.inFlight,
       tone: s.inFlight > 0 ? "live" : undefined,
       lead: s.inFlight ? `${building} building, ${s.queued} queued` : "Nothing building right now",
-      // Builds started per two-hour slot, so the cell shows how busy the last day was.
       spark: spark((b) => b.ready + b.failed, "builds"),
     },
     {
@@ -47,7 +45,6 @@ function cells(s: DeploymentStats, hourLabel: HourLabel): KpiData[] {
       label: "Failed, 24 hours",
       icon: "alert",
       value: s.failed24h,
-      // A red dot when anything failed, as the alerts strip marks a firing rule.
       tone: s.failed24h ? "bad" : undefined,
       lead: finished ? `${Math.round((s.failed24h / finished) * 100)}% of finished builds` : "No finished builds",
       delta: kpiDelta(s.failed24h, s.failedPrev24h, "bad", `${s.failed24h} now, ${s.failedPrev24h ?? 0} the day before`),

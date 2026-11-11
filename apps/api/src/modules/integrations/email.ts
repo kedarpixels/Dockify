@@ -1,12 +1,6 @@
 /**
- * Email over SMTP, optional per install: the owner enters their own mail server, login, a from name
- * and address and an optional reply-to. The settings are tried before they are kept, then the
- * password is sealed; it never comes back, not even a hint of it. packages/email smtp.ts holds the
- * address rule, TLS and what each failure means. Presets are the form's business: nothing here knows
- * a provider.
- *
- * Row: integrations kind email, name "default". config { host, port, tlsMode, username, fromName,
- * fromAddress, replyTo }, secretId the password (integration_token).
+ * Email over the owner's own SMTP server. Settings are tried before they are kept; the password is then sealed
+ * (secretId) and never comes back, not even as a hint.
  */
 import { readSecret, type Keyring } from "@dockify/crypto";
 import { storeSecret, type Integration, type Tx } from "@dockify/db";
@@ -25,12 +19,11 @@ import { asJson, dropIntegration, findIntegration, openSecret, replaceSecret, se
 const label = "Email";
 const TARGET = "Mail server";
 
-/** Which form field each failure names, as a code the web can read. */
+/** Maps each failing form field to the code the web reads. */
 const FIELD_CODES: Record<MailField, string> = {
   host: "EMAIL_HOST", port: "EMAIL_PORT", tlsMode: "EMAIL_TLS", username: "EMAIL_LOGIN", password: "EMAIL_LOGIN", fromAddress: "EMAIL_FROM",
 };
 
-/** A send's failure as the HttpError the form shows. Plain words, with the server's own when they help. */
 export function mailProblem(e: unknown, action: string): HttpError {
   if (!(e instanceof MailError)) return new HttpError(502, `Could not ${action}`, "EMAIL_FAILED");
   const refused = e.kind === "recipient" || e.kind === "sender" || e.kind === "rejected";
@@ -60,10 +53,8 @@ export async function emailView(db: Tx, row?: Integration | null) {
 const HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 /**
- * Seeds the row once from the installer's environment (DOCKIFY_SMTP_HOST, _PORT, _USER, and
- * DOCKIFY_SMTP_PASSWORD or its _FILE form, with DOCKIFY_EMAIL_FROM and DOCKIFY_EMAIL_FROM_NAME), so
- * the owner's email can be verified at setup. It is not dialled here: a blocked port must not stop
- * the api booting, and setup says so when the first code cannot go out.
+ * Seeds the row once from the installer's DOCKIFY_SMTP_* and DOCKIFY_EMAIL_FROM* variables. The server is not
+ * dialled here: a blocked port must not stop the api booting.
  */
 export async function seedEmailFromEnv(db: Tx, ring: Keyring, env: NodeJS.ProcessEnv = process.env, policy: MailPolicy = mailPolicyFromEnv(env)): Promise<boolean> {
   const password = readSecret("DOCKIFY_SMTP_PASSWORD", env);
@@ -72,8 +63,8 @@ export async function seedEmailFromEnv(db: Tx, ring: Keyring, env: NodeJS.Proces
   const port = Number(env.DOCKIFY_SMTP_PORT?.trim() || 587);
   const fromAddress = env.DOCKIFY_EMAIL_FROM?.trim().toLowerCase();
   if (!password || !host || !HOST.test(host) || !username || !fromAddress || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromAddress) || serverProblem(host, port, policy)) return false;
-  // Only before setup completes. The secret files stay mounted, so seeding on every boot would bring
-  // back an integration the owner disconnected (or a password they rotated away) at the next restart.
+  // Only before setup completes: the secret files stay mounted, so seeding on every boot would bring back
+  // an integration the owner disconnected or a password they rotated away.
   if ((await setupDone(db)) || (await findIntegration(db, "email"))) return false;
   const fromName = (env.DOCKIFY_EMAIL_FROM_NAME?.trim() || "Dockify").replace(/["<>\\\r\n]/g, "").slice(0, 60) || "Dockify";
   const config: EmailConfig = { host, port, tlsMode: tlsModeFor(port), username, fromName, fromAddress, replyTo: null };
@@ -86,9 +77,8 @@ export async function seedEmailFromEnv(db: Tx, ring: Keyring, env: NodeJS.Proces
 type Settings = z.infer<typeof I.EmailConnectBody>;
 
 /**
- * The server and login a set of form values means. A blank password keeps the stored one, but only
- * for the server and login it was stored for: re-pointing the form would otherwise hand the stored
- * password to any host, so a changed host or username needs the password typed again.
+ * A blank password keeps the stored one, but only for the host and username it was stored for. Otherwise
+ * re-pointing the form would hand the stored password to any host.
  */
 async function serverFrom(body: Settings, existing: Integration | null, open: () => Promise<string | null>, policy: MailPolicy): Promise<SmtpServer> {
   const problem = serverProblem(body.host, body.port, policy);
@@ -110,7 +100,7 @@ export function emailHandlers(deps: IntegrationDeps): Handlers {
       const existing = await findIntegration(ctx.db, "email");
       const server = await serverFrom(body, existing, () => (existing ? openSecret(ctx.db, ctx.ring, existing) : Promise.resolve(null)), policy);
       const fromAddress = body.fromAddress.toLowerCase();
-      // Tried before it is kept, so what the card says connected did connect and log in.
+      // Verified before it is kept, so "connected" on the card means it did connect and log in.
       await deps.mail.verify(server).catch((e: unknown) => {
         throw mailProblem(e, "check the mail server");
       });
@@ -144,7 +134,7 @@ export function emailHandlers(deps: IntegrationDeps): Handlers {
       const a = requireSession(actor);
       const row = await findIntegration(ctx.db, "email");
       const open = () => (row ? openSecret(ctx.db, ctx.ring, row) : Promise.resolve(null));
-      // The form's values when it sent them, unsaved; else what is stored, whose verdict the card shows.
+      // An unsaved draft when the form sent values; else what is stored, whose verdict the card shows.
       const draft = isDraft(body) ? body : null;
       const c = draft ?? (row && row.status !== "disconnected" ? emailConfigOf(row) : null);
       if (!c || !c.host) throw new HttpError(409, `${label} is not connected`, "NOT_CONNECTED");
@@ -155,7 +145,7 @@ export function emailHandlers(deps: IntegrationDeps): Handlers {
       if (!allowRecipient(ctx.limits, user.email)) throw rateLimited(reply, 120);
       const fromAddress = c.fromAddress.toLowerCase();
       const from = formatFrom(c.fromName, fromAddress);
-      // The test must look exactly like the real emails, brand assets included: it says so in its copy.
+      // The test must look exactly like the real emails, brand assets included.
       const message = testEmail({ instanceName: await instanceName(ctx.db), origin: ctx.config.publicUrl.origin, sentBy: user.name, from });
       try {
         await deps.mail.send(server, { fromName: c.fromName, fromAddress, to: user.email, replyTo: c.replyTo?.toLowerCase() ?? null, ...message });

@@ -32,7 +32,6 @@ const hasData = (r: AlertsResult) => r.data !== null;
 
 type Editing = { rule: AlertRule | null; presetApp: string | null };
 
-/** The other half of notifications, named in the lead so each page points at the other. */
 const ELSEWHERE = (
   <>
     Instance events such as failed backups are set in{" "}
@@ -190,7 +189,6 @@ export function AlertsView({ overview, initial }: { overview: OverviewResult; in
     );
   }
 
-  // -------------- KPI strip --------------
   const firingNow = d.events.filter((e) => e.status === "firing");
   const day = d.events.filter((e) => now - Date.parse(e.startedAt) <= DAY);
   const dayResolved = day.filter((e) => e.status === "resolved").length;
@@ -232,8 +230,7 @@ export function AlertsView({ overview, initial }: { overview: OverviewResult; in
   );
 
   const muteRules = muting ? d.rules.filter((r) => r.app?.id === muting.id).length : 0;
-  // Nothing set up and nothing ever fired: the rules card's empty state is the whole page, not
-  // three zeros over two empty cards.
+  // Nothing set up and nothing ever fired: the rules card's empty state is the whole page.
   const blank = d.rules.length === 0 && d.events.length === 0;
 
   return (

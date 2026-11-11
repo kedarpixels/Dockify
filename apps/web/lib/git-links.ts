@@ -1,6 +1,5 @@
-/* Links out to GitHub for repositories, commits, branches and pull requests. Only a github.com
-   repository with a valid owner and name links; an image, a compose file or another host yields
-   null, so callers render plain text instead of a broken link. */
+/* Only a github.com repository with a valid owner and name links; anything else yields null, so
+   callers render plain text instead of a broken link. */
 
 export interface GitHubRepo {
   owner: string;

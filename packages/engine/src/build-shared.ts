@@ -1,17 +1,10 @@
-/**
- * What the worker has to know about a build without having a builder: whose cache it uses, whether a
- * checkout has a Dockerfile, and what port a detected framework serves on. The worker reads these
- * before it asks a server's Builder for anything (server/runtime.ts), and the builder reads them too.
- */
+/** What the worker has to know about a build without having a builder. */
 import { PermanentDeployError } from "./errors.ts";
 import { insideCheckout } from "./checkout.ts";
 
 /**
- * The namespace of a build's cache. Per app, so one app cannot seed another's package cache. Every
- * preview gets its own, per pull request: a package a PR put in the shared cache would run in the next
- * production build, and pushing to a branch must not be enough for that. A scope that is not the app's
- * also keys the build's RUN layers apart (planBuild, planRailpackBuild), and teardown reclaims it by
- * name. App ids and preview ids are uuids, so no scope can read as another.
+ * Per app, so one app cannot seed another's package cache. Each preview gets its own: a package a PR put in
+ * a shared cache would run in the next production build. Ids are uuids, so no scope can read as another.
  */
 export const buildCacheScope = (appId: string, preview: { envId: string; fromFork: boolean } | null): string =>
   !preview ? `dockify-app-${appId}` : `${preview.fromFork ? "dockify-fork" : "dockify-preview"}-${preview.envId}`;

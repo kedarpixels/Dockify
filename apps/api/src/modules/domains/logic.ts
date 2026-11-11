@@ -1,18 +1,12 @@
 import type { Domain } from "@dockify/db";
 
-/**
- * Pure pieces of the domains module, kept apart from the handlers so they test without a database.
- */
-
 export const ROUTABLE_KINDS = new Set(["frontend", "backend"]);
 
-/** Lowercase, no trailing dot. The contracts Hostname schema already lowercases and trims. */
 export const normalizeHost = (h: string): string => h.trim().toLowerCase().replace(/\.$/, "");
 
 /**
- * The dashboard hostname, and any extra hosts the operator lists in DOCKIFY_RESERVED_HOSTS, can
- * never be a tenant domain: a tenant route or tunnel rule for it would hand the owner's session
- * cookie and step-up password to a tenant container.
+ * The dashboard hostname and the hosts in DOCKIFY_RESERVED_HOSTS can never be a tenant domain: a
+ * tenant route for one would hand the owner's session cookie and step-up password to a tenant container.
  */
 export function reservedHosts(publicUrl: URL, extra = ""): Set<string> {
   const out = new Set<string>([normalizeHost(publicUrl.hostname)]);
@@ -25,14 +19,13 @@ export function reservedHosts(publicUrl: URL, extra = ""): Set<string> {
 
 export const isReserved = (host: string, reserved: Set<string>): boolean => reserved.has(normalizeHost(host));
 
-/** What a domain row looks like on the wire (contracts DomainRow). */
 export type DomainWithApp = Omit<Domain, "testDomain"> & {
   testDomain?: boolean;
   app: { id: string; name: string; displayName?: string | null; port?: number | null; environment: { name: string; project: { slug: string } } };
 };
 
 export function toDomainRow(d: DomainWithApp) {
-  // appPort: the route's other half. A domain's DNS can read ok with no route at all when this is null.
+  // When appPort is null the domain has no route, even if its DNS reads ok.
   return {
     id: d.id,
     hostname: d.hostname,
@@ -51,7 +44,6 @@ export function toDomainRow(d: DomainWithApp) {
   };
 }
 
-/** The edge jobs a domain change asks the worker for. */
 export type EdgeJob =
   | { kind: "edge_route_sync"; payload: { appId: string }; dedupeKey: string }
   | { kind: "edge_cf_wire"; payload: { domainId: string }; dedupeKey: string }
@@ -59,21 +51,18 @@ export type EdgeJob =
   | { kind: "dns_check"; payload: { domainId: string }; dedupeKey: string; runAfterMs?: number };
 
 /**
- * A new domain gets no router until its DNS points at this server: the worker routes it
- * when a DNS check passes, and checks a waiting domain again on a backoff. So the first check is
- * the one that matters. In direct mode it runs at once, since the record is often made before the
- * domain is added. In tunnel mode it waits a little for the wire job to create the record.
+ * The worker routes a domain only once a DNS check passes. In direct mode the first check runs at
+ * once; in tunnel mode it waits 30 s for the wire job to create the record.
  */
 export function jobsForCreate(d: { id: string; appId: string }, ingress: "cloudflare_tunnel" | "direct_tls"): EdgeJob[] {
   const jobs: EdgeJob[] = [{ kind: "edge_route_sync", payload: { appId: d.appId }, dedupeKey: `edge.route:${d.appId}` }];
-  // In tunnel mode Dockify can create the DNS record and tunnel rule; the worker skips it when
-  // Cloudflare is not connected or the zone is not one the owner marked managed.
+  // The worker skips this when Cloudflare is not connected or the zone is not marked managed.
   if (ingress === "cloudflare_tunnel") jobs.push({ kind: "edge_cf_wire", payload: { domainId: d.id }, dedupeKey: `edge.cf:${d.id}` });
   jobs.push({ kind: "dns_check", payload: { domainId: d.id }, dedupeKey: `edge.dns:${d.id}`, runAfterMs: ingress === "direct_tls" ? 0 : 30_000 });
   return jobs;
 }
 
-/** Teardown removes only what the row recorded. No recorded ids, nothing on Cloudflare is touched. */
+/** Removes only what the row recorded: with no recorded ids, nothing on Cloudflare is touched. */
 export function jobsForDelete(d: { id: string; appId: string; hostname: string; cfZoneId: string | null; cfRecordId: string | null }): EdgeJob[] {
   const jobs: EdgeJob[] = [{ kind: "edge_route_sync", payload: { appId: d.appId }, dedupeKey: `edge.route:${d.appId}` }];
   if (d.cfZoneId && d.cfRecordId) {

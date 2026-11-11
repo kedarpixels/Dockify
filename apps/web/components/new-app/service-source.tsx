@@ -6,9 +6,7 @@ import { ChoiceCards, type CardOption } from "./choice";
 import type { ServiceDraft } from "./draft";
 import { SERVICE_LABEL, SERVICE_VERSIONS, type ServiceKind } from "./spec";
 
-/* Step 2 for a managed service: which one, and its version. Every one is private to the project,
-   keeps its data on its own volume and gets a generated password. Storage is not offered: MinIO no
-   longer publishes an image Dockify can run. */
+/* Every one is private to the project, keeps its data on its own volume and gets a generated password. */
 
 const SERVICES: CardOption<ServiceKind>[] = [
   { value: "postgres", icon: "database", title: "Postgres", body: "Backups on a schedule, to this server or your storage, and restore into a new database." },

@@ -1,15 +1,9 @@
-/* Server: metric cells, disk breakdown, services, system facts and containers.
-   Backups: schedules, history rows and the content of their dialogs. */
-
 .sb-muted {
   color: var(--ink-3);
   font-weight: 400;
 }
 
-/* -------------- Metric cards -------------- */
-/* Each card is the shared KPI cell (components/ui/kpi.tsx, KpiCell with the range picker as its
-   actions) in a two column KPI grid; this file only adds the range's chart under the figures and
-   the average and peak line under the chart. One column once the strip is narrow. */
+/* Metric cards */
 @container kpi (max-width: 760px) {
   .kpi-grid.sb-metrics {
     --kpi-cols: 1;
@@ -22,7 +16,7 @@
   height: 72px;
 }
 
-/* The cell's own sparkline rule draws a small 112px trend; a metric card's chart is the full width. */
+/* Overrides the cell's 112px sparkline: a metric card's chart is the full width. */
 .sb-trend .sparkarea[data-fluid="true"] {
   width: 100%;
   height: 72px;
@@ -56,17 +50,15 @@
   color: var(--ink-3);
 }
 
-/* -------------- Disk breakdown -------------- */
-/* Each slice names its colour once in --slice; the stack, legend, keys and bars all read it, and
-   the reclaimable part is a soft tint of the same colour. Scoped to the card and the prune
-   dialog's list, which is portalled outside the page. */
+/* Disk breakdown */
+/* Each slice sets --slice once and the stack, legend and bars read it. Scoped to the prune
+   dialog's list too, which is portalled outside the page. */
 :is(.sb-disk, .sb-dlg-list) [data-slice="images"] { --slice: var(--heat-4); }
 :is(.sb-disk, .sb-dlg-list) [data-slice="buildCache"] { --slice: var(--heat-3); }
 :is(.sb-disk, .sb-dlg-list) [data-slice="volumes"] { --slice: var(--heat-2); }
 :is(.sb-disk, .sb-dlg-list) [data-slice="logs"] { --slice: color-mix(in srgb, var(--heat-2) 55%, var(--heat-1)); }
-/* Every used slice is a shade of the usage blue, darkest first (images, build cache, volumes, logs,
-   then the rest of the disk), so the bar reads as one used block in steps; only free space is the
-   grey track. With no Docker breakdown reported, all used space is the one chart blue. */
+/* Used slices are shades of the usage blue, darkest first, so the bar reads as one used block.
+   With no Docker breakdown, all used space is the one chart blue. */
 :is(.sb-disk, .sb-dlg-list) [data-slice="used"] { --slice: var(--chart); }
 :is(.sb-disk, .sb-dlg-list) [data-slice="other"] { --slice: var(--heat-1); }
 :is(.sb-disk, .sb-dlg-list) [data-slice="free"] { --slice: var(--mass); }
@@ -138,7 +130,6 @@
   box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
-/* The reclaimable part's key: the slice's soft tint, ringed so it reads on the page. */
 .sb-spare-key {
   display: block;
   flex: none;
@@ -149,7 +140,6 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slice) 40%, transparent);
 }
 
-/* One ruled cell per slice, the same build as the KPI strips: 1px gaps on the line colour. */
 .sb-slices {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -202,7 +192,6 @@
   white-space: nowrap;
 }
 
-/* The same headline figure as every KPI cell, 32 on 40. */
 .sb-slice-val {
   font-size: 32px;
   line-height: 40px;
@@ -244,9 +233,7 @@
   color: var(--ink-3);
 }
 
-/* -------------- Services -------------- */
-/* Beside the System list the card stretches to its height; the rows keep their own height and
-   stack from the top, as in Maintenance, so a short list never spreads over the spare room. */
+/* Services */
 .sb-svc {
   display: flex;
   flex-direction: column;
@@ -304,7 +291,6 @@
   color: var(--ink-2);
 }
 
-/* Narrow: the detail drops under the name (20 over 18, 2px gap) instead of being hidden. */
 @container sb-svc (max-width: 520px) {
   .sb-svc-row {
     padding: 8px;
@@ -325,17 +311,15 @@
   }
 }
 
-/* The smallest phones keep the state's word and let the latency go. */
 @container sb-svc (max-width: 360px) {
   .sb-svc-lat {
     display: none;
   }
 }
 
-/* -------------- System facts -------------- */
-/* A plain definition list in the 340px side column: label left, value right, 36px rows. Stacked
-   full width (under 1100px) the same rows would sit hundreds of pixels apart, so a wider card lays
-   the facts out as columns of label over value instead: two, then three. */
+/* System facts */
+/* Stacked full width (under 1100px) label and value would sit hundreds of pixels apart, so a
+   wider card lays the facts out as columns of label over value. */
 .sb-sys {
   flex: 1;
   container: sb-sys / inline-size;
@@ -420,7 +404,7 @@
   }
 }
 
-/* -------------- Containers -------------- */
+/* Containers */
 .sb-ctr {
   container: sb-ctr / inline-size;
 }
@@ -464,8 +448,7 @@
   justify-self: end;
 }
 
-/* Header keys: plain text that inks on hover; the sorted key shows its arrow. Numeric keys put
-   the arrow first so the label's right edge lines up with the values under it. */
+/* Numeric keys put the arrow first so the label's right edge lines up with the values under it. */
 .sb-sort {
   display: inline-flex;
   align-items: center;
@@ -510,8 +493,6 @@
   opacity: 1;
 }
 
-/* Each project opens with the shared group head (a server glyph for Dockify's own); a hairline
-   parts one project from the next. */
 .sb-cgroup + .sb-cgroup {
   margin-top: 8px;
   padding-top: 8px;
@@ -534,7 +515,6 @@
   overflow-wrap: anywhere;
 }
 
-/* Status: the shared status chip, as on Services and Resources. */
 .sb-c-state {
   display: flex;
   align-items: center;
@@ -607,8 +587,7 @@ a.sb-c-applink:focus-visible {
   text-align: right;
 }
 
-/* A restart count's word: screen readers always hear it (an .sr copy), and the two-line rows,
-   which have no Restarts header, show it. */
+/* Screen readers always hear the word (an .sr copy); only the two-line rows, which have no header, show it. */
 .sb-rs-word {
   display: none;
 }
@@ -625,8 +604,7 @@ a.sb-c-applink:focus-visible {
   }
 }
 
-/* 860 and below (seven columns would squeeze the names): each container is two lines, and the
-   header row gives way to a sort dropdown. */
+/* Seven columns would squeeze the names: two lines per container, and a sort dropdown replaces the header. */
 @container sb-ctr (max-width: 860px) {
   .sb-chead {
     display: none;
@@ -638,7 +616,6 @@ a.sb-c-applink:focus-visible {
     max-width: none;
   }
   .sb-crow {
-    /* Fixed side columns, so values line up from row to row. */
     --cols: minmax(0, 1fr) auto 96px 112px;
     grid-template-areas:
       "name name state up"
@@ -656,7 +633,7 @@ a.sb-c-applink:focus-visible {
   .sb-crow .gauge-val {
     min-width: 0;
   }
-  /* No header names the column here: a bare 0 says nothing, a count says what it counts. */
+  /* No header names the column here, so a bare 0 is hidden. */
   .sb-rs-zero {
     display: none;
   }
@@ -668,8 +645,6 @@ a.sb-c-applink:focus-visible {
   }
 }
 
-/* Phones: still two lines; the bars give way so the app keeps its room, the values stay. The
-   restart count drops its word to fit beside the app; screen readers keep it. */
 @container sb-ctr (max-width: 480px) {
   .sb-crow {
     --cols: minmax(0, 1fr) auto 80px 88px;
@@ -681,14 +656,12 @@ a.sb-c-applink:focus-visible {
   .sb-rs-word {
     display: none;
   }
-  /* Alone on its own row under the filter, the sort pair starts at the left like the rows above. */
   .sb-ctr-sort {
     margin-left: 0;
   }
 }
 
-/* -------------- Backups: schedules -------------- */
-/* The rows sit in one soft box: a faint fill and a hairline ring, rows ruled inside it. */
+/* Backups: schedules */
 .sb-sched {
   container: sb-sched / inline-size;
 }
@@ -717,7 +690,6 @@ a.sb-c-applink:focus-visible {
   border-top: 1px solid var(--line);
 }
 
-/* The name and its environment tag share the first line. */
 .sb-sched-db .two-main {
   display: flex;
   flex-wrap: wrap;
@@ -815,14 +787,13 @@ a.sb-c-applink:focus-visible {
   }
 }
 
-/* -------------- Backups: history -------------- */
+/* Backups: history */
 /* --when-w fits the widest relative time a row prints ("Yesterday", "12h ago"). */
 .sb-hist {
   container: sb-hist / inline-size;
   --when-w: 72px;
 }
 
-/* History filter: the segmented strip when it fits, the shared dropdown on narrow cards. */
 .sb-tools-wide {
   display: flex;
   min-width: 0;
@@ -935,7 +906,6 @@ a.sb-c-applink:focus-visible {
   .sb-tools-narrow {
     display: block;
   }
-  /* A failed run keeps its reason on a second line instead of losing it. */
   .sb-run[data-status="failed"] {
     height: auto;
     min-height: 44px;
@@ -961,7 +931,7 @@ a.sb-c-applink:focus-visible {
   }
 }
 
-/* -------------- Dialog content -------------- */
+/* Dialog content */
 .sb-dlg-note {
   margin: 0;
   font-size: 13px;
@@ -998,7 +968,6 @@ a.sb-c-applink:focus-visible {
   color: var(--ink);
 }
 
-/* The slice colour key sits before the name. */
 .sb-dlg-li-name {
   display: inline-flex;
   align-items: center;
@@ -1037,7 +1006,6 @@ a.sb-c-applink:focus-visible {
   color: var(--ink);
 }
 
-/* Choice rows in Back up now and Restore: soft rows in a dialog, each led by the shared .radio. */
 .sb-choices {
   display: flex;
   flex-direction: column;
@@ -1048,7 +1016,7 @@ a.sb-c-applink:focus-visible {
   border: 0;
 }
 
-/* A field label over the rows; no browser inset, so it lines up with them. */
+/* No browser inset, so the legend lines up with the rows. */
 .sb-choices legend {
   margin-bottom: 8px;
   padding: 0;

@@ -1,8 +1,4 @@
-/**
- * The data lane's clock, run once a minute by the worker: fire due backup schedules, apply
- * retention, run the weekly restore tests, settle stale rows, and, once per server, undo quiesces a
- * crashed restore left behind. Every step is idempotent, so two workers or a missed minute do no harm.
- */
+/** Run once a minute. Every step is idempotent, so two workers or a missed minute do no harm. */
 import type { Db } from "@dockify/db";
 import { appsHere } from "../server/apps-here.ts";
 import type { DataDeps, DataStores } from "./context.ts";
@@ -25,22 +21,17 @@ export interface TickReport {
 
 export interface ServerTickReport {
   resumed: number;
-  /** Older installs' services queued once for the managed path. */
   upgraded: number;
 }
 
 export const STALE_TEST_ERROR = "The worker stopped before this restore test finished";
 
-/** The message of the one deploy that moves an older install's service onto the managed path. */
 export const LEGACY_UPGRADE_MESSAGE = "Moved onto the managed service path: its own password and volume, its data copied over (one-time upgrade)";
 const IN_FLIGHT = ["queued", "building", "deploying", "cancelling"] as const;
 
 /**
- * Services an older install ran through the generic app pipeline (no password, the project's
- * variables, data on an anonymous volume) get one deploy through the managed path, which copies
- * their data over (data/managed.ts). Queued by Dockify itself, once per service: a service that
- * already has the marker deployment is never queued again, so a conversion that fails leaves the
- * old container running as it was and waits for the owner to deploy.
+ * Services an older install ran through the generic pipeline get one deploy through the managed path. Queued
+ * once: one with the marker deployment is never queued again, so a failed conversion waits for the owner.
  */
 export async function upgradeLegacyServices(deps: DataDeps, serverId: string): Promise<number> {
   const { db } = deps;
@@ -73,10 +64,8 @@ export async function upgradeLegacyServices(deps: DataDeps, serverId: string): P
 }
 
 /**
- * Fires every tier that is due. Tiers of one database due in the same minute share one run: one
- * dump, a copy to each (requests.ts). Each tier's slot is claimed first, so a second worker or the
- * next tick does not fire it again; a run that cannot start because another is in flight gives its
- * slots back and fires on a later tick.
+ * Fires every tier that is due; tiers of one database due in the same minute share one dump. Each slot is
+ * claimed first, so a second worker does not fire it again. A run blocked by another gives its slots back.
  */
 export async function fireDueSchedules(db: Db, now: Date, log: (msg: string, extra?: object) => void = () => {}): Promise<number> {
   const rows = await db.backupSchedule.findMany({
@@ -113,7 +102,6 @@ export async function fireDueSchedules(db: Db, now: Date, log: (msg: string, ext
 /** Pre-update dumps of Dockify's own database: no tier, so the rule before tiers. */
 const CONTROL_PLANE_RETENTION: RetentionPolicy = { keep: 3, keepDays: 30 };
 
-/** Backups a restore or a restore test is reading right now. */
 async function backupsInUse(db: Db): Promise<Set<string>> {
   const open = await db.job.findMany({ where: { kind: { in: ["restore", "restore_test"] }, completedAt: null, failedAt: null }, select: { payload: true } });
   const ids = new Set<string>();
@@ -124,11 +112,7 @@ async function backupsInUse(db: Db): Promise<Set<string>> {
   return ids;
 }
 
-/**
- * Each database's backups, tier by tier, against that tier's policy (a tier with no row keeps
- * DEFAULT_KEEP). Deletes the stored object first, local file or remote object alike, and marks the
- * row only after, so a failed delete is retried next tick.
- */
+/** The stored object is deleted first and the row marked only after, so a failed delete is retried next tick. */
 export async function applyRetention(deps: DataStores, now: Date): Promise<{ expired: number; deleted: number }> {
   const { db } = deps;
   const apps = await db.app.findMany({ where: { kind: { in: [...SERVICE_KINDS] } }, select: { id: true, backupSchedules: true } });
@@ -166,11 +150,7 @@ const ownJob = (id: string) => [{ payload: { path: ["backupId"], equals: id } },
 /** A row with no job at all is settled only after this, the one case the reason cannot come from a job. */
 const ORPHAN_ROW_AGE_MS = 10 * 60_000;
 
-/**
- * Running rows whose job is over (failed, done, or out of attempts because its worker died) will
- * never finish. Each is settled as soon as that is known, with the reason its own attempts or its
- * job recorded (staleReason), never a vaguer one.
- */
+/** Running rows whose job is over are settled with the reason their attempts or job recorded, never a vaguer one. */
 export async function failStaleRuns(db: Db, now: Date): Promise<number> {
   const running = await db.backup.findMany({ where: { status: "running" }, select: { id: true, appId: true, trigger: true, error: true, createdAt: true } });
   let n = 0;
@@ -195,7 +175,6 @@ export async function failStaleRuns(db: Db, now: Date): Promise<number> {
   return n;
 }
 
-/** A restore test left running by a job that is over is settled failed with that job's last error. */
 export async function failStaleRestoreTests(db: Db, now: Date): Promise<number> {
   const rows = await db.backup.findMany({ where: { restoreTestStatus: "running" }, select: { id: true } });
   let n = 0;
@@ -212,7 +191,6 @@ export async function failStaleRestoreTests(db: Db, now: Date): Promise<number> 
   return n;
 }
 
-/** The newest ready backup of every service, tested on the instance's restore test cron. */
 export async function scheduleRestoreTests(db: Db, now: Date): Promise<number> {
   const inst = await db.instance.findUnique({ where: { id: 1 }, select: { restoreTestCron: true } });
   if (!inst?.restoreTestCron) return 0;
@@ -238,8 +216,7 @@ export async function scheduleRestoreTests(db: Db, now: Date): Promise<number> {
 
 /**
  * A restore that died after quiescing leaves the environment's apps stopped. Its job row says which
- * (written before the first stop) and whether they were resumed; anything settled or abandoned and
- * not resumed gets its apps started again.
+ * (written before the first stop); anything not resumed gets its apps started again.
  */
 export async function recoverQuiesced(deps: DataDeps, now: Date, serverId: string): Promise<number> {
   const jobs = await deps.db.job.findMany({
@@ -277,7 +254,6 @@ export async function dataTick(deps: DataStores): Promise<TickReport> {
   return { scheduled, expired, failedRowsDeleted: deleted, restoreTests, staleFailed, staleTests };
 }
 
-/** The steps that act on one server's containers. */
 export async function dataServerTick(deps: DataDeps, serverId: string): Promise<ServerTickReport> {
   const resumed = await recoverQuiesced(deps, deps.now?.() ?? new Date(), serverId);
   const upgraded = await upgradeLegacyServices(deps, serverId);

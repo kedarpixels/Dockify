@@ -27,7 +27,7 @@ import { DeployKpis } from "./deploy-kpis";
 import { groupCount, refreshed } from "./feed-list";
 import { DEPLOY_ROW_BARS, DEPLOY_ROW_TEMPLATE } from "./skeleton";
 
-/* A status filter leads with its tone dot. The list pages from the server, so the options carry no counts. */
+/* The list pages from the server, so the options carry no counts. */
 const FILTERS = filterOptions<DeployFilter>([
   { value: "all", label: "All" },
   { value: "building", label: "Building", tone: "live" },
@@ -60,7 +60,6 @@ function feedUrl(q: DeploymentQuery) {
   return `/api/deployments/feed?${p}`;
 }
 
-/** One page of the feed; a failure carries the route's reason, and an aborted request says so. */
 async function fetchPage(q: DeploymentQuery, signal?: AbortSignal): Promise<{ page: DeploymentPage } | { error: string; aborted?: boolean }> {
   const r = await callJson<DeploymentsResult>(feedUrl(q), { signal });
   if (!r.ok) return { error: r.error, aborted: r.aborted };
@@ -68,13 +67,11 @@ async function fetchPage(q: DeploymentQuery, signal?: AbortSignal): Promise<{ pa
   return { page: r.data.data };
 }
 
-/** The filters as one comparable string. */
 const filterKey = (q: DeploymentQuery) => `${q.status ?? "all"}|${q.project ?? ""}|${q.q ?? ""}`;
 
-/** The key with no filters. The KPI strip counts every build, so only this query may update it. */
+/** The KPI strip counts every build, so only the unfiltered query may update it. */
 const UNFILTERED = filterKey({ status: "all" });
 
-/** Rows grouped by day, newest first: Today, Yesterday, then the date. */
 function byDay(items: RecentDeployment[], now: number, heading: (iso: string, now: number) => string) {
   const groups: Array<{ label: string; rows: RecentDeployment[] }> = [];
   for (const d of items) {
@@ -126,7 +123,6 @@ export function DeploymentsView({ initial, overview, query }: { initial: Deploym
   const shownKey = useRef(filterKey(filters));
   const firstPage = useRef<AbortController | null>(null);
 
-  /** Loads the first page for `f`, replacing the rows; any older first-page request is aborted. */
   const reload = useCallback((f: DeploymentQuery) => {
     const key = filterKey(f);
     shownKey.current = key;
@@ -145,14 +141,12 @@ export function DeploymentsView({ initial, overview, query }: { initial: Deploym
 
   useEffect(() => () => firstPage.current?.abort(), []);
 
-  // The search settles for 250ms before it asks the server.
   useEffect(() => {
     const id = setTimeout(() => setQ(text.trim()), 250);
     return () => clearTimeout(id);
   }, [text]);
 
-  // A filter change reloads the first page and mirrors the filters into the address bar. The
-  // server already rendered the first set, so an unchanged key does nothing.
+  // The server already rendered the first set, so an unchanged key does nothing.
   useEffect(() => {
     if (filterKey(filters) === shownKey.current) return;
     const url = new URL(window.location.href);
@@ -164,8 +158,7 @@ export function DeploymentsView({ initial, overview, query }: { initial: Deploym
     reload(filters);
   }, [filters, reload]);
 
-  // 15s after each answer the first page is pulled again so running builds finish and new ones
-  // appear. A pull slower than SLOW_MS shows "Updating" in the head until it lands.
+  // The first page is pulled again 15s after each answer, so running builds finish and new ones appear.
   useEffect(() => {
     if (initial.source === "none") return;
     const key = filterKey(filters);
@@ -220,7 +213,6 @@ export function DeploymentsView({ initial, overview, query }: { initial: Deploym
     setProject("");
   };
 
-  // Project filter options: every known project with its health dot and app count, "All" first.
   const projectOptions = useMemo<SelectOption<string>[]>(() => {
     const cards = ov.data ? deriveProjects(ov.data) : [];
     const slugs = new Set(cards.map((c) => c.slug));
@@ -235,7 +227,6 @@ export function DeploymentsView({ initial, overview, query }: { initial: Deploym
 
   const shownStats = stats ?? statsFrom(list.items, now);
   const groups = byDay(list.items, now, heading);
-  // A status or a project narrows the list beyond the search text.
   const narrowed = status !== "all" || !!project;
   const filtered = narrowed || !!q;
   const noSource = initial.source === "none";

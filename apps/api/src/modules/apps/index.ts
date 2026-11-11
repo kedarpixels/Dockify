@@ -1,8 +1,5 @@
-/**
- * The apps module: the Deploy button here, and read, settings, delete, start, stop, restart and the
- * config tab in handlers.ts. A server-target deploy goes through the deployments module's single
- * in-flight guard; a Vercel-target deploy queues the Vercel sync job instead.
- */
+// A server-target deploy goes through the deployments module's single in-flight guard; a
+// Vercel-target deploy queues the Vercel sync job instead.
 import type { EndpointId } from "@dockify/contracts";
 import { assertProjectScope } from "../../actor.ts";
 import type { Handlers } from "../../app.ts";

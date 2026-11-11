@@ -1,12 +1,6 @@
 /**
- * The metrics sampler: on its own clock (not a job, so it keeps running while the queue is busy),
- * one raw MetricSample row for the host and one per running app container. Network columns hold the
- * cumulative byte counters (host interfaces, or the container's own), so a reader takes the delta
- * between two points and treats a negative delta (reboot, replaced container) as zero. restarts is
- * the container's cumulative RestartCount the same way.
- *
- * It also keeps the latest reading in memory for the alert engine, which runs in the same process
- * and needs totals (memory, disk, limits) that the sample table does not store.
+ * Runs on its own clock, not as a job, so it keeps sampling while the queue is busy. Network and
+ * restart columns are cumulative counters: a reader takes deltas and treats a negative one as zero.
  */
 import type { Db, Prisma } from "@dockify/db";
 import { DockerError, isNotFound } from "@dockify/engine";
@@ -16,11 +10,8 @@ import { appsHere } from "../server/apps-here.ts";
 import { containerCpuPct, containerMemBytes, containerNetTotals, cpuBusyPct, type CpuTimes } from "./stats.ts";
 
 /**
- * Stores one tick's samples. A tick reads the app list once and then spends about a second per
- * container, so an app deleted meanwhile fails the foreign key, and createMany takes every other
- * app's samples down with it. That row goes and the rest try again, more than once: deleting a project
- * removes its apps one by one, so another can go while this retries. Past that the tick's samples
- * are dropped, as a missed tick is. Anything but that error still throws.
+ * An app deleted mid-tick fails the foreign key, and createMany takes every other app's samples down
+ * with it. That row goes and the rest retry a few times; past that the tick is dropped like a missed one.
  */
 export async function insertSamples(db: Db, rows: Prisma.MetricSampleCreateManyInput[]): Promise<void> {
   const onlyLive = async (list: Prisma.MetricSampleCreateManyInput[]) => {
@@ -53,10 +44,8 @@ export interface HostLatest {
 export interface AppLatest {
   at: Date;
   containerId: string;
-  /** Docker state: running, restarting, exited, created, paused, dead. */
   state: string;
   health: string | null;
-  /** State.StartedAt as the daemon reports it (an ISO time; year 1 when it never started). */
   startedAt: string | null;
   restartCount: number;
   cpuPct: number | null;
@@ -77,7 +66,6 @@ export interface SamplerState {
    * from `apps` had a failed inspect this tick, which says nothing about its container.
    */
   listed: Set<string>;
-  /** When the last listing succeeded (ms), or null before the first one. */
   listedAt: number | null;
 }
 
@@ -193,7 +181,6 @@ export function createSampler(db: Db, server: { serverId: string; docker: Docker
             netRxBytes: big(net.rx), netTxBytes: big(net.tx),
           });
         } catch (e) {
-          // Gone between the listing and this read: a deploy swapped it, or it was deleted.
           if (isNotFound(e)) continue;
           if (e instanceof DockerError) {
             log("metrics: container read failed", { app: appId, error: e.message });

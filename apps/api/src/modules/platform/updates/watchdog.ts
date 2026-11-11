@@ -1,21 +1,7 @@
 /**
- * Brings back a control service Docker's restart policy will not.
- *
- * `restart: unless-stopped` covers a process that dies on its own, an out-of-memory kill included.
- * It does not cover two cases. `docker kill` and `docker stop` mark the container as stopped by hand
- * (moby daemon/kill.go sets HasBeenManuallyStopped), and the policy then leaves it down for good, even
- * across a daemon restart. And Docker restarts nothing for failing a healthcheck, so a hung process
- * stays hung. The updater holds the socket and already runs a loop, so it watches for both:
- *
- *   exited with a code other than 0 or 143   started again
- *   running and unhealthy                    restarted, once the database answers (a database
- *                                            outage makes the api and the worker unhealthy too, and
- *                                            restarting them would not help)
- *
- * Exit 0 and 143 are a clean answer to SIGTERM: someone stopped it on purpose (`dockify stop worker`),
- * and it stays stopped. A state must hold for GRACE_MS, so a recreate in progress is left alone, and a
- * service is touched once per COOLDOWN_MS. Nothing happens during an update or a dashboard address
- * change, which stop services themselves. DOCKIFY_WATCHDOG=off in .env turns all of this off.
+ * Brings back control services that `restart: unless-stopped` will not: a container killed with
+ * `docker kill` counts as stopped by hand and stays down, and Docker never restarts an unhealthy one.
+ * Idle during an update or a dashboard address change, which stop services themselves.
  */
 import { audit } from "../../../audit.ts";
 import type { Db } from "@dockify/db";
@@ -23,9 +9,9 @@ import { checkInstallTree, installPaths, run, type ControlProbe, type GuardFs, t
 
 export const GRACE_MS = 2 * 60_000;
 export const COOLDOWN_MS = 10 * 60_000;
-/** The services worth waking. The updater cannot wake itself; one-shots and the optional ones stay out. */
+/** The updater cannot wake itself, and one-shot services stay out. */
 export const WATCHED = new Set(["postgres", "api", "worker", "agent", "web", "socket-proxy", "proxy", "proxy-direct", "cloudflared", "buildkit"]);
-/** A clean exit on SIGTERM: 0 from a handler, 143 from the default action. */
+/** A clean answer to SIGTERM (0 from a handler, 143 by default): stopped on purpose, so it stays stopped. */
 const DELIBERATE_EXIT = new Set([0, 143]);
 
 export interface ServiceRow {
@@ -36,8 +22,8 @@ export interface ServiceRow {
 }
 
 /**
- * `docker compose ps --all --format json`: one JSON object per line (Compose 2.21 on) or one array
- * (before). A row labelled dockify.managed is a tenant container posing as a service, never watched.
+ * `compose ps --format json` prints one object per line from Compose 2.21 on, one array before.
+ * A row labelled dockify.managed is a tenant container posing as a service and is never watched.
  */
 export function parseComposePs(out: string): ServiceRow[] {
   const t = out.trim();
@@ -54,7 +40,11 @@ export function parseComposePs(out: string): ServiceRow[] {
 
 export type WatchAction = { service: string; action: "start" | "restart"; why: string };
 
-/** What the rows want now, by itself so the tests need no Docker. `bad` keeps when each state began. */
+/**
+ * A state must hold for GRACE_MS (a recreate in progress is left alone) and a service is touched
+ * once per COOLDOWN_MS. `bad` keeps when each state began. Unhealthy services wait for the database:
+ * its outage makes them unhealthy too and restarting them would not help.
+ */
 export function decide(rows: readonly ServiceRow[], bad: Map<string, { kind: string; since: number }>, lastAction: ReadonlyMap<string, number>, now: number, databaseUp: boolean): WatchAction[] {
   const out: WatchAction[] = [];
   const seen = new Set<string>();

@@ -1,10 +1,4 @@
-/**
- * The integrations module: GitHub App (installations, repos, branches, webhook, push to deploy, PR
- * previews), Vercel, Cloudflare, registries, storage destinations and notification channels.
- *
- * Mounted as a plugin, so the GitHub webhook body stays raw inside its own encapsulated scope. The
- * plugin registers each route from its contract with its policy.
- */
+/** Mounted as a plugin so the webhook bodies stay raw inside their own encapsulated scopes. */
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from "fastify";
 import type { EndpointId } from "@dockify/contracts";
 import type { Ctx, Handler, Handlers } from "../../app.ts";
@@ -28,10 +22,8 @@ import { findIntegration } from "./store.ts";
 import { webhookHandlers, webhookRefs } from "./webhooks.ts";
 
 /**
- * Ends a GitHub round trip on the integrations page. Not a 302: GitHub sends the browser here
- * cross-site, and a redirect stays cross-site, so the SameSite=Strict session cookie would not
- * arrive and a signed-in owner would land on the login page. This small page navigates from our own
- * origin, so the cookie rides along. The outcome is one of four fixed words; nothing is reflected.
+ * Not a 302: GitHub sends the browser here cross-site and a redirect stays cross-site, so the SameSite=Strict
+ * session cookie would not arrive. This page navigates from our own origin instead. Nothing is reflected.
  */
 function landOnSettings(reply: FastifyReply, origin: string, outcome: "installed" | "failed" | "app-created" | "app-failed"): void {
   const url = `${origin}/settings?section=integrations&github=${outcome}`;
@@ -72,16 +64,14 @@ export function createIntegrationHandlers(deps: IntegrationDeps = defaultDeps())
     ...webhookHandlers(deps),
     ...emailHandlers(deps),
 
-    // GitHub's redirect after an install. Never reflects anything: success or failure lands on the
-    // integrations settings page, and the outcome is visible there.
+    // Never reflects anything: success or failure both land on the integrations settings page.
     "git.setup": async ({ query, reply, ctx }) => {
       const ok = await completeInstall(ctx.db, ctx.ring, deps, query).then((r) => r.ok, () => false);
       landOnSettings(reply, ctx.config.publicUrl.origin, ok ? "installed" : "failed");
       return undefined;
     },
 
-    // The form the browser posts to GitHub. Refused once an App exists, so the owner learns that
-    // here instead of after GitHub has already created a second App the callback would refuse.
+    // Refused once an App exists, so the owner learns it here and not after GitHub has created a second App.
     "git.app.manifest": async ({ body, actor, ctx }) => {
       const s = requireSession(actor);
       if (await findIntegration(ctx.db, "github_app")) throw new HttpError(409, "This server already has a GitHub App", "GITHUB_APP_EXISTS");
@@ -89,9 +79,7 @@ export function createIntegrationHandlers(deps: IntegrationDeps = defaultDeps())
       return { postUrl: manifestPostUrl(state, body?.organization), manifest: buildManifest(ctx.config.publicUrl.origin) };
     },
 
-    // GitHub's redirect after it created the App. Like git.setup it never reflects anything: the
-    // owner lands on the integrations settings page either way. Why it failed goes to the log only,
-    // and that reason never holds the code or a secret.
+    // Never reflects anything. Why it failed goes to the log only, and that reason never holds the code or a secret.
     "git.app.callback": async ({ query, reply, req, ctx }) => {
       const client = { ip: req.clientIp, userAgent: req.headers["user-agent"] ?? null };
       const out = await completeAppManifest(ctx.db, ctx.ring, deps, query, client).catch((e: unknown) => ({
@@ -111,14 +99,13 @@ export function createIntegrationHandlers(deps: IntegrationDeps = defaultDeps())
       if (app.deployTarget !== "vercel") throw new HttpError(400, "This app does not deploy to Vercel", "NOT_VERCEL_TARGET");
       if (app.vercelFollowOnly) throw followOnly();
       await enqueueVercelSync(ctx.db, params.id, "sync_env");
-      // This pushes the environment's secrets to Vercel; leave an audit row like a deploy does.
+      // This pushes the environment's secrets to Vercel, so it is audited like a deploy.
       await audit(ctx.db, { category: "deploys", action: "app.vercel.sync", verb: "pushed env to Vercel for", targetType: "app", targetId: params.id, targetLabel: app.name, ...who(actor, req) });
       return undefined;
     },
     "integrations.summary": async ({ actor, ctx }) => {
       const db = ctx.db;
-      // A Viewer learns what is connected. Hosts, usernames, buckets and secret hints are an admin's,
-      // as on the routes for each integration.
+      // A Viewer learns only which kinds are connected. Hosts, usernames, buckets and secret hints are an admin's.
       if (requireSession(actor).role !== "admin") {
         const kinds = await db.integration.groupBy({ by: ["kind"], where: { status: { not: "disconnected" } }, _count: true });
         const has = (kind: string) => kinds.some((k) => k.kind === kind);
@@ -140,7 +127,6 @@ export function createIntegrationHandlers(deps: IntegrationDeps = defaultDeps())
         db.integration.findMany({ where: { kind: "storage" }, orderBy: { createdAt: "asc" } }),
       ]);
       return {
-        // Whether this server has its own GitHub App yet: until it does, the web offers to create one.
         github: {
           accounts,
           app: app
@@ -178,8 +164,8 @@ export const integrationsPlugin: FastifyPluginAsync<IntegrationsPluginOptions> =
   const json = INTEGRATION_ENDPOINTS.filter((id) => id !== "webhooks.github" && id !== "webhooks.vercel");
   mount(app, opts.ctx, handlers, json);
 
-  // GitHub signs the bytes it sent. Inside this child scope only, both hook content types are kept
-  // as a raw Buffer; the signature check runs over it before anything is parsed.
+  // GitHub signs the bytes it sent. In this child scope only, both hook content types stay a raw Buffer,
+  // and the signature check runs over it before anything is parsed.
   await app.register(async (raw) => {
     for (const type of ["application/json", "application/x-www-form-urlencoded"]) {
       raw.addContentTypeParser(type, { parseAs: "buffer", bodyLimit: 5 * 1024 * 1024 }, (_req, body, done) => done(null, body));
@@ -187,8 +173,7 @@ export const integrationsPlugin: FastifyPluginAsync<IntegrationsPluginOptions> =
     mount(raw, opts.ctx, handlers, ["webhooks.github"]);
   });
 
-  // Vercel signs the bytes it sent too, always as JSON. An event is small, so the limit is small: a
-  // longer body is refused with 413 before anything is read, and anything else with 415.
+  // Vercel signs its bytes too, always as JSON. A body over the small limit is refused with 413 before it is read.
   await app.register(async (raw) => {
     raw.addContentTypeParser("application/json", { parseAs: "buffer", bodyLimit: VERCEL_WEBHOOK_MAX_BYTES }, (_req, body, done) => done(null, body));
     mount(raw, opts.ctx, handlers, ["webhooks.vercel"]);

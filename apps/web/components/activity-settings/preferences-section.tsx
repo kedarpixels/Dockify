@@ -18,9 +18,6 @@ import { Group, isUtc, SaveBar, settle, SettingRow, zoneLabel } from "./form";
 import { Segment, SectionTabs } from "./section-tabs";
 import type { SectionProps } from "./settings-view";
 
-/* Settings, Preferences: how times read for this user, which emails they get, and whether single
-   keys work as shortcuts in this browser. */
-
 interface PrefsDraft extends TimePrefs {
   deployFailed: boolean;
   security: boolean;
@@ -28,7 +25,6 @@ interface PrefsDraft extends TimePrefs {
 
 const prefsOf = (me: Me): PrefsDraft => ({ timeZone: me.timeZone, hour12: me.hour12, deployFailed: me.notify.deployFailed, security: me.notify.security });
 
-/** Only the keys that changed, as the API takes them. */
 function prefsPatch(from: PrefsDraft, to: PrefsDraft): PreferencesPatch | null {
   const patch: PreferencesPatch = {};
   if (to.timeZone !== from.timeZone) patch.timeZone = to.timeZone;
@@ -44,7 +40,7 @@ const BROWSER = "browser";
 const UTC = "UTC";
 type Clock = "24" | "12";
 
-/** Browser default, UTC, then every zone the browser knows; the saved zone stays listed even when it does not. */
+/** The saved zone stays listed even when the browser does not know it. */
 function zoneOptions(list: ReturnType<typeof useZoneList>, current: string | null): SelectOption<string>[] {
   const zones = list.at === "ready" ? list.zones.filter((z) => !isUtc(z)) : [];
   if (current && current !== UTC && !zones.includes(current)) zones.unshift(current);
@@ -91,7 +87,6 @@ function TimeGroup({ draft, onChange, now }: { draft: PrefsDraft; onChange: (nex
   );
 }
 
-/** One email choice: the label flips the switch, and so does a click anywhere else on the row. */
 function MailRow({ label, desc, checked, disabled, onChange }: { label: string; desc: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
   return (
     <SettingRow
@@ -119,7 +114,6 @@ function MailGroup({
   onChange: (next: Partial<PrefsDraft>) => void;
   role: Role;
   emailEnabled: boolean;
-  /** Opens Settings, Integrations at the email card. */
   onSetUp: () => void;
 }) {
   const admin = role === "admin";
@@ -155,10 +149,7 @@ function MailGroup({
   );
 }
 
-/**
- * Single-key shortcuts (D for the theme, / for search), kept in this browser like the theme, so the
- * switch applies at once and needs no save.
- */
+/** Kept in this browser like the theme, so the switch applies at once and needs no save. */
 function KeysGroup() {
   const [on, setOn] = useSingleKeyShortcuts();
   return (

@@ -1,13 +1,6 @@
 /**
- * Where encrypted dumps live: an S3-compatible bucket (R2, S3, MinIO, custom) or this server's own
- * disk, unless the owner turned that off. Both behind one small interface so the backup and
- * restore pipelines never care which.
- *
- * The S3 client is hand-written SigV4 over fetch, ported from the old worker: four calls and one
- * signing algorithm do not justify an SDK and its dependency tree. Path-style addressing, because a
- * self-hosted MinIO has one hostname and cannot vhost per bucket, and every provider accepts it.
- * Every request refuses redirects (a redirect would carry the signed request somewhere it was not
- * signed for), and the endpoint host passes the outbound guard at call time, not only at save time.
+ * The S3 client is hand-written SigV4 over fetch, path-style because a self-hosted MinIO cannot vhost per bucket.
+ * Every request refuses redirects (they would carry the signed request elsewhere) and passes the outbound guard.
  */
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -23,7 +16,6 @@ export interface ObjectStore {
   get(key: string, maxBytes?: number): Promise<Readable>;
   /** Idempotent: an object already gone is success. */
   delete(key: string): Promise<void>;
-  /** What a delete of this key would really free, when the store can tell without a round trip. */
   sizeOf?(key: string): Promise<number>;
   /** Writes and deletes a probe object: write access is what backups need, so it is what is proven. */
   probe(): Promise<number>;
@@ -58,8 +50,6 @@ export function backupObjectKey(prefix: string, a: { sourceAppId: string; backup
   return key;
 }
 
-// ------------------------------------------------------------------------------------------ S3
-
 export interface S3Config {
   endpoint: string;
   region: string;
@@ -69,7 +59,6 @@ export interface S3Config {
 }
 
 export type FetchLike = (url: string, init: RequestInit & { duplex?: "half" }) => Promise<Response>;
-/** Resolves the host and throws when it is not a public address (the shared SSRF rule). */
 export type OutboundGuard = (hostname: string) => Promise<void>;
 
 const ALGORITHM = "AWS4-HMAC-SHA256";
@@ -96,7 +85,6 @@ export interface SignedRequest {
   headers: Record<string, string>;
 }
 
-/** SigV4 for one path-style object request. Exported for the signing test. */
 export function signRequest(cfg: S3Config, method: string, key: string, payloadHash: string, now: Date, extra: Record<string, string> = {}): SignedRequest {
   const base = new URL(cfg.endpoint);
   if (base.protocol !== "https:") throw new StoreError("storage endpoints must be https", 400);
@@ -200,24 +188,11 @@ export class S3Store implements ObjectStore {
   }
 }
 
-// --------------------------------------------------------------------------------------- local
-
-/**
- * The server's own disk (the dockify-backups volume). On by default, so a fresh install has
- * working backups, manual and scheduled alike, before any bucket is added: a copy on the same disk
- * beats no copy. It is not off the server and dies with the disk, which the API (LOCAL_WARNING)
- * and the dashboard say wherever such a backup or schedule is listed; retention bounds the space it
- * takes. DOCKIFY_ALLOW_LOCAL_BACKUPS=0 turns it off for owners who want S3 only.
- */
+/** On by default, so a fresh install has backups before any bucket is added. DOCKIFY_ALLOW_LOCAL_BACKUPS=0 turns it off. */
 export const LOCAL_FLAG = "DOCKIFY_ALLOW_LOCAL_BACKUPS";
 export const localBackupsAllowed = (env: NodeJS.ProcessEnv = process.env): boolean => (env[LOCAL_FLAG] ?? "").trim() !== "0";
 const AT_RISK = "Stored on this server's own disk, not off the server: a failed disk or a lost server takes";
-/** A backup copy on this server's disk. */
 export const LOCAL_WARNING = `${AT_RISK} this backup with it.`;
-/**
- * A database whose scheduled copies stay on this server, with the step that fixes it: turn on its
- * Offsite tier when storage exists, else add storage first. A database with offsite copies needs none.
- */
 export const localTierWarning = (hasStorage: boolean): string =>
   `${AT_RISK} these backups with it. ${hasStorage ? "Turn on the Offsite tier of this database to keep copies elsewhere." : "Add S3 compatible storage in Settings, Integrations, then turn on the Offsite tier to keep copies elsewhere."}`;
 

@@ -14,9 +14,8 @@ import { backUpPlaces } from "./tier-schedule";
 import { dbLabel, dbName, dbRef, placeName, restoreName } from "./util";
 import { hasReservedPrefix, isReservedServiceName, RESERVED_NAME_MESSAGE, RESERVED_SERVICE_MESSAGE } from "@/lib/validation";
 
-/** Backups run on UTC schedules, so every absolute time in these dialogs reads in UTC. */
+// Backups run on UTC schedules, so every absolute time in these dialogs reads in UTC.
 
-/** What a restore test found, in one line for the facts list. */
 export function testLine(r: BackupRun): string {
   const t = r.restoreTest;
   if (t.status === "passed") return `Passed${t.tables !== null ? `, ${plural(t.tables, "table")}` : ""}${t.rows !== null ? `, ${plural(t.rows, "row")}` : ""}`;
@@ -25,11 +24,7 @@ export function testLine(r: BackupRun): string {
   return "Not tested";
 }
 
-/**
- * Restore one backup. The default is a new database beside the live one, which touches nothing;
- * replacing the live database sits behind a typed confirm. A deleted app's backup can only go
- * into a new database. Mounted once per opened run, so every field starts fresh.
- */
+/** Replacing the live database sits behind a typed confirm. Mounted once per opened run, so every field starts fresh. */
 export function RestoreDialog({ run, onClose, onConfirm }: { run: BackupRun; onClose: () => void; onConfirm: (r: BackupRun, req: RestoreRequest) => void }) {
   const utcAt = useUtcAt();
   const orphan = isOrphan(run);
@@ -150,10 +145,7 @@ export function RestoreDialog({ run, onClose, onConfirm }: { run: BackupRun; onC
   );
 }
 
-/**
- * Picks what to back up, mounted only while open: the choice is set once on open, so a refresh
- * mid flow never undoes it. Starting closes the dialog and the toast reports the runs it started.
- */
+/** Mounted only while open: the choice is set once on open, so a refresh mid flow never undoes it. */
 export function RunDialog({ onClose, schedules, onConfirm }: { onClose: () => void; schedules: BackupSchedule[]; onConfirm: (pick: string) => void }) {
   const [pick, setPick] = useState(() => (schedules.some((s) => s.enabled) ? "all" : (schedules[0]?.resourceId ?? "all")));
   const enabled = schedules.filter((s) => s.enabled).length;
@@ -206,7 +198,6 @@ export function RunDialog({ onClose, schedules, onConfirm }: { onClose: () => vo
   );
 }
 
-/** Deletes every backup of one deleted database, behind its typed name. */
 export function DeleteOrphansDialog({
   runs,
   onClose,

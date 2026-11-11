@@ -1,9 +1,6 @@
 /**
- * Anonymous Docker volumes that no container uses any more. Before managed services had named
- * volumes, each redeploy of a database left its data on one of these, and any image can declare one.
- * Dockify removes only the ones it can prove hold nothing of anyone's: empty ones, and an older
- * version's restore test copies (data/leftovers.ts). The janitor lists the rest in the activity log,
- * once each time the set changes, so they are never leaked silently and the owner decides.
+ * Dockify removes only the anonymous volumes it can prove hold nothing of anyone's (data/leftovers.ts). The
+ * janitor lists the rest in the activity log each time the set changes, and the owner decides.
  */
 import type { Db, Prisma } from "@dockify/db";
 import type { DiskUsageVolume } from "@dockify/engine";
@@ -21,7 +18,6 @@ export interface UnusedVolume {
 
 export const isAnonymousVolume = (v: Pick<DiskUsageVolume, "Name" | "Labels">): boolean => ANONYMOUS_NAME.test(v.Name) || v.Labels?.[ANONYMOUS_LABEL] !== undefined;
 
-/** Anonymous volumes no container, running or stopped, refers to. Sorted by name. */
 export function unusedAnonymousVolumes(volumes: readonly DiskUsageVolume[]): UnusedVolume[] {
   return volumes
     .filter((v) => isAnonymousVolume(v) && v.UsageData?.RefCount === 0)
@@ -31,7 +27,6 @@ export function unusedAnonymousVolumes(volumes: readonly DiskUsageVolume[]): Unu
 
 const size = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
 
-/** The names a previous report listed, read back from its changes. */
 function reported(changes: Prisma.JsonValue | null | undefined): string {
   if (!Array.isArray(changes)) return "";
   return changes.map((c) => (c && typeof c === "object" && !Array.isArray(c) ? String((c as { key?: unknown }).key ?? "") : "")).join(",");

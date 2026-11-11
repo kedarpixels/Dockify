@@ -4,10 +4,7 @@ import { patchSchedule, type TierPatch } from "@/lib/pages/server-backups";
 const CRON = /^[\d*/,\- ]{9,100}$/;
 const count = (v: unknown, max: number) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= max;
 
-/**
- * PATCH { tier, enabled?, cron?, keep?, keepDays?, destination? }: one backup tier of a database.
- * Elevated on the API, which checks the cron and the destination again.
- */
+/** PATCH { tier, enabled?, cron?, keep?, keepDays?, destination? }. Elevated on the API, which checks the cron and destination again. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const refused = guardWrite(req);
   if (refused) return refused;

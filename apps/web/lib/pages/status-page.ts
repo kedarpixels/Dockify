@@ -12,22 +12,8 @@ import { isPreviewMode } from "@/lib/preview-mode";
 
 export * from "./status-page-shared";
 
-/*
- * Public status page loader. API contract (packages/contracts/src/endpoints.ts).
- *
- *   -> PublicStatus. 404 when the project does not exist OR has not published a status page; the
- *   two must be indistinguishable, so a stranger cannot probe which project slugs exist.
- *   The API sends only what the project chose to publish: its display name, an optional logo,
- *   and one entry per published app under the display name the project gave it. Never internal
- *   ids, hostnames, IPs, container names, environments, commit data or owner details.
- *   `days` is the last 90 UTC days, oldest first, the last one being today so far.
- *   `incidents` covers the same 90 days, newest first.
- *
- * Whatever the API answers, `clean` below rebuilds the page from an allowlist of fields with
- * length caps, so a field the API adds by mistake never reaches a public page.
- *
- * Same-origin routes (public too).
- */
+// Public status page loader. An unknown project and an unpublished page both answer 404, so a
+// stranger cannot probe slugs. `clean` rebuilds the answer from an allowlist with length caps.
 
 /** Public and identical for every visitor, so shared caches may keep it a minute. */
 export const PUBLIC_CACHE = { "cache-control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300" };
@@ -35,8 +21,6 @@ const REVALIDATE = 60;
 
 /** Project slugs: lowercase letters, digits and inner dashes, 1 to 63 characters. */
 const isSlug = (v: string) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(v);
-
-// -------------- Cleaning --------------
 
 const STATES: StatusState[] = ["operational", "degraded", "outage"];
 const DAY_STATES: DayState[] = ["ok", "minor", "major", "none"];
@@ -160,18 +144,11 @@ function clean(raw: unknown, slug: string, now = Date.now()): PublicStatus | nul
   };
 }
 
-// -------------- API --------------
-
-/**
- * One public status page. Sends no cookie on purpose: the endpoint is public, and an operator's
- * session must never change what a public, cached page shows. Deduplicated per request, so
- * generateMetadata and the page share one call.
- */
+/** Sends no cookie on purpose: an operator's session must never change what a public, cached page shows. Deduplicated per request. */
 export const getStatusPage = cache(async (slug: string): Promise<StatusResult> => {
   if (!isSlug(slug)) return { kind: "missing" };
 
   if (process.env.DOCKIFY_API_URL) {
-    // Cached and anonymous (lib/api.ts): nothing of the visitor is forwarded, and the call is bounded.
     const r = await apiRequest<unknown>(`/api/v1/public/status/${encodeURIComponent(slug)}`, { revalidate: { seconds: REVALIDATE, tags: [`status:${slug}`] } });
     if (!r.ok) return r.status === 404 ? { kind: "missing" } : { kind: "error", error: plainError(r) };
     const data = clean(r.data, slug);
@@ -186,13 +163,7 @@ export const getStatusPage = cache(async (slug: string): Promise<StatusResult> =
   return { kind: "missing" };
 });
 
-// -------------- Preview fixture --------------
-
-/*
- * Only horseai publishes a status page; inkwell, brightlane and fieldnote answer 404. The components
- * are horseai's apps from the shared fixture under the display names horseai chose; admin and redis
- * are not published. Current states follow the fixture's app statuses.
- */
+// Only horseai publishes a status page; the other projects answer 404. Its admin and redis apps are not published.
 const PUBLISHED: Record<string, { name: string; apps: Array<[app: string, display: string, since?: number]> }> = {
   horseai: {
     name: "horseai",

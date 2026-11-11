@@ -16,9 +16,6 @@ import { Segment, SectionTabs } from "./section-tabs";
 import type { SectionProps } from "./settings-view";
 import { TwoFactorGroup } from "./two-factor";
 
-/* ---------- Password ---------- */
-
-/** One row: what the password is for, and the key that opens the change dialog. */
 function PasswordGroup({ emailEnabled, preview, email, onChanged }: { emailEnabled: boolean; preview: boolean; email: string; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   return (
@@ -39,17 +36,9 @@ function PasswordGroup({ emailEnabled, preview, email, onChanged }: { emailEnabl
   );
 }
 
-/* ---------- Sessions ---------- */
-
-/** A session's device by its shape: phone, tablet, computer, or a globe when nothing was recognised. */
 const DEVICE_ICON: Record<Session["kind"], IconName> = { mobile: "mobile", tablet: "tablet", desktop: "desktop", unknown: "globe" };
 
-/**
- * One session as a 56px table row, the same shape as a token: the device glyph and name (This
- * device on the current one) over the address and sign-in time, when it was last active, then the
- * more key with Revoke. While a revoke runs its key turns into the spinner; any revoke in flight
- * disables the others. The current session has no key.
- */
+/** Any revoke in flight disables the others. The current session has no key. */
 function SessionRow({ s, now, onRevoke, busy, pending }: { s: Session; now: number; onRevoke: () => void; busy: boolean; pending: boolean }) {
   // Several sessions can share a device name, so the key says the address too.
   const who = [s.device, s.ip].filter(Boolean).join(", ");
@@ -116,8 +105,7 @@ function SessionsGroup({ data, update, now, preview }: Pick<SectionProps, "data"
       return;
     }
     update({ sessions: data.sessions.filter((x) => x.id !== id) });
-    // The row and its key are gone: the focus goes on to the next session's key, else the heading,
-    // never to the top of the page.
+    // The row and its key are gone, so the focus goes to the next session's key, else the heading.
     requestAnimationFrame(() => {
       if (document.activeElement && document.activeElement !== document.body) return;
       const head = document.getElementById("set-sessions");
@@ -178,11 +166,8 @@ function SessionsGroup({ data, update, now, preview }: Pick<SectionProps, "data"
   );
 }
 
-/* ---------- Section ---------- */
-
 export function SecuritySection({ data, update, now, preview, emailEnabled, elevate, tab, onTab }: SectionProps) {
-  // A password change signs every other browser out. The list is read again; without an answer
-  // (the preview, a dropped call) it keeps this browser alone, which is what the API now holds.
+  // A password change signs every other browser out. Without an answer the list keeps this browser alone.
   const afterPassword = async () => {
     const fresh = await settle(readSessions());
     update({ sessions: fresh.ok && fresh.data ? fresh.data : data.sessions.filter((s) => s.current) });

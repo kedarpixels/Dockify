@@ -1,10 +1,5 @@
-// Writes the 1440px variant of each product shot next to the 2880px original, so a screen at
-// DPR 1 downloads half the width (components/landing/shot-picture.tsx picks one with srcset):
-//
-//   node scripts/resize-shots.mjs
-//
-// public/shots/<name>-<theme>.webp (2880 x 1800) gives public/shots/<name>-<theme>-1440.webp.
-// sharp ships with Next.js, so this needs no extra dependency. Run it after replacing a shot.
+// Writes a 1440px variant beside each 2880px product shot, so a screen at DPR 1 downloads half the width.
+// Run it after replacing a shot. sharp ships with Next.js, so it needs no extra dependency.
 import { readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

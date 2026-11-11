@@ -1,5 +1,4 @@
-/* What the email form checks before it calls the API; the API route runs the same checks again. A
-   preset only fills fields: nothing past this list knows a provider. */
+/* The API route runs the same checks again. A preset only fills fields: nothing past this list knows a provider. */
 
 const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 const FROM_NAME = /^[^"<>\\\r\n]{1,60}$/;
@@ -20,7 +19,6 @@ export interface EmailPreset {
   port: number;
   /** Filled in when the provider has a fixed username. */
   username: string;
-  /** What this provider calls the username and the password. */
   usernameHint: string;
   passwordHint: string;
 }
@@ -49,18 +47,16 @@ export interface EmailFormValues {
   replyTo: string;
 }
 
-/** What is stored already: a blank password keeps it, only for the host and username it was saved for. */
+/** A blank password keeps the stored one, only for the host and username it was saved for. */
 export interface StoredLogin {
   host: string;
   username: string;
   hasPassword: boolean;
 }
 
-/** Whether a blank password would keep the stored one. */
 export const keepsPassword = (v: Pick<EmailFormValues, "host" | "username">, stored: StoredLogin | null): boolean =>
   !!stored?.hasPassword && stored.host === v.host.trim().toLowerCase() && stored.username === v.username.trim();
 
-/** The problem with each field, or null. */
 export function emailFormErrors(v: EmailFormValues, stored: StoredLogin | null) {
   const replyTo = v.replyTo.trim();
   const username = v.username.trim();
@@ -84,7 +80,6 @@ export function emailFormErrors(v: EmailFormValues, stored: StoredLogin | null) 
 
 export type EmailFormField = keyof ReturnType<typeof emailFormErrors>;
 
-/** The field an API refusal names. */
 export const EMAIL_ERROR_FIELD: Record<string, EmailFormField> = {
   EMAIL_HOST: "host",
   EMAIL_PORT: "port",

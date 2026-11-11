@@ -1,12 +1,7 @@
 /**
- * The commands that dump and restore each service kind, and the framing that makes a Postgres
- * restore crash safe. Pure, so the exact argv and SQL are pinned by tests.
- *
- * Crash safety: psql with --single-transaction commits when stdin reaches EOF, and
- * a dying worker closes stdin cleanly, so a cut stream used to COMMIT a half replayed dump. Here
- * psql runs WITHOUT --single-transaction and the worker writes BEGIN itself, then the dump, then
- * COMMIT only after the source ended cleanly and verified. Any EOF before that ends the session
- * with the transaction open, and Postgres rolls it back.
+ * The commands that dump and restore each service kind. psql runs WITHOUT --single-transaction, which
+ * commits at stdin EOF, so a dying worker would commit a half replayed dump. The worker writes BEGIN itself
+ * and COMMIT only after the source ended cleanly and verified: any earlier EOF rolls back.
  */
 import { Transform, type TransformCallback } from "node:stream";
 import type { ServiceCredentials } from "./services.ts";
@@ -46,20 +41,14 @@ export function psqlCommand(c: ServiceCredentials, appName = "dockify-restore"):
 export const TERMINATE_OTHERS_SQL =
   "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid();\n";
 
-/**
- * One statement of a replay: the COPY of the largest table or its biggest index build. Four hours
- * is over 100 GB of one table at 10 MB/s, the slow end for a VPS disk. What it stops is a statement
- * that never ends (an index or a materialized view over a function that loops).
- */
+/** Bounds one statement of a replay: four hours is over 100 GB of one table at 10 MB/s. It stops one that never ends. */
 export const RESTORE_STATEMENT_TIMEOUT = "4h";
 export const RESTORE_PREAMBLE = `\\set ON_ERROR_STOP on\nSET lock_timeout = '30s';\nSET statement_timeout = '${RESTORE_STATEMENT_TIMEOUT}';\nBEGIN;\n`;
 export const RESTORE_COMMIT = "\nCOMMIT;\n";
 
 /**
- * Empties the database inside the restore's own transaction. The dump's --clean drops only what the
- * dump names: a table added since then stays beside the restored data, and one with a foreign key to
- * a dumped table makes the replay fail, for good. The pre-restore dump is what undoes this, and any
- * failure rolls it back with the rest. Run only when replacing: a brand new target has nothing to drop.
+ * Empties the database inside the restore's own transaction: --clean drops only what the dump names, and a newer
+ * table with a foreign key to a dumped one would fail the replay. Run only when replacing.
  */
 export const REPLACE_SCHEMAS_SQL =
   "DO $dockify$ DECLARE s text; BEGIN FOR s IN SELECT nspname FROM pg_namespace WHERE nspname <> 'information_schema' AND nspname NOT LIKE 'pg\\_%' LOOP EXECUTE format('DROP SCHEMA %I CASCADE', s); END LOOP; END $dockify$;\n" +
@@ -69,9 +58,8 @@ const HEAD_BYTES = 8 * 1024;
 const HEAD_LINE = /^(--|\\restrict |SET |SELECT pg_catalog\.set_config\()/;
 
 /**
- * pg_dump opens its output with SET statement_timeout = 0 and SET lock_timeout = 0, which would undo
- * the preamble's. Those two lines are dropped, and only from the dump's own header: the search stops
- * at the first line that is not a comment or a setting, so no data line can match.
+ * pg_dump opens with SET statement_timeout = 0 and SET lock_timeout = 0, which would undo the preamble's. They
+ * are dropped from the dump's own header only, so no data line can match.
  */
 export function keepTimeouts(head: Buffer): Buffer {
   const lines = head.toString("latin1").split("\n");
@@ -86,14 +74,12 @@ export function keepTimeouts(head: Buffer): Buffer {
 }
 
 /**
- * Frames a plain SQL dump as one explicit transaction. COMMIT is written only from _flush, which
- * runs only when the upstream ended without error. An upstream error destroys this stream instead,
- * the caller then destroys psql's stdin, and the open transaction rolls back.
+ * Frames a plain SQL dump as one explicit transaction. COMMIT is written only from _flush, which runs only
+ * when the upstream ended without error. Otherwise the session ends with the transaction open and it rolls back.
  */
 export class RestoreFramer extends Transform {
   #started = false;
   #replace: boolean;
-  /** The dump's first bytes, held until its header can be read whole. Null once passed on. */
   #head: Buffer[] | null = [];
   #headBytes = 0;
 
@@ -146,24 +132,19 @@ export function parseRestoreCheck(out: string): { tables: number; rows: number }
   return { tables: Number(m[1]), rows: Number(m[2]) };
 }
 
-// ------------------------------------------------------------------------------------- redis
-
-/** Streams an RDB snapshot to stdout over the replication protocol, authenticated. */
 export function redisDumpCommand(c: ServiceCredentials): Command {
   return { cmd: ["redis-cli", "--no-auth-warning", "--rdb", "-"], env: { REDISCLI_AUTH: c.password } };
 }
 
 export const REDIS_STAGE_PATH = "/data/dockify-restore.rdb";
 
-/** Receives the snapshot on stdin into a staging file next to the live one. */
 export function redisStageCommand(): Command {
   return { cmd: ["sh", "-c", `cat > ${REDIS_STAGE_PATH} && test -s ${REDIS_STAGE_PATH}`], env: {} };
 }
 
 /**
- * Swaps the staged snapshot in. Saving is switched off first so a background save cannot race the
- * rename, and back on if the swap fails, when Redis keeps running on what it had. redis-cli can exit
- * 0 on an error reply, so the reply is read.
+ * Swaps the staged snapshot in. Saving is switched off first so a background save cannot race the rename,
+ * and back on if the swap fails. redis-cli can exit 0 on an error reply, so the reply is read.
  */
 export function redisSwapCommand(c: ServiceCredentials): Command {
   return {

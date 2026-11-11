@@ -1,9 +1,4 @@
-/**
- * The deploy module's job handlers, for main.ts to merge into its table:
- *   deploy   the pipeline (clone, build, pin, release command, swap, readiness, route flip)
- *   janitor  image, cache and deployment retention, and the unused anonymous volume report
- * Both settle their own failures; only infrastructure errors escape to the queue for a retry.
- */
+/** Both handlers settle their own failures; only infrastructure errors escape to the queue for a retry. */
 import type { Db, JobKind, SecretVault } from "@dockify/db";
 import type { ClaimedJob } from "../queue.ts";
 import type { DeployConfig } from "./config.ts";

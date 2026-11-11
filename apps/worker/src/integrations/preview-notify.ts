@@ -1,10 +1,7 @@
 /**
- * The preview_notify job: "Preview ready" or "Preview failed", Dockify's own email next to GitHub's
- * notification of the PR comment. settlePreview decides when one is owed (never per push); this job
- * decides who reads it. That is the member whose verified GitHub login opened the pull request, the
- * same rule as deployStarter, or else the admins. A pull request's author who is not a member never
- * gets mail, so a stranger's pull request cannot send email to anyone they name. Sent only while
- * email is set up and Preview deployments is on in Settings, Notifications, Events.
+ * The preview_notify job: Dockify's own "Preview ready" or "Preview failed" email. It goes to the
+ * member whose verified GitHub login opened the pull request, or else the admins. An author who is
+ * not a member never gets mail, so a stranger's pull request cannot send email to anyone they name.
  */
 import { projects as P } from "@dockify/contracts";
 import type { Db } from "@dockify/db";
@@ -31,7 +28,6 @@ export function parsePreviewNotify(raw: unknown): PreviewNotify {
   return { previewId: p.previewId, state: p.state, commit: p.commit ?? null };
 }
 
-/** Who reads it: the current member with this verified GitHub login, or else every current admin. */
 export async function previewRecipients(db: Db, author: string | null): Promise<{ users: Array<{ id: string; email: string }>; recipient: "author" | "admin" }> {
   const user = author
     ? await db.user.findFirst({ where: { githubLogin: author, githubVerifiedAt: { not: null }, disabledAt: null, member: { isNot: null } }, select: { id: true, email: true } })
@@ -92,7 +88,6 @@ export async function deliverPreviewNotice(deps: PreviewNotifyDeps, raw: unknown
     fromFork: env.fromFork,
     isolatedDb: env.isolatedDb,
     isolation: P.previewIsolation(env),
-    // A project with one environment names none.
     baseEnvironment: env.project.environments.length > 1 ? env.baseEnvironment.name : "",
     previewUrl: serving ? `https://${serving.hostname}` : null,
     dashboardUrl: new URL(`/projects/${encodeURIComponent(env.project.slug)}?tab=previews`, deps.publicUrl).toString(),

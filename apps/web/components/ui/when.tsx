@@ -5,26 +5,11 @@ import { useNow } from "@/lib/hooks";
 import { useAbsTip } from "@/lib/time-prefs";
 import { cx } from "./cx";
 
-/*
- * Every relative time: "5m ago" in a <time dateTime>, with the absolute moment in its tip.
- *
- *   <When iso={d.createdAt} now={now} />                       ticks with the page clock
- *   <When iso={run.startedAt} now={now} utc prefix="Started" />  "Started 3h ago", tip in UTC
- *   <When iso={cert.checkedAt} start={initial.fetchedAt} />     no page clock: ticks on its own
- *   <When iso={d.startedAt} now={now} live />                   in flight: "Now", tip "Started 30 Oct 2026, 14:05"
- *
- * Pass the page's `now` (from useNow) where there is one, so a long list shares one clock. Without
- * it the time ticks every `tick` ms on its own; pass `start` (the snapshot time) so the server and
- * the first client render agree. `utc` follows the zone rule in lib/format.ts `absTime`.
- *
- * A time with no `prefix` starts its cell, so it reads "Just now" and "Yesterday". Words that lead
- * into the time ("Checked", "joined") go in `prefix`, never in the text before the element, so the
- * sentence keeps "Checked just now".
- */
+// Pass the page's `now` where there is one, so a long list shares one clock; without it, pass
+// `start` so the server and the first client render agree. Lead-in words go in `prefix`.
 
 type WhenProps = {
   iso: string | null | undefined;
-  /** The page clock. */
   now?: number;
   /** Own tick in ms when there is no page clock. */
   tick?: number;

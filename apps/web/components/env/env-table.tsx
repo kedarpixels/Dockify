@@ -18,13 +18,8 @@ import { Switch } from "@/components/ui/switch";
 import { When } from "@/components/ui/when";
 import type { EnvTarget } from "@/lib/pages/project-detail";
 
-/* The rows of a variables table, shared by the project's Variables tab and an app's (the same staged
-   workbench, narrowed to that app: shared rows read only, its own overrides editable). Fixed
-   columns, so read rows, the editor row and the add row line up. A secret, or
-   what a link resolves to, is fetched by the caller through the audited reveal; copy never unmasks
-   the row. Every read row has eye, copy and edit in the same slots; a staged removal shows Undo.
-   The column head is drawn once and hidden from screen readers; instead each cell starts with its
-   column's name in words only they read ("Value hidden", "Used at, Build"). */
+// A secret, or what a link resolves to, is fetched by the caller through the audited reveal; copy
+// never unmasks the row. The column head is hidden from screen readers; each cell names its column instead.
 
 export const TARGET_OPTIONS: SelectOption<EnvTarget>[] = (["runtime", "build", "both"] as const).map((value) => ({ value, label: TARGET_LABEL[value] }));
 
@@ -45,10 +40,7 @@ export interface Draft {
 /** What a linked row's third key does: open the project's Variables tab, or a menu with Unlink and Remove. */
 export type LinkEdit = { href: string } | { onUnlink: () => void; onRemove: () => void };
 
-/**
- * The app a row belongs to, in a table that mixes apps. `start` marks the first row of the app's
- * run: only it shows the app on wide screens, and every later run opens on a hairline.
- */
+/** `start` marks the first row of the app's run: only it shows the app on wide screens. */
 export interface RowApp {
   name: string;
   icon: React.ReactNode;
@@ -79,7 +71,7 @@ export function EnvTableHead({ targets = false, app = false }: { targets?: boole
   );
 }
 
-/** Where a variable is read: the short word in the row; "Both" names both stages in its tip and to screen readers. */
+/** "Both" names both stages in its tip and to screen readers. */
 function TargetMark({ target }: { target: EnvTarget }) {
   const full = TARGET_LABEL[target];
   const short = TARGET_SHORT[target];
@@ -122,15 +114,14 @@ export function EnvVarRow({
   rowId?: string;
   name: string;
   secret: boolean;
-  /** Staged state, on a table whose edits wait for Review. */
   state?: RowState;
-  /** Where the variable is read; set, the row has a "used at" column. */
+  /** Set, the row has a "used at" column. */
   target?: EnvTarget;
-  /** When it was stored; null while the row is staged. */
+  /** Null while the row is staged. */
   updatedAt: string | null;
   now: number;
   shown: boolean;
-  /** The value to show once revealed: the row's own, or the one fetched through reveal. Null while unknown. */
+  /** The row's own value, or the one fetched through reveal. Null while unknown. */
   value: string | null;
   revealing: boolean;
   /** A muted tag beside the value, such as "Overrides shared". */
@@ -140,7 +131,7 @@ export function EnvVarRow({
   linkEdit?: LinkEdit;
   app?: RowApp;
   onReveal: () => void;
-  /** The value to copy; rejects when it cannot be read, so the key reads "Copy failed". */
+  /** Rejects when the value cannot be read, so the key reads "Copy failed". */
   onCopy: () => Promise<string>;
   onEdit: () => void;
   /** Set when the row can only be undone: a staged removal, or a link staged in this session. */
@@ -255,11 +246,7 @@ function keyError(key: string, taken: string[]) {
   return null;
 }
 
-/**
- * The inline editor: key (an input when adding), value, where it is used (with `targets`), the
- * secret switch, then save, cancel and delete as icon keys. Enter saves, Escape cancels. With
- * `staged`, the keys read Stage and Remove: nothing is sent until Review applies it.
- */
+/** Enter saves, Escape cancels. With `staged`, nothing is sent until Review applies it. */
 export function EnvEditRow({
   mode,
   initial,

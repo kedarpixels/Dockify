@@ -1,10 +1,6 @@
 /**
- * Five-field cron (minute hour day-of-month month day-of-week) evaluated in an IANA time zone.
- * Pure, so the api (to show nextRunAt) and the worker (to fire) agree exactly.
- *
- * Supported per field: "*", numbers, ranges "a-b", lists "a,b", steps "x/n" and "a-b/n".
- * Day of week is 0 to 7 (0 and 7 are Sunday). As in Vixie cron, when both day fields are
- * restricted a time matches if either one matches.
+ * Five-field cron in an IANA time zone. Pure, so the api and the worker agree. Day of week is 0 to 7 (both
+ * Sunday). As in Vixie cron, when both day fields are restricted either one matching fires.
  */
 import { isTimeZone } from "@dockify/contracts";
 
@@ -128,9 +124,8 @@ const HOUR = 60 * MINUTE;
 const HORIZON = 8 * 366 * 24 * HOUR;
 
 /**
- * The first instant strictly after `from` whose wall clock in `tz` matches. Steps whole hours
- * while the hour or day cannot match, then minutes, so a typical search is a few hundred steps.
- * A wall time skipped by a DST jump does not fire that day; a repeated one fires once (the first).
+ * The first instant strictly after `from` whose wall clock in `tz` matches. A wall time skipped by a DST
+ * jump does not fire that day; a repeated one fires once (the first).
  */
 export function nextRun(expr: string | CronSchedule, tz: string, from: Date = new Date()): Date {
   const s = typeof expr === "string" ? parseCron(expr) : expr;
